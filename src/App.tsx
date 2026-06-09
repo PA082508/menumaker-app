@@ -7,6 +7,9 @@ import DashboardPage from '@/pages/dashboard/DashboardPage'
 import RecipesPage from '@/pages/recipes/RecipesPage'
 import MenuPlannerPage from '@/pages/menu/MenuPlannerPage'
 import KitchenViewPage from '@/pages/kitchen/KitchenViewPage'
+import SettingsPage from '@/pages/settings/SettingsPage'
+import PurchasesPage from '@/pages/purchases/PurchasesPage'
+import PurchaserApp from '@/pages/PurchaserApp'
 
 // Lazy placeholders for other pages
 const PlaceholderPage = ({ title }: { title: string }) => (
@@ -68,6 +71,7 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/purchaser-app" element={<PurchaserApp />} />
             <Route
               path="/"
               element={
@@ -78,16 +82,15 @@ export default function App() {
             >
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="dashboard"  element={<DashboardPage />} />
-              <Route path="menu" element={<MenuPlannerPage />} />
-              <Route path="recipes" element={<RecipesPage />} />
-              <Route path="kitchen"    element={<PlaceholderPage title="Kitchen View" />} />
+              <Route path="menu"       element={<MenuPlannerPage />} />
+              <Route path="recipes"    element={<RecipesPage />} />
+              <Route path="kitchen"    element={<KitchenViewPage />} />
               <Route path="delivery"   element={<PlaceholderPage title="Delivery Routes" />} />
-              <Route path="purchases"  element={<PlaceholderPage title="Purchase Manager" />} />
+              <Route path="purchases"  element={<PurchasesPage />} />
               <Route path="inventory"  element={<PlaceholderPage title="Inventory" />} />
               <Route path="reports"    element={<PlaceholderPage title="CACFP Reports" />} />
               <Route path="finance"    element={<PlaceholderPage title="Finance Export" />} />
-              <Route path="settings"   element={<PlaceholderPage title="Settings" />} />
-              <Route path="kitchen" element={<KitchenViewPage />} />
+              <Route path="settings"   element={<SettingsPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

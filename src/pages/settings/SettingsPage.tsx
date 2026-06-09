@@ -769,7 +769,12 @@ function PurchasersTab() {
 
   useEffect(() => {
     ;(async () => {
-      const { data } = await supabase.schema('menumaker').from('purchasers').select('*').order('name')
+      const { data, error } = await supabase
+        .schema('menumaker')
+        .from('purchasers')
+        .select('id, name, role, phone, email, notes, is_active')
+        .order('name')
+      console.log('purchasers result:', data, error)
       setRows(data || [])
       setLoading(false)
     })()

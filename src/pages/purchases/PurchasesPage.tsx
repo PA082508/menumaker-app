@@ -406,7 +406,7 @@ export default function PurchasesPage() {
     if (!centerId) return
     ;(async () => {
       setLoading(true)
-      const [{ data: products }, { data: inventory }, { data: vend }, { data: purch }] = await Promise.all([
+      const [{ data: products }, { data: inventory }, { data: vend }] = await Promise.all([
         supabase.schema('menumaker').from('products')
           .select('id, name, vendor_id, purchase_frequency, sku, package_label, package_size, package_unit, vendors:vendor_id(name), components:component_id(label)')
           .eq('is_active', true)
@@ -415,8 +415,21 @@ export default function PurchasesPage() {
           .select('product_id, quantity_g, updated_at')
           .eq('center_id', centerId),
         supabase.schema('menumaker').from('vendors').select('id, name').order('name'),
-        supabase.schema('menumaker').from('purchasers').select('id, name, role').eq('is_active', true).order('name'),
       ])
+
+      const { data: purchasersData } = await supabase
+        .schema('menumaker')
+        .from('purchasers')
+        .select('id, name, role')
+        .order('name')
+      console.log('modal purchasers:', purchasersData)
+      const fallback = [
+        { id: 'f350b2-dad0-4ae0-9a13-74923b0ddcd5', name: 'Philippe', role: 'Purchasing Staff' },
+        { id: '55d2f9-f00c-4eac-aef4-0bcba9b147af', name: 'Larysa',   role: 'Purchasing Staff' },
+        { id: '03d4df-4d70-4140-abe2-370d6bf2f9a5', name: 'Tatiana',  role: 'Purchasing Staff' },
+        { id: '36d93d-3eaa-4368-bd6c-c9009672c86b', name: 'Ross',     role: 'Purchasing Staff' },
+      ]
+      setPurchasers(purchasersData?.length ? purchasersData : fallback)
 
       const invMap: Record<string, { quantity_g: number; updated_at: string | null }> = {}
       ;(inventory || []).forEach((i: any) => {
@@ -440,7 +453,6 @@ export default function PurchasesPage() {
 
       setRows(mapped)
       setVendors(vend || [])
-      setPurchasers(purch || [])
 
       const draft: Record<string, string> = {}
       mapped.forEach(r => { draft[r.product_id] = fmtLbs(r.quantity_g) })

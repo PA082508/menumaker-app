@@ -10,6 +10,14 @@ import KitchenViewPage from '@/pages/kitchen/KitchenViewPage'
 import SettingsPage from '@/pages/settings/SettingsPage'
 import PurchasesPage from '@/pages/purchases/PurchasesPage'
 import PurchaserApp from '@/pages/PurchaserApp'
+import InventoryPage from './pages/inventory/InventoryPage'
+import KitchenStockPage from './pages/kitchen-stock/KitchenStockPage'
+import CACFPReportsPage from './pages/cacfp-reports/CACFPReportsPage'
+import FormSubmissionsPage from './pages/form-submissions/FormSubmissionsPage'
+import MealCountDirectorPage from './pages/meal-count/MealCountDirectorPage'
+import MealCountPage from '@/pages/meal-count/MealCountPage'
+import SiteClaimReport from './pages/reports/SiteClaimReport'
+import KitchenPlanningReport from './pages/reports/KitchenPlanningReport'
 
 // Lazy placeholders for other pages
 const PlaceholderPage = ({ title }: { title: string }) => (
@@ -84,12 +92,18 @@ export default function App() {
               <Route path="dashboard"  element={<DashboardPage />} />
               <Route path="menu"       element={<MenuPlannerPage />} />
               <Route path="recipes"    element={<RecipesPage />} />
-              <Route path="kitchen"    element={<KitchenViewPage />} />
+              <Route path="kitchen"       element={<KitchenViewPage />} />
+              <Route path="kitchen-stock" element={<KitchenStockPage />} />
               <Route path="delivery"   element={<PlaceholderPage title="Delivery Routes" />} />
               <Route path="purchases"  element={<PurchasesPage />} />
-              <Route path="inventory"  element={<PlaceholderPage title="Inventory" />} />
-              <Route path="reports"    element={<PlaceholderPage title="CACFP Reports" />} />
+              <Route path="inventory"  element={<InventoryPage />} />
+              <Route path="reports"    element={<CACFPReportsPage />} />
               <Route path="finance"    element={<PlaceholderPage title="Finance Export" />} />
+              <Route path="submissions" element={<FormSubmissionsPage />} />
+              <Route path="meal-count"  element={<MealCountPage />} />
+              <Route path="meal-count-director" element={<MealCountDirectorPage />} />
+              <Route path="claim-report"    element={<SiteClaimReport />} />
+              <Route path="kitchen-report" element={<KitchenPlanningReport />} />
               <Route path="settings"   element={<SettingsPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/dashboard" replace />} />

@@ -1189,4 +1189,74 @@ const styles = `
   color: #ccc;
   font-weight: 400;
 }
+
+/* ═══════════════════════════════════════════════════════
+   MOBILE / TABLET ADAPTATION  (≤768px)
+   Primary target: iPad in portrait, iPhone
+═══════════════════════════════════════════════════════ */
+
+@media (max-width: 768px) {
+  .mc-page { font-size: 15px; }
+
+  .mc-header { padding: 10px 12px; flex-wrap: wrap; gap: 8px; }
+  .mc-title { font-size: 18px; }
+  .mc-week-label { font-size: 12px; }
+  .mc-header-right { width: 100%; justify-content: flex-end; }
+
+  .mc-mode-toggle button { padding: 6px 12px; font-size: 13px; }
+
+  .mc-class-bar {
+    padding: 8px 10px; gap: 6px;
+    flex-wrap: nowrap; overflow-x: auto;
+    -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  }
+  .mc-class-bar::-webkit-scrollbar { display: none; }
+  .mc-class-pill { flex-shrink: 0; padding: 6px 14px; font-size: 13px; white-space: nowrap; }
+
+  .mc-slot-bar { padding: 10px 10px 0; gap: 6px; }
+  .mc-slot-btn { flex: 1; padding: 10px 4px; font-size: 13px; }
+
+  .mc-day-bar { padding: 8px 10px 0; gap: 4px; }
+  .mc-day-btn { flex: 1; padding: 8px 2px; font-size: 12px; }
+
+  .mc-counter { margin: 10px 10px 6px; padding: 10px 14px; font-size: 14px; }
+  .mc-counter-num { font-size: 28px; }
+
+  .mc-checklist { padding: 0 10px; gap: 8px; }
+  .mc-check-row { padding: 16px 14px; border-radius: 12px; gap: 14px; }
+  .mc-check-row:active { transform: scale(0.98); }
+
+  .mc-checkbox { width: 40px; height: 40px; border-radius: 8px; font-size: 22px; flex-shrink: 0; }
+  .mc-child-name { font-size: 17px; }
+  .mc-milk-badge { font-size: 12px; text-align: right; flex-shrink: 0; }
+
+  .mc-milk-panel {
+    position: sticky; bottom: 0;
+    margin: 12px 10px 0; padding: 14px 16px;
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.15);
+  }
+  .mc-milk-cups { font-size: 48px; line-height: 1; }
+  .mc-milk-label { font-size: 13px; }
+
+  .mc-blocked-day { padding: 20px 14px; font-size: 14px; border-radius: 10px; margin: 10px; }
+
+  .mc-week-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .mc-week-table { font-size: 11px; min-width: 680px; }
+  .mc-week-table th, .mc-week-table td { padding: 5px 3px; }
+  .mc-week-cell-btn { width: 28px; height: 28px; font-size: 14px; }
+  .mc-name-cell { min-width: 110px; font-size: 12px; }
+}
+
+@media (max-width: 390px) {
+  .mc-check-row { padding: 14px 10px; }
+  .mc-child-name { font-size: 15px; }
+  .mc-checkbox { width: 36px; height: 36px; }
+  .mc-milk-cups { font-size: 40px; }
+}
+
+@media (min-width: 769px) and (max-width: 1180px) and (orientation: landscape) {
+  .mc-checklist { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+}
+
 `;

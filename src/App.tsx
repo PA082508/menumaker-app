@@ -18,6 +18,8 @@ import MealCountDirectorPage from './pages/meal-count/MealCountDirectorPage'
 import MealCountPage from '@/pages/meal-count/MealCountPage'
 import SiteClaimReport from './pages/reports/SiteClaimReport'
 import KitchenPlanningReport from './pages/reports/KitchenPlanningReport'
+import FamilyEngagementPage from '@/pages/family-engagement/FamilyEngagementPage'
+import HeadStartReportsPage from '@/pages/reports/HeadStartReportsPage'
 
 // Lazy placeholders for other pages
 const PlaceholderPage = ({ title }: { title: string }) => (
@@ -103,7 +105,9 @@ export default function App() {
               <Route path="meal-count"  element={<MealCountPage />} />
               <Route path="meal-count-director" element={<MealCountDirectorPage />} />
               <Route path="claim-report"    element={<SiteClaimReport />} />
-              <Route path="kitchen-report" element={<KitchenPlanningReport />} />
+              <Route path="kitchen-report"      element={<KitchenPlanningReport />} />
+              <Route path="family-engagement"  element={<FamilyEngagementPage />} />
+              <Route path="hs-reports"         element={<HeadStartReportsPage />} />
               <Route path="settings"   element={<SettingsPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/dashboard" replace />} />

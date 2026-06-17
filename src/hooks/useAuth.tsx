@@ -10,6 +10,7 @@ type UserRole =
   | 'accountant'
   | 'driver'
   | 'purchaser'
+  | 'dietitian'
 
 interface AuthUser extends User {
   role?: UserRole
@@ -38,7 +39,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .from('user_roles')
       .select('role')
       .eq('user_id', userId)
-      .single()
+      .order('role')
+      .limit(1)
+      .maybeSingle()
     return (data?.role as UserRole) || null
   }
 
@@ -105,3 +108,5 @@ export const canManagePurchases = (role: UserRole | null) =>
 
 export const isDriver = (role: UserRole | null) => role === 'driver'
 export const isInspector = (role: UserRole | null) => role === 'cacfp_inspector'
+export const canApproveDiet = (role: UserRole | null) =>
+  role === 'director' || role === 'dietitian'

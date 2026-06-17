@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
+import { useProgramConfig } from '@/hooks/useProgramConfig'
 
 type NavItem = {
   path: string
@@ -10,25 +11,6 @@ type NavItem = {
   badge?: string
 }
 
-const NAV_ITEMS: NavItem[] = [
-  { path: '/dashboard',  label: 'Dashboard',      icon: '⊞',  },
-  { path: '/menu',       label: 'Menu Planner',   icon: '📅', roles: ['director','cook','office_manager','cacfp_inspector'] },
-  { path: '/recipes',    label: 'Recipes',        icon: '🍳', roles: ['director','cook','office_manager'] },
-  { path: '/kitchen',    label: 'Kitchen View',   icon: '👨‍🍳', roles: ['director','cook'] },
-  { path: '/delivery',   label: 'Delivery',       icon: '🚐', roles: ['director','driver'] },
-  { path: '/purchases',      label: 'Purchases',      icon: '🛒', roles: ['director','purchaser'] },
-  { path: '/kitchen-stock', label: 'Kitchen Stock',  icon: '🏪', roles: ['director','cook','purchaser'] },
-  { path: '/inventory',  label: 'Inventory',      icon: '📦', roles: ['director','purchaser','cook'] },
-  { path: '/meal-count',    label: 'Meal Count · Teachers', icon: '🍽️', roles: ['director','cook','driver'] },
-  { path: '/meal-count-director', label: 'Meal Count · Director', icon: '📋', roles: ['director','office_manager'] },
-  { path: '/claim-report',    label: 'Site Claim',      icon: '📋', roles: ['director','office_manager'] },
-  { path: '/kitchen-report', label: 'Kitchen Report',  icon: '👨‍🍳', roles: ['director','cook','office_manager'] },
-  { path: '/submissions', label: 'Form Submissions', icon: '📨', roles: ['director','office_manager','cacfp_inspector'] },
-  { path: '/reports',    label: 'CACFP Reports',  icon: '📋', roles: ['director','office_manager','cacfp_inspector'] },
-  { path: '/finance',    label: 'Finance',        icon: '💰', roles: ['director','accountant'] },
-  { path: '/settings',   label: 'Settings',       icon: '⚙️', roles: ['director'] },
-]
-
 const ROLE_LABELS: Record<string, string> = {
   director:        'Director',
   cook:            'Cook',
@@ -37,6 +19,7 @@ const ROLE_LABELS: Record<string, string> = {
   accountant:      'Accountant',
   driver:          'Driver',
   purchaser:       'Purchaser',
+  dietitian:       'Dietitian',
 }
 
 const ROLE_COLORS: Record<string, string> = {
@@ -51,8 +34,34 @@ const ROLE_COLORS: Record<string, string> = {
 
 export default function AppLayout() {
   const { user, role, signOut } = useAuth()
+  const { isHeadStart } = useProgramConfig()
   const navigate = useNavigate()
   const [collapsed, setCollapsed] = useState(false)
+
+  const NAV_ITEMS: NavItem[] = [
+    { path: '/dashboard',  label: 'Dashboard',      icon: '⊞' },
+    { path: '/menu',       label: 'Menu Planner',   icon: '📅', roles: ['director','cook','office_manager','cacfp_inspector','dietitian'] },
+    { path: '/recipes',    label: 'Recipes',        icon: '🍳', roles: ['director','cook','office_manager','dietitian'] },
+    { path: '/kitchen',    label: 'Kitchen View',   icon: '👨‍🍳', roles: ['director','cook'] },
+    { path: '/delivery',   label: 'Delivery',       icon: '🚐', roles: ['director','driver'] },
+    { path: '/purchases',  label: 'Purchases',      icon: '🛒', roles: ['director','purchaser'] },
+    { path: '/kitchen-stock', label: 'Kitchen Stock', icon: '🏪', roles: ['director','cook','purchaser'] },
+    { path: '/inventory',  label: 'Inventory',      icon: '📦', roles: ['director','purchaser','cook'] },
+    { path: '/meal-count', label: 'Meal Count · Teachers', icon: '🍽️', roles: ['director','cook','driver'] },
+    { path: '/meal-count-director', label: 'Meal Count · Director', icon: '📋', roles: ['director','office_manager'] },
+    ...(!isHeadStart ? [
+      { path: '/claim-report', label: 'Site Claim',    icon: '📋', roles: ['director','office_manager'] },
+      { path: '/reports',      label: 'CACFP Reports', icon: '📊', roles: ['director','office_manager','cacfp_inspector'] },
+    ] : []),
+    ...(isHeadStart ? [
+      { path: '/family-engagement', label: 'Family Engagement', icon: '👨‍👩‍👧', roles: ['director','office_manager','dietitian'] },
+      { path: '/hs-reports',        label: 'HS Reports',        icon: '📊', roles: ['director','office_manager','dietitian'] },
+    ] : []),
+    { path: '/kitchen-report', label: 'Kitchen Report', icon: '👨‍🍳', roles: ['director','cook','office_manager'] },
+    { path: '/submissions', label: 'Form Submissions', icon: '📨', roles: ['director','office_manager','cacfp_inspector','dietitian'] },
+    { path: '/finance',    label: 'Finance',        icon: '💰', roles: ['director','accountant'] },
+    { path: '/settings',   label: 'Settings',       icon: '⚙️', roles: ['director'] },
+  ]
 
   const visibleItems = NAV_ITEMS.filter(item =>
     !item.roles || (role && item.roles.includes(role))

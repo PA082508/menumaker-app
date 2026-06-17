@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useProgramConfig } from '@/hooks/useProgramConfig'
 import { useAuth, canApproveDiet } from '@/hooks/useAuth'
-
-const PEARL_CENTER_ID = '881ef4ce-1a27-4d3b-aa60-59d2a307bf2b'
+import { useOrg } from '@/contexts/OrgContext'
 
 interface MenuItem {
   id: string
@@ -49,6 +48,8 @@ const MEAL_ICONS: Record<string, string> = {
 export default function MenuPlannerPage() {
   const { isHeadStart, dietitianName } = useProgramConfig()
   const { role } = useAuth()
+  const { currentCenter } = useOrg()
+  const centerId = currentCenter?.id ?? ''
 
   const [cycle, setCycle]         = useState<Cycle | null>(null)
   const [items, setItems]         = useState<MenuItem[]>([])
@@ -204,7 +205,7 @@ export default function MenuPlannerPage() {
     await supabase.schema('menumaker').from('published_menus').insert({
       cycle_id: cycle.id,
       week_number: selectedWeek,
-      center_id: PEARL_CENTER_ID,
+      center_id: centerId,
       distribution_method: 'printed',
       rd_approved_by: cycle.rd_approved_by,
       rd_approved_at: cycle.rd_approved_at,

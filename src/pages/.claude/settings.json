@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/nikolaykutsenko/Desktop/**)",
+      "Read(//Users/nikolaykutsenko/**)",
+      "Bash(npm run *)",
+      "Read(//tmp/**)",
+      "Bash(python3)",
+      "Bash(cp /tmp/CACFPReportsPage_final.tsx /Users/nikolaykutsenko/Downloads/menumaker-app/src/pages/cacfp-reports/CACFPReportsPage.tsx && echo \"ok\")",
+      "Bash(pkill -f vite)",
+      "Bash(xargs -I{} dirname {})"
+    ],
+    "additionalDirectories": [
+      "/Users/nikolaykutsenko/Downloads",
+      "/private/tmp"
+    ]
+  }
+}

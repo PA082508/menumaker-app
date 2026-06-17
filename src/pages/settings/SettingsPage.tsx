@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import MilkRatesSettings from '@/components/settings/MilkRatesSettings'
 import MealCountSettings from '@/components/settings/MealCountSettings'
 import HeadStartSettings from './HeadStartSettings'
+import { useOrg } from '@/contexts/OrgContext'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1199,17 +1200,36 @@ function AssignTab() {
 
 export default function SettingsPage() {
   const [tab, setTab] = useState<Tab>('products')
+  const { currentCenter, centers, orgRole, setCurrentCenter } = useOrg()
 
   return (
     <div style={{ padding: '24px 32px', fontFamily: "'DM Sans', sans-serif", background: '#f4f6f4', minHeight: '100vh' }}>
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Serif+Display&display=swap" rel="stylesheet"/>
 
       {/* Header */}
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 26, color: '#0a3320', marginBottom: 2 }}>
-          Settings
+      <div style={{ marginBottom: 20, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 26, color: '#0a3320', marginBottom: 2 }}>
+            Settings
+          </div>
+          <div style={{ fontSize: 12, color: '#888' }}>{currentCenter?.name ?? '—'} · Products, Vendors, Purchasers</div>
         </div>
-        <div style={{ fontSize: 12, color: '#888' }}>Pearl Center · Products, Vendors, Purchasers</div>
+        {orgRole === 'admin' && centers.length > 1 && (
+          <select
+            value={currentCenter?.id ?? ''}
+            onChange={e => {
+              const c = centers.find(x => x.id === e.target.value)
+              if (c) setCurrentCenter(c)
+            }}
+            style={{
+              padding: '7px 12px', borderRadius: 8, border: '1.5px solid #d0d0d0',
+              fontSize: 13, fontFamily: 'inherit', background: '#fff', color: '#0a3320',
+              outline: 'none', cursor: 'pointer',
+            }}
+          >
+            {centers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        )}
       </div>
 
       {/* Tabs */}

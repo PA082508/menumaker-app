@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useProgramConfig } from '@/hooks/useProgramConfig'
-
-const CENTER_SLUG = 'pearl'
+import { useOrg } from '@/contexts/OrgContext'
 
 interface HSForm {
   program_type: string
@@ -38,20 +37,21 @@ const MONTHS = ['January','February','March','April','May','June',
   'July','August','September','October','November','December']
 
 export default function HeadStartSettings() {
-  const [form, setForm]       = useState<HSForm>(EMPTY)
-  const [centerId, setCenterId] = useState<string | null>(null)
-  const [saving, setSaving]   = useState(false)
-  const [msg, setMsg]         = useState<string | null>(null)
+  const { currentCenter } = useOrg()
+  const centerId = currentCenter?.id ?? null
+  const [form, setForm]   = useState<HSForm>(EMPTY)
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg]       = useState<string | null>(null)
   const { reload } = useProgramConfig()
 
   useEffect(() => {
+    if (!centerId) return
     ;(async () => {
       const { data } = await supabase
         .schema('menumaker').from('centers')
-        .select('id,program_type,program_hours,program_start_time,program_end_time,fiscal_year_start_month,dietitian_name,dietitian_credentials,dietitian_email,health_manager_name,health_manager_email,grant_number,enrollment_capacity')
-        .eq('slug', CENTER_SLUG).maybeSingle()
+        .select('program_type,program_hours,program_start_time,program_end_time,fiscal_year_start_month,dietitian_name,dietitian_credentials,dietitian_email,health_manager_name,health_manager_email,grant_number,enrollment_capacity')
+        .eq('id', centerId).maybeSingle()
       if (data) {
-        setCenterId(data.id)
         setForm({
           program_type:             data.program_type ?? 'cacfp',
           program_hours:            data.program_hours?.toString() ?? '',
@@ -68,7 +68,7 @@ export default function HeadStartSettings() {
         })
       }
     })()
-  }, [])
+  }, [centerId])
 
   const set = (k: keyof HSForm) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>

@@ -1,0 +1,406 @@
+{
+  "summary": {
+    "domain": "playacademyusa.com",
+    "audit_date": "2026-06-17",
+    "health_score": 22,
+    "business_type": "Local Service — Multi-location childcare/daycare center (YMYL-adjacent)",
+    "locations": [
+      { "name": "Wickliffe", "address": "28930 Ridge Rd, Wickliffe, OH 44092", "phone": "440-520-0031" },
+      { "name": "Highland Heights", "address": "201 Alpha Park, Highland Heights, OH 44143", "phone": "440-460-0600" },
+      { "name": "Parma Heights", "address": "6285 Pearl Rd, Parma Heights, OH 44130", "phone": "440-884-7529" }
+    ],
+    "platform": "WordPress + Kiddino theme + Yoast SEO + Flying Press",
+    "top_findings": [
+      "Zero canonical tags across the entire site",
+      "Zero meta descriptions on all 17 pages",
+      "Zero structured data — no LocalBusiness, JobPosting, or schema of any kind",
+      "Live test page (/test1/) indexed in Google via sitemap",
+      "12 Kiddino theme builder URLs in sitemaps; 55% of submitted URLs are junk or demo content"
+    ],
+    "quick_wins": [
+      "Add fetchpriority=high to hero image (30 min, direct LCP improvement)",
+      "Exclude Kiddino builder sitemaps in Yoast (30 min, removes 12 junk URLs)",
+      "Enable Open Graph in Yoast → Social → Facebook (30 min, fixes all social sharing)",
+      "Enable Yoast breadcrumbs (15 min, auto-generates BreadcrumbList site-wide)",
+      "Create /llms.txt (30 min, AI search visibility signal)"
+    ]
+  },
+  "categories": [
+    {
+      "name": "Technical SEO",
+      "score": 22,
+      "weight": 0.22,
+      "what_works": [
+        "HTTPS enforced",
+        "Flying Press caching active",
+        "robots.txt correctly blocks /wp-admin/ and tracking parameters",
+        "Sitemap index correctly referenced in robots.txt"
+      ],
+      "findings": [
+        {
+          "title": "Zero canonical tags site-wide",
+          "severity": "Critical",
+          "description": "No <link rel=\"canonical\"> detected on any page audited. With dozens of near-duplicate pages (builder URLs, demo content, duplicate teacher/class/event pages), Google is guessing canonical URLs arbitrarily.",
+          "recommendation": "Verify Yoast SEO schema settings are not suppressing canonical output. Yoast should auto-generate canonicals — if missing, check for theme conflicts or enable under Yoast → Search Appearance → General → Schema."
+        },
+        {
+          "title": "Test page /test1/ live and indexed",
+          "severity": "Critical",
+          "description": "/test1/ has H1 'test1', is listed in page-sitemap.xml (lastmod 2025-07-02), and has no noindex directive. Signals site neglect to Google.",
+          "recommendation": "Add noindex meta tag immediately and remove from sitemap. Consider deleting the page entirely."
+        },
+        {
+          "title": "12 Kiddino builder URLs in sitemaps",
+          "severity": "Critical",
+          "description": "kiddino_footer (5 URLs), kiddino_header (5 URLs), kiddino_tab_build (1), kiddino_off_build (1) are all in the sitemap index and render soft-duplicate homepage content.",
+          "recommendation": "Yoast → Search Appearance → Content Types → disable each Kiddino builder post type from sitemaps."
+        },
+        {
+          "title": "Unremoved Kiddino demo content indexed",
+          "severity": "Critical",
+          "description": "11 teacher pages (3 duplicate Katie Willmore with content/title mismatches), 13 class pages at /all-classs/ (5 drawing-painting duplicates, content/title mismatches), 4 event pages (3 Father's Day duplicates). All have identical lastmod 2025-02-27 — bulk import signature.",
+          "recommendation": "Delete all demo content. For genuine teacher profiles, keep one URL per teacher with 301 redirects from duplicates. Same for class and event pages."
+        },
+        {
+          "title": "Contact form broken on /contact/",
+          "severity": "Critical",
+          "description": "The /contact/ page displays 'Contact form not found' — a broken CF7 or WPForms shortcode. Live conversion failure.",
+          "recommendation": "Restore the correct contact form shortcode or recreate the form in WPForms/CF7 and update the page."
+        },
+        {
+          "title": "URL typos in production",
+          "severity": "High",
+          "description": "/menu-for-chilgren/ (typo: 'chilgren'), /all-classs/ (triple-s typo across 13 URLs), /wickliffe-3/ (draft artifact suffix)",
+          "recommendation": "301 redirect /menu-for-chilgren/ → /menu-for-children/. Rename /wickliffe-3/ → /wickliffe/ with 301. The /all-classs/ typo is embedded in 13 URLs — fix when deleting demo content."
+        },
+        {
+          "title": "No Open Graph tags",
+          "severity": "High",
+          "description": "Zero og:title, og:description, og:image, og:url detected on any page. All social sharing previews (Facebook, LinkedIn) are broken.",
+          "recommendation": "Enable in Yoast → Social → Facebook → Add Open Graph metadata. Also enable Twitter Card under Yoast → Social → X (Twitter)."
+        }
+      ]
+    },
+    {
+      "name": "Content Quality",
+      "score": 22,
+      "weight": 0.23,
+      "what_works": [
+        "UPK page cites verifiable SUTQ Gold credential and county context",
+        "Curriculum page references High-Scope, Piaget, Dewey, Vygotsky — strong factual depth",
+        "CACFP participation is a genuine authority signal",
+        "Director names and location contact info present on all pages",
+        "3 physical locations with full NAP data consistently listed"
+      ],
+      "findings": [
+        {
+          "title": "Zero meta descriptions across all 17 pages",
+          "severity": "Critical",
+          "description": "Not a single page on the site has a meta description. Google writes its own SERP snippets for all pages, typically choosing unflattering body text.",
+          "recommendation": "Write 150–160 character meta descriptions for all 17 pages. Each should include: location/service keyword, a unique differentiator (SUTQ Gold, CACFP, High-Scope), and a CTA (Book a Tour, Learn More)."
+        },
+        {
+          "title": "5 pages have no title tag",
+          "severity": "Critical",
+          "description": "Homepage (/), /curriculum/, /food-program-cacfp/, /meals/, and /jobs/ all have no title tag. Google generates its own, often using the H1 or site name only.",
+          "recommendation": "Add descriptive title tags following the pattern: [Primary Keyword] | [Secondary Keyword] - Play Academy | [City, OH]"
+        },
+        {
+          "title": "E-E-A-T score: 27/100",
+          "severity": "High",
+          "description": "Critical for YMYL-adjacent childcare content. No About page (404), no staff bios with credentials, no Ohio ODJFS license numbers displayed, no privacy policy in navigation, copyright shows 2025 (current year 2026).",
+          "recommendation": "Create a 'Meet Our Team' page with director photos, credentials, years of experience. Display Ohio childcare license numbers. Add privacy policy to footer navigation."
+        },
+        {
+          "title": "Severe keyword cannibalization across 4 clusters",
+          "severity": "High",
+          "description": "Homepage + 3 location pages all compete for 'childcare near me Cleveland'. /preschool/ and /upk-program/ compete for the same preschool queries. /food-program-cacfp/, /meals/, /menu-for-chilgren/ overlap completely on CACFP/nutrition queries.",
+          "recommendation": "Assign one primary query per page. Homepage owns 'childcare Cleveland OH'. Each location page owns '[city] childcare'. Consolidate or canonicalize the 3 food/nutrition pages."
+        },
+        {
+          "title": "Same testimonial on 5+ pages",
+          "severity": "High",
+          "description": "Erica Lograsso testimonial appears verbatim on Wickliffe, Highland Heights, Parma Heights, Summer Camp, and Toddlers pages. Signals fabricated or non-location-specific reviews.",
+          "recommendation": "Source and display unique testimonials per location. Integrate Google Reviews widget for verified reviews. Consider AggregateRating schema once you have a verified review count."
+        },
+        {
+          "title": "/menu-for-chilgren/ shows no actual menus",
+          "severity": "High",
+          "description": "The page is titled 'Menu for Children' and the H1 promises menus, but no actual meal tables, weekly menus, or nutritional information appear in the content. Pure intent mismatch.",
+          "recommendation": "After fixing the URL typo (301 redirect to /menu-for-children/), add actual weekly or monthly meal tables formatted as HTML tables, with CACFP compliance notes."
+        },
+        {
+          "title": "Thin content on /food-program-cacfp/",
+          "severity": "Medium",
+          "description": "~500–600 words, well below the 800-word service page floor. Missing: how CACFP reimbursement works for families, meal patterns per age group (infants vs toddlers vs school-age differ), links to USDA CACFP official resources.",
+          "recommendation": "Expand to 1,200+ words. Add FAQ section. Link to USDA CACFP page as an authoritative citation."
+        },
+        {
+          "title": "No pricing page — highest-intent missing query",
+          "severity": "Medium",
+          "description": "'Daycare prices Cleveland OH' and 'how much does daycare cost in Cleveland' are high-intent commercial queries with zero site coverage. Prospective parents researching cost find nothing and go to competitors.",
+          "recommendation": "Create a Pricing/Tuition page. Even a range or 'contact for pricing' page with enrollment details captures this intent."
+        }
+      ]
+    },
+    {
+      "name": "On-Page SEO",
+      "score": 15,
+      "weight": 0.20,
+      "what_works": [
+        "Location pages have keyword-relevant H1s (Childcare in Wickliffe, etc.)",
+        "Program pages use keyword-relevant title tags (Infant Daycares Near Me, etc.)",
+        "Internal navigation covers all main service areas"
+      ],
+      "findings": [
+        {
+          "title": "'Near Me' in title tags on 3 pages",
+          "severity": "High",
+          "description": "/summer-camp/, /school-age/, /infants/ all include 'Near Me' in their title tags. Google ignores 'near me' as a ranking modifier in titles and it looks spammy to users in SERPs.",
+          "recommendation": "Replace 'Near Me' with the specific city: e.g., 'Kids Summer Camp Cleveland OH | Play Academy'"
+        },
+        {
+          "title": "// separator in title tags on 5+ pages",
+          "severity": "Medium",
+          "description": "Inconsistent separator usage — some pages use //, others use | or -. // is non-standard and looks unprofessional in SERPs.",
+          "recommendation": "Standardize on | or - as separator across all title tags."
+        },
+        {
+          "title": "Generic H1 headings on functional pages",
+          "severity": "Medium",
+          "description": "/curriculum/ H1 is 'Curriculum', /contact/ H1 is 'Contact', /jobs/ H1 is 'Jobs' — missed keyword opportunities.",
+          "recommendation": "Rewrite to: 'High-Scope Childcare Curriculum — Play Academy Cleveland', 'Contact Play Academy Childcare — Cleveland, OH', 'Childcare Jobs in Cleveland OH | Play Academy'"
+        },
+        {
+          "title": "Image alt text: systemic failure site-wide",
+          "severity": "Medium",
+          "description": "Dominant alt text values: 'icon', 'teacher', 'about', empty strings, or raw filenames. Some images have keyword-stuffed alt text ('Best Daycares near me in Cleveland Ohio') which is the opposite problem.",
+          "recommendation": "Write descriptive alt text that accurately describes each image. Example: 'Preschool classroom at Play Academy Wickliffe' instead of 'icon' or 'Best Daycares near me in Cleveland Ohio'."
+        },
+        {
+          "title": "No internal linking strategy",
+          "severity": "Low",
+          "description": "Most pages link primarily to nav menu items. No contextual internal links from content body directing users from CACFP page to Meals page, from Curriculum page to program pages, etc.",
+          "recommendation": "Add 3–5 contextual internal links per page. Link location pages to their specific program pages. Link program pages to the contact/tour page."
+        }
+      ]
+    },
+    {
+      "name": "Schema / Structured Data",
+      "score": 8,
+      "weight": 0.10,
+      "what_works": [
+        "NAP data is consistently present in HTML across all pages",
+        "Multi-location structure exists — just needs to be expressed in schema"
+      ],
+      "findings": [
+        {
+          "title": "Zero structured data across entire site",
+          "severity": "Critical",
+          "description": "No JSON-LD, microdata, or RDFa detected on any page. The site is invisible to Google's rich result systems. No Knowledge Panel eligibility, no local pack entity signals, no Google Jobs eligibility.",
+          "recommendation": "Implement in priority order: (1) ChildCare LocalBusiness for each location page, (2) Organization + WebSite on homepage, (3) JobPosting on /jobs/, (4) Enable Yoast breadcrumbs for BreadcrumbList. See findings/schema.md for complete JSON-LD code."
+        },
+        {
+          "title": "No JobPosting schema — 9 positions invisible to Google Jobs",
+          "severity": "High",
+          "description": "The /jobs/ page lists 3 roles (Lead Teacher, Assistant Teacher, Floater) across 3 locations = 9 Google Jobs-eligible postings. None have JobPosting schema. Competitors with schema get free job listing visibility in Google Search.",
+          "recommendation": "Add JobPosting JSON-LD for each position at each location. Include baseSalary (required for top placement), validThrough, employmentType. See findings/schema.md for complete examples."
+        },
+        {
+          "title": "Highland Heights ZIP discrepancy",
+          "severity": "Medium",
+          "description": "/jobs/ page shows Highland Heights ZIP as 44124; all other pages show 44143. Schema will lock in whichever value is used — verify against GBP listing before implementing.",
+          "recommendation": "Verify correct ZIP code against the Google Business Profile for Highland Heights and standardize across all pages and schema."
+        },
+        {
+          "title": "No review/rating schema despite having testimonials",
+          "severity": "Medium",
+          "description": "Multiple pages display the Erica Lograsso testimonial. Not marked up with Review or AggregateRating schema — invisible to Google for star display in local pack results.",
+          "recommendation": "Once you have a verified review count from GBP, add AggregateRating to the ChildCare schema. Do not fabricate review counts."
+        }
+      ]
+    },
+    {
+      "name": "Performance (CWV)",
+      "score": 48,
+      "weight": 0.10,
+      "what_works": [
+        "WebP format used for recent image uploads",
+        "Flying Press caching plugin active",
+        "HTTPS enforced"
+      ],
+      "findings": [
+        {
+          "title": "Hero image missing fetchpriority and preload hint",
+          "severity": "Critical",
+          "description": "hero-2-1-2.webp (LCP candidate) has no fetchpriority='high' or <link rel='preload'> in <head>. Browser has no early signal to prioritize it, directly hurting LCP score.",
+          "recommendation": "Add to <head>: <link rel='preload' as='image' href='/wp-content/uploads/2025/05/hero-2-1-2.webp' fetchpriority='high'>"
+        },
+        {
+          "title": "YouTube iframe loads ~550 KB undeferred",
+          "severity": "High",
+          "description": "Standard YouTube embed (JI7EaRoccV4) appears without loading='lazy'. Loads ~550 KB of YouTube JavaScript on page parse, delaying Time to Interactive and inflating LCP.",
+          "recommendation": "Replace with lite-youtube-embed facade library or add loading='lazy' as minimum. The lite-YouTube approach defers all JS until user clicks play."
+        },
+        {
+          "title": "Images missing width and height attributes",
+          "severity": "High",
+          "description": "No width/height attributes confirmed on images across audited pages. Missing dimensions cause Cumulative Layout Shift as images load and reflow content.",
+          "recommendation": "WordPress 5.5+ auto-adds dimensions for new uploads if the theme supports it. Check Kiddino theme compatibility. Add manually to existing images if needed."
+        },
+        {
+          "title": "No preconnect hints for third-party origins",
+          "severity": "Medium",
+          "description": "No preconnect for YouTube (youtube.com, ytimg.com), chatbot CDN (cdn.glitch.global), or illions.com widget. Missing preconnect adds 200–600 ms on typical connections.",
+          "recommendation": "Add to <head>: <link rel='preconnect' href='https://www.youtube.com'> plus cdn.glitch.global and pub-files-live.illions.com"
+        },
+        {
+          "title": "PNG logo served on every page",
+          "severity": "Low",
+          "description": "STIKER_Book_240973-2.png is the logo format. PNG is larger than WebP for logos.",
+          "recommendation": "Convert to WebP or use inline SVG for the logo. Update across all pages."
+        }
+      ]
+    },
+    {
+      "name": "AI Search Readiness",
+      "score": 31,
+      "weight": 0.10,
+      "what_works": [
+        "AI crawlers not blocked (GPTBot, ClaudeBot, Google-Extended all allowed)",
+        "Curriculum page has citable factual content (High-Scope, Piaget, Perry Preschool Project)",
+        "SUTQ Gold rating is a verifiable, government-backed credential AI can cite",
+        "CACFP participation is a citable federal program affiliation",
+        "Consistent NAP data enables local entity disambiguation"
+      ],
+      "findings": [
+        {
+          "title": "No /llms.txt file",
+          "severity": "High",
+          "description": "/llms.txt returns 404. This is the emerging standard for signaling how AI systems should access and cite your content (analogous to robots.txt for LLMs).",
+          "recommendation": "Create /llms.txt with structured facts: organization name, locations, programs, hours, credentials, sitemap URL. See findings/performance.md for a complete template."
+        },
+        {
+          "title": "No About page (confirmed 404)",
+          "severity": "High",
+          "description": "AI systems check About pages first to understand organizational identity, mission, founding, and leadership. Without it, AI has no authoritative source for 'who is Play Academy?'",
+          "recommendation": "Create an About page covering: founding story, mission, owner/director credentials, years in operation, Ohio childcare license number, SUTQ Gold accreditation detail."
+        },
+        {
+          "title": "No FAQ page (confirmed 404)",
+          "severity": "High",
+          "description": "AI Overviews and AI Mode heavily cite FAQ-structured content to answer common questions. Common parent queries ('What age does daycare start?', 'How much does daycare cost in Cleveland?') have no citable answers on this site.",
+          "recommendation": "Create a FAQ page with FAQPage schema targeting 8–12 high-frequency parent questions."
+        },
+        {
+          "title": "Boilerplate teacher credentials on all profiles",
+          "severity": "High",
+          "description": "Every teacher profile shows identical 'MS/Mphil degree, PhD degree' text. This is Kiddino theme placeholder content — not real data. AI systems evaluating E-E-A-T will flag this as fabricated expertise.",
+          "recommendation": "Populate with real credentials or remove the credential field. This is also a trust signal failure for human visitors."
+        }
+      ]
+    },
+    {
+      "name": "Images",
+      "score": 15,
+      "weight": 0.05,
+      "what_works": [
+        "Recent uploads use WebP format",
+        "Hero image (hero-2-1-2.webp) is 135.5 KB — reasonable size"
+      ],
+      "findings": [
+        {
+          "title": "Systemic alt text failure across all pages",
+          "severity": "High",
+          "description": "Most images use generic alt text ('icon', 'teacher', 'about') or are empty. Some have keyword-stuffed alt text ('Best Daycares near me in Cleveland Ohio'). Neither approach serves accessibility or image search.",
+          "recommendation": "Audit all images and write descriptive alt text that accurately describes image content. Example: 'Children doing art activities at Play Academy Parma Heights preschool classroom'"
+        },
+        {
+          "title": "JPG/JPEG images on location pages",
+          "severity": "Medium",
+          "description": "ridge-0_orig.jpeg and IMAGE-2025-04-29-143605.jpg found on /wickliffe-3/ — not converted to WebP. Filename 'ridge-0_orig' suggests unoptimized original upload.",
+          "recommendation": "Reprocess through WordPress media library with WebP conversion enabled, or use Flying Press's image optimization feature."
+        },
+        {
+          "title": "Logo served as PNG",
+          "severity": "Low",
+          "description": "STIKER_Book_240973-2.png is the logo — served on every page as PNG rather than WebP or SVG.",
+          "recommendation": "Convert to SVG (ideal for logos) or WebP."
+        }
+      ]
+    }
+  ],
+  "action_plan": {
+    "phases": [
+      {
+        "name": "Phase 1: Critical Fixes",
+        "timeframe": "Week 1",
+        "items": [
+          "Noindex /test1/ and remove from sitemap",
+          "Fix broken contact form on /contact/",
+          "Exclude Kiddino builder URLs from Yoast sitemaps",
+          "Delete duplicate teacher pages (Katie Willmore x3 etc.) with 301 redirects",
+          "Delete duplicate class pages (drawing-painting x5 etc.) with 301 redirects",
+          "Delete duplicate event pages (Father's Day x3) with 301 redirects",
+          "Replace boilerplate teacher credentials with real data or remove field",
+          "Add fetchpriority='high' and preload hint to hero image",
+          "301 redirect /menu-for-chilgren/ to /menu-for-children/"
+        ]
+      },
+      {
+        "name": "Phase 2: High-Impact Improvements",
+        "timeframe": "Weeks 2-3",
+        "items": [
+          "Write meta descriptions for all 17 pages (150-160 chars each)",
+          "Write title tags for 5 pages missing them (/, /curriculum/, /food-program-cacfp/, /meals/, /jobs/)",
+          "Enable Open Graph in Yoast (Social → Facebook)",
+          "Verify and enable canonical tags in Yoast",
+          "Add ChildCare LocalBusiness JSON-LD to each of 3 location pages",
+          "Add Organization + WebSite JSON-LD to homepage",
+          "Add JobPosting JSON-LD for all 9 positions on /jobs/",
+          "Enable Yoast breadcrumbs (auto-generates BreadcrumbList)",
+          "Fix YouTube iframe — add loading='lazy' or lite-YouTube facade",
+          "Add width/height attributes to all images",
+          "Add preconnect hints for YouTube, chatbot CDN, illions.com"
+        ]
+      },
+      {
+        "name": "Phase 3: Content & Authority",
+        "timeframe": "Month 2",
+        "items": [
+          "Create About/Meet Our Team page with director bios and credentials",
+          "Create Pricing/Tuition page",
+          "Differentiate location pages with unique testimonials and local content",
+          "Add actual weekly menus to /menu-for-children/",
+          "Expand /food-program-cacfp/ from ~500 to 1,200+ words",
+          "Create FAQ page with FAQPage schema",
+          "Create /llms.txt AI guidance file",
+          "Consolidate /meals/, /menu-for-children/, /food-program-cacfp/ into hub-and-spoke",
+          "Fix title separators (// → |) site-wide",
+          "Remove 'Near Me' from title tags on /summer-camp/, /school-age/, /infants/"
+        ]
+      },
+      {
+        "name": "Phase 4: Monitoring & Iteration",
+        "timeframe": "Ongoing",
+        "items": [
+          "Rename /wickliffe-3/ → /wickliffe/ with 301 redirect",
+          "Verify and fix Highland Heights ZIP (44124 vs 44143 discrepancy)",
+          "Add Google Maps embeds to /contact/ for all 3 locations",
+          "Build directory citations (Yelp, Care.com, Daycare.com, GreatSchools, Bing Places)",
+          "Convert PNG logo to WebP or SVG",
+          "Add font-display: swap to web font declarations",
+          "Add security headers (X-Content-Type-Options, X-Frame-Options, Referrer-Policy)",
+          "Set up Google Search Console and submit sitemap_index.xml",
+          "Monitor Core Web Vitals in GSC after LCP and CLS fixes",
+          "Add review integration once GBP review count grows",
+          "Update footer copyright year (2025 → 2026)"
+        ]
+      }
+    ]
+  },
+  "artifacts": {
+    "findings_dir": "findings/",
+    "screenshots_dir": "screenshots/"
+  }
+}

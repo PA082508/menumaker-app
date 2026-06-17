@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-
-const CENTER_SLUG = 'pearl'
+import { useOrg } from '@/contexts/OrgContext'
 
 export interface ProgramConfig {
   programType: 'cacfp' | 'headstart'
@@ -34,11 +33,17 @@ const DEFAULT_CONFIG: ProgramConfig = {
 }
 
 export function useProgramConfig(): ProgramConfig & { loading: boolean; reload: () => void } {
+  const { currentCenter } = useOrg()
   const [config, setConfig] = useState<ProgramConfig>(DEFAULT_CONFIG)
   const [loading, setLoading] = useState(true)
   const [tick, setTick] = useState(0)
 
   useEffect(() => {
+    if (!currentCenter?.slug) {
+      setLoading(false)
+      return
+    }
+
     let cancelled = false
     ;(async () => {
       const { data } = await supabase
@@ -57,7 +62,7 @@ export function useProgramConfig(): ProgramConfig & { loading: boolean; reload: 
           grant_number,
           enrollment_capacity
         `)
-        .eq('slug', CENTER_SLUG)
+        .eq('slug', currentCenter.slug)
         .maybeSingle()
 
       if (!cancelled && data) {
@@ -79,7 +84,7 @@ export function useProgramConfig(): ProgramConfig & { loading: boolean; reload: 
       if (!cancelled) setLoading(false)
     })()
     return () => { cancelled = true }
-  }, [tick])
+  }, [currentCenter?.slug, tick])
 
   return { ...config, loading, reload: () => setTick(t => t + 1) }
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { format } from 'date-fns'
+import { useOrg } from '@/contexts/OrgContext'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -9,14 +10,25 @@ interface ProductRow {
   name: string
   vendor_id: string | null
   vendor_name: string | null
+  vendor_purchase_type: string | null
   component_label: string | null
   purchase_frequency: string | null
   sku: string | null
   package_label: string | null
   package_size: number | null
   package_unit: string | null
+  assigned_purchaser_id: string | null
   quantity_g: number
   inv_updated_at: string | null
+}
+
+const PT: Record<string, { label: string; icon: string; bg: string; color: string }> = {
+  online_delivery: { label: 'Online · Delivery', icon: '🚚', bg: '#eff6ff', color: '#1e40af' },
+  online_pickup:   { label: 'Online · Pickup',   icon: '📦', bg: '#f0f9ff', color: '#0369a1' },
+  direct_purchase: { label: 'Direct Purchase',   icon: '🛒', bg: '#f0fff4', color: '#0f4c35' },
+  will_call:       { label: 'Will Call',         icon: '📞', bg: '#fff8f0', color: '#c2670a' },
+  standing_order:  { label: 'Standing Order',    icon: '🔄', bg: '#fdf4ff', color: '#6b21a8' },
+  emergency:       { label: 'Emergency',         icon: '🆘', bg: '#fff0f0', color: '#c0392b' },
 }
 
 interface PurchaserInfo {
@@ -108,6 +120,7 @@ function PurchaseOrderModal({
   const title = `Purchase Order — Week ${cycleWeek} · ${weekRange}`
 
   const [selectedPurchaser, setSelectedPurchaser] = useState('')
+  const [showMineOnly, setShowMineOnly] = useState(true)
   const [checked, setChecked] = useState<Record<string, boolean>>({})
 
   const orderItems = rows
@@ -117,19 +130,23 @@ function PurchaseOrderModal({
       return { ...r, to_order: Math.max(0, req - onH) }
     })
     .filter(r => r.to_order > 0)
+    .filter(r => {
+      if (showMineOnly && selectedPurchaser) return r.assigned_purchaser_id === selectedPurchaser
+      return true
+    })
     .sort((a, b) => {
       const va = (a.vendor_name || 'zzz').toLowerCase()
       const vb = (b.vendor_name || 'zzz').toLowerCase()
       return va !== vb ? va.localeCompare(vb) : a.name.localeCompare(b.name)
     })
 
-  const vendorGroups: { vendor: string; vendorId: string | null; items: typeof orderItems }[] = []
+  const vendorGroups: { vendor: string; vendorId: string | null; purchaseType: string | null; items: typeof orderItems }[] = []
   const seenV = new Set<string>()
   orderItems.forEach(r => {
     const key = r.vendor_id ?? '__none__'
     if (!seenV.has(key)) {
       seenV.add(key)
-      vendorGroups.push({ vendor: r.vendor_name ?? 'No vendor', vendorId: r.vendor_id, items: [] })
+      vendorGroups.push({ vendor: r.vendor_name ?? 'No vendor', vendorId: r.vendor_id, purchaseType: r.vendor_purchase_type, items: [] })
     }
     vendorGroups.find(g => (g.vendorId ?? '__none__') === key)!.items.push(r)
   })
@@ -141,7 +158,13 @@ function PurchaseOrderModal({
     const w = window.open('', '_blank', 'width=900,height=700')
     if (!w) return
 
+    const ptLabel = (type: string | null) => {
+      const p = PT[type || '']
+      return p ? `${p.icon} ${p.label}` : ''
+    }
+
     const bodyRows = vendorGroups.map(g => {
+      const ptStr = ptLabel(g.purchaseType)
       const vRows = g.items.map(r => `
         <tr>
           <td style="padding:6px 10px;border-bottom:1px solid #eee;"><input type="checkbox" ${checked[r.product_id] ? 'checked' : ''}></td>
@@ -154,9 +177,10 @@ function PurchaseOrderModal({
       const sub = g.items.reduce((s, r) => s + r.to_order, 0)
       return vRows + `
         <tr style="background:#f0f9f4;">
-          <td colspan="3" style="padding:5px 10px;font-weight:700;font-size:11px;color:#0a3320;border-bottom:2px solid #d1e8da;">
+          <td colspan="2" style="padding:5px 10px;font-weight:700;font-size:11px;color:#0a3320;border-bottom:2px solid #d1e8da;">
             Subtotal: ${g.vendor}
           </td>
+          <td style="padding:5px 10px;font-size:10px;color:#555;border-bottom:2px solid #d1e8da;">${ptStr}</td>
           <td style="padding:5px 10px;text-align:right;font-weight:700;border-bottom:2px solid #d1e8da;">${sub.toFixed(1)} lbs</td>
           <td colspan="2" style="border-bottom:2px solid #d1e8da;"></td>
         </tr>`
@@ -168,7 +192,9 @@ function PurchaseOrderModal({
       <style>
         body{font-family:'Helvetica Neue',Arial,sans-serif;font-size:12px;margin:0;padding:20px;color:#1a1a1a}
         h1{font-size:16px;margin:0 0 4px;color:#0a3320}
-        .meta{font-size:11px;color:#888;margin-bottom:16px}
+        .meta{font-size:11px;color:#888;margin-bottom:8px}
+        .legend{font-size:11px;color:#555;margin-bottom:16px;display:flex;gap:16px;flex-wrap:wrap}
+        .legend span{display:inline-flex;align-items:center;gap:4px}
         table{width:100%;border-collapse:collapse}
         th{background:#0f4c35;color:#a8d5b5;font-size:10px;text-transform:uppercase;letter-spacing:.06em;padding:7px 10px;text-align:left}
         th:nth-child(4){text-align:right}
@@ -178,6 +204,12 @@ function PurchaseOrderModal({
       </head><body>
       <h1>${title}</h1>
       <div class="meta">Purchaser: ${pName || '—'} &nbsp;·&nbsp; Printed: ${format(new Date(), 'MMM d, yyyy h:mm a')}</div>
+      <div class="legend">
+        <span>🚚 Will be delivered</span>
+        <span>📦 Order online, pick up</span>
+        <span>🛒 Buy in store</span>
+        <span>📞 Call ahead</span>
+      </div>
       <table>
         <thead><tr>
           <th style="width:28px;">☐</th><th>Vendor</th><th>Product</th>
@@ -250,6 +282,19 @@ function PurchaseOrderModal({
           {!selectedPurchaser && (
             <span style={{ fontSize: 11, color: '#c2670a' }}>Required before printing</span>
           )}
+          {selectedPurchaser && (
+            <button
+              onClick={() => setShowMineOnly(v => !v)}
+              style={{
+                padding: '6px 12px', borderRadius: 7, fontFamily: 'inherit', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                border: `1.5px solid ${showMineOnly ? '#0f4c35' : '#e0e0e0'}`,
+                background: showMineOnly ? '#f4fdf7' : '#fff',
+                color: showMineOnly ? '#0f4c35' : '#888',
+              }}
+            >
+              {showMineOnly ? '✓ Mine only' : 'Show all'}
+            </button>
+          )}
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
             <button onClick={onClose} style={{
               padding: '8px 16px', borderRadius: 8, border: '1px solid #e0e0e0',
@@ -273,6 +318,23 @@ function PurchaseOrderModal({
           </div>
         </div>
 
+        {/* Legend */}
+        <div style={{
+          padding: '10px 24px', borderBottom: '1px solid #f0f0f0',
+          display: 'flex', gap: 18, flexWrap: 'wrap',
+        }}>
+          {[
+            { icon: '🚚', text: 'Will be delivered' },
+            { icon: '📦', text: 'Order online, pick up' },
+            { icon: '🛒', text: 'Buy in store' },
+            { icon: '📞', text: 'Call ahead' },
+          ].map(({ icon, text }) => (
+            <span key={text} style={{ fontSize: 11, color: '#666', display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span style={{ fontSize: 14 }}>{icon}</span>{text}
+            </span>
+          ))}
+        </div>
+
         {/* Table */}
         {orderItems.length === 0 ? (
           <div style={{ padding: 48, textAlign: 'center', color: '#ccc', fontSize: 13 }}>
@@ -284,7 +346,7 @@ function PurchaseOrderModal({
               display: 'grid', gridTemplateColumns: COL_M,
               padding: '8px 24px', gap: 10, background: '#fafaf8', borderBottom: '1px solid #f0f0f0',
             }}>
-              {['', 'Vendor', 'Product', 'To order', 'Package', 'SKU'].map((h, i) => (
+              {['', 'Product', '', 'To order (lbs)', 'Package', 'SKU'].map((h, i) => (
                 <div key={i} style={{
                   fontSize: 10, fontWeight: 700, color: '#aaa',
                   textTransform: 'uppercase', letterSpacing: '0.06em',
@@ -295,12 +357,32 @@ function PurchaseOrderModal({
 
             {vendorGroups.map(group => {
               const sub = group.items.reduce((s, r) => s + r.to_order, 0)
+              const pt = PT[group.purchaseType || '']
               return (
                 <div key={group.vendorId ?? 'none'}>
+                  {/* Vendor section header */}
+                  <div style={{
+                    padding: '8px 24px', background: '#f8f8f8', borderBottom: '1px solid #ececec',
+                    display: 'flex', alignItems: 'center', gap: 10,
+                  }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#1a1a1a' }}>
+                      {pt ? pt.icon : ''} {group.vendor}
+                    </span>
+                    {pt && (
+                      <span style={{
+                        fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 4,
+                        textTransform: 'uppercase', letterSpacing: '0.06em',
+                        background: pt.bg, color: pt.color,
+                      }}>{pt.label}</span>
+                    )}
+                    <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 600, color: '#555' }}>
+                      {sub.toFixed(1)} lbs
+                    </span>
+                  </div>
                   {group.items.map((row, i) => (
                     <div key={row.product_id} style={{
                       display: 'grid', gridTemplateColumns: COL_M,
-                      padding: '9px 24px', gap: 10, alignItems: 'center',
+                      padding: '8px 24px 8px 40px', gap: 10, alignItems: 'center',
                       background: i % 2 === 0 ? '#fff' : '#fafaf8',
                       borderBottom: '1px solid #f5f5f5',
                     }}>
@@ -310,8 +392,7 @@ function PurchaseOrderModal({
                         onChange={e => setChecked(c => ({ ...c, [row.product_id]: e.target.checked }))}
                         style={{ width: 16, height: 16, accentColor: '#0f4c35', cursor: 'pointer' }}
                       />
-                      <span style={{ fontSize: 12, color: '#555' }}>{row.vendor_name ?? '—'}</span>
-                      <span style={{ fontSize: 13, fontWeight: 500, color: '#1a1a1a' }}>{row.name}</span>
+                      <span style={{ fontSize: 13, fontWeight: 500, color: '#1a1a1a', gridColumn: '2/4' }}>{row.name}</span>
                       <span style={{ textAlign: 'right' }}>
                         <span style={{
                           fontSize: 13, fontWeight: 700, color: '#c2670a',
@@ -325,21 +406,6 @@ function PurchaseOrderModal({
                       <span style={{ fontSize: 11, color: '#999', fontFamily: 'monospace' }}>{row.sku || '—'}</span>
                     </div>
                   ))}
-                  {/* Vendor subtotal */}
-                  <div style={{
-                    display: 'grid', gridTemplateColumns: COL_M,
-                    padding: '6px 24px', gap: 10, alignItems: 'center',
-                    background: '#f0f9f4', borderBottom: '2px solid #d1e8da',
-                  }}>
-                    <div />
-                    <div style={{ fontSize: 11, fontWeight: 700, color: '#0a3320', gridColumn: '2/4' }}>
-                      Subtotal: {group.vendor}
-                    </div>
-                    <div style={{ textAlign: 'right', fontSize: 12, fontWeight: 700, color: '#0f4c35' }}>
-                      {sub.toFixed(1)} lbs
-                    </div>
-                    <div /><div />
-                  </div>
                 </div>
               )
             })}
@@ -365,8 +431,9 @@ function PurchaseOrderModal({
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function PurchasesPage() {
+  const { currentCenter } = useOrg()
+  const centerId = currentCenter?.id ?? null
   const [rows, setRows]             = useState<ProductRow[]>([])
-  const [centerId, setCenterId]     = useState<string | null>(null)
   const [loading, setLoading]       = useState(true)
   const [invMode, setInvMode]       = useState(false)
   const [fVendor, setFVendor]       = useState('')
@@ -394,21 +461,12 @@ export default function PurchasesPage() {
   }, [calcOpen])
 
   useEffect(() => {
-    ;(async () => {
-      const { data: center } = await supabase
-        .schema('menumaker').from('centers')
-        .select('id').eq('slug', 'pearl').single()
-      if (center) setCenterId(center.id)
-    })()
-  }, [])
-
-  useEffect(() => {
     if (!centerId) return
     ;(async () => {
       setLoading(true)
       const [{ data: products }, { data: inventory }, { data: vend }] = await Promise.all([
         supabase.schema('menumaker').from('products')
-          .select('id, name, vendor_id, purchase_frequency, sku, package_label, package_size, package_unit, vendors:vendor_id(name), components:component_id(label)')
+          .select('id, name, vendor_id, purchase_frequency, sku, package_label, package_size, package_unit, assigned_purchaser_id, vendors:vendor_id(name,purchase_type), components:component_id(label)')
           .eq('is_active', true)
           .order('name'),
         supabase.schema('menumaker').from('inventory')
@@ -437,18 +495,20 @@ export default function PurchasesPage() {
       })
 
       const mapped: ProductRow[] = (products || []).map((p: any) => ({
-        product_id:         p.id,
-        name:               p.name,
-        vendor_id:          p.vendor_id,
-        vendor_name:        p.vendors?.name ?? null,
-        component_label:    p.components?.label ?? null,
-        purchase_frequency: p.purchase_frequency,
-        sku:                p.sku ?? null,
-        package_label:      p.package_label ?? null,
-        package_size:       p.package_size ?? null,
-        package_unit:       p.package_unit ?? null,
-        quantity_g:         invMap[p.id]?.quantity_g ?? 0,
-        inv_updated_at:     invMap[p.id]?.updated_at ?? null,
+        product_id:            p.id,
+        name:                  p.name,
+        vendor_id:             p.vendor_id,
+        vendor_name:           p.vendors?.name ?? null,
+        vendor_purchase_type:  p.vendors?.purchase_type ?? null,
+        component_label:       p.components?.label ?? null,
+        purchase_frequency:    p.purchase_frequency,
+        sku:                   p.sku ?? null,
+        package_label:         p.package_label ?? null,
+        package_size:          p.package_size ?? null,
+        package_unit:          p.package_unit ?? null,
+        assigned_purchaser_id: p.assigned_purchaser_id ?? null,
+        quantity_g:            invMap[p.id]?.quantity_g ?? 0,
+        inv_updated_at:        invMap[p.id]?.updated_at ?? null,
       }))
 
       setRows(mapped)

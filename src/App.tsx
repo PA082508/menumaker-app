@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
+import { OrgProvider } from '@/contexts/OrgContext'
 import AppLayout from '@/components/layout/AppLayout'
 import LoginPage from '@/pages/LoginPage'
 import DashboardPage from '@/pages/dashboard/DashboardPage'
@@ -20,6 +21,7 @@ import SiteClaimReport from './pages/reports/SiteClaimReport'
 import KitchenPlanningReport from './pages/reports/KitchenPlanningReport'
 import FamilyEngagementPage from '@/pages/family-engagement/FamilyEngagementPage'
 import HeadStartReportsPage from '@/pages/reports/HeadStartReportsPage'
+import ReceiptReviewPage from '@/pages/receipt-review/ReceiptReviewPage'
 
 // Lazy placeholders for other pages
 const PlaceholderPage = ({ title }: { title: string }) => (
@@ -78,6 +80,7 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <OrgProvider>
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
@@ -108,11 +111,13 @@ export default function App() {
               <Route path="kitchen-report"      element={<KitchenPlanningReport />} />
               <Route path="family-engagement"  element={<FamilyEngagementPage />} />
               <Route path="hs-reports"         element={<HeadStartReportsPage />} />
+              <Route path="receipt-review"     element={<ReceiptReviewPage />} />
               <Route path="settings"   element={<SettingsPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </BrowserRouter>
+        </OrgProvider>
       </AuthProvider>
     </QueryClientProvider>
   )

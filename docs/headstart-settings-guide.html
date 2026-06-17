@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Head Start Program Settings — User Guide</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Serif+Display&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', Arial, sans-serif;
+    font-size: 13px;
+    line-height: 1.65;
+    color: #1a1a1a;
+    background: #fff;
+    padding: 48px 56px;
+    max-width: 800px;
+    margin: 0 auto;
+  }
+
+  .cover {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    padding-bottom: 40px;
+  }
+
+  .cover-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 60px;
+  }
+
+  .cover-logo-dot {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    background: #0f4c35;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 16px;
+  }
+
+  .cover-logo-name {
+    font-family: 'DM Serif Display', Georgia, serif;
+    font-size: 18px;
+    color: #0a3320;
+  }
+
+  .cover-title {
+    font-family: 'DM Serif Display', Georgia, serif;
+    font-size: 38px;
+    color: #0a3320;
+    line-height: 1.15;
+    margin-bottom: 16px;
+  }
+
+  .cover-subtitle {
+    font-size: 15px;
+    color: #555;
+    margin-bottom: 36px;
+    max-width: 480px;
+  }
+
+  .cover-path {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #f0fff4;
+    border: 1px solid #c0e0c0;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #0f4c35;
+    margin-bottom: 48px;
+  }
+
+  .cover-path span { color: #a0c0b0; }
+
+  .cover-meta {
+    margin-top: auto;
+    padding-top: 24px;
+    border-top: 1px solid #e4e8e4;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: #aaa;
+  }
+
+  .cover-badge { display: flex; gap: 8px; }
+
+  .badge {
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 5px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+  }
+
+  .badge-green  { background: #f0fff4; color: #0f4c35; border: 1px solid #c0e0c0; }
+  .badge-blue   { background: #f0f6ff; color: #2980b9; border: 1px solid #bee0f5; }
+  .badge-purple { background: #f5f3ff; color: #7c3aed; border: 1px solid #ddd6fe; }
+
+  .page-break { page-break-after: always; break-after: page; }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid #e4e8e4;
+  }
+
+  .section-icon {
+    width: 28px; height: 28px;
+    border-radius: 7px;
+    background: #0f4c35;
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  .section-title {
+    font-family: 'DM Serif Display', Georgia, serif;
+    font-size: 20px;
+    color: #0a3320;
+  }
+
+  .card {
+    background: #fff;
+    border: 1px solid #e4e8e4;
+    border-radius: 12px;
+    padding: 20px 22px;
+    margin-bottom: 18px;
+  }
+
+  .card-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #0a3320;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .card-title-icon { font-size: 16px; }
+
+  .field-block { margin-bottom: 16px; }
+  .field-block:last-child { margin-bottom: 0; }
+
+  .field-name {
+    font-weight: 700;
+    color: #0a3320;
+    font-size: 13px;
+    margin-bottom: 3px;
+  }
+
+  .field-desc {
+    color: #444;
+    font-size: 12.5px;
+    margin-top: 4px;
+    line-height: 1.6;
+  }
+
+  .field-example {
+    margin-top: 6px;
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    font-size: 11.5px;
+    color: #0f4c35;
+  }
+
+  .field-example-label {
+    font-weight: 700;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .field-example-val {
+    font-family: 'Courier New', monospace;
+    background: #f0fff4;
+    border-radius: 4px;
+    padding: 1px 6px;
+    color: #0f4c35;
+  }
+
+  .note {
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 12px;
+    line-height: 1.6;
+    margin-top: 10px;
+    margin-bottom: 14px;
+  }
+
+  .note-warning { background: #fffbeb; border-left: 3px solid #f59e0b; color: #92400e; }
+  .note-info    { background: #f0f6ff; border-left: 3px solid #2980b9; color: #1e40af; }
+  .note-green   { background: #f0fff4; border-left: 3px solid #0f4c35; color: #0a3320; }
+  .note strong  { font-weight: 700; }
+
+  .tbl {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+    margin: 12px 0;
+  }
+
+  .tbl th {
+    background: #0f4c35;
+    color: #fff;
+    padding: 8px 12px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .tbl th:first-child { border-radius: 6px 0 0 0; }
+  .tbl th:last-child  { border-radius: 0 6px 0 0; }
+
+  .tbl td {
+    padding: 9px 12px;
+    border-bottom: 1px solid #f0f0f0;
+    vertical-align: top;
+    color: #333;
+  }
+
+  .tbl tr:last-child td { border-bottom: none; }
+  .tbl tr:nth-child(even) td { background: #f9fbf9; }
+
+  .divider { border: none; border-top: 1px solid #e4e8e4; margin: 22px 0; }
+
+  ul.check { list-style: none; padding: 0; margin: 8px 0; }
+
+  ul.check li {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 5px 0;
+    font-size: 12.5px;
+    color: #333;
+    border-bottom: 1px solid #f5f5f5;
+  }
+
+  ul.check li:last-child { border-bottom: none; }
+
+  ul.check li::before {
+    content: '→';
+    color: #0f4c35;
+    font-weight: 700;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .page-footer {
+    position: fixed;
+    bottom: 28px;
+    left: 56px;
+    right: 56px;
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: #ccc;
+    border-top: 1px solid #eee;
+    padding-top: 8px;
+  }
+
+  @media print {
+    body { padding: 0; }
+    .cover { min-height: 100vh; }
+    .card { break-inside: avoid; }
+    .field-block { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════
+     COVER PAGE
+══════════════════════════════════════════════ -->
+<div class="cover">
+  <div class="cover-logo">
+    <div class="cover-logo-dot">🍽</div>
+    <div class="cover-logo-name">MenuMaker</div>
+  </div>
+
+  <div class="cover-title">Head Start Program<br>Settings Guide</div>
+  <div class="cover-subtitle">
+    A step-by-step reference for completing the Head Start Program settings
+    in MenuMaker — what each field means, what it affects, and how to fill it in correctly.
+  </div>
+
+  <div class="cover-path">
+    Settings <span>›</span> 🏫 Head Start Program
+  </div>
+
+  <div style="display:flex; flex-direction:column; gap:12px; max-width:460px;">
+    <div class="note note-info" style="margin:0">
+      <strong>Who should complete this section:</strong> the Program Director or Office Manager.
+      Fill it in once during initial setup, then update only when information changes
+      (new dietitian, schedule change, grant renewal).
+    </div>
+    <div class="note note-warning" style="margin:0">
+      <strong>Note:</strong> changing the Program Type takes effect immediately after saving
+      and updates the navigation for all users of the system.
+    </div>
+  </div>
+
+  <div class="cover-meta">
+    <div>MenuMaker · Play Academy · Head Start Nutrition Module</div>
+    <div class="cover-badge">
+      <span class="badge badge-green">Head Start</span>
+      <span class="badge badge-blue">45 CFR 1302</span>
+      <span class="badge badge-purple">v1.0 · 2026</span>
+    </div>
+  </div>
+</div>
+
+<div class="page-break"></div>
+
+<!-- ══════════════════════════════════════════════
+     PAGE 2 — Program Type
+══════════════════════════════════════════════ -->
+<div class="section-header">
+  <div class="section-icon">1</div>
+  <div class="section-title">Program Type</div>
+</div>
+
+<p style="color:#555; font-size:13px; margin-bottom:16px;">
+  This is the master switch for the entire application. It controls which sidebar sections,
+  reports, and forms are available to your team. All existing data — menus, recipes,
+  children — is preserved when you switch.
+</p>
+
+<table class="tbl" style="margin-bottom:20px">
+  <thead>
+    <tr><th>Option</th><th>When to choose</th><th>Sections added to sidebar</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>CACFP</strong></td>
+      <td>Your center participates in the Child and Adult Care Food Program and submits monthly reimbursement claims</td>
+      <td>Claim Report, CACFP Reports</td>
+    </tr>
+    <tr>
+      <td><strong>Head Start</strong></td>
+      <td>Your center is funded by a Head Start or Early Head Start grant and operates under federal standards 45 CFR Part 1302</td>
+      <td>Family Engagement, HS Reports; RD approval workflow in Menu Planner</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="note note-green">
+  <strong>What changes when you select Head Start:</strong><br>
+  • Menu Planner shows a status bar: Draft → Submitted for RD Review → RD Approved → Published<br>
+  • Special Diet forms gain CF/HS-27 fields (substitution type, review date, Health Manager sign-off)<br>
+  • Recipes gain a Product Documents panel (upload CN Labels, Standardized Recipe cards, Product Specs)<br>
+  • HS Reports provides PIR nutrition section data ready to enter into HSES
+</div>
+
+<hr class="divider">
+
+<!-- ══════════════════════════════════════════════
+     Program Schedule
+══════════════════════════════════════════════ -->
+<div class="section-header" style="margin-top:8px">
+  <div class="section-icon">2</div>
+  <div class="section-title">Program Schedule</div>
+</div>
+
+<div class="card">
+  <div class="card-title"><span class="card-title-icon">⏱</span> Daily Hours</div>
+
+  <div class="field-desc">
+    The total number of hours children are enrolled in the program each day.
+    Head Start Performance Standards set different meal nutrition requirements based on this value:
+  </div>
+
+  <table class="tbl" style="margin-top:12px">
+    <thead><tr><th>Program length</th><th>Meal nutrition requirement</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Less than 6 hours</strong></td>
+        <td>Meals must provide ⅓ to ½ of children's daily nutritional needs</td>
+      </tr>
+      <tr>
+        <td><strong>6 hours or more</strong></td>
+        <td>Meals must provide ½ to ⅔ of children's daily nutritional needs</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="field-example" style="margin-top:10px">
+    <span class="field-example-label">Example:</span>
+    <span class="field-example-val">6.5</span>
+    <span style="color:#888">for a program running 7:00 AM – 1:30 PM</span>
+  </div>
+
+  <div class="note note-warning" style="margin-top:12px; margin-bottom:0">
+    The app displays a live hint below the field as soon as you type a value —
+    you do not need to memorize the threshold.
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title"><span class="card-title-icon">🕐</span> Start Time / End Time</div>
+  <div class="field-desc">
+    The actual opening and closing time of your program each day. Use 24-hour HH:MM format.
+    These times appear in reports and documentation to confirm the length of the program day.
+  </div>
+  <div style="display:flex; gap:24px; margin-top:10px;">
+    <div class="field-example">
+      <span class="field-example-label">Start Time:</span>
+      <span class="field-example-val">07:00</span>
+    </div>
+    <div class="field-example">
+      <span class="field-example-label">End Time:</span>
+      <span class="field-example-val">13:30</span>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title"><span class="card-title-icon">📅</span> Fiscal Year Start Month</div>
+  <div class="field-desc">
+    The month your grant-funded fiscal year begins. This controls the reporting period
+    displayed in HS Reports → PIR Data.
+  </div>
+  <div class="note note-info" style="margin-top:10px; margin-bottom:0">
+    <strong>Default is October</strong> — the federal fiscal year in the U.S. begins October 1.
+    If your grant starts in a different month, check your Notice of Award from HHS.
+  </div>
+</div>
+
+<div class="page-break"></div>
+
+<!-- ══════════════════════════════════════════════
+     PAGE 3 — RD + Health Manager
+══════════════════════════════════════════════ -->
+<div class="section-header">
+  <div class="section-icon">3</div>
+  <div class="section-title">Registered Dietitian (RD)</div>
+</div>
+
+<p style="color:#555; font-size:13px; margin-bottom:16px;">
+  Under <strong>45 CFR 1302.44(b)</strong>, all Head Start menus must be planned or
+  approved by a licensed nutrition professional. The information in this section appears
+  in the Menu Planner approval workflow and is printed on menus distributed to families.
+</p>
+
+<div class="card">
+  <div class="field-block">
+    <div class="field-name">Name</div>
+    <div class="field-desc">
+      Full name of the dietitian who approves menus. Recorded in the database when
+      <strong>Approve Menu (RD)</strong> is clicked in the Menu Planner, and printed
+      on menu handouts sent to families.
+    </div>
+    <div class="field-example">
+      <span class="field-example-label">Example:</span>
+      <span class="field-example-val">Sarah Johnson</span>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <div class="field-block">
+    <div class="field-name">Credentials</div>
+    <div class="field-desc">
+      Professional credential abbreviations, comma-separated. Displayed next to the
+      dietitian's name on reports and menu printouts to confirm their qualifications.
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:8px;">
+      <div class="field-example"><span class="field-example-label">Common:</span><span class="field-example-val">RD, LDN</span></div>
+      <div class="field-example"><span class="field-example-val">RD, CDN, MS</span></div>
+      <div class="field-example"><span class="field-example-val">RD, LD</span></div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <div class="field-block">
+    <div class="field-name">Email</div>
+    <div class="field-desc">
+      The dietitian's professional email address. Used to identify the approver
+      in the menu workflow. In a future release, this address will receive
+      automatic notifications when a menu is submitted for review.
+    </div>
+    <div class="field-example">
+      <span class="field-example-label">Example:</span>
+      <span class="field-example-val">s.johnson@nutritionservices.com</span>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <div class="field-block">
+    <div class="field-name">Grant Number</div>
+    <div class="field-desc">
+      Your Head Start grant number from the Notice of Award issued by HHS.
+      Included in PIR reports and all official nutrition documentation.
+      You can find it on the first page of your grant agreement.
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:8px;">
+      <div class="field-example"><span class="field-example-label">Example:</span><span class="field-example-val">90CI5432/01</span></div>
+      <div class="field-example"><span class="field-example-val">06CH010123</span></div>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<div class="section-header" style="margin-top:8px">
+  <div class="section-icon">4</div>
+  <div class="section-title">Health Manager</div>
+</div>
+
+<p style="color:#555; font-size:13px; margin-bottom:16px;">
+  The Health Services Manager is responsible for reviewing and authorizing
+  special dietary accommodations. Their name appears on CF/HS-27 forms in the
+  Form Submissions section as the sign-off authority.
+</p>
+
+<div class="card">
+  <div class="field-block">
+    <div class="field-name">Name</div>
+    <div class="field-desc">
+      Full name of the Health Services Manager. Displayed in
+      Form Submissions → Special Diet / CF-HS27 under the
+      <em>Health Manager Sign-Off</em> field for each accommodation on file.
+    </div>
+    <div class="field-example">
+      <span class="field-example-label">Example:</span>
+      <span class="field-example-val">Maria Gonzalez</span>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <div class="field-block">
+    <div class="field-name">Email</div>
+    <div class="field-desc">
+      Professional email of the Health Manager. Used for notifications when
+      new special diet forms are submitted and require review.
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <div class="field-block">
+    <div class="field-name">Enrollment Capacity</div>
+    <div class="field-desc">
+      The maximum number of children your program is licensed to serve.
+      Used in HS Reports → PIR Data as the denominator when calculating the
+      percentage of enrolled children with documented dietary needs.
+    </div>
+    <div class="field-example">
+      <span class="field-example-label">Example:</span>
+      <span class="field-example-val">120</span>
+    </div>
+  </div>
+</div>
+
+<div class="page-break"></div>
+
+<!-- ══════════════════════════════════════════════
+     PAGE 4 — Saving + Quick Reference
+══════════════════════════════════════════════ -->
+<div class="section-header">
+  <div class="section-icon">5</div>
+  <div class="section-title">Saving Your Changes</div>
+</div>
+
+<p style="color:#555; font-size:13px; margin-bottom:16px;">
+  All four sections — Program Type, Schedule, Registered Dietitian, and Health Manager —
+  are saved together with a single click of <strong>Save Changes</strong> at the bottom of the page.
+</p>
+
+<div class="card">
+  <ul class="check">
+    <li>Click <strong>Save Changes</strong> — a green <em>"Saved"</em> confirmation appears when successful</li>
+    <li>The sidebar navigation updates <strong>automatically</strong> after saving — no page reload needed</li>
+    <li>If a red error message appears, check your internet connection and try again</li>
+    <li>You can return to this page at any time to update individual fields — changes take effect immediately</li>
+  </ul>
+</div>
+
+<hr class="divider">
+
+<div class="section-header" style="margin-top:8px">
+  <div class="section-icon">★</div>
+  <div class="section-title">Quick Reference — All Fields</div>
+</div>
+
+<table class="tbl">
+  <thead>
+    <tr>
+      <th>Field</th>
+      <th>What to enter</th>
+      <th>Where it appears in the app</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Program Type</strong></td>
+      <td>CACFP or Head Start</td>
+      <td>Controls sidebar navigation and available modules for all users</td>
+    </tr>
+    <tr>
+      <td><strong>Daily Hours</strong></td>
+      <td>Decimal number, e.g. <code>6.5</code></td>
+      <td>Live nutrition-standard hint; program documentation</td>
+    </tr>
+    <tr>
+      <td><strong>Start / End Time</strong></td>
+      <td>HH:MM format, e.g. <code>07:00</code></td>
+      <td>Reports and program-length documentation</td>
+    </tr>
+    <tr>
+      <td><strong>Fiscal Year Start Month</strong></td>
+      <td>Month your grant year begins (usually October)</td>
+      <td>Reporting period in HS Reports → PIR Data</td>
+    </tr>
+    <tr>
+      <td><strong>RD Name</strong></td>
+      <td>Full name of the dietitian</td>
+      <td>Recorded on menu approval; printed on family menu handouts</td>
+    </tr>
+    <tr>
+      <td><strong>RD Credentials</strong></td>
+      <td>Comma-separated abbreviations: <code>RD, LDN</code></td>
+      <td>Reports and menu printouts</td>
+    </tr>
+    <tr>
+      <td><strong>RD Email</strong></td>
+      <td>Dietitian's professional email</td>
+      <td>Approval workflow identification; future notifications</td>
+    </tr>
+    <tr>
+      <td><strong>Grant Number</strong></td>
+      <td>From Notice of Award, e.g. <code>90CI5432/01</code></td>
+      <td>PIR reporting and official nutrition documentation</td>
+    </tr>
+    <tr>
+      <td><strong>Health Manager Name</strong></td>
+      <td>Full name of the Health Services Manager</td>
+      <td>Sign-off field on CF/HS-27 special diet forms</td>
+    </tr>
+    <tr>
+      <td><strong>Health Manager Email</strong></td>
+      <td>Health Manager's professional email</td>
+      <td>Notifications for new special diet form submissions</td>
+    </tr>
+    <tr>
+      <td><strong>Enrollment Capacity</strong></td>
+      <td>Licensed max enrollment, e.g. <code>120</code></td>
+      <td>Denominator for coverage percentages in PIR Data</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr class="divider">
+
+<div class="note note-info" style="margin-top:4px">
+  <strong>Need help?</strong> Contact your system administrator or email
+  playacademyusa@gmail.com. When describing an issue, please include
+  the field name and the value you are trying to save.
+</div>
+
+<div class="page-footer">
+  <span>MenuMaker · Head Start Nutrition Module</span>
+  <span>Settings → 🏫 Head Start Program</span>
+</div>
+
+</body>
+</html>

@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import MilkRatesSettings from '@/components/settings/MilkRatesSettings'
+import MealCountSettings from '@/components/settings/MealCountSettings'
+import HeadStartSettings from './HeadStartSettings'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -13,6 +16,8 @@ interface Product {
   package_size: number | null
   package_unit: string | null
   package_label: string | null
+  unit_cost: number | null
+  assigned_purchaser_id: string | null
   is_whole_grain: boolean
   is_active: boolean
   notes: string | null
@@ -20,6 +25,7 @@ interface Product {
   vendor_name?: string
   component_label?: string
   component_slug?: string
+  purchaser_name?: string
 }
 
 interface Vendor {
@@ -44,17 +50,17 @@ interface Purchaser {
   is_active: boolean
 }
 
-type Tab = 'products' | 'vendors' | 'purchasers'
+type Tab = 'products' | 'vendors' | 'purchasers' | 'assign' | 'milk' | 'mealcount' | 'headstart'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const PURCHASE_TYPE: Record<string, { label: string; bg: string; color: string }> = {
-  direct_purchase: { label: 'Direct Purchase', bg: '#f0fff4', color: '#0f4c35' },
-  online_order:    { label: 'Online Order',     bg: '#eff6ff', color: '#1e40af' },
-  will_call:       { label: 'Will Call',        bg: '#fff8f0', color: '#c2670a' },
-  standing_order:  { label: 'Standing Order',   bg: '#fdf4ff', color: '#6b21a8' },
-  emergency:       { label: 'Emergency',        bg: '#fff0f0', color: '#c0392b' },
-  usda_commodity:  { label: 'USDA Commodity',   bg: '#f0fafa', color: '#0d7a7a' },
+const PURCHASE_TYPE: Record<string, { label: string; bg: string; color: string; icon: string }> = {
+  online_delivery: { label: 'Online · Delivery', bg: '#eff6ff', color: '#1e40af', icon: '🚚' },
+  online_pickup:   { label: 'Online · Pickup',   bg: '#f0f9ff', color: '#0369a1', icon: '📦' },
+  direct_purchase: { label: 'Direct Purchase',   bg: '#f0fff4', color: '#0f4c35', icon: '🛒' },
+  will_call:       { label: 'Will Call',         bg: '#fff8f0', color: '#c2670a', icon: '📞' },
+  standing_order:  { label: 'Standing Order',    bg: '#fdf4ff', color: '#6b21a8', icon: '🔄' },
+  emergency:       { label: 'Emergency',         bg: '#fff0f0', color: '#c0392b', icon: '🆘' },
 }
 
 const FREQ_OPTIONS = [
@@ -162,13 +168,15 @@ function ProductsTab() {
   const [items, setItems]         = useState<Product[]>([])
   const [vendors, setVendors]     = useState<{ id: string; name: string }[]>([])
   const [comps, setComps]         = useState<{ id: string; label: string; slug: string }[]>([])
+  const [purchaserList, setPurchaserList] = useState<{ id: string; name: string }[]>([])
   const [loading, setLoading]     = useState(true)
   const [search, setSearch]       = useState('')
   const [fVendor, setFVendor]     = useState('')
   const [fComp, setFComp]         = useState('')
   const [fFreq, setFFreq]         = useState('')
+  const [fPurchaser, setFPurchaser] = useState('')
   const [openId, setOpenId]       = useState<string | null>(null)
-  const [draft, setDraft]         = useState<Pick<Product, 'purchase_frequency' | 'sku' | 'notes' | 'package_size' | 'package_unit' | 'package_label'>>({ purchase_frequency: null, sku: null, notes: null, package_size: null, package_unit: null, package_label: null })
+  const [draft, setDraft]         = useState<Pick<Product, 'purchase_frequency' | 'sku' | 'notes' | 'package_size' | 'package_unit' | 'package_label' | 'unit_cost' | 'assigned_purchaser_id'>>({ purchase_frequency: null, sku: null, notes: null, package_size: null, package_unit: null, package_label: null, unit_cost: null, assigned_purchaser_id: null })
   const [saving, setSaving]       = useState(false)
   const [msg, setMsg]             = useState<'saved' | 'error' | null>(null)
   const [showModal, setShowModal]     = useState(false)
@@ -178,21 +186,24 @@ function ProductsTab() {
 
   useEffect(() => {
     ;(async () => {
-      const [{ data: p }, { data: v }, { data: c }] = await Promise.all([
+      const [{ data: p }, { data: v }, { data: c }, { data: pur }] = await Promise.all([
         supabase.schema('menumaker').from('products')
-          .select('*, vendors:vendor_id(name), components:component_id(label,slug)')
+          .select('*, vendors:vendor_id(name), components:component_id(label,slug), purchasers:assigned_purchaser_id(name)')
           .order('name'),
         supabase.schema('menumaker').from('vendors').select('id,name').order('name'),
         supabase.schema('menumaker').from('components').select('id,label,slug').order('label'),
+        supabase.schema('menumaker').from('purchasers').select('id,name').order('name'),
       ])
       setItems((p || []).map((d: any) => ({
         ...d,
         vendor_name:     d.vendors?.name,
         component_label: d.components?.label,
         component_slug:  d.components?.slug,
+        purchaser_name:  d.purchasers?.name,
       })))
       setVendors(v || [])
       setComps(c || [])
+      setPurchaserList(pur || [])
       setLoading(false)
     })()
   }, [])
@@ -202,12 +213,14 @@ function ProductsTab() {
     if (fVendor && p.vendor_id !== fVendor) return false
     if (fComp && p.component_id !== fComp) return false
     if (fFreq && p.purchase_frequency !== fFreq) return false
+    if (fPurchaser === '__none__' && p.assigned_purchaser_id !== null) return false
+    if (fPurchaser && fPurchaser !== '__none__' && p.assigned_purchaser_id !== fPurchaser) return false
     return true
   })
 
   function expandRow(p: Product) {
     setOpenId(p.id)
-    setDraft({ purchase_frequency: p.purchase_frequency, sku: p.sku, notes: p.notes, package_size: p.package_size, package_unit: p.package_unit, package_label: p.package_label })
+    setDraft({ purchase_frequency: p.purchase_frequency, sku: p.sku, notes: p.notes, package_size: p.package_size, package_unit: p.package_unit, package_label: p.package_label, unit_cost: p.unit_cost, assigned_purchaser_id: p.assigned_purchaser_id })
     setMsg(null)
   }
 
@@ -222,17 +235,20 @@ function ProductsTab() {
     if (!openId) return
     setSaving(true); setMsg(null)
     const { error } = await supabase.schema('menumaker').from('products').update({
-      purchase_frequency: draft.purchase_frequency || null,
-      sku:                draft.sku  || null,
-      notes:              draft.notes || null,
-      package_size:       draft.package_size ?? null,
-      package_unit:       draft.package_unit || null,
-      package_label:      draft.package_label || null,
+      purchase_frequency:   draft.purchase_frequency || null,
+      sku:                  draft.sku  || null,
+      notes:                draft.notes || null,
+      package_size:         draft.package_size ?? null,
+      package_unit:         draft.package_unit || null,
+      package_label:        draft.package_label || null,
+      unit_cost:            draft.unit_cost ?? null,
+      assigned_purchaser_id: draft.assigned_purchaser_id || null,
     }).eq('id', openId)
     if (error) {
       setMsg('error')
     } else {
-      setItems(prev => prev.map(x => x.id === openId ? { ...x, ...draft } : x))
+      const pname = purchaserList.find(p => p.id === draft.assigned_purchaser_id)?.name
+      setItems(prev => prev.map(x => x.id === openId ? { ...x, ...draft, purchaser_name: pname } : x))
       setMsg('saved')
       setTimeout(() => { setOpenId(null); setMsg(null) }, 1100)
     }
@@ -243,22 +259,24 @@ function ProductsTab() {
     if (!newP.name?.trim()) return
     setModalSaving(true); setModalMsg(null)
     const { data, error } = await supabase.schema('menumaker').from('products').insert({
-      name:               newP.name,
-      vendor_id:          newP.vendor_id          || null,
-      component_id:       newP.component_id       || null,
-      purchase_frequency: newP.purchase_frequency || null,
-      sku:                newP.sku                || null,
-      package_size:       newP.package_size       ?? null,
-      package_unit:       newP.package_unit       || null,
-      package_label:      newP.package_label      || null,
-      is_whole_grain:     newP.is_whole_grain     ?? false,
-      is_active:          true,
-      notes:              newP.notes              || null,
-    }).select('*, vendors:vendor_id(name), components:component_id(label,slug)').single()
+      name:                  newP.name,
+      vendor_id:             newP.vendor_id          || null,
+      component_id:          newP.component_id       || null,
+      purchase_frequency:    newP.purchase_frequency || null,
+      sku:                   newP.sku                || null,
+      package_size:          newP.package_size       ?? null,
+      package_unit:          newP.package_unit       || null,
+      package_label:         newP.package_label      || null,
+      unit_cost:             newP.unit_cost          ?? null,
+      assigned_purchaser_id: newP.assigned_purchaser_id || null,
+      is_whole_grain:        newP.is_whole_grain     ?? false,
+      is_active:             true,
+      notes:                 newP.notes              || null,
+    }).select('*, vendors:vendor_id(name), components:component_id(label,slug), purchasers:assigned_purchaser_id(name)').single()
     if (error) {
       setModalMsg('error')
     } else {
-      const mapped = { ...data, vendor_name: (data as any).vendors?.name, component_label: (data as any).components?.label, component_slug: (data as any).components?.slug }
+      const mapped = { ...data, vendor_name: (data as any).vendors?.name, component_label: (data as any).components?.label, component_slug: (data as any).components?.slug, purchaser_name: (data as any).purchasers?.name }
       setItems(prev => [...prev, mapped].sort((a, b) => a.name.localeCompare(b.name)))
       setModalMsg('saved')
       setTimeout(() => { setShowModal(false); setModalMsg(null); setNewP({ is_whole_grain: false }) }, 1100)
@@ -266,7 +284,7 @@ function ProductsTab() {
     setModalSaving(false)
   }
 
-  const COL = '24px 1fr 140px 130px 130px 90px 110px 52px 70px'
+  const COL = '24px 1fr 130px 110px 100px 100px 80px 100px 44px 60px'
 
   if (loading) return <Spinner />
 
@@ -291,6 +309,12 @@ function ProductsTab() {
             {opts.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
           </select>
         ))}
+        <select value={fPurchaser} onChange={e => setFPurchaser(e.target.value)}
+          style={{ ...inputStyle, width: 'auto', padding: '7px 10px' }}>
+          <option value="">All purchasers</option>
+          <option value="__none__">Unassigned</option>
+          {purchaserList.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
         <span style={{ marginLeft: 'auto', fontSize: 11, color: '#aaa' }}>{visible.length} items</span>
       </div>
 
@@ -309,7 +333,7 @@ function ProductsTab() {
 
       {/* Header */}
       <div style={{ display: 'grid', gridTemplateColumns: COL, padding: '7px 16px', gap: 8, background: '#fafaf8', borderBottom: '1px solid #f0f0f0' }}>
-        {['', 'Name', 'Vendor', 'Component', 'Frequency', 'SKU', 'Package', 'WG', 'Active'].map((h, i) => (
+        {['', 'Name', 'Vendor', 'Component', 'Frequency', 'Purchaser', 'SKU', 'Package', 'WG', 'Active'].map((h, i) => (
           <div key={i} style={{ fontSize: 10, fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</div>
         ))}
       </div>
@@ -351,6 +375,12 @@ function ProductsTab() {
                 {p.purchase_frequency || <Dash />}
               </span>
 
+              <span style={{ fontSize: 11, color: '#555' }}>
+                {p.purchaser_name
+                  ? <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 5, background: '#f0f9ff', color: '#0369a1', border: '1px solid #bae6fd' }}>{p.purchaser_name}</span>
+                  : <Dash />}
+              </span>
+
               <span style={{ fontSize: 11, color: '#777', fontFamily: 'monospace' }}>
                 {p.sku || <Dash />}
               </span>
@@ -380,7 +410,7 @@ function ProductsTab() {
             {/* Inline edit */}
             {isOpen && (
               <div style={{ padding: '14px 20px', background: '#f4fdf7', borderBottom: '2px solid #0f4c35' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '160px 160px 1fr', gap: 14, marginBottom: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '160px 140px 140px 1fr', gap: 14, marginBottom: 12 }}>
                   <Field label="Purchase frequency">
                     <select
                       value={draft.purchase_frequency || ''}
@@ -389,6 +419,16 @@ function ProductsTab() {
                     >
                       <option value="">— none —</option>
                       {FREQ_OPTIONS.map(f => <option key={f} value={f}>{f}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Assigned purchaser">
+                    <select
+                      value={draft.assigned_purchaser_id || ''}
+                      onChange={e => setDraft(d => ({ ...d, assigned_purchaser_id: e.target.value || null }))}
+                      style={inputStyle}
+                    >
+                      <option value="">— none —</option>
+                      {purchaserList.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                     </select>
                   </Field>
                   <Field label="SKU / Item code">
@@ -435,6 +475,12 @@ function ProductsTab() {
                       style={inputStyle}
                     />
                   </Field>
+                  <Field label="Unit Cost ($)">
+                    <input type="number" step="0.01" min="0"
+                      value={draft.unit_cost ?? ''}
+                      onChange={e => setDraft(d => ({ ...d, unit_cost: e.target.value === '' ? null : Number(e.target.value) }))}
+                      style={inputStyle} placeholder="0.00" />
+                  </Field>
                 </div>
                 <SaveBar onSave={save} onCancel={() => setOpenId(null)} saving={saving} msg={msg} />
               </div>
@@ -475,6 +521,12 @@ function ProductsTab() {
               <Field label="SKU">
                 <input value={newP.sku || ''} onChange={e => setNewP(p => ({ ...p, sku: e.target.value }))} placeholder="e.g. FNS-1234" style={inputStyle} />
               </Field>
+              <Field label="Assigned purchaser">
+                <select value={newP.assigned_purchaser_id || ''} onChange={e => setNewP(p => ({ ...p, assigned_purchaser_id: e.target.value || null }))} style={inputStyle}>
+                  <option value="">— none —</option>
+                  {purchaserList.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </Field>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '90px 130px 1fr', gap: 14 }}>
               <Field label="Pkg size">
@@ -502,6 +554,12 @@ function ProductsTab() {
                   placeholder="e.g. 5 lb bag"
                   style={inputStyle}
                 />
+              </Field>
+              <Field label="Unit Cost ($)">
+                <input type="number" step="0.01" min="0"
+                  value={newP.unit_cost ?? ''}
+                  onChange={e => setNewP(p => ({ ...p, unit_cost: e.target.value === '' ? null : Number(e.target.value) }))}
+                  style={inputStyle} placeholder="0.00" />
               </Field>
             </div>
             <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13, color: '#333' }}>
@@ -612,7 +670,7 @@ function VendorsTab() {
 
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
       {vendors.map(v => {
-        const pt    = PURCHASE_TYPE[v.purchase_type || ''] || { label: v.purchase_type || '—', bg: '#f0f0f0', color: '#888' }
+        const pt    = PURCHASE_TYPE[v.purchase_type || ''] || { label: v.purchase_type || '—', bg: '#f0f0f0', color: '#888', icon: '' }
         const isOpen = openId === v.id
 
         return (
@@ -635,7 +693,7 @@ function VendorsTab() {
                   fontSize: 9, fontWeight: 700, padding: '3px 7px', borderRadius: 5,
                   textTransform: 'uppercase', letterSpacing: '0.06em',
                   background: pt.bg, color: pt.color,
-                }}>{pt.label}</span>
+                }}>{pt.icon} {pt.label}</span>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -672,7 +730,7 @@ function VendorsTab() {
                   <Field label="Purchase type">
                     <select value={draft.purchase_type || ''} onChange={e => setDraft(d => ({ ...d, purchase_type: e.target.value }))} style={inputStyle}>
                       <option value="">— none —</option>
-                      {Object.entries(PURCHASE_TYPE).map(([k, c]) => <option key={k} value={k}>{c.label}</option>)}
+                      {Object.entries(PURCHASE_TYPE).map(([k, c]) => <option key={k} value={k}>{c.icon} {c.label}</option>)}
                     </select>
                   </Field>
                   <Field label="Order day">
@@ -716,7 +774,7 @@ function VendorsTab() {
             <Field label="Purchase type">
               <select value={newV.purchase_type || ''} onChange={e => setNewV(v => ({ ...v, purchase_type: e.target.value || null }))} style={inputStyle}>
                 <option value="">— none —</option>
-                {Object.entries(PURCHASE_TYPE).map(([k, c]) => <option key={k} value={k}>{c.label}</option>)}
+                {Object.entries(PURCHASE_TYPE).map(([k, c]) => <option key={k} value={k}>{c.icon} {c.label}</option>)}
               </select>
             </Field>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
@@ -988,6 +1046,155 @@ function Spinner() {
   return <div style={{ padding: 40, color: '#aaa', fontSize: 13 }}>Loading…</div>
 }
 
+// ─── Assign Purchasers Tab ────────────────────────────────────────────────────
+
+function AssignTab() {
+  const [purchasers, setPurchasers] = useState<{ id: string; name: string; role: string | null }[]>([])
+  const [products,   setProducts]   = useState<{ id: string; name: string; vendor_id: string | null; vendor_name: string | null; component_slug: string | null; assigned_purchaser_id: string | null }[]>([])
+  const [vendors,    setVendors]    = useState<{ id: string; name: string }[]>([])
+  const [selected,   setSelected]   = useState<string | null>(null)
+  const [saving,     setSaving]     = useState<Record<string, boolean>>({})
+  const [done,       setDone]       = useState<Record<string, boolean>>({})
+  const [fVendor,    setFVendor]    = useState('')
+  const [loading,    setLoading]    = useState(true)
+
+  useEffect(() => {
+    ;(async () => {
+      const [{ data: pur }, { data: pro }, { data: ven }] = await Promise.all([
+        supabase.schema('menumaker').from('purchasers').select('id,name,role').order('name'),
+        supabase.schema('menumaker').from('products')
+          .select('id,name,vendor_id,assigned_purchaser_id,vendors:vendor_id(name),components:component_id(slug)')
+          .eq('is_active', true).order('name'),
+        supabase.schema('menumaker').from('vendors').select('id,name').order('name'),
+      ])
+      setPurchasers(pur || [])
+      setProducts((pro || []).map((d: any) => ({
+        id: d.id, name: d.name, vendor_id: d.vendor_id,
+        vendor_name: d.vendors?.name || null,
+        component_slug: d.components?.slug || null,
+        assigned_purchaser_id: d.assigned_purchaser_id,
+      })))
+      setVendors(ven || [])
+      setLoading(false)
+    })()
+  }, [])
+
+  async function assign(productId: string, purchaserId: string | null) {
+    setSaving(s => ({ ...s, [productId]: true }))
+    const { error } = await supabase.schema('menumaker').from('products')
+      .update({ assigned_purchaser_id: purchaserId }).eq('id', productId)
+    if (!error) {
+      setProducts(prev => prev.map(p => p.id === productId ? { ...p, assigned_purchaser_id: purchaserId } : p))
+      setDone(d => ({ ...d, [productId]: true }))
+      setTimeout(() => setDone(d => ({ ...d, [productId]: false })), 1200)
+    }
+    setSaving(s => ({ ...s, [productId]: false }))
+  }
+
+  if (loading) return <Spinner />
+
+  const sel = purchasers.find(p => p.id === selected)
+  const assigned  = products.filter(p => p.assigned_purchaser_id === selected)
+  const available = products.filter(p => p.assigned_purchaser_id !== selected && (fVendor ? p.vendor_id === fVendor : true))
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 16, alignItems: 'start' }}>
+
+      {/* Left — purchaser cards */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Purchasers</div>
+        {purchasers.map(p => {
+          const count = products.filter(x => x.assigned_purchaser_id === p.id).length
+          const active = selected === p.id
+          return (
+            <button key={p.id} onClick={() => setSelected(active ? null : p.id)} style={{
+              textAlign: 'left', padding: '12px 14px', borderRadius: 10, cursor: 'pointer', fontFamily: 'inherit',
+              background: active ? '#0f4c35' : '#fff',
+              color:      active ? '#fff'    : '#1a1a1a',
+              border:     `1px solid ${active ? '#0f4c35' : '#e8e8e8'}`,
+              boxShadow:  active ? '0 2px 8px rgba(15,76,53,0.2)' : '0 1px 3px rgba(0,0,0,0.05)',
+              transition: 'all 0.15s',
+            } as React.CSSProperties}>
+              <div style={{ fontWeight: 600, fontSize: 13 }}>{p.name}</div>
+              <div style={{ fontSize: 11, marginTop: 3, opacity: 0.7 }}>{p.role || 'Purchaser'} · {count} product{count !== 1 ? 's' : ''}</div>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Right — product panels */}
+      {!selected ? (
+        <div style={{ padding: 40, textAlign: 'center', color: '#ccc', fontSize: 13 }}>← Select a purchaser to manage their products</div>
+      ) : (
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#0a3320', marginBottom: 14 }}>
+            {sel?.name} — product assignments
+          </div>
+
+          {/* Assigned */}
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#0f4c35', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+              Assigned ({assigned.length})
+            </div>
+            {assigned.length === 0 ? (
+              <div style={{ fontSize: 12, color: '#ccc', padding: '10px 0' }}>No products assigned yet</div>
+            ) : (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {assigned.map(p => (
+                  <button key={p.id} onClick={() => assign(p.id, null)} disabled={saving[p.id]} title="Click to unassign" style={{
+                    padding: '5px 10px', borderRadius: 8, border: '1.5px solid #bbf7d0', fontFamily: 'inherit', cursor: 'pointer',
+                    background: done[p.id] ? '#dcfce7' : '#f0fff4', color: '#0f4c35', fontSize: 12, fontWeight: 500,
+                    opacity: saving[p.id] ? 0.5 : 1, transition: 'all 0.15s',
+                  }}>
+                    {done[p.id] ? '✓ ' : '✕ '}{p.name}
+                    {p.vendor_name && <span style={{ fontSize: 10, opacity: 0.6, marginLeft: 5 }}>{p.vendor_name}</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Available */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Available
+              </div>
+              <select value={fVendor} onChange={e => setFVendor(e.target.value)}
+                style={{ ...inputStyle, width: 'auto', padding: '4px 8px', fontSize: 11 }}>
+                <option value="">All vendors</option>
+                {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+              </select>
+            </div>
+            {available.length === 0 ? (
+              <div style={{ fontSize: 12, color: '#ccc', padding: '10px 0' }}>No more products available</div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, max-content))', gap: 6, gridAutoFlow: 'column', gridTemplateRows: `repeat(${Math.ceil(available.length / 3)}, auto)` }}>
+                {available.map(p => {
+                  const currentHolder = purchasers.find(x => x.id === p.assigned_purchaser_id)
+                  return (
+                    <button key={p.id} onClick={() => assign(p.id, selected)} disabled={saving[p.id]} title={currentHolder ? `Currently: ${currentHolder.name}` : 'Click to assign'} style={{
+                      padding: '5px 10px', borderRadius: 8, fontFamily: 'inherit', cursor: 'pointer', textAlign: 'left',
+                      border: `1.5px solid ${currentHolder ? '#fed7aa' : '#e0e0e0'}`,
+                      background: done[p.id] ? '#dcfce7' : currentHolder ? '#fff7ed' : '#fafaf8',
+                      color: currentHolder ? '#c2670a' : '#555', fontSize: 12, fontWeight: 500,
+                      opacity: saving[p.id] ? 0.5 : 1, transition: 'all 0.15s',
+                    }}>
+                      {done[p.id] ? '✓ ' : '+ '}{p.name}
+                      {p.vendor_name && <span style={{ fontSize: 10, opacity: 0.6, marginLeft: 5 }}>{p.vendor_name}</span>}
+                      {currentHolder && <span style={{ fontSize: 10, marginLeft: 5, fontStyle: 'italic' }}>({currentHolder.name})</span>}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
@@ -1007,7 +1214,7 @@ export default function SettingsPage() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, background: '#fff', padding: 5, borderRadius: 10, border: '1px solid #e0e0e0', width: 'fit-content', marginBottom: 20 }}>
-        {([ ['products','📦 Products'], ['vendors','🏪 Vendors'], ['purchasers','👤 Purchasers'] ] as [Tab, string][]).map(([val, label]) => (
+        {([ ['products','📦 Products'], ['vendors','🏪 Vendors'], ['purchasers','👤 Purchasers'], ['assign','🔗 Assign'], ['milk','🥛 Milk Rates'], ['mealcount','🍽️ Meal Slots'], ['headstart','🏫 Head Start Program'] ] as [Tab, string][]).map(([val, label]) => (
           <button key={val} onClick={() => setTab(val)} style={{
             padding: '7px 20px', borderRadius: 7, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
             background: tab === val ? '#0f4c35' : 'transparent',
@@ -1023,6 +1230,10 @@ export default function SettingsPage() {
       {tab === 'products'   && <ProductsTab />}
       {tab === 'vendors'    && <VendorsTab />}
       {tab === 'purchasers' && <PurchasersTab />}
+      {tab === 'assign'     && <AssignTab />}
+      {tab === 'milk'       && <MilkRatesSettings />}
+      {tab === 'mealcount'  && <MealCountSettings />}
+      {tab === 'headstart'  && <HeadStartSettings />}
     </div>
   )
 }

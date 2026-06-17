@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useProgramConfig } from '@/hooks/useProgramConfig'
+import { useAuth, canApproveDiet } from '@/hooks/useAuth'
+
+const PEARL_CENTER_ID = '881ef4ce-1a27-4d3b-aa60-59d2a307bf2b'
 
 interface MenuItem {
   id: string
@@ -12,6 +16,8 @@ interface MenuItem {
   item_text: string
   is_extra: boolean
   sort_order: number
+  is_family_style: boolean
+  cultural_theme: string | null
 }
 
 interface Cycle {
@@ -19,6 +25,8 @@ interface Cycle {
   name: string
   total_weeks: number
   status: string
+  rd_approved_by: string | null
+  rd_approved_at: string | null
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
@@ -39,11 +47,17 @@ const MEAL_ICONS: Record<string, string> = {
 }
 
 export default function MenuPlannerPage() {
+  const { isHeadStart, dietitianName } = useProgramConfig()
+  const { role } = useAuth()
+
   const [cycle, setCycle]         = useState<Cycle | null>(null)
   const [items, setItems]         = useState<MenuItem[]>([])
   const [loading, setLoading]     = useState(true)
   const [selectedWeek, setSelectedWeek] = useState(1)
   const [totalWeeks, setTotalWeeks]     = useState(4)
+  const [statusSaving, setStatusSaving]   = useState(false)
+  const [publishSaving, setPublishSaving] = useState(false)
+  const [statusMsg, setStatusMsg]         = useState<string | null>(null)
 
   // Print week menu
   const handlePrint = () => {
@@ -58,7 +72,7 @@ export default function MenuPlannerPage() {
           .join(', ')
         return `<td style="padding:6px 10px;border:1px solid #ddd;font-size:11px;vertical-align:top">${mealItems || '—'}</td>`
       }).join('')
-      return `<tr><td style="padding:6px 10px;border:1px solid #ddd;font-weight:600;font-size:12px;background:#f9f9f9">${day}</td>${rows}</tr>`
+      return `<tr><td style="padding:6px 10px;border:1px solid #ddd;font-weight:600;font-size:12px;background:#f9f9f9">${day}</td>${meals}</tr>`
     })
 
     const w = window.open('', '_blank')
@@ -74,7 +88,7 @@ export default function MenuPlannerPage() {
         .footer { margin-top: 16px; font-size: 10px; color: #aaa; }
       </style></head><body>
       <h1>🍽️ Child Menu — Week ${selectedWeek} of ${totalWeeks}</h1>
-      <div class="meta">${cycle?.name || ''} · Printed: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</div>
+      <div class="meta">${cycle?.name || ''} · Week ${selectedWeek} · Printed: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}${cycle?.rd_approved_by ? ` · Approved by RD: ${cycle.rd_approved_by}` : ''}${weekItems.find(i => i.cultural_theme)?.cultural_theme ? ` · Theme: ${weekItems.find(i => i.cultural_theme)?.cultural_theme}` : ''}</div>
       <table>
         <thead>
           <tr>
@@ -114,7 +128,7 @@ export default function MenuPlannerPage() {
       const { data: cycles } = await supabase
         .schema('menumaker')
         .from('menu_cycles')
-        .select('id, name, total_weeks, status')
+        .select('id, name, total_weeks, status, rd_approved_by, rd_approved_at')
         .eq('program', 'child')
         .order('created_at', { ascending: false })
         .limit(1)
@@ -132,6 +146,7 @@ export default function MenuPlannerPage() {
         .select(`
           id, week_number, day_of_week, meal_type_id,
           recipe_id, item_text, is_extra, sort_order,
+          is_family_style, cultural_theme,
           meal_types:meal_type_id(label, sort_order),
           recipes:recipe_id(name)
         `)
@@ -151,6 +166,8 @@ export default function MenuPlannerPage() {
         item_text: d.item_text || d.recipes?.name || '',
         is_extra: d.is_extra,
         sort_order: d.sort_order,
+        is_family_style: d.is_family_style ?? false,
+        cultural_theme: d.cultural_theme ?? null,
       })))
 
       setLoading(false)
@@ -159,9 +176,42 @@ export default function MenuPlannerPage() {
   }, [])
 
   const weekItems = items.filter(i => i.week_number === selectedWeek)
-
-  // Get unique meal types in order
   const mealTypes = ['Breakfast', 'AM Snack', 'Lunch', 'Supper']
+
+  const handleStatusChange = async (newStatus: string) => {
+    if (!cycle) return
+    setStatusSaving(true)
+    const update: Record<string, unknown> = { status: newStatus }
+    if (newStatus === 'rd_approved') {
+      update.rd_approved_by = dietitianName ?? 'Director'
+      update.rd_approved_at = new Date().toISOString()
+    }
+    await supabase.schema('menumaker').from('menu_cycles').update(update).eq('id', cycle.id)
+    setCycle(c => c ? {
+      ...c,
+      status: newStatus,
+      rd_approved_by: (update.rd_approved_by as string) ?? c.rd_approved_by,
+      rd_approved_at: (update.rd_approved_at as string) ?? c.rd_approved_at,
+    } : c)
+    setStatusSaving(false)
+    setStatusMsg(`Status: ${newStatus.replace('_', ' ')}`)
+    setTimeout(() => setStatusMsg(null), 3000)
+  }
+
+  const handlePublish = async () => {
+    if (!cycle) return
+    setPublishSaving(true)
+    await supabase.schema('menumaker').from('published_menus').insert({
+      cycle_id: cycle.id,
+      week_number: selectedWeek,
+      center_id: PEARL_CENTER_ID,
+      distribution_method: 'printed',
+      rd_approved_by: cycle.rd_approved_by,
+      rd_approved_at: cycle.rd_approved_at,
+    })
+    await handleStatusChange('published')
+    setPublishSaving(false)
+  }
 
   if (loading) return (
     <div style={{ padding: 40, fontFamily: "'DM Sans', sans-serif", color: '#888' }}>
@@ -208,6 +258,58 @@ export default function MenuPlannerPage() {
         </button>
       </div>
 
+      {/* HS Status Banner */}
+      {isHeadStart && cycle && (
+        <div style={{
+          marginBottom: 16, padding: '12px 20px', borderRadius: 10,
+          background: cycle.status === 'published' ? '#f0fff4' : cycle.status === 'rd_approved' ? '#eff6ff' : cycle.status === 'submitted' ? '#fff8f0' : '#fafafa',
+          border: `1px solid ${cycle.status === 'published' ? '#bbf7d0' : cycle.status === 'rd_approved' ? '#bfdbfe' : cycle.status === 'submitted' ? '#fde68a' : '#e4e8e4'}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 16 }}>
+              {cycle.status === 'published' ? '✅' : cycle.status === 'rd_approved' ? '🔵' : cycle.status === 'submitted' ? '⏳' : '📝'}
+            </span>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#0a3320' }}>
+                {cycle.status === 'published' ? 'Published to Families'
+                  : cycle.status === 'rd_approved' ? 'Approved by RD'
+                  : cycle.status === 'submitted' ? 'Submitted for RD Review'
+                  : 'Draft'}
+              </div>
+              {cycle.rd_approved_by && (
+                <div style={{ fontSize: 11, color: '#888' }}>
+                  {cycle.rd_approved_by} · {cycle.rd_approved_at
+                    ? new Date(cycle.rd_approved_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                    : ''}
+                </div>
+              )}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {statusMsg && <span style={{ fontSize: 11, color: '#0f4c35' }}>{statusMsg}</span>}
+            {cycle.status === 'draft' && (
+              <button onClick={() => handleStatusChange('submitted')} disabled={statusSaving}
+                style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid #f59e0b', background: '#fff8f0', color: '#b45309', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                Submit for RD Review
+              </button>
+            )}
+            {cycle.status === 'submitted' && canApproveDiet(role) && (
+              <button onClick={() => handleStatusChange('rd_approved')} disabled={statusSaving}
+                style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid #3b82f6', background: '#eff6ff', color: '#1e40af', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                ✓ Approve Menu (RD)
+              </button>
+            )}
+            {cycle.status === 'rd_approved' && (
+              <button onClick={handlePublish} disabled={publishSaving}
+                style={{ padding: '7px 14px', borderRadius: 7, border: 'none', background: '#0f4c35', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                {publishSaving ? 'Publishing…' : '📤 Publish to Families'}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Week selector */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
         {Array.from({ length: totalWeeks }, (_, i) => i + 1).map(w => (
@@ -237,6 +339,30 @@ export default function MenuPlannerPage() {
           ))}
         </div>
       </div>
+
+      {/* HS Cultural Theme */}
+      {isHeadStart && (
+        <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <label style={{ fontSize: 12, fontWeight: 600, color: '#555', whiteSpace: 'nowrap' }}>
+            Cultural Theme (Week {selectedWeek}):
+          </label>
+          <input
+            type="text"
+            placeholder="e.g. Hispanic Heritage Month"
+            defaultValue={weekItems.find(i => i.cultural_theme)?.cultural_theme ?? ''}
+            key={selectedWeek}
+            onBlur={async (e) => {
+              const theme = e.target.value.trim() || null
+              if (weekItems.length > 0) {
+                await supabase.schema('menumaker').from('menu_items')
+                  .update({ cultural_theme: theme })
+                  .in('id', weekItems.map(i => i.id))
+              }
+            }}
+            style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid #ddd', fontSize: 12, fontFamily: 'inherit', width: 280, outline: 'none' }}
+          />
+        </div>
+      )}
 
       {/* Grid: days × meal types */}
       <div style={{ display: 'grid', gridTemplateColumns: '80px repeat(5, 1fr)', gap: 8 }}>
@@ -288,6 +414,11 @@ export default function MenuPlannerPage() {
                   padding: '10px 12px',
                   minHeight: 80,
                 }}>
+                  {isHeadStart && cellItems.some(i => i.is_family_style) && (
+                    <div style={{ fontSize: 9, color: '#6b21a8', fontWeight: 700, marginBottom: 4, letterSpacing: '0.05em' }}>
+                      FS · FAMILY STYLE
+                    </div>
+                  )}
                   {cellItems.length === 0 ? (
                     <div style={{ fontSize: 11, color: '#ddd', textAlign: 'center', marginTop: 12 }}>—</div>
                   ) : (

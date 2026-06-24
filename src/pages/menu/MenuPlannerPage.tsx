@@ -19,7 +19,20 @@ interface Cycle {
   name: string
   total_weeks: number
   status: string
+  start_date: string | null
 }
+
+// Default meal start times for the org-wide planner (no per-classroom schedule here).
+// Used only to decide which slots fall after a short-day close time.
+const SLOT_TIMES: Record<string, string> = {
+  Breakfast: '08:00',
+  'AM Snack': '09:30',
+  Lunch: '11:30',
+  Supper: '15:00',
+}
+
+const ymd = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
 interface Holiday {
   year: number
@@ -56,6 +69,9 @@ export default function MenuPlannerPage() {
   const [selectedWeek, setSelectedWeek] = useState(1)
   const [totalWeeks, setTotalWeeks]     = useState(4)
   const [holidays, setHolidays]         = useState<Holiday[]>([])
+  const [holidayMap, setHolidayMap]     = useState<Record<string, Holiday>>({})
+  const [cycleStart, setCycleStart]     = useState<string | null>(null)
+  const [savingDate, setSavingDate]     = useState(false)
 
   const handlePrint = () => {
     const weekItems = items.filter(i => i.week_number === selectedWeek)
@@ -112,7 +128,7 @@ export default function MenuPlannerPage() {
       const { data: cycles } = await supabase
         .schema('menumaker')
         .from('menu_cycles')
-        .select('id, name, total_weeks, status')
+        .select('id, name, total_weeks, status, start_date')
         .eq('program', 'child')
         .order('created_at', { ascending: false })
         .limit(1)
@@ -120,6 +136,7 @@ export default function MenuPlannerPage() {
       const activeCycle = cycles?.[0] || null
       setCycle(activeCycle)
       if (activeCycle?.total_weeks) setTotalWeeks(activeCycle.total_weeks)
+      setCycleStart(activeCycle?.start_date ?? null)
 
       if (!activeCycle) { setLoading(false); return }
 
@@ -160,7 +177,9 @@ export default function MenuPlannerPage() {
         .in('year', [yr, yr + 1])
       const seen = new Set<string>()
       const upcoming: Holiday[] = []
+      const map: Record<string, Holiday> = {}
       for (const h of (hols || []) as Holiday[]) {
+        map[ymd(new Date(h.year, h.month - 1, h.day))] = h  // date-keyed for grid overlay
         const key = `${h.year}-${h.month}-${h.day}-${h.name}`
         if (seen.has(key)) continue
         seen.add(key)
@@ -170,6 +189,7 @@ export default function MenuPlannerPage() {
       upcoming.sort((a, b) =>
         new Date(a.year, a.month - 1, a.day).getTime() - new Date(b.year, b.month - 1, b.day).getTime())
       setHolidays(upcoming)
+      setHolidayMap(map)
 
       setLoading(false)
     }
@@ -178,6 +198,32 @@ export default function MenuPlannerPage() {
 
   const weekItems = items.filter(i => i.week_number === selectedWeek)
   const mealTypes = ['Breakfast', 'AM Snack', 'Lunch', 'Supper']
+
+  // Persist the cycle anchor (Monday of Week 1) so weeks map to real calendar dates.
+  const saveCycleStart = async (value: string) => {
+    if (!cycle) return
+    setCycleStart(value || null)
+    setSavingDate(true)
+    await supabase.schema('menumaker').from('menu_cycles')
+      .update({ start_date: value || null }).eq('id', cycle.id)
+    setSavingDate(false)
+  }
+
+  // Calendar date of a given day column in the selected cycle week (null if no anchor set).
+  const cellDate = (dayIndex: number): Date | null => {
+    if (!cycleStart) return null
+    const base = new Date(cycleStart + 'T12:00:00')
+    base.setDate(base.getDate() + (selectedWeek - 1) * 7 + dayIndex)
+    return base
+  }
+  const holidayFor = (dayIndex: number): Holiday | null => {
+    const d = cellDate(dayIndex)
+    return d ? holidayMap[ymd(d)] ?? null : null
+  }
+  // A meal slot is blocked on a short day when its (default) start time is at/after close.
+  const slotClosed = (h: Holiday | null, mealType: string): boolean =>
+    !!h && h.type === 'short_day' && !!h.close_time &&
+    (SLOT_TIMES[mealType] ?? '99:99') >= h.close_time.slice(0, 5)
 
   if (loading) return (
     <div style={{ padding: 40, fontFamily: "'DM Sans', sans-serif", color: '#888' }}>
@@ -213,15 +259,26 @@ export default function MenuPlannerPage() {
             </span>
           </div>
         </div>
-        <button onClick={handlePrint} style={{
-          display: 'flex', alignItems: 'center', gap: 6,
-          padding: '8px 16px', borderRadius: 8,
-          border: '1px solid #0f4c35', background: '#0f4c35',
-          color: '#fff', fontSize: 12, fontWeight: 600,
-          cursor: 'pointer', fontFamily: 'inherit',
-        }}>
-          🖨️ Print Week {selectedWeek}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#888' }}>
+            Cycle starts (Week 1 Mon):
+            <input type="date" value={cycleStart ?? ''} onChange={e => saveCycleStart(e.target.value)}
+              style={{
+                padding: '6px 8px', borderRadius: 8, border: '1px solid #d0d5d0',
+                fontSize: 12, fontFamily: 'inherit', color: '#333',
+              }} />
+            {savingDate && <span style={{ fontSize: 10, color: '#aaa' }}>saving…</span>}
+          </label>
+          <button onClick={handlePrint} style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '8px 16px', borderRadius: 8,
+            border: '1px solid #0f4c35', background: '#0f4c35',
+            color: '#fff', fontSize: 12, fontWeight: 600,
+            cursor: 'pointer', fontFamily: 'inherit',
+          }}>
+            🖨️ Print Week {selectedWeek}
+          </button>
+        </div>
       </div>
 
       {/* Week selector */}
@@ -299,18 +356,34 @@ export default function MenuPlannerPage() {
 
         {/* Column headers (days) */}
         <div />
-        {DAYS.map((day, i) => (
-          <div key={day} style={{
-            textAlign: 'center', padding: '8px 4px',
-            background: '#fff', borderRadius: 8,
-            border: '1px solid #e4e8e4',
-          }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#0f4c35', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              {DAY_SHORT[i]}
+        {DAYS.map((day, i) => {
+          const h = holidayFor(i)
+          const isHoliday = h?.type === 'holiday'
+          const isShort = h?.type === 'short_day'
+          const d = cellDate(i)
+          return (
+            <div key={day} style={{
+              textAlign: 'center', padding: '8px 4px', borderRadius: 8,
+              background: isHoliday ? '#f3f4f6' : isShort ? '#fffbeb' : '#fff',
+              border: `1px solid ${isHoliday ? '#d1d5db' : isShort ? '#fde68a' : '#e4e8e4'}`,
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: isHoliday ? '#6b7280' : '#0f4c35', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                {DAY_SHORT[i]}
+              </div>
+              <div style={{ fontSize: 10, color: '#aaa' }}>{d ? `${d.getMonth() + 1}/${d.getDate()}` : day}</div>
+              {isHoliday && (
+                <div title={h?.name} style={{ marginTop: 3, fontSize: 8, fontWeight: 700, letterSpacing: '0.04em', color: '#b91c1c' }}>
+                  CLOSED
+                </div>
+              )}
+              {isShort && (
+                <div title={h?.name} style={{ marginTop: 3, fontSize: 8, fontWeight: 700, letterSpacing: '0.03em', color: '#92400e' }}>
+                  CLOSES {h?.close_time ? h.close_time.slice(0, 5) : '—'}
+                </div>
+              )}
             </div>
-            <div style={{ fontSize: 10, color: '#aaa' }}>{day}</div>
-          </div>
-        ))}
+          )
+        })}
 
         {/* Meal type rows */}
         {mealTypes.map(mealType => {
@@ -334,6 +407,25 @@ export default function MenuPlannerPage() {
               const cellItems = weekItems
                 .filter(i => i.day_of_week === dayNum && i.meal_type === mealType)
                 .sort((a, b) => a.sort_order - b.sort_order)
+
+              const h = holidayFor(di)
+              const closed = h?.type === 'holiday' || slotClosed(h, mealType)
+              if (closed) {
+                const isHoliday = h?.type === 'holiday'
+                return (
+                  <div key={`${mealType}-${dayNum}`} title={h?.name ?? ''} style={{
+                    background: isHoliday ? '#f3f4f6' : '#fff8ec', borderRadius: 8,
+                    border: `1px dashed ${isHoliday ? '#d1d5db' : '#fcd9b6'}`,
+                    padding: '10px 12px', minHeight: 80,
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <span style={{ fontSize: 14, opacity: 0.5 }}>{isHoliday ? '🚫' : '🌙'}</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.04em', marginTop: 3, color: isHoliday ? '#b91c1c' : '#92400e' }}>
+                      {isHoliday ? 'CLOSED' : `AFTER ${h?.close_time ? h.close_time.slice(0, 5) : 'CLOSE'}`}
+                    </span>
+                  </div>
+                )
+              }
 
               return (
                 <div key={`${mealType}-${dayNum}`} style={{

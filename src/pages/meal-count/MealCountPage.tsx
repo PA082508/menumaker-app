@@ -402,6 +402,17 @@ export default function MealCountPage() {
     }
     return false;
   }
+  // Human label for a blocked cell: "CLOSED", "Weekend", or "Short Day · closes HH:MM".
+  function blockLabel(day: DayKey, slot: SlotKey): string | null {
+    const date = addDays(weekStart, DAYS.indexOf(day));
+    if (isWeekend(date)) return "Weekend";
+    const h = holidays[format(date, "yyyy-MM-dd")];
+    if (h?.type === "holiday") return "CLOSED";
+    if (h?.type === "short_day" && h.close_time && slotBlocked(day, slot)) {
+      return `Short Day · closes ${h.close_time.slice(0, 5)}`;
+    }
+    return null;
+  }
 
   const activeSlots = settings?.active_slots ?? (["breakfast", "am_snack", "lunch", "supper"] as SlotKey[]);
   const weekStatus = Object.values(records)[0]?.status ?? "open";
@@ -465,7 +476,7 @@ export default function MealCountPage() {
             roster={roster} records={records} activeSlots={activeSlots}
             selectedSlot={selectedSlot} setSelectedSlot={setSelectedSlot}
             selectedDay={selectedDay} setSelectedDay={setSelectedDay}
-            todayDayKey={todayDayKey} dayBlocked={dayBlocked} slotBlocked={slotBlocked}
+            todayDayKey={todayDayKey} dayBlocked={dayBlocked} slotBlocked={slotBlocked} blockLabel={blockLabel}
             toggle={toggle} checkedCount={checkedCount}
             milkForSlot={milkForSlot} pending={pending}
             isStaff={isStaff} dayTotals={dayTotals}
@@ -473,14 +484,14 @@ export default function MealCountPage() {
         ) : mode === "director" ? (
           <DirectorMode
             roster={roster} records={records} activeSlots={activeSlots}
-            dayBlocked={dayBlocked} slotBlocked={slotBlocked} toggle={toggle} milkForSlot={milkForSlot}
+            dayBlocked={dayBlocked} slotBlocked={slotBlocked} blockLabel={blockLabel} toggle={toggle} milkForSlot={milkForSlot}
             weekStart={weekStart} pending={pending} isStaff={isStaff} dayTotals={dayTotals}
             isApproved={isApproved} onApprove={approveWeek} showApprove={showApprove}
           />
         ) : (
           <WeekMode
             roster={roster} records={records} activeSlots={activeSlots}
-            dayBlocked={dayBlocked} slotBlocked={slotBlocked} toggle={toggle} milkForSlot={milkForSlot}
+            dayBlocked={dayBlocked} slotBlocked={slotBlocked} blockLabel={blockLabel} toggle={toggle} milkForSlot={milkForSlot}
             weekStart={weekStart} pending={pending} isStaff={isStaff} dayTotals={dayTotals}
           />
         )}
@@ -497,6 +508,7 @@ interface GridProps {
   activeSlots: SlotKey[];
   dayBlocked: (d: DayKey) => boolean;
   slotBlocked: (d: DayKey, s: SlotKey) => boolean;
+  blockLabel: (d: DayKey, s: SlotKey) => string | null;
   toggle: (c: Child, d: DayKey, s: SlotKey) => void;
   milkForSlot: (s: SlotKey, d: DayKey) => { buckets: MilkBucket[]; totalCups: number } | null;
   weekStart: Date;
@@ -509,12 +521,13 @@ interface GridProps {
 // ─── Current Meal Mode ────────────────────────────────────────────────────────
 
 function CurrentMode({ roster, records, activeSlots, selectedSlot, setSelectedSlot,
-  selectedDay, setSelectedDay, todayDayKey, dayBlocked, slotBlocked, toggle, checkedCount,
+  selectedDay, setSelectedDay, todayDayKey, dayBlocked, slotBlocked, blockLabel, toggle, checkedCount,
   milkForSlot, pending, isStaff, dayTotals }: {
     roster: Child[]; records: Record<string, WeekRecord>; activeSlots: SlotKey[];
     selectedSlot: SlotKey; setSelectedSlot: (s: SlotKey) => void;
     selectedDay: DayKey; setSelectedDay: (d: DayKey) => void; todayDayKey: DayKey;
     dayBlocked: (d: DayKey) => boolean; slotBlocked: (d: DayKey, s: SlotKey) => boolean;
+    blockLabel: (d: DayKey, s: SlotKey) => string | null;
     toggle: (c: Child, d: DayKey, s: SlotKey) => void;
     checkedCount: (d: DayKey, s: SlotKey) => number;
     milkForSlot: (s: SlotKey, d: DayKey) => { buckets: MilkBucket[]; totalCups: number } | null;
@@ -547,7 +560,7 @@ function CurrentMode({ roster, records, activeSlots, selectedSlot, setSelectedSl
       </div>
 
       {blocked ? (
-        <div className="mc-blocked"><span>🚫</span><p>Closed — no meal count for this slot (holiday, weekend, or after short-day close).</p></div>
+        <div className="mc-blocked"><span>🚫</span><p>{blockLabel(day, selectedSlot) ?? "Closed"} — no meal count for this slot.</p></div>
       ) : (
         <>
           <div className="mc-counter-bar">
@@ -604,7 +617,7 @@ function CurrentMode({ roster, records, activeSlots, selectedSlot, setSelectedSl
 
 // ─── Shared Week Grid ────────────────────────────────────────────────────────
 
-function WeekGrid({ roster, records, activeSlots, dayBlocked, slotBlocked, toggle, milkForSlot,
+function WeekGrid({ roster, records, activeSlots, dayBlocked, slotBlocked, blockLabel, toggle, milkForSlot,
   weekStart, pending, isStaff, dayTotals, readOnly }: GridProps) {
   const nSlots = activeSlots.length;
   return (
@@ -621,13 +634,15 @@ function WeekGrid({ roster, records, activeSlots, dayBlocked, slotBlocked, toggl
               <th key={day} colSpan={nSlots} className={`mc-th-day-group ${dayBlocked(day) ? "blocked" : ""}`}>
                 <span className="mc-th-dayname">{DAY_LABELS[day]}</span>
                 <span className="mc-th-date"> {format(addDays(weekStart, i), "M/d")}</span>
+                {dayBlocked(day) && <span className="mc-th-closed">{blockLabel(day, activeSlots[0]) ?? "CLOSED"}</span>}
               </th>
             ))}
           </tr>
           <tr>
             {DAYS.flatMap((day) =>
               activeSlots.map((slot) => (
-                <th key={`${day}_${slot}`} className={`mc-th-slot-sub ${slotBlocked(day, slot) ? "blocked" : ""} ${slot === activeSlots[0] ? "mc-td-day-start" : ""}`}>
+                <th key={`${day}_${slot}`} title={slotBlocked(day, slot) ? blockLabel(day, slot) ?? "Closed" : undefined}
+                  className={`mc-th-slot-sub ${slotBlocked(day, slot) ? "blocked" : ""} ${slot === activeSlots[0] ? "mc-td-day-start" : ""}`}>
                   {slot === "am_snack" ? "Snk" : SLOT_LABELS[slot].slice(0, 3)}
                 </th>
               ))
@@ -649,7 +664,8 @@ function WeekGrid({ roster, records, activeSlots, dayBlocked, slotBlocked, toggl
                   const checked = records[child.child_name]?.[col] === 1;
                   const isPend = pending.has(`${child.child_name}_${col}`);
                   return (
-                    <td key={`${day}_${slot}`} className={`mc-td-cell ${blocked ? "blocked" : ""} ${slot === activeSlots[0] ? "mc-td-day-start" : ""}`}>
+                    <td key={`${day}_${slot}`} title={blocked ? blockLabel(day, slot) ?? "Closed" : undefined}
+                      className={`mc-td-cell ${blocked ? "blocked" : ""} ${slot === activeSlots[0] ? "mc-td-day-start" : ""}`}>
                       {blocked ? <span className="mc-hol">—</span> : (
                         <button className={`mc-cell-btn ${checked ? "checked" : ""} ${isPend ? "pending" : ""}`}
                           onClick={() => !readOnly && toggle(child, day, slot)}
@@ -833,6 +849,7 @@ const styles = `
 .mc-th-day-group.blocked { background:#999; }
 .mc-th-dayname { font-weight:700; }
 .mc-th-date { font-size:.72rem; font-weight:400; opacity:.8; }
+.mc-th-closed { display:block; font-size:.6rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase; opacity:.95; margin-top:1px; }
 .mc-th-slot-sub { background:#e8f4e8; color:#1a2e1a; padding:.25rem .3rem; text-align:center; font-weight:600; font-size:.75rem; min-width:34px; }
 .mc-th-slot-sub.blocked { background:#f0f0f0; color:#aaa; }
 .mc-td-day-start { border-left:2px solid #0f4c35 !important; }

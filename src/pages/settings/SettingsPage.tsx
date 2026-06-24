@@ -1199,15 +1199,135 @@ function AssignTab() {
   )
 }
 
+// ─── Settings landing cards ───────────────────────────────────────────────────
+
+type SectionKey = Tab | 'center_info' | 'cacfp_rates' | 'delivery_settings'
+
+interface CardDef {
+  key: SectionKey
+  icon: string
+  title: string
+  desc: string
+  placeholder?: boolean
+}
+
+interface CardGroup {
+  heading: string
+  cards: CardDef[]
+}
+
+function SettingCard({ card, onClick }: { card: CardDef; onClick: () => void }) {
+  const [hover, setHover] = useState(false)
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
+        padding: '20px 22px', borderRadius: 14,
+        border: `1px solid ${hover ? '#0f4c35' : '#e8e8e8'}`,
+        background: hover ? '#0f4c35' : '#fff',
+        color: hover ? '#fff' : '#1a1a1a',
+        boxShadow: hover ? '0 6px 18px rgba(15,76,53,0.25)' : '0 1px 4px rgba(0,0,0,0.05)',
+        transition: 'all 0.15s',
+        display: 'flex', flexDirection: 'column', gap: 8,
+        opacity: card.placeholder && !hover ? 0.75 : 1,
+      }}
+    >
+      <div style={{ fontSize: 30, lineHeight: 1 }}>{card.icon}</div>
+      <div style={{ fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+        {card.title}
+        {card.placeholder && (
+          <span style={{
+            fontSize: 9, fontWeight: 600, padding: '2px 7px', borderRadius: 5,
+            textTransform: 'uppercase', letterSpacing: '0.05em',
+            background: hover ? 'rgba(255,255,255,0.2)' : '#f0f0f0',
+            color: hover ? '#fff' : '#999',
+          }}>Soon</span>
+        )}
+      </div>
+      <div style={{ fontSize: 12, color: hover ? 'rgba(255,255,255,0.85)' : '#888', lineHeight: 1.4 }}>
+        {card.desc}
+      </div>
+    </button>
+  )
+}
+
+function ComingSoon({ title }: { title: string }) {
+  return (
+    <div style={{
+      background: '#fff', borderRadius: 14, border: '1px dashed #d8ddd8',
+      padding: '48px 40px', textAlign: 'center', color: '#aaa',
+    }}>
+      <div style={{ fontSize: 34, marginBottom: 10 }}>🚧</div>
+      <div style={{ fontSize: 15, fontWeight: 600, color: '#888', marginBottom: 4 }}>{title}</div>
+      <div style={{ fontSize: 12 }}>This section is coming soon.</div>
+    </div>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
-  const [tab, setTab] = useState<Tab>('products')
+  const [view, setView] = useState<SectionKey | null>(null)
   const { currentCenter, centers, orgRole, setCurrentCenter } = useOrg()
   const { role } = useAuth()
   const canManageAccess = role === 'admin' || role === 'office_manager' || orgRole === 'admin'
   const isOwner = orgRole === 'admin'
   const canSchedule = canManageAccess || role === 'director' || orgRole === 'director'
+
+  const groups: CardGroup[] = ([
+    {
+      heading: '🍽️ Program & Schedule',
+      cards: [
+        { key: 'mealcount', icon: '🍽️', title: 'Meal Slots', desc: 'Which meals each center serves' },
+        ...(canSchedule ? [{ key: 'schedule', icon: '📅', title: 'Schedule & Holidays', desc: 'Meal times, holidays & short days' } as CardDef] : []),
+        { key: 'milk', icon: '🥛', title: 'Milk Rates', desc: 'Milk amounts by age group' },
+      ],
+    },
+    {
+      heading: '🛒 Purchasing',
+      cards: [
+        { key: 'products', icon: '📦', title: 'Products', desc: 'Catalog of purchasable items' },
+        { key: 'vendors', icon: '🏪', title: 'Vendors', desc: 'Suppliers & order details' },
+        { key: 'purchasers', icon: '👤', title: 'Purchasers', desc: 'People who place orders' },
+        { key: 'assign', icon: '🔗', title: 'Assign Purchasers', desc: 'Map products to purchasers' },
+      ],
+    },
+    {
+      heading: '👥 Access & Staff',
+      cards: [
+        ...(canManageAccess ? [{ key: 'access', icon: '🔐', title: 'Meal Count Access', desc: 'Who can record meal counts' } as CardDef] : []),
+        ...(isOwner ? [{ key: 'permissions', icon: '🛡️', title: 'Permissions', desc: 'Roles & access control' } as CardDef] : []),
+      ],
+    },
+    {
+      heading: '⚙️ Center Configuration',
+      cards: [
+        { key: 'center_info', icon: '🏢', title: 'Center Info', desc: 'Name, address & contacts', placeholder: true },
+        { key: 'cacfp_rates', icon: '💵', title: 'CACFP Rates', desc: 'Reimbursement rates', placeholder: true },
+        { key: 'delivery_settings', icon: '🚚', title: 'Delivery Settings', desc: 'Dispatch & delivery options', placeholder: true },
+      ],
+    },
+  ] as CardGroup[]).filter(g => g.cards.length > 0)
+
+  const activeCard = groups.flatMap(g => g.cards).find(c => c.key === view) ?? null
+
+  function renderSection() {
+    switch (view) {
+      case 'products':    return <ProductsTab />
+      case 'vendors':     return <VendorsTab />
+      case 'purchasers':  return <PurchasersTab />
+      case 'assign':      return <AssignTab />
+      case 'milk':        return <MilkRatesSettings />
+      case 'mealcount':   return <MealCountSettings />
+      case 'access':      return canManageAccess ? <MealCountAccessSettings /> : null
+      case 'permissions': return isOwner ? <PermissionsSettings /> : null
+      case 'schedule':    return canSchedule ? <ScheduleHolidaysSettings /> : null
+      default:            return <ComingSoon title={activeCard?.title ?? 'Coming soon'} />
+    }
+  }
 
   return (
     <div style={{ padding: '24px 32px', fontFamily: "'DM Sans', sans-serif", background: '#f4f6f4', minHeight: '100vh' }}>
@@ -1216,10 +1336,25 @@ export default function SettingsPage() {
       {/* Header */}
       <div style={{ marginBottom: 20, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
         <div>
+          {view !== null && (
+            <button
+              onClick={() => setView(null)}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 8,
+                padding: '5px 12px', borderRadius: 8, border: '1px solid #d8ddd8',
+                background: '#fff', color: '#0f4c35', fontSize: 12, fontWeight: 600,
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >
+              ← Back to Settings
+            </button>
+          )}
           <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 26, color: '#0a3320', marginBottom: 2 }}>
-            Settings
+            {activeCard ? `${activeCard.icon} ${activeCard.title}` : 'Settings'}
           </div>
-          <div style={{ fontSize: 12, color: '#888' }}>{currentCenter?.name ?? '—'} · Products, Vendors, Purchasers</div>
+          <div style={{ fontSize: 12, color: '#888' }}>
+            {currentCenter?.name ?? '—'}{activeCard ? ` · ${activeCard.desc}` : ' · Configure your program'}
+          </div>
         </div>
         {orgRole === 'admin' && centers.length > 1 && (
           <select
@@ -1239,30 +1374,25 @@ export default function SettingsPage() {
         )}
       </div>
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, background: '#fff', padding: 5, borderRadius: 10, border: '1px solid #e0e0e0', width: 'fit-content', marginBottom: 20 }}>
-        {([ ['products','📦 Products'], ['vendors','🏪 Vendors'], ['purchasers','👤 Purchasers'], ['assign','🔗 Assign'], ['milk','🥛 Milk Rates'], ['mealcount','🍽️ Meal Slots'], ...(canManageAccess ? [['access','🔐 Meal Count Access'] as [Tab, string]] : []), ...(canSchedule ? [['schedule','📅 Schedule & Holidays'] as [Tab, string]] : []), ...(isOwner ? [['permissions','🛡️ Permissions'] as [Tab, string]] : []) ] as [Tab, string][]).map(([val, label]) => (
-          <button key={val} onClick={() => setTab(val)} style={{
-            padding: '7px 20px', borderRadius: 7, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-            background: tab === val ? '#0f4c35' : 'transparent',
-            color:      tab === val ? '#fff' : '#555',
-            fontSize: 13, fontWeight: tab === val ? 600 : 400,
-            transition: 'all 0.15s',
-          }}>
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'products'   && <ProductsTab />}
-      {tab === 'vendors'    && <VendorsTab />}
-      {tab === 'purchasers' && <PurchasersTab />}
-      {tab === 'assign'     && <AssignTab />}
-      {tab === 'milk'       && <MilkRatesSettings />}
-      {tab === 'mealcount'  && <MealCountSettings />}
-      {tab === 'access' && canManageAccess && <MealCountAccessSettings />}
-      {tab === 'permissions' && isOwner && <PermissionsSettings />}
-      {tab === 'schedule' && canSchedule && <ScheduleHolidaysSettings />}
+      {view === null ? (
+        /* Landing — card grid grouped into sections */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 28, maxWidth: 760 }}>
+          {groups.map(group => (
+            <div key={group.heading}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#0f4c35', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>
+                {group.heading}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 14 }}>
+                {group.cards.map(card => (
+                  <SettingCard key={card.key} card={card} onClick={() => setView(card.key)} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        renderSection()
+      )}
     </div>
   )
 }

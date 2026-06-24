@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, Fragment } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation, Link } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { useOrg } from '@/contexts/OrgContext'
@@ -10,6 +10,7 @@ type NavItem = {
   icon: string
   roles?: string[]
   badge?: string
+  section?: string   // optional group header rendered above the first item of a run
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -54,9 +55,10 @@ export default function AppLayout() {
     { path: '/dispatch',   label: 'Dispatch',   icon: '📨', roles: ['admin','office_manager'] },
     { path: '/export',     label: 'Custom Export', icon: '📤', roles: ['admin','office_manager','director'] },
     ...(hasCACFP ? [
-      { path: '/claim-report', label: 'Site Claim',    icon: '📋', roles: ['director','office_manager'] },
-      { path: '/reimbursement-preview', label: 'Reimbursement Preview', icon: '💵', roles: ['admin','director','office_manager'] },
-      { path: '/reports',      label: 'CACFP Reports', icon: '📊', roles: ['director','office_manager','cacfp_inspector'] },
+      { path: '/reports',               label: 'Reports',       icon: '📋', roles: ['admin','director','office_manager'], section: 'CACFP Compliance' },
+      { path: '/claim-report',          label: 'Site Claim',    icon: '📄', roles: ['admin','director','office_manager'], section: 'CACFP Compliance' },
+      { path: '/reimbursement-preview', label: 'Reimbursement', icon: '💰', roles: ['admin','director','office_manager'], section: 'CACFP Compliance' },
+      { path: '/cacfp-checklist',       label: 'Checklist',     icon: '✅', roles: ['admin','director','office_manager'], section: 'CACFP Compliance' },
     ] : []),
     { path: '/receipt-review', label: 'Receipt Review',  icon: '🧾', roles: ['director','office_manager'] },
     { path: '/kitchen-report', label: 'Kitchen Report', icon: '👨‍🍳', roles: ['director','cook','office_manager'] },
@@ -173,9 +175,21 @@ export default function AppLayout() {
 
         {/* Navigation */}
         <nav style={{ flex: 1, padding: '12px 0', overflowY: 'auto' }}>
-          {visibleItems.map(item => (
+          {visibleItems.map((item, i) => {
+            const prevSection = i > 0 ? visibleItems[i - 1].section : undefined
+            const showHeader = !collapsed && item.section && item.section !== prevSection
+            return (
+            <Fragment key={item.path}>
+            {showHeader && (
+              <div style={{
+                padding: '14px 16px 6px',
+                fontSize: 10, fontWeight: 700, letterSpacing: '0.08em',
+                textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)',
+              }}>
+                {item.section}
+              </div>
+            )}
             <NavLink
-              key={item.path}
               to={item.path}
               style={({ isActive }) => ({
                 display: 'flex',
@@ -210,7 +224,9 @@ export default function AppLayout() {
                 </span>
               )}
             </NavLink>
-          ))}
+            </Fragment>
+            )
+          })}
         </nav>
 
         {/* User info + collapse */}

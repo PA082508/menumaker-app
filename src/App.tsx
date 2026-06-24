@@ -118,6 +118,7 @@ export default function App() {
               <Route path="export"      element={<CustomExportPage />} />
               <Route path="claim-report"    element={<SiteClaimReport />} />
               <Route path="reimbursement-preview" element={<ReimbursementPreview />} />
+              <Route path="cacfp-checklist" element={<PlaceholderPage title="CACFP Checklist" />} />
               <Route path="kitchen-report"      element={<KitchenPlanningReport />} />
               <Route path="receipt-review"     element={<ReceiptReviewPage />} />
               <Route path="children/import"    element={<ChildrenImportPage />} />

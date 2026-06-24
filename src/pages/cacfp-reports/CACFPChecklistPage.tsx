@@ -11,6 +11,7 @@
 // ============================================================
 
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useOrg } from '@/contexts/OrgContext'
 
 // ─── Checklist data (exact text from the Administrator's Notebook) ─────────────
@@ -105,6 +106,47 @@ const SECTIONS: Section[] = [
 
 const TOTAL_ITEMS = SECTIONS.reduce((n, s) => n + s.items.length, 0) // 51
 
+// ─── Deep links: checklist item → the MenuMaker page that backs it ─────────────
+const ITEM_LINKS: Record<string, { to: string; label: string }> = {
+  '1.1': { to: '/meal-count', label: '→ Meal Count' },
+  '1.2': { to: '/meal-count', label: '→ Meal Count' },
+  '1.3': { to: '/meal-count', label: '→ Meal Count' },
+  '1.4': { to: '/menu', label: '→ Menu Planner' },
+  '1.5': { to: '/menu', label: '→ Menu Planner' },
+  '1.6': { to: '/meal-count', label: '→ Meal Count' },
+  '1.7': { to: '/reports', label: '→ Reports' },
+  '1.8': { to: '/recipes', label: '→ Recipes' },
+  '2.1': { to: '/submissions', label: '→ Forms' },
+  '2.2': { to: '/submissions', label: '→ Forms' },
+  '2.3': { to: '/submissions', label: '→ Forms' },
+  '2.4': { to: '/submissions', label: '→ Forms' },
+  '2.5': { to: '/submissions', label: '→ Forms' },
+  '2.6': { to: '/submissions', label: '→ Forms' },
+  '2.7': { to: '/children/export', label: '→ Roster' },
+  '2.8': { to: '/children/export', label: '→ Roster' },
+  '3.1': { to: '/receipt-review', label: '→ Receipts' },
+  '3.2': { to: '/receipt-review', label: '→ Receipts' },
+  '3.5': { to: '/reimbursement-preview', label: '→ Reimbursement' },
+  '3.6': { to: '/reimbursement-preview', label: '→ Reimbursement' },
+  '4.1': { to: '/menu', label: '→ Menu Planner' },
+  '4.2': { to: '/recipes', label: '→ Recipes' },
+  '4.3': { to: '/recipes', label: '→ Recipes' },
+  '4.4': { to: '/purchases', label: '→ Purchases' },
+  '4.5': { to: '/recipes', label: '→ Recipes' },
+  '5.1': { to: '/submissions', label: '→ Forms' },
+  '5.2': { to: '/submissions', label: '→ Forms' },
+  '5.3': { to: '/submissions', label: '→ Forms' },
+  '6.1': { to: '/documents', label: '→ Documents' },
+  '6.2': { to: '/documents', label: '→ Documents' },
+  '6.3': { to: '/documents', label: '→ Documents' },
+  '6.4': { to: '/documents', label: '→ Documents' },
+  '7.1': { to: '/settings', label: '→ Settings' },
+  '7.2': { to: '/settings', label: '→ Settings' },
+  '7.3': { to: '/documents', label: '→ Documents' },
+  '7.4': { to: '/documents', label: '→ Documents' },
+  '7.6': { to: '/documents', label: '→ Documents' },
+}
+
 // ─── Item state ────────────────────────────────────────────────────────────────
 type Status = 'not_done' | 'complete' | 'na'
 type ItemState = { status: Status; notes: string; date: string }
@@ -147,6 +189,7 @@ function ProgressBar({ done, total }: { done: number; total: number }) {
 
 export default function CACFPChecklistPage() {
   const { currentCenter } = useOrg()
+  const navigate = useNavigate()
   const centerId = currentCenter?.id ?? null
 
   const [fy, setFy] = useState<number>(currentFY())
@@ -293,6 +336,20 @@ export default function CACFPChecklistPage() {
                     {/* requirement text */}
                     <div style={{ fontSize: 13, color: na ? '#999' : '#23332a', textDecoration: na ? 'line-through' : 'none' }}>
                       <span style={{ color: '#aaa', fontWeight: 600, marginRight: 6 }}>{item.id}</span>{item.text}
+                      {ITEM_LINKS[item.id] && (
+                        <button
+                          onClick={() => navigate(ITEM_LINKS[item.id].to)}
+                          className="cacfp-noprint"
+                          style={{
+                            marginLeft: 8, verticalAlign: 'middle', whiteSpace: 'nowrap',
+                            fontSize: 11, padding: '2px 8px', borderRadius: 5,
+                            border: '1px solid #0f4c35', background: 'transparent', color: '#0f4c35',
+                            cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600,
+                          }}
+                        >
+                          {ITEM_LINKS[item.id].label}
+                        </button>
+                      )}
                     </div>
 
                     {/* status dropdown */}

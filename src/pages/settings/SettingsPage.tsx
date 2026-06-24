@@ -1306,7 +1306,7 @@ export default function SettingsPage() {
     {
       heading: '⚙️ Center Configuration',
       cards: [
-        { key: 'center_info', icon: '🏢', title: 'Center Info', desc: 'Name, address, licensing & contacts' },
+        ...(canManageAccess ? [{ key: 'center_info', icon: '🏢', title: 'Center Info', desc: 'Name, address, licensing & contacts' } as CardDef] : []),
         { key: 'cacfp_rates', icon: '💵', title: 'CACFP Rates', desc: 'Reimbursement rates', placeholder: true },
         { key: 'delivery_settings', icon: '🚚', title: 'Delivery Settings', desc: 'Dispatch & delivery options', placeholder: true },
       ],
@@ -1326,7 +1326,7 @@ export default function SettingsPage() {
       case 'access':      return canManageAccess ? <MealCountAccessSettings /> : null
       case 'permissions': return isOwner ? <PermissionsSettings /> : null
       case 'schedule':    return canSchedule ? <ScheduleHolidaysSettings /> : null
-      case 'center_info': return <CenterInfoSettings />
+      case 'center_info': return canManageAccess ? <CenterInfoSettings /> : null
       default:            return <ComingSoon title={activeCard?.title ?? 'Coming soon'} />
     }
   }

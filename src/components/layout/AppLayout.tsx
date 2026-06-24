@@ -87,14 +87,21 @@ export default function AppLayout() {
   // nav. Re-append it (role-gated, deduped by path) when the org has the cacfp
   // module, so the group shows regardless of which nav mode is active.
   const cacfpGroup = NAV_ITEMS.filter(item => item.section === 'CACFP Compliance')
+  const cacfpPaths = new Set(cacfpGroup.map(i => i.path))
+
+  // Variant B nav may already surface some CACFP routes (e.g. /reports,
+  // /claim-report) as standalone items. Strip those from permItems so they
+  // appear ONLY inside the CACFP Compliance group below, not twice.
+  const permItemsFiltered = (usingPerms && hasCACFP)
+    ? permItems.filter(pi => !cacfpPaths.has(pi.path))
+    : permItems
+
   const cacfpAppend = usingPerms && hasCACFP
-    ? cacfpGroup.filter(ci =>
-        !permItems.some(pi => pi.path === ci.path) &&
-        (!ci.roles || (role && ci.roles.includes(role))))
+    ? cacfpGroup.filter(ci => !ci.roles || (role && ci.roles.includes(role)))
     : []
 
   const baseVisible = usingPerms
-    ? [...permItems, ...cacfpAppend]
+    ? [...permItemsFiltered, ...cacfpAppend]
     : NAV_ITEMS.filter(item => !item.roles || (role && item.roles.includes(role)))
 
   // Cook: sidebar shows Meal Count + Delivery (dispatch). Teacher: Meal Count only.

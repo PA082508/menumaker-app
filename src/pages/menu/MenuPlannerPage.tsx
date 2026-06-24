@@ -21,6 +21,17 @@ interface Cycle {
   status: string
 }
 
+interface Holiday {
+  year: number
+  month: number
+  day: number
+  name: string
+  type: string
+  close_time: string | null
+}
+
+const MONTH_LABELS = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
 const DAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
 
@@ -44,6 +55,7 @@ export default function MenuPlannerPage() {
   const [loading, setLoading]     = useState(true)
   const [selectedWeek, setSelectedWeek] = useState(1)
   const [totalWeeks, setTotalWeeks]     = useState(4)
+  const [holidays, setHolidays]         = useState<Holiday[]>([])
 
   const handlePrint = () => {
     const weekItems = items.filter(i => i.week_number === selectedWeek)
@@ -138,6 +150,27 @@ export default function MenuPlannerPage() {
         sort_order: d.sort_order,
       })))
 
+      // Upcoming closures (holidays + short days). Per-center rows → dedupe by date.
+      const today = new Date()
+      const yr = today.getFullYear()
+      const { data: hols } = await supabase
+        .schema('menumaker')
+        .from('holidays')
+        .select('year, month, day, name, type, close_time')
+        .in('year', [yr, yr + 1])
+      const seen = new Set<string>()
+      const upcoming: Holiday[] = []
+      for (const h of (hols || []) as Holiday[]) {
+        const key = `${h.year}-${h.month}-${h.day}-${h.name}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        const d = new Date(h.year, h.month - 1, h.day)
+        if (d >= new Date(today.getFullYear(), today.getMonth(), today.getDate())) upcoming.push(h)
+      }
+      upcoming.sort((a, b) =>
+        new Date(a.year, a.month - 1, a.day).getTime() - new Date(b.year, b.month - 1, b.day).getTime())
+      setHolidays(upcoming)
+
       setLoading(false)
     }
     load()
@@ -220,6 +253,46 @@ export default function MenuPlannerPage() {
           ))}
         </div>
       </div>
+
+      {/* Upcoming closures (holidays / short days) — planning awareness */}
+      {holidays.length > 0 && (
+        <div style={{
+          marginBottom: 20, padding: '12px 16px', borderRadius: 10,
+          background: '#fff8f0', border: '1px solid #fcd9b6',
+          display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center',
+        }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: '#b45309', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            ⚠️ Upcoming closures
+          </span>
+          {holidays.slice(0, 10).map(h => {
+            const isShort = h.type === 'short_day'
+            return (
+              <div key={`${h.year}-${h.month}-${h.day}-${h.name}`} style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '4px 10px', borderRadius: 6,
+                background: isShort ? '#fffbeb' : '#fff1f1',
+                border: `1px solid ${isShort ? '#fde68a' : '#fbc5c5'}`,
+              }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: isShort ? '#92400e' : '#b91c1c' }}>
+                  {MONTH_LABELS[h.month]} {h.day}
+                </span>
+                <span style={{ fontSize: 11, color: '#555' }}>{h.name}</span>
+                <span style={{
+                  fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em',
+                  padding: '1px 6px', borderRadius: 4,
+                  background: isShort ? '#fde68a' : '#fbc5c5',
+                  color: isShort ? '#92400e' : '#b91c1c',
+                }}>
+                  {isShort ? `Short · closes ${h.close_time ? h.close_time.slice(0, 5) : '—'}` : 'Closed'}
+                </span>
+              </div>
+            )
+          })}
+          {holidays.length > 10 && (
+            <span style={{ fontSize: 11, color: '#aaa' }}>+{holidays.length - 10} more</span>
+          )}
+        </div>
+      )}
 
       {/* Grid: days × meal types */}
       <div style={{ display: 'grid', gridTemplateColumns: '80px repeat(5, 1fr)', gap: 8 }}>

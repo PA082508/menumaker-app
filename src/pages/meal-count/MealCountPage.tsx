@@ -166,7 +166,8 @@ export default function MealCountPage() {
   const [selectedSlot, setSelectedSlot] = useState<SlotKey>("breakfast");
   const [roster, setRoster] = useState<Child[]>([]);
   const [records, setRecords] = useState<Record<string, WeekRecord>>({});
-  const [holidays, setHolidays] = useState<Set<string>>(new Set());
+  const [holidays, setHolidays] = useState<Record<string, { type: string; close_time: string | null }>>({});
+  const [slotStart, setSlotStart] = useState<Record<string, string>>({});
   const [pending, setPending] = useState<Map<string, boolean>>(new Map());
   const [weekStart, setWeekStart] = useState<Date>(() => {
     const today = new Date();
@@ -221,14 +222,39 @@ export default function MealCountPage() {
         .select("active_slots,milk_slots").limit(1).single();
       if (cfg) setSettings(cfg as MealCountSettings);
 
-      const mon = format(mondayOf(new Date()), "yyyy-MM-dd");
-      const fri = format(addDays(mondayOf(new Date()), 4), "yyyy-MM-dd");
+      // Holidays for this center. The table is keyed by year/month/day (no date
+      // column), so build a date→{type,close_time} map for this + next year.
+      const yr = new Date().getFullYear();
       const { data: hols } = await supabase
         .schema("menumaker").from("holidays")
-        .select("holiday_date").gte("holiday_date", mon).lte("holiday_date", fri);
-      if (hols) setHolidays(new Set(hols.map((h: { holiday_date: string }) => h.holiday_date)));
+        .select("year, month, day, type, close_time")
+        .eq("center_id", centerId)
+        .in("year", [yr, yr + 1]);
+      const hmap: Record<string, { type: string; close_time: string | null }> = {};
+      for (const h of (hols ?? []) as { year: number; month: number; day: number; type: string; close_time: string | null }[]) {
+        const key = `${h.year}-${String(h.month).padStart(2, "0")}-${String(h.day).padStart(2, "0")}`;
+        hmap[key] = { type: h.type, close_time: h.close_time };
+      }
+      setHolidays(hmap);
     })();
   }, [currentCenter?.id]);
+
+  // Per-classroom slot start times (for short-day slot blocking).
+  useEffect(() => {
+    if (!selectedClassId) { setSlotStart({}); return; }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.schema("menumaker").from("meal_schedule")
+        .select("slot, start_time").eq("classroom_id", selectedClassId);
+      if (cancelled) return;
+      const m: Record<string, string> = {};
+      for (const r of (data ?? []) as { slot: string; start_time: string | null }[]) {
+        if (r.start_time) m[r.slot] = r.start_time.slice(0, 5);
+      }
+      setSlotStart(m);
+    })();
+    return () => { cancelled = true; };
+  }, [selectedClassId]);
 
   // ─── Load roster (v_meal_grid) + records ──────────────────────────────────
   useEffect(() => {
@@ -363,7 +389,18 @@ export default function MealCountPage() {
 
   function dayBlocked(day: DayKey) {
     const date = addDays(weekStart, DAYS.indexOf(day));
-    return holidays.has(format(date, "yyyy-MM-dd")) || isWeekend(date);
+    if (isWeekend(date)) return true;
+    return holidays[format(date, "yyyy-MM-dd")]?.type === "holiday"; // whole-day closure
+  }
+  // Short day: block only slots that START at/after the close time.
+  function slotBlocked(day: DayKey, slot: SlotKey) {
+    if (dayBlocked(day)) return true;
+    const h = holidays[format(addDays(weekStart, DAYS.indexOf(day)), "yyyy-MM-dd")];
+    if (h?.type === "short_day" && h.close_time) {
+      const start = slotStart[slot];
+      return !!start && start >= h.close_time.slice(0, 5);
+    }
+    return false;
   }
 
   const activeSlots = settings?.active_slots ?? (["breakfast", "am_snack", "lunch", "supper"] as SlotKey[]);
@@ -428,7 +465,7 @@ export default function MealCountPage() {
             roster={roster} records={records} activeSlots={activeSlots}
             selectedSlot={selectedSlot} setSelectedSlot={setSelectedSlot}
             selectedDay={selectedDay} setSelectedDay={setSelectedDay}
-            todayDayKey={todayDayKey} dayBlocked={dayBlocked}
+            todayDayKey={todayDayKey} dayBlocked={dayBlocked} slotBlocked={slotBlocked}
             toggle={toggle} checkedCount={checkedCount}
             milkForSlot={milkForSlot} pending={pending}
             isStaff={isStaff} dayTotals={dayTotals}
@@ -436,14 +473,14 @@ export default function MealCountPage() {
         ) : mode === "director" ? (
           <DirectorMode
             roster={roster} records={records} activeSlots={activeSlots}
-            dayBlocked={dayBlocked} toggle={toggle} milkForSlot={milkForSlot}
+            dayBlocked={dayBlocked} slotBlocked={slotBlocked} toggle={toggle} milkForSlot={milkForSlot}
             weekStart={weekStart} pending={pending} isStaff={isStaff} dayTotals={dayTotals}
             isApproved={isApproved} onApprove={approveWeek} showApprove={showApprove}
           />
         ) : (
           <WeekMode
             roster={roster} records={records} activeSlots={activeSlots}
-            dayBlocked={dayBlocked} toggle={toggle} milkForSlot={milkForSlot}
+            dayBlocked={dayBlocked} slotBlocked={slotBlocked} toggle={toggle} milkForSlot={milkForSlot}
             weekStart={weekStart} pending={pending} isStaff={isStaff} dayTotals={dayTotals}
           />
         )}
@@ -459,6 +496,7 @@ interface GridProps {
   records: Record<string, WeekRecord>;
   activeSlots: SlotKey[];
   dayBlocked: (d: DayKey) => boolean;
+  slotBlocked: (d: DayKey, s: SlotKey) => boolean;
   toggle: (c: Child, d: DayKey, s: SlotKey) => void;
   milkForSlot: (s: SlotKey, d: DayKey) => { buckets: MilkBucket[]; totalCups: number } | null;
   weekStart: Date;
@@ -471,19 +509,20 @@ interface GridProps {
 // ─── Current Meal Mode ────────────────────────────────────────────────────────
 
 function CurrentMode({ roster, records, activeSlots, selectedSlot, setSelectedSlot,
-  selectedDay, setSelectedDay, todayDayKey, dayBlocked, toggle, checkedCount,
+  selectedDay, setSelectedDay, todayDayKey, dayBlocked, slotBlocked, toggle, checkedCount,
   milkForSlot, pending, isStaff, dayTotals }: {
     roster: Child[]; records: Record<string, WeekRecord>; activeSlots: SlotKey[];
     selectedSlot: SlotKey; setSelectedSlot: (s: SlotKey) => void;
     selectedDay: DayKey; setSelectedDay: (d: DayKey) => void; todayDayKey: DayKey;
-    dayBlocked: (d: DayKey) => boolean; toggle: (c: Child, d: DayKey, s: SlotKey) => void;
+    dayBlocked: (d: DayKey) => boolean; slotBlocked: (d: DayKey, s: SlotKey) => boolean;
+    toggle: (c: Child, d: DayKey, s: SlotKey) => void;
     checkedCount: (d: DayKey, s: SlotKey) => number;
     milkForSlot: (s: SlotKey, d: DayKey) => { buckets: MilkBucket[]; totalCups: number } | null;
     pending: Map<string, boolean>; isStaff: boolean;
     dayTotals: (d: DayKey) => { total: number; reimbursable: number };
   }) {
   const day = selectedDay;
-  const blocked = dayBlocked(day);
+  const blocked = slotBlocked(day, selectedSlot);
   const milk = milkForSlot(selectedSlot, day);
   const count = checkedCount(day, selectedSlot);
   const totals = dayTotals(day);
@@ -508,7 +547,7 @@ function CurrentMode({ roster, records, activeSlots, selectedSlot, setSelectedSl
       </div>
 
       {blocked ? (
-        <div className="mc-blocked"><span>🚫</span><p>Holiday or weekend — no meal count.</p></div>
+        <div className="mc-blocked"><span>🚫</span><p>Closed — no meal count for this slot (holiday, weekend, or after short-day close).</p></div>
       ) : (
         <>
           <div className="mc-counter-bar">
@@ -565,7 +604,7 @@ function CurrentMode({ roster, records, activeSlots, selectedSlot, setSelectedSl
 
 // ─── Shared Week Grid ────────────────────────────────────────────────────────
 
-function WeekGrid({ roster, records, activeSlots, dayBlocked, toggle, milkForSlot,
+function WeekGrid({ roster, records, activeSlots, dayBlocked, slotBlocked, toggle, milkForSlot,
   weekStart, pending, isStaff, dayTotals, readOnly }: GridProps) {
   const nSlots = activeSlots.length;
   return (
@@ -588,7 +627,7 @@ function WeekGrid({ roster, records, activeSlots, dayBlocked, toggle, milkForSlo
           <tr>
             {DAYS.flatMap((day) =>
               activeSlots.map((slot) => (
-                <th key={`${day}_${slot}`} className={`mc-th-slot-sub ${dayBlocked(day) ? "blocked" : ""} ${slot === activeSlots[0] ? "mc-td-day-start" : ""}`}>
+                <th key={`${day}_${slot}`} className={`mc-th-slot-sub ${slotBlocked(day, slot) ? "blocked" : ""} ${slot === activeSlots[0] ? "mc-td-day-start" : ""}`}>
                   {slot === "am_snack" ? "Snk" : SLOT_LABELS[slot].slice(0, 3)}
                 </th>
               ))
@@ -604,8 +643,8 @@ function WeekGrid({ roster, records, activeSlots, dayBlocked, toggle, milkForSlo
               <td className="mc-td-milk-kind" title={child.milk_label ?? ""}>{child.milk_label ?? "—"}</td>
               <td className="mc-td-oz">{child.oz ?? "—"}</td>
               {DAYS.flatMap((day) => {
-                const blocked = dayBlocked(day);
                 return activeSlots.map((slot) => {
+                  const blocked = slotBlocked(day, slot);
                   const col = colName(day, slot);
                   const checked = records[child.child_name]?.[col] === 1;
                   const isPend = pending.has(`${child.child_name}_${col}`);

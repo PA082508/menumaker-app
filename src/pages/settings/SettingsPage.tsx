@@ -5,6 +5,7 @@ import MealCountSettings from '@/components/settings/MealCountSettings'
 import MealCountAccessSettings from '@/components/settings/MealCountAccessSettings'
 import PermissionsSettings from '@/components/settings/PermissionsSettings'
 import ScheduleHolidaysSettings from '@/components/settings/ScheduleHolidaysSettings'
+import CenterInfoSettings from '@/components/settings/CenterInfoSettings'
 import { useOrg } from '@/contexts/OrgContext'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -1305,7 +1306,7 @@ export default function SettingsPage() {
     {
       heading: '⚙️ Center Configuration',
       cards: [
-        { key: 'center_info', icon: '🏢', title: 'Center Info', desc: 'Name, address & contacts', placeholder: true },
+        { key: 'center_info', icon: '🏢', title: 'Center Info', desc: 'Name, address, licensing & contacts' },
         { key: 'cacfp_rates', icon: '💵', title: 'CACFP Rates', desc: 'Reimbursement rates', placeholder: true },
         { key: 'delivery_settings', icon: '🚚', title: 'Delivery Settings', desc: 'Dispatch & delivery options', placeholder: true },
       ],
@@ -1325,6 +1326,7 @@ export default function SettingsPage() {
       case 'access':      return canManageAccess ? <MealCountAccessSettings /> : null
       case 'permissions': return isOwner ? <PermissionsSettings /> : null
       case 'schedule':    return canSchedule ? <ScheduleHolidaysSettings /> : null
+      case 'center_info': return <CenterInfoSettings />
       default:            return <ComingSoon title={activeCard?.title ?? 'Coming soon'} />
     }
   }

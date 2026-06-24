@@ -95,6 +95,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
         setOrgRole(oRole)
         setIsOrgAdmin(orgAdmin)
         setModules(data.modules ?? [])
+        console.log('[OrgContext] app_bootstrap modules:', data.modules)
         setCenters(accessible)
         // Default to a concrete center so center-scoped pages (Meal Count,
         // Reports, Menu…) always filter correctly. Admins can switch to the

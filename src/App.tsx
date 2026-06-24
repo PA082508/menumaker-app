@@ -23,6 +23,7 @@ import CustomExportPage from '@/pages/export/CustomExportPage'
 import SiteClaimReport from './pages/reports/SiteClaimReport'
 import ReimbursementPreview from './pages/reports/ReimbursementPreview'
 import CACFPChecklistPage from './pages/cacfp-reports/CACFPChecklistPage'
+import SafePassTeacherPage from './pages/safepass/SafePassTeacherPage'
 import KitchenPlanningReport from './pages/reports/KitchenPlanningReport'
 import ReceiptReviewPage from '@/pages/receipt-review/ReceiptReviewPage'
 import UserManagementPage from '@/pages/org/UserManagementPage'
@@ -120,6 +121,7 @@ export default function App() {
               <Route path="claim-report"    element={<SiteClaimReport />} />
               <Route path="reimbursement-preview" element={<ReimbursementPreview />} />
               <Route path="cacfp-checklist" element={<CACFPChecklistPage />} />
+              <Route path="safepass/teacher" element={<SafePassTeacherPage />} />
               <Route path="kitchen-report"      element={<KitchenPlanningReport />} />
               <Route path="receipt-review"     element={<ReceiptReviewPage />} />
               <Route path="children/import"    element={<ChildrenImportPage />} />

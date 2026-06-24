@@ -9,7 +9,7 @@
 //
 // Each draft becomes an editable card. The office manager can:
 //   • edit the body text in-place
-//   • jump to the relevant form ("Fill" chips → /forms/* routes)
+//   • jump to the relevant form ("Fill" chips → /submissions?type=* routes)
 //   • polish the text with Claude ("Generate text" → dispatch-compose edge fn)
 //   • Approve  (status → 'approved', stores body_approved + approver + timestamp)
 //   • Mark handled (status → 'handled' — office sends it manually; no auto-send)
@@ -45,9 +45,9 @@ interface DispatchDraft {
 
 // ─── Form-code map: code → { label, route } ──────────────────────────────────
 const FORM_MAP: Record<string, { label: string; route: string }> = {
-  ieg_application:         { label: "IEA application",               route: "/forms/iea" },
-  special_diet_statement:  { label: "Medical / special diet form",   route: "/forms/medical" },
-  enrollment_form:         { label: "Enrollment form",               route: "/forms/enrollment" },
+  ieg_application:         { label: "IEA application",               route: "/submissions?type=ieg_application" },
+  special_diet_statement:  { label: "Medical / special diet form",   route: "/submissions?type=special_diet_statement" },
+  enrollment_form:         { label: "Enrollment form",               route: "/submissions?type=enrollment_form" },
 };
 
 function formLabel(code: string): string {

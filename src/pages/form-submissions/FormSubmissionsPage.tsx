@@ -10,6 +10,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 
 // ---------- типы ----------
@@ -139,6 +140,23 @@ const TABS: TabConfig[] = [
   },
 ]
 
+// ---------- ?type= → вкладка ----------
+// Dispatch-чипы ссылаются на /submissions?type=<code>. Коды диспетчера не
+// совпадают с id таблиц-вкладок, поэтому маппим известные алиасы на вкладку.
+// Неизвестный/пустой type → дефолтная вкладка (первая).
+const TYPE_ALIASES: Record<string, string> = {
+  special_diet_statement: 'special_diet_forms',
+  special_diet:           'special_diet_forms',
+  milk_substitution:      'milk_substitutions',
+  infant_meals:           'infant_meal_preferences',
+}
+
+function resolveTab(type: string | null): string {
+  if (!type) return TABS[0].id
+  if (TABS.some(t => t.id === type)) return type   // прямой id вкладки
+  return TYPE_ALIASES[type] ?? TABS[0].id          // алиас или дефолт
+}
+
 // ---------- стили (палитра MenuMaker: #0f4c35 / #7ee8b0, DM Sans) ----------
 const S: Record<string, React.CSSProperties> = {
   page:      { padding: '32px 36px', fontFamily: "'DM Sans', sans-serif" },
@@ -207,7 +225,8 @@ const cellValue = (row: Row, col: Column): string => {
 
 // ---------- компонент ----------
 export default function FormSubmissionsPage() {
-  const [tabId, setTabId] = useState<string>(TABS[0].id)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [tabId, setTabId] = useState<string>(() => resolveTab(searchParams.get('type')))
   const [rows, setRows] = useState<Row[]>([])
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
@@ -215,6 +234,20 @@ export default function FormSubmissionsPage() {
   const [selected, setSelected] = useState<Row | null>(null)
 
   const tab = TABS.find(t => t.id === tabId)!
+
+  // синхронизация при внешней навигации (например, клик по чипу из Dispatch,
+  // когда страница уже открыта) — ?type= меняется → выбираем вкладку
+  useEffect(() => {
+    setTabId(resolveTab(searchParams.get('type')))
+  }, [searchParams])
+
+  // выбор вкладки вручную: обновляем и состояние, и ?type= в URL
+  function selectTab(id: string) {
+    setTabId(id)
+    const next = new URLSearchParams(searchParams)
+    next.set('type', id)
+    setSearchParams(next, { replace: true })
+  }
 
   // загрузка записей активной вкладки + счётчики всех вкладок
   const load = useCallback(async () => {
@@ -269,7 +302,7 @@ export default function FormSubmissionsPage() {
 
       <div style={S.tabs}>
         {TABS.map(t => (
-          <button key={t.id} style={tabBtn(t.id === tabId)} onClick={() => setTabId(t.id)}>
+          <button key={t.id} style={tabBtn(t.id === tabId)} onClick={() => selectTab(t.id)}>
             {t.label}
             <span style={S.count}>{counts[t.id] ?? '…'}</span>
           </button>

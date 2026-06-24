@@ -18,6 +18,7 @@ import FormSubmissionsPage from './pages/form-submissions/FormSubmissionsPage'
 import MealCountPage from '@/pages/meal-count/MealCountPage'
 import DocumentsPage from '@/pages/documents/DocumentsPage'
 import DispatchPage from '@/pages/dispatch/DispatchPage'
+import DeliveryPage from '@/pages/delivery/DeliveryPage'
 import CustomExportPage from '@/pages/export/CustomExportPage'
 import SiteClaimReport from './pages/reports/SiteClaimReport'
 import KitchenPlanningReport from './pages/reports/KitchenPlanningReport'
@@ -103,7 +104,7 @@ export default function App() {
               <Route path="recipes"    element={<RecipesPage />} />
               <Route path="kitchen"       element={<KitchenViewPage />} />
               <Route path="kitchen-stock" element={<KitchenStockPage />} />
-              <Route path="delivery"   element={<PlaceholderPage title="Delivery Routes" />} />
+              <Route path="delivery"   element={<DeliveryPage />} />
               <Route path="purchases"  element={<PurchasesPage />} />
               <Route path="inventory"  element={<InventoryPage />} />
               <Route path="reports"    element={<CACFPReportsPage />} />

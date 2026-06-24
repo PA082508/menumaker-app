@@ -91,15 +91,25 @@ function CenterDashboard() {
 
       const cycleId = cycles?.[0]?.id
 
-      // Upcoming holidays
-      const { data: holidays } = await supabase
+      // Upcoming holidays — the table has one row per center, so fetch this year
+      // + next (for the Dec→Jan rollover), dedup, then keep only today..+45 days.
+      const yr = today.getFullYear()
+      const { data: holRows } = await supabase
         .schema('menumaker').from('holidays')
         .select('name, day, month, year, type')
-        .eq('year', today.getFullYear())
-        .gte('month', today.getMonth() + 1)
-        .lte('month', today.getMonth() + 2)
-        .order('month').order('day')
-        .limit(5)
+        .in('year', [yr, yr + 1])
+        .order('year').order('month').order('day')
+      const holStart = new Date(yr, today.getMonth(), today.getDate())
+      const holEnd = new Date(holStart); holEnd.setDate(holEnd.getDate() + 45)
+      type HolRow = { name: string; day: number; month: number; year: number; type: string }
+      const seenHol = new Set<string>()
+      const holidays = ((holRows ?? []) as HolRow[]).filter((h) => {
+        const key = `${h.year}-${h.month}-${h.day}-${h.name}`
+        if (seenHol.has(key)) return false
+        seenHol.add(key)
+        const hd = new Date(h.year, h.month - 1, h.day)
+        return hd >= holStart && hd <= holEnd
+      }).slice(0, 5)
 
       // Sodium flags
       const { data: sodiumData } = await supabase
@@ -280,7 +290,7 @@ function CenterDashboard() {
           </div>
           <div style={{ padding: '8px 0' }}>
             {stats?.upcomingHolidays.length === 0 ? (
-              <div style={{ padding: '16px 20px', color: '#aaa', fontSize: 13 }}>No holidays in the next 30 days</div>
+              <div style={{ padding: '16px 20px', color: '#aaa', fontSize: 13 }}>No holidays in the next 45 days</div>
             ) : (
               stats?.upcomingHolidays.map((h, i) => (
                 <div key={i} style={{ padding: '10px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: i < (stats.upcomingHolidays.length - 1) ? '1px solid #f5f5f5' : 'none' }}>

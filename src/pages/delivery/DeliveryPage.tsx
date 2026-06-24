@@ -8,16 +8,17 @@ import { useOrg } from '@/contexts/OrgContext'
 import { DeliveryLog } from './DeliveryLog'
 import { DeliveryTemperatureLog } from './DeliveryTemperatureLog'
 import { DeliveryLabel } from './DeliveryLabel'
+import DeliveryDispatch from './DeliveryDispatch'
 
-type Tab = 'log' | 'temp' | 'label'
+type Tab = 'dispatch' | 'log' | 'temp' | 'label'
 type Preset = { routeId: string; stopId: string; containerId: string }
 
-const TABS: [Tab, string][] = [['log', '📋 Log'], ['temp', '🌡️ Temperature Log'], ['label', '🏷️ Label']]
+const TABS: [Tab, string][] = [['dispatch', '🚚 Dispatch'], ['log', '📋 Log'], ['temp', '🌡️ Temperature Log'], ['label', '🏷️ Label']]
 
 export default function DeliveryPage() {
   const { org } = useOrg()
   const orgId = org?.id
-  const [tab, setTab] = useState<Tab>('log')
+  const [tab, setTab] = useState<Tab>('dispatch')
   const [preset, setPreset] = useState<Preset | null>(null)
 
   const showLabel = (routeId: string, stopId: string, containerId: string) => {
@@ -44,6 +45,7 @@ export default function DeliveryPage() {
         ))}
       </div>
 
+      {tab === 'dispatch' && <DeliveryDispatch />}
       {tab === 'log'   && <DeliveryLog orgId={orgId} onShowLabel={showLabel} />}
       {tab === 'temp'  && <DeliveryTemperatureLog orgId={orgId} />}
       {tab === 'label' && <LabelTab orgId={orgId} preset={preset} />}

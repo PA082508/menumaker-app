@@ -83,10 +83,12 @@ export default function AppLayout() {
     ? permItems
     : NAV_ITEMS.filter(item => !item.roles || (role && item.roles.includes(role)))
 
-  // Cook / teacher: the sidebar shows ONLY Meal Count.
-  const isCookOrTeacher = role === 'cook' || (role as string) === 'teacher'
+  // Cook: sidebar shows Meal Count + Delivery (dispatch). Teacher: Meal Count only.
+  // Sourced from NAV_ITEMS directly so it works regardless of permission-driven nav.
+  const isCook = role === 'cook'
+  const isCookOrTeacher = isCook || (role as string) === 'teacher'
   const visibleItems = isCookOrTeacher
-    ? baseVisible.filter(item => item.path.includes('meal-count'))
+    ? NAV_ITEMS.filter(item => item.path === '/meal-count' || (isCook && item.path === '/delivery'))
     : baseVisible
 
   // Route guard: if permissions are active and the user opened a guarded module
@@ -94,9 +96,12 @@ export default function AppLayout() {
   // blocked (anti-lockout); unknown/utility routes pass through.
   const allowedPaths = usingPerms ? new Set(permItems.map(i => i.path)) : null
   const basePath = '/' + (location.pathname.split('/')[1] || 'dashboard')
+  // Cook's two surfaced routes are never blocked (they're sidebar-allowed above).
+  const cookAllowed = isCookOrTeacher && (basePath === '/meal-count' || (isCook && basePath === '/delivery'))
   const blocked =
     usingPerms &&
     basePath !== '/dashboard' &&
+    !cookAllowed &&
     KNOWN_MODULE_ROUTES.has(basePath) &&
     !allowedPaths!.has(basePath)
 

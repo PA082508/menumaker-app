@@ -100,7 +100,10 @@ const S: Record<string, React.CSSProperties> = {
 
 export default function ReimbursementPreview() {
   const { centers, currentCenter } = useOrg()
-  const list = centers.length > 0 ? centers : currentCenter ? [currentCenter] : []
+  // Kitchen is a production hub, not a claim site — exclude it from the preview.
+  const KITCHEN_CENTER_ID = 'ec46ac9f-f2e3-42e7-922c-0de8a87a1a14'
+  const list = (centers.length > 0 ? centers : currentCenter ? [currentCenter] : [])
+    .filter(c => c.id !== KITCHEN_CENTER_ID)
 
   const [month, setMonth]     = useState<string>(monthValue(new Date()))
   const [tab, setTab]         = useState<string>('all')  // 'all' or a center id
@@ -141,6 +144,11 @@ export default function ReimbursementPreview() {
     (a, r) => ({ served: a.served + r.served, free: a.free + r.free, reduced: a.reduced + r.reduced, paid: a.paid + r.paid, subtotal: a.subtotal + r.subtotal }),
     { served: 0, free: 0, reduced: 0, paid: 0, subtotal: 0 },
   )
+
+  // RPC's own reimbursement.total (includes CIL + stored rates) for the active tab
+  const rpcTotal = tab === 'all'
+    ? list.reduce((sum, c) => sum + (results[c.id]?.reimbursement?.total ?? 0), 0)
+    : (results[tab]?.reimbursement?.total ?? 0)
 
   const activeName = tab === 'all' ? 'All Centers (Consolidated)' : (list.find(c => c.id === tab)?.name ?? 'Center')
   const monthLabel = new Date(month + '-01T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
@@ -255,20 +263,31 @@ export default function ReimbursementPreview() {
           </table>
         </div>
 
-        {/* Grand total callout */}
+        {/* Totals — Estimated (rate × counts) vs RPC Total (reimbursement.total) */}
         {rows.length > 0 && (
-          <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', gap: 12 }}>
-            <span style={{ fontSize: 13, color: '#888' }}>Estimated grand total</span>
-            <span style={{ fontSize: 26, fontWeight: 700, color: '#0f4c35', fontFamily: "'DM Serif Display', serif" }}>{usd(totals.subtotal)}</span>
+          <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end', gap: 14, flexWrap: 'wrap' }}>
+            <div style={{ minWidth: 220, padding: '14px 18px', borderRadius: 12, background: '#f4fdf7', border: '1px solid #bbf7d0' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#0f4c35', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Estimated</div>
+              <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>rate × meal counts</div>
+              <div style={{ fontSize: 26, fontWeight: 700, color: '#0f4c35', fontFamily: "'DM Serif Display', serif" }}>{usd(totals.subtotal)}</div>
+            </div>
+            <div style={{ minWidth: 220, padding: '14px 18px', borderRadius: 12, background: '#eff6ff', border: '1px solid #bfdbfe' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#1e40af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>RPC Total</div>
+              <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>compute_monthly_claim</div>
+              <div style={{ fontSize: 26, fontWeight: 700, color: '#1e40af', fontFamily: "'DM Serif Display', serif" }}>{usd(rpcTotal)}</div>
+            </div>
           </div>
         )}
 
-        <div style={{ marginTop: 16, fontSize: 11, color: '#aab4ad', maxWidth: 720 }}>
-          Estimate only — computed from recorded meal counts × FY2025-2026 federal rates
-          (Breakfast {usd(RATES.breakfast.f)}/{usd(RATES.breakfast.r)}/{usd(RATES.breakfast.p)},
+        <div style={{ marginTop: 16, fontSize: 11, color: '#aab4ad', maxWidth: 720, lineHeight: 1.5 }}>
+          <strong style={{ color: '#0f4c35' }}>Estimated</strong> uses recorded meal counts × hardcoded
+          FY2025-2026 federal rates (Breakfast {usd(RATES.breakfast.f)}/{usd(RATES.breakfast.r)}/{usd(RATES.breakfast.p)},
           Lunch &amp; Supper {usd(RATES.lunch.f)}/{usd(RATES.lunch.r)}/{usd(RATES.lunch.p)},
           Snack {usd(RATES.snack.f)}/{usd(RATES.snack.r)}/{usd(RATES.snack.p)}).
-          Final reimbursement is determined by the state portal and may differ.
+          {' '}<strong style={{ color: '#1e40af' }}>RPC Total</strong> is the
+          <code> reimbursement.total</code> returned by <code>compute_monthly_claim</code>, which can
+          differ because it also adds cash-in-lieu (CIL) and may use the rates stored in the database
+          rather than these hardcoded ones. Both are estimates — the state portal determines the final figure.
         </div>
       </div>
     </div>

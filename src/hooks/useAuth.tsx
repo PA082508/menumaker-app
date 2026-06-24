@@ -3,6 +3,7 @@ import { User, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 
 type UserRole =
+  | 'admin'
   | 'director'
   | 'cook'
   | 'office_manager'
@@ -10,7 +11,6 @@ type UserRole =
   | 'accountant'
   | 'driver'
   | 'purchaser'
-  | 'dietitian'
 
 interface AuthUser extends User {
   role?: UserRole
@@ -19,7 +19,8 @@ interface AuthUser extends User {
 interface AuthContextType {
   user: AuthUser | null
   session: Session | null
-  role: UserRole | null
+  role: UserRole | null      // most-privileged single role (for default landing/tab)
+  roles: UserRole[]          // ALL roles the user holds (for union-based gating)
   loading: boolean
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>
   signOut: () => Promise<void>
@@ -31,27 +32,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [role, setRole] = useState<UserRole | null>(null)
+  const [roles, setRoles] = useState<UserRole[]>([])
   const [loading, setLoading] = useState(true)
 
-  const fetchUserRole = async (userId: string) => {
+  // Privilege ranking — most privileged first. When a user holds several roles
+  // we surface the most privileged one (NOT the first alphabetically).
+  const ROLE_RANK: Record<string, number> = {
+    admin:           0,
+    office_manager:  1,
+    director:        2,
+    cacfp_inspector: 3,
+    accountant:      4,
+    purchaser:       5,
+    cook:            6,
+    driver:          7,
+  }
+
+  // Returns ALL roles the user holds, plus the most-privileged one.
+  const fetchUserRoles = async (userId: string): Promise<{ all: UserRole[]; top: UserRole | null }> => {
     const { data } = await supabase
       .schema('menumaker')
       .from('user_roles')
       .select('role')
       .eq('user_id', userId)
-      .order('role')
-      .limit(1)
-      .maybeSingle()
-    return (data?.role as UserRole) || null
+    if (!data?.length) return { all: [], top: null }
+    const all = data.map((r) => r.role as UserRole)
+    const top = [...all].sort(
+      (a, b) => (ROLE_RANK[a] ?? 99) - (ROLE_RANK[b] ?? 99)
+    )[0] ?? null
+    return { all, top }
   }
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session)
       if (session?.user) {
-        const userRole = await fetchUserRole(session.user.id)
-        setUser({ ...session.user, role: userRole ?? undefined })
-        setRole(userRole)
+        const { all, top } = await fetchUserRoles(session.user.id)
+        setUser({ ...session.user, role: top ?? undefined })
+        setRole(top)
+        setRoles(all)
       }
       setLoading(false)
     })
@@ -60,12 +79,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async (_event, session) => {
         setSession(session)
         if (session?.user) {
-          const userRole = await fetchUserRole(session.user.id)
-          setUser({ ...session.user, role: userRole ?? undefined })
-          setRole(userRole)
+          const { all, top } = await fetchUserRoles(session.user.id)
+          setUser({ ...session.user, role: top ?? undefined })
+          setRole(top)
+          setRoles(all)
         } else {
           setUser(null)
           setRole(null)
+          setRoles([])
         }
         setLoading(false)
       }
@@ -84,7 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, session, role, loading, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, session, role, roles, loading, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   )
@@ -108,5 +129,3 @@ export const canManagePurchases = (role: UserRole | null) =>
 
 export const isDriver = (role: UserRole | null) => role === 'driver'
 export const isInspector = (role: UserRole | null) => role === 'cacfp_inspector'
-export const canApproveDiet = (role: UserRole | null) =>
-  role === 'director' || role === 'dietitian'

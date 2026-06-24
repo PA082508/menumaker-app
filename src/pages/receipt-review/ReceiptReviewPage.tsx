@@ -71,7 +71,7 @@ function ImageViewer({ paths }: { paths: string[] }) {
       height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center',
       background: '#f4f6f4', borderRadius: 8, color: '#bbb', fontSize: 13,
     }}>
-      Нет фото
+      No photo
     </div>
   )
 
@@ -81,8 +81,8 @@ function ImageViewer({ paths }: { paths: string[] }) {
         background: '#f0f0f0', borderRadius: 8, overflow: 'hidden',
         minHeight: 180, display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
-        {!url && !imgErr && <div style={{ color: '#bbb', fontSize: 12 }}>Загрузка…</div>}
-        {imgErr        && <div style={{ color: '#c0392b', fontSize: 12 }}>Ошибка загрузки фото</div>}
+        {!url && !imgErr && <div style={{ color: '#bbb', fontSize: 12 }}>Loading…</div>}
+        {imgErr        && <div style={{ color: '#c0392b', fontSize: 12 }}>Failed to load photo</div>}
         {url && (
           <img
             src={url}
@@ -172,14 +172,14 @@ function ReceiptCard({ receipt, onRemove }: { receipt: Receipt; onRemove: (id: s
 
       if (recheck?.status === 'needs_review') {
         setCardState('bounced')
-        setErrMsg('Запись вернулась в очередь — проверьте год и суммы')
+        setErrMsg('Record returned to the queue — check the year and amounts')
       } else {
         setCardState('saved')
         setTimeout(() => onRemove(receipt.id), 600)
       }
     } catch (e: any) {
       setCardState('error')
-      setErrMsg(e.message || 'Ошибка сохранения')
+      setErrMsg(e.message || 'Save failed')
     }
   }
 
@@ -193,7 +193,7 @@ function ReceiptCard({ receipt, onRemove }: { receipt: Receipt; onRemove: (id: s
       onRemove(receipt.id)
     } catch (e: any) {
       setCardState('error')
-      setErrMsg(e.message || 'Ошибка')
+      setErrMsg(e.message || 'Error')
     }
   }
 
@@ -207,7 +207,7 @@ function ReceiptCard({ receipt, onRemove }: { receipt: Receipt; onRemove: (id: s
       onRemove(receipt.id)
     } catch (e: any) {
       setCardState('error')
-      setErrMsg(e.message || 'Ошибка удаления')
+      setErrMsg(e.message || 'Delete failed')
       setConfirmDel(false)
     }
   }
@@ -256,11 +256,11 @@ function ReceiptCard({ receipt, onRemove }: { receipt: Receipt; onRemove: (id: s
 
         {/* Left: image viewer */}
         <div>
-          <div style={{ ...labelSt, display: 'block', marginBottom: 8 }}>Фото чека</div>
+          <div style={{ ...labelSt, display: 'block', marginBottom: 8 }}>Receipt photo</div>
           <ImageViewer paths={allPaths} />
           <div style={{ fontSize: 10, color: '#ccc', marginTop: 6 }}>
             {receipt.created_at
-              ? new Date(receipt.created_at).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })
+              ? new Date(receipt.created_at).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' })
               : ''}
           </div>
         </div>
@@ -270,7 +270,7 @@ function ReceiptCard({ receipt, onRemove }: { receipt: Receipt; onRemove: (id: s
 
           {/* Vendor */}
           <label style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            <span style={labelSt}>Поставщик (vendor)</span>
+            <span style={labelSt}>Vendor</span>
             <input
               value={vendor}
               onChange={e => setVendor(e.target.value)}
@@ -283,7 +283,7 @@ function ReceiptCard({ receipt, onRemove }: { receipt: Receipt; onRemove: (id: s
           {/* Date + fiscal_month (read-only) */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 96px', gap: 10 }}>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <span style={labelSt}>Дата чека</span>
+              <span style={labelSt}>Receipt date</span>
               <input
                 type="date"
                 value={date}
@@ -305,7 +305,7 @@ function ReceiptCard({ receipt, onRemove }: { receipt: Receipt; onRemove: (id: s
 
           {/* Amounts */}
           <div>
-            <div style={{ ...labelSt, marginBottom: 6 }}>Суммы ($)</div>
+            <div style={{ ...labelSt, marginBottom: 6 }}>Amounts ($)</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
               {([
                 ['Food',      foodAmt,     setFoodAmt],
@@ -328,7 +328,7 @@ function ReceiptCard({ receipt, onRemove }: { receipt: Receipt; onRemove: (id: s
 
           {/* Milk */}
           <div>
-            <div style={{ ...labelSt, marginBottom: 6 }}>Молоко (галлоны)</div>
+            <div style={{ ...labelSt, marginBottom: 6 }}>Milk (gallons)</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
               {([
                 ['Whole',  milkWhole, setMilkWhole],
@@ -362,13 +362,13 @@ function ReceiptCard({ receipt, onRemove }: { receipt: Receipt; onRemove: (id: s
                 fontFamily: 'inherit', whiteSpace: 'nowrap' as const,
               }}
             >
-              {cardState === 'saving' ? 'Сохранение…' : '✓ Сохранить и провести'}
+              {cardState === 'saving' ? 'Saving…' : '✓ Save & post'}
             </button>
 
             <button
               onClick={handleRequeue}
               disabled={busy}
-              title="Вернуть в OCR-очередь (~2 мин)"
+              title="Return to OCR queue (~2 min)"
               style={{
                 padding: '10px 12px', borderRadius: 9,
                 border: '1.5px solid #e0e0e0', background: '#fff', color: '#555',
@@ -377,7 +377,7 @@ function ReceiptCard({ receipt, onRemove }: { receipt: Receipt; onRemove: (id: s
                 fontFamily: 'inherit', whiteSpace: 'nowrap' as const,
               }}
             >
-              🔄 На распознавание
+              🔄 Re-scan
             </button>
 
             {!confirmDel ? (
@@ -396,7 +396,7 @@ function ReceiptCard({ receipt, onRemove }: { receipt: Receipt; onRemove: (id: s
               </button>
             ) : (
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <span style={{ fontSize: 11, color: '#c0392b', whiteSpace: 'nowrap' as const }}>Удалить?</span>
+                <span style={{ fontSize: 11, color: '#c0392b', whiteSpace: 'nowrap' as const }}>Delete?</span>
                 <button
                   onClick={handleDelete}
                   disabled={busy}
@@ -406,7 +406,7 @@ function ReceiptCard({ receipt, onRemove }: { receipt: Receipt; onRemove: (id: s
                     fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
                   }}
                 >
-                  Да
+                  Yes
                 </button>
                 <button
                   onClick={() => setConfirmDel(false)}
@@ -416,7 +416,7 @@ function ReceiptCard({ receipt, onRemove }: { receipt: Receipt; onRemove: (id: s
                     fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
                   }}
                 >
-                  Отмена
+                  Cancel
                 </button>
               </div>
             )}
@@ -452,12 +452,10 @@ export default function ReceiptReviewPage() {
 
   const count = receipts.length
   const countLabel = count === 0
-    ? 'Нет чеков в очереди'
+    ? 'No receipts in the queue'
     : count === 1
-      ? '1 чек требует проверки'
-      : count < 5
-        ? `${count} чека требуют проверки`
-        : `${count} чеков требуют проверки`
+      ? '1 receipt needs review'
+      : `${count} receipts need review`
 
   return (
     <div style={{ padding: '24px 32px', fontFamily: "'DM Sans', sans-serif", background: '#f4f6f4', minHeight: '100vh' }}>
@@ -466,10 +464,10 @@ export default function ReceiptReviewPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
           <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 26, color: '#0a3320', marginBottom: 2 }}>
-            Проверка чеков
+            Receipt Review
           </div>
           <div style={{ fontSize: 12, color: '#888' }}>
-            {loading ? 'Загрузка…' : countLabel}
+            {loading ? 'Loading…' : countLabel}
           </div>
         </div>
         <button
@@ -483,13 +481,13 @@ export default function ReceiptReviewPage() {
             fontFamily: 'inherit',
           }}
         >
-          🔄 Обновить
+          🔄 Refresh
         </button>
       </div>
 
       {loading && (
         <div style={{ textAlign: 'center', padding: 80, color: '#aaa', fontSize: 13 }}>
-          Загрузка…
+          Loading…
         </div>
       )}
 
@@ -501,9 +499,9 @@ export default function ReceiptReviewPage() {
         }}>
           <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
           <div style={{ fontSize: 18, fontWeight: 600, color: '#0a3320', marginBottom: 6 }}>
-            Нет чеков, требующих проверки
+            No receipts need review
           </div>
-          <div style={{ fontSize: 13, color: '#888' }}>Все чеки обработаны</div>
+          <div style={{ fontSize: 13, color: '#888' }}>All receipts processed</div>
         </div>
       )}
 

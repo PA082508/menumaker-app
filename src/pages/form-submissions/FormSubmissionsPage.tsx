@@ -35,17 +35,13 @@ type TabConfig = {
 const TABS: TabConfig[] = [
   {
     id: 'special_diet_forms',
-    label: 'Special Diet / CF-HS27',
+    label: 'Special Diet',
     columns: [
       { key: 'child_name', label: 'Child' },
       { key: 'birth_date', label: 'Birth Date' },
       { key: 'diet_basis', label: 'Basis', map: {
         disability: 'Disability',
         no_disability_special_diet: 'Special diet (no disability)',
-      }},
-      { key: 'substitution_type', label: 'HS Type', map: {
-        medical: 'Medical',
-        non_medical: 'Non-medical',
       }},
       { key: 'review_date', label: 'Review Date' },
       { key: 'authority_printed_name', label: 'Medical Authority' },
@@ -62,9 +58,7 @@ const TABS: TabConfig[] = [
       ['Cell Phone', 'cell_phone'],
       ['Address', (r) => [r.address, r.city, r.state, r.zip].filter(Boolean).join(', ')],
       ['Basis', (r) => r.diet_basis === 'disability' ? 'Disability' : 'Special diet (no disability)'],
-      ['HS Substitution Type (CF/HS-27)', (r) => r.substitution_type === 'medical' ? 'Medical (disability)' : r.substitution_type === 'non_medical' ? 'Non-medical' : '—'],
       ['Review Date', (r) => r.review_date ? `${r.review_date}${new Date(r.review_date) < new Date() ? ' ⚠ EXPIRED' : ' ✓ Current'}` : '—'],
-      ['Health Manager Sign-Off', (r) => r.health_manager_signed_at ? new Date(r.health_manager_signed_at).toLocaleDateString('en-US') : '—'],
       ['Disability Description', 'disability_desc'],
       ['Major Life Activity Affected', 'major_life_activity'],
       ['How Diet Is Restricted', 'diet_restriction'],

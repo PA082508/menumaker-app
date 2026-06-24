@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import MilkRatesSettings from '@/components/settings/MilkRatesSettings'
 import MealCountSettings from '@/components/settings/MealCountSettings'
-import HeadStartSettings from './HeadStartSettings'
+import MealCountAccessSettings from '@/components/settings/MealCountAccessSettings'
+import PermissionsSettings from '@/components/settings/PermissionsSettings'
 import { useOrg } from '@/contexts/OrgContext'
+import { useAuth } from '@/hooks/useAuth'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -51,7 +53,7 @@ interface Purchaser {
   is_active: boolean
 }
 
-type Tab = 'products' | 'vendors' | 'purchasers' | 'assign' | 'milk' | 'mealcount' | 'headstart'
+type Tab = 'products' | 'vendors' | 'purchasers' | 'assign' | 'milk' | 'mealcount' | 'access' | 'permissions'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -1201,6 +1203,9 @@ function AssignTab() {
 export default function SettingsPage() {
   const [tab, setTab] = useState<Tab>('products')
   const { currentCenter, centers, orgRole, setCurrentCenter } = useOrg()
+  const { role } = useAuth()
+  const canManageAccess = role === 'admin' || role === 'office_manager' || orgRole === 'admin'
+  const isOwner = orgRole === 'admin'
 
   return (
     <div style={{ padding: '24px 32px', fontFamily: "'DM Sans', sans-serif", background: '#f4f6f4', minHeight: '100vh' }}>
@@ -1234,7 +1239,7 @@ export default function SettingsPage() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, background: '#fff', padding: 5, borderRadius: 10, border: '1px solid #e0e0e0', width: 'fit-content', marginBottom: 20 }}>
-        {([ ['products','📦 Products'], ['vendors','🏪 Vendors'], ['purchasers','👤 Purchasers'], ['assign','🔗 Assign'], ['milk','🥛 Milk Rates'], ['mealcount','🍽️ Meal Slots'], ['headstart','🏫 Head Start Program'] ] as [Tab, string][]).map(([val, label]) => (
+        {([ ['products','📦 Products'], ['vendors','🏪 Vendors'], ['purchasers','👤 Purchasers'], ['assign','🔗 Assign'], ['milk','🥛 Milk Rates'], ['mealcount','🍽️ Meal Slots'], ...(canManageAccess ? [['access','🔐 Meal Count Access'] as [Tab, string]] : []), ...(isOwner ? [['permissions','🛡️ Permissions'] as [Tab, string]] : []) ] as [Tab, string][]).map(([val, label]) => (
           <button key={val} onClick={() => setTab(val)} style={{
             padding: '7px 20px', borderRadius: 7, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
             background: tab === val ? '#0f4c35' : 'transparent',
@@ -1253,7 +1258,8 @@ export default function SettingsPage() {
       {tab === 'assign'     && <AssignTab />}
       {tab === 'milk'       && <MilkRatesSettings />}
       {tab === 'mealcount'  && <MealCountSettings />}
-      {tab === 'headstart'  && <HeadStartSettings />}
+      {tab === 'access' && canManageAccess && <MealCountAccessSettings />}
+      {tab === 'permissions' && isOwner && <PermissionsSettings />}
     </div>
   )
 }

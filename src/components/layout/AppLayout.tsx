@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useNavigate, useLocation, Link } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
-import { useProgramConfig } from '@/hooks/useProgramConfig'
 import { useOrg } from '@/contexts/OrgContext'
+import { routeForModule, KNOWN_MODULE_ROUTES, MODULE_ICON_FALLBACK } from '@/lib/modules'
 
 type NavItem = {
   path: string
@@ -20,7 +20,6 @@ const ROLE_LABELS: Record<string, string> = {
   accountant:      'Accountant',
   driver:          'Driver',
   purchaser:       'Purchaser',
-  dietitian:       'Dietitian',
 }
 
 const ROLE_COLORS: Record<string, string> = {
@@ -35,41 +34,71 @@ const ROLE_COLORS: Record<string, string> = {
 
 export default function AppLayout() {
   const { user, role, signOut } = useAuth()
-  const { isHeadStart } = useProgramConfig()
-  const { modules } = useOrg()
+  const { modules, navModules } = useOrg()
   const hasCACFP = modules.includes('cacfp')
   const navigate = useNavigate()
+  const location = useLocation()
   const [collapsed, setCollapsed] = useState(false)
 
   const NAV_ITEMS: NavItem[] = [
     { path: '/dashboard',  label: 'Dashboard',      icon: '⊞' },
-    { path: '/menu',       label: 'Menu Planner',   icon: '📅', roles: ['director','cook','office_manager','cacfp_inspector','dietitian'] },
-    { path: '/recipes',    label: 'Recipes',        icon: '🍳', roles: ['director','cook','office_manager','dietitian'] },
+    { path: '/menu',       label: 'Menu Planner',   icon: '📅', roles: ['director','cook','office_manager','cacfp_inspector'] },
+    { path: '/recipes',    label: 'Recipes',        icon: '🍳', roles: ['director','cook','office_manager'] },
     { path: '/kitchen',    label: 'Kitchen View',   icon: '👨‍🍳', roles: ['director','cook'] },
     { path: '/delivery',   label: 'Delivery',       icon: '🚐', roles: ['director','driver'] },
     { path: '/purchases',  label: 'Purchases',      icon: '🛒', roles: ['director','purchaser'] },
     { path: '/kitchen-stock', label: 'Kitchen Stock', icon: '🏪', roles: ['director','cook','purchaser'] },
     { path: '/inventory',  label: 'Inventory',      icon: '📦', roles: ['director','purchaser','cook'] },
-    { path: '/meal-count', label: 'Meal Count · Teachers', icon: '🍽️', roles: ['director','cook','driver'] },
-    { path: '/meal-count-director', label: 'Meal Count · Director', icon: '📋', roles: ['director','office_manager'] },
-    ...(hasCACFP && !isHeadStart ? [
+    { path: '/meal-count', label: 'Meal Count', icon: '🍽️', roles: ['admin','director','cook','office_manager'] },
+    { path: '/documents',  label: 'Documents',  icon: '📁', roles: ['admin','office_manager','director'] },
+    { path: '/dispatch',   label: 'Dispatch',   icon: '📨', roles: ['admin','office_manager'] },
+    { path: '/export',     label: 'Custom Export', icon: '📤', roles: ['admin','office_manager','director'] },
+    ...(hasCACFP ? [
       { path: '/claim-report', label: 'Site Claim',    icon: '📋', roles: ['director','office_manager'] },
       { path: '/reports',      label: 'CACFP Reports', icon: '📊', roles: ['director','office_manager','cacfp_inspector'] },
     ] : []),
-    ...(hasCACFP && isHeadStart ? [
-      { path: '/family-engagement', label: 'Family Engagement', icon: '👨‍👩‍👧', roles: ['director','office_manager','dietitian'] },
-      { path: '/hs-reports',        label: 'HS Reports',        icon: '📊', roles: ['director','office_manager','dietitian'] },
-    ] : []),
     { path: '/receipt-review', label: 'Receipt Review',  icon: '🧾', roles: ['director','office_manager'] },
     { path: '/kitchen-report', label: 'Kitchen Report', icon: '👨‍🍳', roles: ['director','cook','office_manager'] },
-    { path: '/submissions', label: 'Form Submissions', icon: '📨', roles: ['director','office_manager','cacfp_inspector','dietitian'] },
+    { path: '/submissions', label: 'Form Submissions', icon: '📨', roles: ['director','office_manager','cacfp_inspector'] },
     { path: '/finance',    label: 'Finance',        icon: '💰', roles: ['director','accountant'] },
-    { path: '/settings',   label: 'Settings',       icon: '⚙️', roles: ['director'] },
+    { path: '/settings',   label: 'Settings',       icon: '⚙️', roles: ['director','admin','office_manager'] },
   ]
 
-  const visibleItems = NAV_ITEMS.filter(item =>
-    !item.roles || (role && item.roles.includes(role))
-  )
+  // Variant B: build nav from user_modules when available; otherwise fall back
+  // to the legacy role-based gating (keeps current behavior until the backend
+  // returns modules for every user).
+  const usingPerms = Array.isArray(navModules) && navModules.length > 0
+
+  const permItems: NavItem[] = usingPerms
+    ? [...navModules!]
+        .sort((a, b) => a.sort_order - b.sort_order)
+        .map(m => ({
+          path: routeForModule(m.module_code),
+          label: m.label,
+          icon: m.icon || MODULE_ICON_FALLBACK[m.module_code] || '•',
+        }))
+    : []
+
+  const baseVisible = usingPerms
+    ? permItems
+    : NAV_ITEMS.filter(item => !item.roles || (role && item.roles.includes(role)))
+
+  // Cook / teacher: the sidebar shows ONLY Meal Count.
+  const isCookOrTeacher = role === 'cook' || (role as string) === 'teacher'
+  const visibleItems = isCookOrTeacher
+    ? baseVisible.filter(item => item.path.includes('meal-count'))
+    : baseVisible
+
+  // Route guard: if permissions are active and the user opened a guarded module
+  // route that is not in their allowed set, show a 403. Dashboard is never
+  // blocked (anti-lockout); unknown/utility routes pass through.
+  const allowedPaths = usingPerms ? new Set(permItems.map(i => i.path)) : null
+  const basePath = '/' + (location.pathname.split('/')[1] || 'dashboard')
+  const blocked =
+    usingPerms &&
+    basePath !== '/dashboard' &&
+    KNOWN_MODULE_ROUTES.has(basePath) &&
+    !allowedPaths!.has(basePath)
 
   const handleSignOut = async () => {
     await signOut()
@@ -132,6 +161,9 @@ export default function AppLayout() {
             </div>
           )}
         </div>
+
+        {/* Active center / Organization switcher */}
+        <CenterSwitcher collapsed={collapsed} />
 
         {/* Navigation */}
         <nav style={{ flex: 1, padding: '12px 0', overflowY: 'auto' }}>
@@ -255,8 +287,95 @@ export default function AppLayout() {
         display: 'flex',
         flexDirection: 'column',
       }}>
-        <Outlet />
+        {blocked ? <Forbidden /> : <Outlet />}
       </main>
+    </div>
+  )
+}
+
+// Header center switcher. Admin / office_manager get a dropdown of their
+// accessible centers plus an "Organization" (org-wide) option. Center-mode
+// users (director/cook/teacher) see a static, non-switchable center label.
+function CenterSwitcher({ collapsed }: { collapsed: boolean }) {
+  const { isOrgAdmin, centers, currentCenter, viewMode, setCurrentCenter } = useOrg()
+  const short = (n?: string | null) => (n ?? '').replace(/^Play Academy\s+/i, '').trim() || '—'
+
+  // Nothing to show until centers resolve (and center-mode users with no center).
+  if (!currentCenter && !isOrgAdmin) return null
+
+  if (collapsed) {
+    const glyph = viewMode === 'org' ? '🏢' : short(currentCenter?.name).charAt(0).toUpperCase()
+    return (
+      <div
+        title={viewMode === 'org' ? 'Organization' : currentCenter?.name ?? ''}
+        style={{
+          margin: '10px auto 4px', width: 34, height: 34, borderRadius: 8,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(126,232,176,0.12)', border: '1px solid rgba(126,232,176,0.25)',
+          color: '#7ee8b0', fontSize: 13, fontWeight: 700,
+        }}
+      >
+        {glyph}
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ padding: '12px 16px 4px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+      <div style={{
+        fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase',
+        color: 'rgba(255,255,255,0.4)', marginBottom: 6,
+      }}>
+        {viewMode === 'org' ? 'Viewing' : 'Center'}
+      </div>
+
+      {isOrgAdmin ? (
+        <select
+          value={viewMode === 'org' ? '__org__' : (currentCenter?.id ?? '')}
+          onChange={e => {
+            const v = e.target.value
+            if (v === '__org__') { setCurrentCenter(null); return }
+            const c = centers.find(c => c.id === v)
+            if (c) setCurrentCenter(c)
+          }}
+          style={{
+            width: '100%', padding: '8px 10px', borderRadius: 8,
+            background: '#0f4c35', color: '#fff', fontSize: 13, fontWeight: 600,
+            border: '1px solid rgba(126,232,176,0.3)', cursor: 'pointer',
+            fontFamily: 'inherit', appearance: 'none',
+          }}
+        >
+          {centers.map(c => <option key={c.id} value={c.id} style={{ background: '#0a3320' }}>{short(c.name)}</option>)}
+          <option value="__org__" style={{ background: '#0a3320' }}>🏢 Organization</option>
+        </select>
+      ) : (
+        <div style={{ fontSize: 15, fontWeight: 600, color: '#fff' }}>
+          {short(currentCenter?.name)}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Forbidden() {
+  return (
+    <div style={{
+      flex: 1, display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center', gap: 12,
+      fontFamily: "'DM Sans', sans-serif", color: '#0a3320', padding: 40, textAlign: 'center',
+    }}>
+      <div style={{ fontSize: 44 }}>🔒</div>
+      <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 24 }}>Access restricted</div>
+      <div style={{ fontSize: 14, color: '#666', maxWidth: 420 }}>
+        You don’t have access to this section. If you think this is a mistake, ask an administrator
+        to grant it in Settings → Permissions.
+      </div>
+      <Link to="/dashboard" style={{
+        marginTop: 8, padding: '8px 18px', borderRadius: 8, background: '#0f4c35',
+        color: '#fff', textDecoration: 'none', fontSize: 13, fontWeight: 600,
+      }}>
+        ← Back to Dashboard
+      </Link>
     </div>
   )
 }

@@ -15,13 +15,17 @@ import InventoryPage from './pages/inventory/InventoryPage'
 import KitchenStockPage from './pages/kitchen-stock/KitchenStockPage'
 import CACFPReportsPage from './pages/cacfp-reports/CACFPReportsPage'
 import FormSubmissionsPage from './pages/form-submissions/FormSubmissionsPage'
-import MealCountDirectorPage from './pages/meal-count/MealCountDirectorPage'
 import MealCountPage from '@/pages/meal-count/MealCountPage'
+import DocumentsPage from '@/pages/documents/DocumentsPage'
+import DispatchPage from '@/pages/dispatch/DispatchPage'
+import CustomExportPage from '@/pages/export/CustomExportPage'
 import SiteClaimReport from './pages/reports/SiteClaimReport'
 import KitchenPlanningReport from './pages/reports/KitchenPlanningReport'
-import FamilyEngagementPage from '@/pages/family-engagement/FamilyEngagementPage'
-import HeadStartReportsPage from '@/pages/reports/HeadStartReportsPage'
 import ReceiptReviewPage from '@/pages/receipt-review/ReceiptReviewPage'
+import UserManagementPage from '@/pages/org/UserManagementPage'
+import ConsolidatedReport from '@/pages/org/ConsolidatedReport'
+import ChildrenImportPage from '@/pages/children/ChildrenImportPage'
+import ChildrenExportPage from '@/pages/children/ChildrenExportPage'
 
 // Lazy placeholders for other pages
 const PlaceholderPage = ({ title }: { title: string }) => (
@@ -106,12 +110,17 @@ export default function App() {
               <Route path="finance"    element={<PlaceholderPage title="Finance Export" />} />
               <Route path="submissions" element={<FormSubmissionsPage />} />
               <Route path="meal-count"  element={<MealCountPage />} />
-              <Route path="meal-count-director" element={<MealCountDirectorPage />} />
+              <Route path="meal-count-director" element={<Navigate to="/meal-count" replace />} />
+              <Route path="documents"   element={<DocumentsPage />} />
+              <Route path="dispatch"    element={<DispatchPage />} />
+              <Route path="export"      element={<CustomExportPage />} />
               <Route path="claim-report"    element={<SiteClaimReport />} />
               <Route path="kitchen-report"      element={<KitchenPlanningReport />} />
-              <Route path="family-engagement"  element={<FamilyEngagementPage />} />
-              <Route path="hs-reports"         element={<HeadStartReportsPage />} />
               <Route path="receipt-review"     element={<ReceiptReviewPage />} />
+              <Route path="children/import"    element={<ChildrenImportPage />} />
+              <Route path="children/export"    element={<ChildrenExportPage />} />
+              <Route path="org/users"  element={<UserManagementPage />} />
+              <Route path="org/consolidated-report" element={<ConsolidatedReport />} />
               <Route path="settings"   element={<SettingsPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/dashboard" replace />} />

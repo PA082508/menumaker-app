@@ -81,6 +81,7 @@ export default function PurchaserApp() {
     if (!purchaserId || view !== 'list') return
     setLoadingList(true)
     ;(async () => {
+      try {
       const [{ data: prods }, { data: checklist }] = await Promise.all([
         supabase.schema('menumaker').from('products')
           .select('id, name, vendor_id, purchase_frequency, sku, package_label, package_size, package_unit, vendors:vendor_id(name)')
@@ -108,7 +109,13 @@ export default function PurchaserApp() {
         package_unit:       p.package_unit ?? null,
       })))
       setChecked(checkMap)
-      setLoadingList(false)
+      } catch (err) {
+        console.error('[PurchaserApp] failed to load purchase list (step 2 transition):', err)
+        setProducts([])
+        setChecked({})
+      } finally {
+        setLoadingList(false)
+      }
     })()
   }, [purchaserId, view, weekStart])
 
@@ -246,7 +253,15 @@ export default function PurchaserApp() {
             purchasers.map(p => (
               <button
                 key={p.id}
-                onClick={() => { setPurchaserId(p.id); setView('list') }}
+                onClick={() => {
+                  try {
+                    if (!p?.id) { console.error('[PurchaserApp] selected purchaser has no id', p); return }
+                    setPurchaserId(p.id)
+                    setView('list')
+                  } catch (err) {
+                    console.error('[PurchaserApp] failed to select purchaser:', err)
+                  }
+                }}
                 style={{
                   display: 'block', width: '100%', padding: '14px 16px', marginBottom: 10,
                   borderRadius: 12, border: '1.5px solid #e0e0e0', background: '#fff',
@@ -345,8 +360,7 @@ export default function PurchaserApp() {
               <input
                 ref={fileRef}
                 type="file"
-                accept="image/*"
-                capture="environment"
+                accept="image/*,application/pdf"
                 onChange={handleFileChange}
                 disabled={scanState === 'analyzing'}
                 style={{ display: 'none' }}

@@ -3,9 +3,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
+import { useOrg } from "@/contexts/OrgContext";
 import { format, addDays, startOfWeek } from "date-fns";
-
-const CENTER_ID   = "881ef4ce-1a27-4d3b-aa60-59d2a307bf2b";
 const SK          = ["b","as","l","ps","su","es"];
 const DK          = ["mon","tue","wed","thu","fri"];
 const SL: Record<string,string> = {b:"Breakfast",as:"AM Snack",l:"Lunch",ps:"PM Snack",su:"Supper",es:"Eve Snack"};
@@ -49,6 +48,8 @@ interface MR  { age_group:string; milk_type:string; rate_oz:number; }
 interface Cfg { active_slots:string[]; milk_slots:string[]; }
 
 export default function KitchenPlanningReport() {
+  const { currentCenter } = useOrg();
+  const centerId = currentCenter?.id ?? "";
   const now = new Date();
   const [tab,       setTab]       = useState<Tab>("claimed");
   const [weekStart, setWeekStart] = useState<Date>(()=>monOf(now));
@@ -63,20 +64,22 @@ export default function KitchenPlanningReport() {
   const [loading,   setLoading]   = useState(false);
 
   useEffect(()=>{
+    if (!centerId) return;
     Promise.all([
-      supabase.schema("menumaker").from("classrooms").select("id,name,sort_order").eq("is_active",true).eq("center_id",CENTER_ID).order("sort_order"),
+      supabase.schema("menumaker").from("classrooms").select("id,name,sort_order").eq("is_active",true).eq("center_id",centerId).order("sort_order"),
       supabase.schema("menumaker").from("roster").select("id,child_name,classroom_id,milk_kind,age_group_food,birthday,rate_oz").eq("is_active",true),
       supabase.schema("menumaker").from("milk_rates").select("age_group,milk_type,rate_oz").order("sort_order"),
-      supabase.schema("menumaker").from("meal_count_settings").select("active_slots,milk_slots").eq("center_id",CENTER_ID).single(),
+      supabase.schema("menumaker").from("meal_count_settings").select("active_slots,milk_slots").eq("center_id",centerId).single(),
     ]).then(([{data:c},{data:r},{data:mr},{data:s}])=>{
       if(c)  setClasses(c as Cls[]);
       if(r)  setRoster(r as Kid[]);
       if(mr) setMilkRates(mr as MR[]);
       if(s)  setCfg(s as Cfg);
     });
-  },[]);
+  },[centerId]);
 
   const loadRecords = useCallback(async()=>{
+    if (!centerId) return;
     setLoading(true);
     const mondays: string[] = [];
     if(viewMode==="week") {
@@ -87,10 +90,10 @@ export default function KitchenPlanningReport() {
       while(d<=end){ mondays.push(format(d,"yyyy-MM-dd")); d=addDays(d,7); }
     }
     const {data:recs} = await supabase.schema("menumaker").from("meal_week_records")
-      .select("*").eq("center_id",CENTER_ID).in("monday_date",mondays);
+      .select("*").eq("center_id",centerId).in("monday_date",mondays);
     setRecords((recs??[]) as any[]);
     setLoading(false);
-  },[weekStart,viewMode,year,month]);
+  },[centerId,weekStart,viewMode,year,month]);
 
   useEffect(()=>{ loadRecords(); },[loadRecords]);
 

@@ -22,6 +22,9 @@ interface ClassBreakdown {
   id:string; name:string; days_of_op:number;
   slots:Record<string,number>; ada:number; total:number;
 }
+interface Reimbursement {
+  meal_reimbursement:number; cil_reimbursement:number; total:number;
+}
 interface ClaimData {
   days_of_operation:number; total_attendance:number; ada:number;
   breakfast:number; am_snack:number; lunch:number;
@@ -32,6 +35,7 @@ interface ClaimData {
   number_of_shifts:number; free_category:number;
   reduced_category:number; paid_category:number;
   license_capacity:number; notes:string;
+  reimbursement?:Reimbursement;
 }
 interface Rate { slot:string; category:string; rate:number; }
 
@@ -85,6 +89,7 @@ export default function SiteClaimReport() {
         number_of_shifts:ec.number_of_shifts||1, free_category:ec.free_category||0,
         reduced_category:ec.reduced_category||0, paid_category:ec.paid_category||0,
         license_capacity:ec.license_capacity||center?.license_capacity||158, notes:ec.notes||"",
+        reimbursement:ec.reimbursement as Reimbursement|undefined,
       });
       setLoading(false); return;
     }
@@ -153,6 +158,8 @@ export default function SiteClaimReport() {
 
   async function saveManual(){
     if(!data) return; setSaving(true);
+    const r = calcRecap();
+    const reimbursement = r ? {meal_reimbursement:r.mealTotal, cil_reimbursement:r.cilAmt, total:r.grandTotal} : undefined;
     await supabase.schema("menumaker").from("monthly_claims").upsert({
       center_id:centerId, claim_month:month, claim_year:year, status:"open",
       days_of_operation:data.days_of_operation, total_attendance:data.total_attendance, ada:data.ada,
@@ -162,6 +169,7 @@ export default function SiteClaimReport() {
       number_of_shifts:data.number_of_shifts, free_category:data.free_category,
       reduced_category:data.reduced_category, paid_category:data.paid_category,
       license_capacity:data.license_capacity, notes:data.notes,
+      reimbursement,
       updated_at:new Date().toISOString(),
     },{onConflict:"center_id,claim_month,claim_year"});
     setSaving(false); setMsg("✓ Saved"); setTimeout(()=>setMsg(null),2000);
@@ -169,6 +177,8 @@ export default function SiteClaimReport() {
 
   async function closeMonth(){
     if(!data) return; setClosing(true);
+    const r = calcRecap();
+    const reimbursement = r ? {meal_reimbursement:r.mealTotal, cil_reimbursement:r.cilAmt, total:r.grandTotal} : undefined;
     await supabase.schema("menumaker").from("monthly_claims").upsert({
       center_id:centerId, claim_month:month, claim_year:year, status:"closed",
       days_of_operation:data.days_of_operation, total_attendance:data.total_attendance, ada:data.ada,
@@ -178,6 +188,7 @@ export default function SiteClaimReport() {
       number_of_shifts:data.number_of_shifts, free_category:data.free_category,
       reduced_category:data.reduced_category, paid_category:data.paid_category,
       license_capacity:data.license_capacity, notes:data.notes,
+      reimbursement,
       closed_at:new Date().toISOString(), updated_at:new Date().toISOString(),
     },{onConflict:"center_id,claim_month,claim_year"});
     setClosing(false); setMsg("✅ Month closed"); await loadData();
@@ -205,8 +216,7 @@ export default function SiteClaimReport() {
     const total_enrolled = totalEnrolled||1;
     const free_pct   = (data.free_category||0)/total_enrolled;
     const reduced_pct= (data.reduced_category||0)/total_enrolled;
-    const paid_pct   = (data.paid_category||0)/total_enrolled;
-    let grandTotal=0, cilTotal=0;
+    let mealTotal=0;
     const rows = slotOrder.map(slot=>{
       const count = slotTotals[slot]||0;
       if(!count) return null;
@@ -216,17 +226,33 @@ export default function SiteClaimReport() {
       const rFree    = rates.find(r=>r.slot===slot&&r.category==="free")?.rate||0;
       const rReduced = rates.find(r=>r.slot===slot&&r.category==="reduced")?.rate||0;
       const rPaid    = rates.find(r=>r.slot===slot&&r.category==="paid")?.rate||0;
-      const rCIL     = rates.find(r=>r.slot===slot&&r.category==="cil")?.rate||0;
       const amtFree    = freeCount*rFree;
       const amtReduced = reducedCount*rReduced;
       const amtPaid    = paidCount*rPaid;
-      const amtCIL     = rCIL>0?(freeCount+reducedCount)*rCIL:0;
-      const total      = amtFree+amtReduced+amtPaid+amtCIL;
-      grandTotal+=total; cilTotal+=amtCIL;
+      const slotAmt    = amtFree+amtReduced+amtPaid;
+      mealTotal+=slotAmt;
       return {slot,count,freeCount,reducedCount,paidCount,
-        rFree,rReduced,rPaid,rCIL,amtFree,amtReduced,amtPaid,amtCIL,total};
+        rFree,rReduced,rPaid,amtFree,amtReduced,amtPaid,slotAmt};
     }).filter(Boolean);
-    return {rows,grandTotal,cilTotal,mealTotal:grandTotal-cilTotal};
+    // CIL = (lunch.total + supper.total) × cacfp_rates(lunch, 'cil')
+    const cilRate  = rates.find(r=>r.slot==="lunch"&&r.category==="cil")?.rate||0;
+    const cilCount = (slotTotals.lunch||0)+(slotTotals.supper||0);
+    const cilAmt   = cilCount*cilRate;
+    const grandTotal = mealTotal+cilAmt;
+
+    // Assert computed values match stored reimbursement (if present)
+    const stored = data.reimbursement;
+    if(stored){
+      const eps = 0.005;
+      if(Math.abs(mealTotal - stored.meal_reimbursement) > eps)
+        console.error(`[claim] mealTotal mismatch: computed ${mealTotal.toFixed(2)} ≠ stored ${stored.meal_reimbursement}`);
+      if(Math.abs(cilAmt - stored.cil_reimbursement) > eps)
+        console.error(`[claim] cilAmt mismatch: computed ${cilAmt.toFixed(2)} ≠ stored ${stored.cil_reimbursement}`);
+      if(Math.abs(grandTotal - stored.total) > eps)
+        console.error(`[claim] grandTotal mismatch: computed ${grandTotal.toFixed(2)} ≠ stored ${stored.total}`);
+    }
+
+    return {rows,mealTotal,cilRate,cilCount,cilAmt,grandTotal};
   }
 
   const recap = calcRecap();
@@ -402,7 +428,6 @@ export default function SiteClaimReport() {
                   {label:"Free",    count:row.freeCount,    rate:row.rFree,    amt:row.amtFree},
                   {label:"Reduced", count:row.reducedCount, rate:row.rReduced, amt:row.amtReduced},
                   {label:"Paid",    count:row.paidCount,    rate:row.rPaid,    amt:row.amtPaid},
-                  ...(row.rCIL>0?[{label:"CIL",count:row.freeCount+row.reducedCount,rate:row.rCIL,amt:row.amtCIL}]:[]),
                 ];
                 return [
                   <tr key={`${i}-h`} style={{background:"#eaf2fb"}}>
@@ -415,16 +440,24 @@ export default function SiteClaimReport() {
                       <td style={{...TD,paddingLeft:16}}>{cat.label}</td>
                       <td style={{...TD,textAlign:"center"}}>{cat.count}</td>
                       <td style={{...TD,textAlign:"center"}}>${cat.rate.toFixed(4)}</td>
-                      <td style={{...TD,textAlign:"right"}}>${cat.amt.toFixed(2)}</td>
+                      <td style={{...TD,textAlign:"right"}}>{cat.count?`$${cat.amt.toFixed(2)}`:""}</td>
                     </tr>
                   )),
                   <tr key={`${i}-t`} style={{background:"#fff176",fontWeight:"bold"}}>
                     <td colSpan={2} style={TD}>Total {SLOT_LABEL[row.slot]}</td>
-                    <td style={TD}/>
-                    <td style={{...TD,textAlign:"right"}}>${row.total.toFixed(2)}</td>
+                    <td style={{...TD,textAlign:"center"}}>{row.count}</td>
+                    <td style={{...TD,textAlign:"right"}}>${row.slotAmt.toFixed(2)}</td>
                   </tr>
                 ];
               })}
+              {recap&&recap.cilCount>0&&(
+                <tr style={{background:"#f0f4ff"}}>
+                  <td style={{...TD,paddingLeft:16,fontStyle:"italic"}}>Cash In Lieu (CIL)</td>
+                  <td style={{...TD,textAlign:"center"}}>{recap.cilCount}</td>
+                  <td style={{...TD,textAlign:"center"}}>${recap.cilRate.toFixed(4)}</td>
+                  <td style={{...TD,textAlign:"right"}}>${recap.cilAmt.toFixed(2)}</td>
+                </tr>
+              )}
               <tr style={{background:"#0f4c35",color:"#fff",fontWeight:"bold",fontSize:"10pt"}}>
                 <td colSpan={3} style={{...TD,color:"#fff"}}>Claim Reimbursement Total</td>
                 <td style={{...TD,textAlign:"right",color:"#fff"}}>${recap?.grandTotal.toFixed(2)||"0.00"}</td>
@@ -436,7 +469,7 @@ export default function SiteClaimReport() {
               <div style={{fontWeight:"bold",color:"#1a5276",marginBottom:".5rem"}}>Sponsor Claim Reimbursement Totals</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"4px",fontSize:"9pt"}}>
                 <span>Meal Reimbursement</span><span style={{textAlign:"right",fontWeight:"bold"}}>${recap.mealTotal.toFixed(2)}</span>
-                <span>CIL Reimbursement</span><span style={{textAlign:"right",fontWeight:"bold"}}>${recap.cilTotal.toFixed(2)}</span>
+                <span>CIL Reimbursement</span><span style={{textAlign:"right",fontWeight:"bold"}}>${recap.cilAmt.toFixed(2)}</span>
                 <span style={{borderTop:"1px solid #ccc",paddingTop:4,fontWeight:"bold"}}>Current Claim Reimbursement Total</span>
                 <span style={{borderTop:"1px solid #ccc",paddingTop:4,textAlign:"right",fontWeight:"bold",color:"#0f4c35",fontSize:"11pt"}}>${recap.grandTotal.toFixed(2)}</span>
               </div>

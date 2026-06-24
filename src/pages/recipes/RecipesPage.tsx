@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import RecipeDocsPanel from '@/components/recipes/RecipeDocsPanel'
-import { useProgramConfig } from '@/hooks/useProgramConfig'
 
 interface Recipe {
   id: string
@@ -19,7 +17,6 @@ interface Recipe {
   admin_notes: string | null
   source_notes: string | null
   meal_type_id: string | null
-  is_standardized: boolean
 }
 
 interface Nutrient {
@@ -84,7 +81,6 @@ const FIELD_HINTS: Record<string, string> = {
 }
 
 export default function RecipesPage() {
-  const { isHeadStart } = useProgramConfig()
   const [recipes, setRecipes]     = useState<Recipe[]>([])
   const [nutrients, setNutrients] = useState<Record<string, Nutrient>>({})
   const [loading, setLoading]     = useState(true)
@@ -268,9 +264,6 @@ export default function RecipesPage() {
                       {isPending && (
                         <span style={{ marginLeft: 6, fontSize: 9, padding: '1px 5px', borderRadius: 4, background: '#fff3e0', color: '#e67e22', fontWeight: 600 }}>PENDING</span>
                       )}
-                      {isHeadStart && recipe.is_standardized && (
-                        <span style={{ marginLeft: 6, fontSize: 9, padding: '1px 5px', borderRadius: 4, background: '#f5f3ff', color: '#7c3aed', fontWeight: 600 }}>STD</span>
-                      )}
                     </div>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
                       <span style={{
@@ -317,7 +310,6 @@ export default function RecipesPage() {
                 {selected.is_purchased    && <Badge color="#2980b9" bg="#f0f6ff">🛒 Purchased</Badge>}
                 {!selected.is_active      && <Badge color="#999"    bg="#f0f0f0">⏸ Inactive</Badge>}
                 {selected.source_notes?.includes('pending') && <Badge color="#e67e22" bg="#fff8f0">⏳ RecipeAgent Pending</Badge>}
-                {isHeadStart && selected.is_standardized && <Badge color="#7c3aed" bg="#f5f3ff">📋 Standardized Recipe</Badge>}
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -611,25 +603,12 @@ export default function RecipesPage() {
           </div>
 
           {/* CACFP Components */}
-          <div style={{ background: '#fff', border: '1px solid #e8ece9', borderRadius: 14, padding: '20px', marginBottom: isHeadStart ? 16 : 0 }}>
+          <div style={{ background: '#fff', border: '1px solid #e8ece9', borderRadius: 14, padding: '20px' }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: '#666', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 14 }}>
               ✅ CACFP Components Covered
             </div>
             <CACFPCoverage recipeId={selected.id} />
           </div>
-
-          {/* Product Docs — Head Start only */}
-          {isHeadStart && (
-            <div style={{ background: '#fff', border: '1px solid #e8ece9', borderRadius: 14, padding: '20px' }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#666', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 14 }}>
-                📁 Product Documents
-              </div>
-              <div style={{ fontSize: 12, color: '#888', marginBottom: 14 }}>
-                Standardized recipe cards, CN labels, and product specs. Required for Head Start 1302.44 documentation.
-              </div>
-              <RecipeDocsPanel recipeId={selected.id} />
-            </div>
-          )}
         </div>
       )}
     </div>

@@ -154,7 +154,7 @@ Include all line items. Skip subtotals, taxes, fees.` }
     <div>
       <div style={S.card}>
         <div style={{ fontSize: 14, fontWeight: 600, color: '#0a3320', marginBottom: 16 }}>📷 Photograph Receipt</div>
-        <input type="file" accept="image/*" multiple capture="environment"
+        <input type="file" accept="image/*,application/pdf" multiple
           onChange={e => setFiles(Array.from(e.target.files || []))}
           style={{ fontSize: 13, marginBottom: 12 }} />
         {files.length > 0 && (

@@ -97,10 +97,10 @@ export default function MealCountSettings() {
 
       {/* Instructions */}
       <div style={{fontSize:".8rem",background:"#e8f4e8",border:"1px solid #c0d8c0",borderRadius:8,padding:".6rem .85rem",marginBottom:"1rem",lineHeight:1.6}}>
-        <b>Как настраивать:</b> Нажмите на слот чтобы включить/выключить. Изменения сохраняются автоматически.<br/>
-        <b>Логика CACFP:</b> Максимально допустимо <b>3 приёма пищи</b> (meals) и <b>2 перекуса</b> (snacks) в день.
-        Молоко засчитывается только на Завтрак, Обед и Ужин.<br/>
-        <b>🔒 Lock:</b> После утверждения органом — зафиксируйте конфигурацию. До следующего утверждения слоты нельзя изменить.
+        <b>How to configure:</b> Tap a slot to enable/disable it. Changes save automatically.<br/>
+        <b>CACFP logic:</b> A maximum of <b>3 meals</b> and <b>2 snacks</b> per day is allowed.
+        Milk is only counted for Breakfast, Lunch, and Supper.<br/>
+        <b>🔒 Lock:</b> Once approved by the agency, lock the configuration. Slots cannot be changed until the next approval.
       </div>
 
       {/* Legend */}

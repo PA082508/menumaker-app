@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { useOrg } from '@/contexts/OrgContext'
 import { format } from 'date-fns'
+import ActionItemsWidget from '@/components/dashboard/ActionItemsWidget'
+import OrganizationDashboard from './OrganizationDashboard'
 
 interface DashboardStats {
   totalRecipes: number
@@ -48,8 +51,18 @@ const MEAL_COLORS: Record<string, { bg: string; border: string; label: string; d
   Supper:    { bg: '#fdf4ff', border: '#e9d5ff', label: '#6b21a8', dot: '#a855f7', icon: '🌙' },
 }
 
+// Route entry: org admins viewing "Organization" get the org-wide dashboard;
+// otherwise the normal single-center dashboard. Branching in a thin wrapper
+// keeps CenterDashboard's hooks from running in org view.
 export default function DashboardPage() {
+  const { viewMode } = useOrg()
+  if (viewMode === 'org') return <OrganizationDashboard />
+  return <CenterDashboard />
+}
+
+function CenterDashboard() {
   const { user, role } = useAuth()
+  const { org } = useOrg()
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [todayMenu, setTodayMenu] = useState<TodayMenuItem[]>([])
   const [cycleWeek, setCycleWeek] = useState(1)
@@ -170,7 +183,7 @@ export default function DashboardPage() {
           Good {today.getHours() < 12 ? 'morning' : today.getHours() < 17 ? 'afternoon' : 'evening'}
         </div>
         <div style={{ fontSize: 14, color: '#666', marginTop: 4 }}>
-          Play Academy · {role ? role.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) : ''}
+          {org?.name ?? 'MenuMaker'} · {role ? role.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) : ''}
         </div>
       </div>
 
@@ -284,27 +297,8 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Action Required */}
-        <div style={{ background: '#fff', border: '1px solid #e8ece9', borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span>🔴</span>
-            <span style={{ fontWeight: 600, fontSize: 14, color: '#1a1a1a' }}>Action Required</span>
-          </div>
-          <div style={{ padding: '8px 0' }}>
-            {stats?.pendingRecipes && stats.pendingRecipes > 0 ? (
-              <ActionItem icon="🍳" title={`${stats.pendingRecipes} recipes pending RecipeAgent`} sub="Split Pea, Lentil, Garbanzo, Chicken Wraps, Beef Taco" priority="medium" />
-            ) : null}
-            {stats?.sodiumFlags && stats.sodiumFlags > 0 ? (
-              <ActionItem icon="⚠️" title={`${stats.sodiumFlags} recipes with high sodium`} sub="Mac & Cheese (805mg), Chicken Noodle Soup (598mg)" priority="low" />
-            ) : null}
-            {stats?.currentCycle?.status !== 'approved' && (
-              <ActionItem icon="📅" title="Menu cycle pending approval" sub="Child Menu Cycle 2025-2026 — awaiting director approval" priority="high" />
-            )}
-            {(!stats?.pendingRecipes || stats.pendingRecipes === 0) && (!stats?.sodiumFlags || stats.sodiumFlags === 0) && stats?.currentCycle?.status === 'approved' && (
-              <div style={{ padding: '16px 20px', color: '#0f4c35', fontSize: 13 }}>✓ All clear — no urgent actions</div>
-            )}
-          </div>
-        </div>
+        {/* Action Required — live action items (feature C) */}
+        <ActionItemsWidget />
 
         {/* Centers Overview */}
         <div style={{ background: '#fff', border: '1px solid #e8ece9', borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.05)', gridColumn: '1 / -1' }}>

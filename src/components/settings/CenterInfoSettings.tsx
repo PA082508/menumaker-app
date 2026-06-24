@@ -51,12 +51,15 @@ interface CenterRow {
   site_number: string
   administrator: string
   program_type: string
+  fso_license_number: string
+  fso_license_expires: string     // yyyy-mm-dd
 }
 
 const EMPTY: CenterRow = {
   name: '', address: '', phone: '', license_number: '',
   license_capacity: '', license_capacity_under2: '', license_issued: '',
   site_number: '', administrator: '', program_type: '',
+  fso_license_number: '', fso_license_expires: '',
 }
 
 // db value → string for a controlled input
@@ -78,7 +81,7 @@ export default function CenterInfoSettings() {
     const { data, error } = await supabase
       .schema('menumaker')
       .from('centers')
-      .select('name, address, phone, license_number, license_capacity, license_capacity_under2, license_issued, site_number, administrator, program_type')
+      .select('name, address, phone, license_number, license_capacity, license_capacity_under2, license_issued, site_number, administrator, program_type, fso_license_number, fso_license_expires')
       .eq('id', centerId)
       .single()
     if (error) {
@@ -93,6 +96,8 @@ export default function CenterInfoSettings() {
         site_number: s(data.site_number),
         administrator: s(data.administrator),
         program_type: s(data.program_type),
+        fso_license_number: s(data.fso_license_number),
+        fso_license_expires: s(data.fso_license_expires).slice(0, 10),
       })
     }
     setLoading(false)
@@ -131,6 +136,8 @@ export default function CenterInfoSettings() {
         site_number:             form.site_number.trim() || null,
         administrator:           form.administrator.trim() || null,
         program_type:            form.program_type.trim(),
+        fso_license_number:      form.fso_license_number.trim() || null,
+        fso_license_expires:     form.fso_license_expires || null,
       })
       .eq('id', centerId)
     setSaving(false)
@@ -202,6 +209,13 @@ export default function CenterInfoSettings() {
         </Field>
         <Field label="License capacity (under 2)">
           <input type="number" min="0" step="1" value={form.license_capacity_under2} onChange={set('license_capacity_under2')} placeholder="0" style={inputStyle} />
+        </Field>
+        <div />
+        <Field label="FSO license number">
+          <input value={form.fso_license_number} onChange={set('fso_license_number')} placeholder="Food Service Operation license" style={inputStyle} />
+        </Field>
+        <Field label="FSO license expires">
+          <input type="date" value={form.fso_license_expires} onChange={set('fso_license_expires')} style={inputStyle} />
         </Field>
         <div />
       </div>

@@ -55,6 +55,7 @@ export default function AppLayout() {
     { path: '/export',     label: 'Custom Export', icon: '📤', roles: ['admin','office_manager','director'] },
     ...(hasCACFP ? [
       { path: '/claim-report', label: 'Site Claim',    icon: '📋', roles: ['director','office_manager'] },
+      { path: '/reimbursement-preview', label: 'Reimbursement Preview', icon: '💵', roles: ['admin','director','office_manager'] },
       { path: '/reports',      label: 'CACFP Reports', icon: '📊', roles: ['director','office_manager','cacfp_inspector'] },
     ] : []),
     { path: '/receipt-review', label: 'Receipt Review',  icon: '🧾', roles: ['director','office_manager'] },

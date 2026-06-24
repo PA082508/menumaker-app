@@ -21,6 +21,7 @@ import DispatchPage from '@/pages/dispatch/DispatchPage'
 import DeliveryPage from '@/pages/delivery/DeliveryPage'
 import CustomExportPage from '@/pages/export/CustomExportPage'
 import SiteClaimReport from './pages/reports/SiteClaimReport'
+import ReimbursementPreview from './pages/reports/ReimbursementPreview'
 import KitchenPlanningReport from './pages/reports/KitchenPlanningReport'
 import ReceiptReviewPage from '@/pages/receipt-review/ReceiptReviewPage'
 import UserManagementPage from '@/pages/org/UserManagementPage'
@@ -116,6 +117,7 @@ export default function App() {
               <Route path="dispatch"    element={<DispatchPage />} />
               <Route path="export"      element={<CustomExportPage />} />
               <Route path="claim-report"    element={<SiteClaimReport />} />
+              <Route path="reimbursement-preview" element={<ReimbursementPreview />} />
               <Route path="kitchen-report"      element={<KitchenPlanningReport />} />
               <Route path="receipt-review"     element={<ReceiptReviewPage />} />
               <Route path="children/import"    element={<ChildrenImportPage />} />

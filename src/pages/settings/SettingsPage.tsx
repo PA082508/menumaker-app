@@ -4,6 +4,7 @@ import MilkRatesSettings from '@/components/settings/MilkRatesSettings'
 import MealCountSettings from '@/components/settings/MealCountSettings'
 import MealCountAccessSettings from '@/components/settings/MealCountAccessSettings'
 import PermissionsSettings from '@/components/settings/PermissionsSettings'
+import ScheduleHolidaysSettings from '@/components/settings/ScheduleHolidaysSettings'
 import { useOrg } from '@/contexts/OrgContext'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -53,7 +54,7 @@ interface Purchaser {
   is_active: boolean
 }
 
-type Tab = 'products' | 'vendors' | 'purchasers' | 'assign' | 'milk' | 'mealcount' | 'access' | 'permissions'
+type Tab = 'products' | 'vendors' | 'purchasers' | 'assign' | 'milk' | 'mealcount' | 'access' | 'permissions' | 'schedule'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -1206,6 +1207,7 @@ export default function SettingsPage() {
   const { role } = useAuth()
   const canManageAccess = role === 'admin' || role === 'office_manager' || orgRole === 'admin'
   const isOwner = orgRole === 'admin'
+  const canSchedule = canManageAccess || role === 'director' || orgRole === 'director'
 
   return (
     <div style={{ padding: '24px 32px', fontFamily: "'DM Sans', sans-serif", background: '#f4f6f4', minHeight: '100vh' }}>
@@ -1239,7 +1241,7 @@ export default function SettingsPage() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, background: '#fff', padding: 5, borderRadius: 10, border: '1px solid #e0e0e0', width: 'fit-content', marginBottom: 20 }}>
-        {([ ['products','📦 Products'], ['vendors','🏪 Vendors'], ['purchasers','👤 Purchasers'], ['assign','🔗 Assign'], ['milk','🥛 Milk Rates'], ['mealcount','🍽️ Meal Slots'], ...(canManageAccess ? [['access','🔐 Meal Count Access'] as [Tab, string]] : []), ...(isOwner ? [['permissions','🛡️ Permissions'] as [Tab, string]] : []) ] as [Tab, string][]).map(([val, label]) => (
+        {([ ['products','📦 Products'], ['vendors','🏪 Vendors'], ['purchasers','👤 Purchasers'], ['assign','🔗 Assign'], ['milk','🥛 Milk Rates'], ['mealcount','🍽️ Meal Slots'], ...(canManageAccess ? [['access','🔐 Meal Count Access'] as [Tab, string]] : []), ...(canSchedule ? [['schedule','📅 Schedule & Holidays'] as [Tab, string]] : []), ...(isOwner ? [['permissions','🛡️ Permissions'] as [Tab, string]] : []) ] as [Tab, string][]).map(([val, label]) => (
           <button key={val} onClick={() => setTab(val)} style={{
             padding: '7px 20px', borderRadius: 7, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
             background: tab === val ? '#0f4c35' : 'transparent',
@@ -1260,6 +1262,7 @@ export default function SettingsPage() {
       {tab === 'mealcount'  && <MealCountSettings />}
       {tab === 'access' && canManageAccess && <MealCountAccessSettings />}
       {tab === 'permissions' && isOwner && <PermissionsSettings />}
+      {tab === 'schedule' && canSchedule && <ScheduleHolidaysSettings />}
     </div>
   )
 }

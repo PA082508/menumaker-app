@@ -24,6 +24,7 @@ import SiteClaimReport from './pages/reports/SiteClaimReport'
 import ReimbursementPreview from './pages/reports/ReimbursementPreview'
 import CACFPChecklistPage from './pages/cacfp-reports/CACFPChecklistPage'
 import SafePassTeacherPage from './pages/safepass/SafePassTeacherPage'
+import SafePassParentPage from './pages/safepass/SafePassParentPage'
 import KitchenPlanningReport from './pages/reports/KitchenPlanningReport'
 import ReceiptReviewPage from '@/pages/receipt-review/ReceiptReviewPage'
 import UserManagementPage from '@/pages/org/UserManagementPage'
@@ -93,6 +94,7 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/purchaser-app" element={<PurchaserApp />} />
+            <Route path="/safepass/parent" element={<SafePassParentPage />} />
             <Route
               path="/"
               element={

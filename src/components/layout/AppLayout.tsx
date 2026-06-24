@@ -181,13 +181,21 @@ export default function AppLayout() {
             return (
             <Fragment key={item.path}>
             {showHeader && (
-              <div style={{
-                padding: '14px 16px 6px',
-                fontSize: 10, fontWeight: 700, letterSpacing: '0.08em',
-                textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)',
-              }}>
+              <NavLink
+                to="/cacfp-checklist"
+                style={{
+                  display: 'block',
+                  padding: '14px 16px 6px',
+                  fontSize: 10, fontWeight: 700, letterSpacing: '0.08em',
+                  textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)',
+                  textDecoration: 'none', cursor: 'pointer', transition: 'all 0.15s',
+                  borderRadius: '0 8px 8px 0', marginRight: 8,
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(126,232,176,0.1)'; e.currentTarget.style.color = '#7ee8b0' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(255,255,255,0.35)' }}
+              >
                 {item.section}
-              </div>
+              </NavLink>
             )}
             <NavLink
               to={item.path}

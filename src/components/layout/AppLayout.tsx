@@ -82,8 +82,19 @@ export default function AppLayout() {
         }))
     : []
 
+  // Variant B builds nav from navModules, which does NOT include the legacy
+  // hasCACFP block — so the CACFP Compliance group vanishes under permission-driven
+  // nav. Re-append it (role-gated, deduped by path) when the org has the cacfp
+  // module, so the group shows regardless of which nav mode is active.
+  const cacfpGroup = NAV_ITEMS.filter(item => item.section === 'CACFP Compliance')
+  const cacfpAppend = usingPerms && hasCACFP
+    ? cacfpGroup.filter(ci =>
+        !permItems.some(pi => pi.path === ci.path) &&
+        (!ci.roles || (role && ci.roles.includes(role))))
+    : []
+
   const baseVisible = usingPerms
-    ? permItems
+    ? [...permItems, ...cacfpAppend]
     : NAV_ITEMS.filter(item => !item.roles || (role && item.roles.includes(role)))
 
   // Cook: sidebar shows Meal Count + Delivery (dispatch). Teacher: Meal Count only.
@@ -97,7 +108,9 @@ export default function AppLayout() {
   // Route guard: if permissions are active and the user opened a guarded module
   // route that is not in their allowed set, show a 403. Dashboard is never
   // blocked (anti-lockout); unknown/utility routes pass through.
-  const allowedPaths = usingPerms ? new Set(permItems.map(i => i.path)) : null
+  const allowedPaths = usingPerms
+    ? new Set([...permItems.map(i => i.path), ...cacfpAppend.map(i => i.path)])
+    : null
   const basePath = '/' + (location.pathname.split('/')[1] || 'dashboard')
   // Cook's two surfaced routes are never blocked (they're sidebar-allowed above).
   const cookAllowed = isCookOrTeacher && (basePath === '/meal-count' || (isCook && basePath === '/delivery'))

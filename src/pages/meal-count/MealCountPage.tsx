@@ -418,6 +418,56 @@ export default function MealCountPage() {
   const weekStatus = Object.values(records)[0]?.status ?? "open";
   const isApproved = weekStatus === "director_approved";
 
+  // ─── Export current week (selected classroom) → Google Sheets CSV ──────────────
+  // Matches the Google Sheets layout: header rows + TRUE/FALSE per slot, 4 meals
+  // (breakfast, snack, lunch, supper) × 5 days, then a Total milk (CUPS) row.
+  function exportWeekCSV() {
+    const EXPORT_SLOTS: SlotKey[] = ["breakfast", "am_snack", "lunch", "supper"];
+    const SUB: Record<SlotKey, string> = { breakfast: "breakfast", am_snack: "snack", lunch: "lunch", supper: "supper" };
+    const DAY_FULL: Record<DayKey, string> = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday" };
+    const esc = (v: string | number) => {
+      const s = String(v ?? "");
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+
+    const rows: (string | number)[][] = [];
+    rows.push([currentCenter?.name ?? "", format(weekStart, "MMMM yyyy")]);              // Row 1
+    rows.push([selectedClassName, "Teachers: "]);                                        // Row 2
+
+    const r3: (string | number)[] = ["Child's Name"];                                    // Row 3
+    DAYS.forEach((day, i) => r3.push(`${DAY_FULL[day]} ${format(addDays(weekStart, i), "M/d")}`, "", "", ""));
+    rows.push(r3);
+
+    const r4: (string | number)[] = ["#", "Child's Name"];                               // Row 4
+    DAYS.forEach(() => EXPORT_SLOTS.forEach((s) => r4.push(SUB[s])));
+    rows.push(r4);
+
+    roster.forEach((child, idx) => {                                                     // Rows 5+
+      const r: (string | number)[] = [idx + 1, child.child_name];
+      DAYS.forEach((day) => EXPORT_SLOTS.forEach((slot) =>
+        r.push(records[child.child_name]?.[colName(day, slot)] === 1 ? "TRUE" : "FALSE")));
+      rows.push(r);
+    });
+
+    const milkRow: (string | number)[] = ["Total milk (CUPS)", ""];                      // Total milk
+    DAYS.forEach((day) => EXPORT_SLOTS.forEach((slot) => {
+      const m = milkForSlot(slot, day);
+      milkRow.push(m ? m.totalCups : 0);
+    }));
+    rows.push(milkRow);
+
+    const csv = rows.map((r) => r.map(esc).join(",")).join("\r\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const cc = (currentCenter?.name ?? "center").replace(/^Play Academy\s*/i, "").replace(/\s+/g, "");
+    const rm = (selectedClassName || "class").replace(/\s+/g, "");
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${cc}_${rm}_${format(weekStart, "yyyy-MM-dd")}_meal_count.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   if (!currentCenter?.id) return <div className="mc-loading">Select a center to view meal counts.</div>;
   if (!classrooms.length) return <div className="mc-loading">No active classrooms for {currentCenter.name}.</div>;
 
@@ -457,6 +507,14 @@ export default function MealCountPage() {
               <button className={mode === "director" ? "active director" : ""} onClick={() => setMode("director")}>Director</button>
             )}
           </div>
+        )}
+        {mode === "week" && (
+          <button onClick={exportWeekCSV} title="Download CSV for Google Sheets"
+            style={{ marginLeft: 12, padding: "7px 14px", borderRadius: 8, border: "1px solid #0f4c35",
+              background: "transparent", color: "#0f4c35", fontSize: 13, fontWeight: 600,
+              cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
+            ⬇ Export for Google Sheets
+          </button>
         )}
       </div>
 

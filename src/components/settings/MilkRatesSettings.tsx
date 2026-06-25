@@ -66,7 +66,12 @@ export default function MilkRatesSettings() {
           <select
             value={currentCenter?.id ?? ""}
             onChange={e => { const v = e.target.value; setCurrentCenter(v ? (centers.find(c => c.id === v) ?? null) : null); }}
-            style={{padding:".4rem .6rem",borderRadius:6,border:"1.5px solid #c0d8c0",fontSize:".85rem",fontFamily:"inherit",background:"#fff",color:"#0f4c35",cursor:"pointer",outline:"none"}}>
+            style={{
+              appearance: "none", WebkitAppearance: "none", MozAppearance: "none",
+              background: "#fff url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M1 1l4 4 4-4' fill='none' stroke='%230f4c35' stroke-width='1.5'/></svg>\") no-repeat right 12px center",
+              border: "1.5px solid #0f4c35", borderRadius: 8, padding: "6px 30px 6px 12px",
+              fontSize: 13, fontFamily: "inherit", color: "#0f4c35", fontWeight: 600, cursor: "pointer", outline: "none",
+            }}>
             <option value="">🏢 Organization (all centers)</option>
             {centers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>

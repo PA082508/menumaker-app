@@ -12,6 +12,13 @@ const card: React.CSSProperties = { background: '#fff', border: '1px solid #e8e8
 const h3: React.CSSProperties = { margin: '0 0 14px', fontSize: 16, fontWeight: 700, color: '#0a3320' }
 const lbl: React.CSSProperties = { display: 'block', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#999', marginBottom: 4 }
 const inp: React.CSSProperties = { padding: '8px 10px', borderRadius: 8, border: '1.5px solid #e0e0e0', fontSize: 14, fontFamily: 'inherit', outline: 'none' }
+// Center selector styled as a clear, clickable button with a ▾ arrow.
+const selStyle: React.CSSProperties = {
+  appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none',
+  background: "#fff url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M1 1l4 4 4-4' fill='none' stroke='%230f4c35' stroke-width='1.5'/></svg>\") no-repeat right 12px center",
+  border: '1.5px solid #0f4c35', borderRadius: 8, padding: '6px 30px 6px 12px',
+  fontSize: 13, fontFamily: 'inherit', color: '#0f4c35', fontWeight: 600, cursor: 'pointer', outline: 'none',
+}
 const btnPri: React.CSSProperties = { padding: '8px 16px', borderRadius: 9, border: 'none', background: '#0f4c35', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
 const btnSec: React.CSSProperties = { padding: '8px 14px', borderRadius: 9, border: '1.5px solid #0f4c35', background: '#fff', color: '#0f4c35', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
 
@@ -30,21 +37,19 @@ type Sched = Record<string, Record<string, { start: string; end: string }>> // c
 
 function MealScheduleSection() {
   const { org, centers, currentCenter } = useOrg()
-  const [centerId, setCenterId] = useState(currentCenter?.id ?? centers[0]?.id ?? '')
+  const [centerId, setCenterId] = useState(currentCenter?.id ?? '')
   const [classrooms, setClassrooms] = useState<Classroom[]>([])
   const [activeSlots, setActiveSlots] = useState<string[]>(['breakfast', 'am_snack', 'lunch', 'supper'])
   const [sched, setSched] = useState<Sched>({})
   const [savingId, setSavingId] = useState<string | null>(null)
   const [savedId, setSavedId] = useState<string | null>(null)
 
-  // Follow the header's active center: when currentCenter changes, switch this
-  // panel to it (so classrooms reload for the right center). In Organization
-  // view (currentCenter null) keep the manual selector, defaulting to the first
-  // center only when nothing is selected yet.
+  // Mirror the sidebar's active center: a concrete center shows that center;
+  // Organization view (currentCenter null) defaults to "Organization" ('').
+  // A manual pick in the dropdown persists until the sidebar center changes.
   useEffect(() => {
-    if (currentCenter?.id) setCenterId(currentCenter.id)
-    else if (!centerId) setCenterId(centers[0]?.id ?? '')
-  }, [currentCenter?.id, centers]) // eslint-disable-line react-hooks/exhaustive-deps
+    setCenterId(currentCenter?.id ?? '')
+  }, [currentCenter?.id])
 
   useEffect(() => {
     if (!centerId) return
@@ -100,7 +105,7 @@ function MealScheduleSection() {
         {/* Inline center selector — always shown, Organization option first.
             Defaults to the sidebar's active center; pick a center to edit its
             classrooms' schedule. (Organization = no single center → pick one.) */}
-        <select value={centerId} onChange={e => setCenterId(e.target.value)} style={inp}>
+        <select value={centerId} onChange={e => setCenterId(e.target.value)} style={selStyle}>
           <option value="">🏢 Organization (all centers)</option>
           {centers.map(c => <option key={c.id} value={c.id}>{short(c.name)}</option>)}
         </select>

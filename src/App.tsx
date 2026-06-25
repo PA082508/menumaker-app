@@ -29,6 +29,7 @@ import KitchenPlanningReport from './pages/reports/KitchenPlanningReport'
 import ReceiptReviewPage from '@/pages/receipt-review/ReceiptReviewPage'
 import UserManagementPage from '@/pages/org/UserManagementPage'
 import ConsolidatedReport from '@/pages/org/ConsolidatedReport'
+import ChildrenPage from '@/pages/children/ChildrenPage'
 import ChildrenImportPage from '@/pages/children/ChildrenImportPage'
 import ChildrenExportPage from '@/pages/children/ChildrenExportPage'
 
@@ -126,6 +127,7 @@ export default function App() {
               <Route path="safepass/teacher" element={<SafePassTeacherPage />} />
               <Route path="kitchen-report"      element={<KitchenPlanningReport />} />
               <Route path="receipt-review"     element={<ReceiptReviewPage />} />
+              <Route path="children"           element={<ChildrenPage />} />
               <Route path="children/import"    element={<ChildrenImportPage />} />
               <Route path="children/export"    element={<ChildrenExportPage />} />
               <Route path="org/users"  element={<UserManagementPage />} />

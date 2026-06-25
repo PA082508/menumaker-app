@@ -60,6 +60,7 @@ export default function AppLayout() {
       { path: '/reimbursement-preview', label: 'Reimbursement', icon: '💰', roles: ['admin','director','office_manager'], section: 'CACFP Compliance' },
       { path: '/cacfp-checklist',       label: 'Checklist',     icon: '✅', roles: ['admin','director','office_manager'], section: 'CACFP Compliance' },
     ] : []),
+    { path: '/children',   label: 'Children',   icon: '👶', roles: ['admin','director','office_manager'], section: 'PEOPLE' },
     { path: '/receipt-review', label: 'Receipt Review',  icon: '🧾', roles: ['director','office_manager'] },
     { path: '/kitchen-report', label: 'Kitchen Report', icon: '👨‍🍳', roles: ['director','cook','office_manager'] },
     { path: '/submissions', label: 'Form Submissions', icon: '📨', roles: ['director','office_manager','cacfp_inspector'] },
@@ -100,8 +101,15 @@ export default function AppLayout() {
     ? cacfpGroup.filter(ci => !ci.roles || (role && ci.roles.includes(role)))
     : []
 
+  // PEOPLE section (Children, …) — role-gated, not module-gated. Also absent
+  // from navModules, so append it under Variant B (deduped by path).
+  const peopleGroup = NAV_ITEMS.filter(item => item.section === 'PEOPLE')
+  const peopleAppend = usingPerms
+    ? peopleGroup.filter(ci => !permItems.some(pi => pi.path === ci.path) && (!ci.roles || (role && ci.roles.includes(role))))
+    : []
+
   const baseVisible = usingPerms
-    ? [...permItemsFiltered, ...cacfpAppend]
+    ? [...permItemsFiltered, ...cacfpAppend, ...peopleAppend]
     : NAV_ITEMS.filter(item => !item.roles || (role && item.roles.includes(role)))
 
   // Cook: sidebar shows Meal Count + Delivery (dispatch). Teacher: Meal Count only.
@@ -116,7 +124,7 @@ export default function AppLayout() {
   // route that is not in their allowed set, show a 403. Dashboard is never
   // blocked (anti-lockout); unknown/utility routes pass through.
   const allowedPaths = usingPerms
-    ? new Set([...permItems.map(i => i.path), ...cacfpAppend.map(i => i.path)])
+    ? new Set([...permItems.map(i => i.path), ...cacfpAppend.map(i => i.path), ...peopleAppend.map(i => i.path)])
     : null
   const basePath = '/' + (location.pathname.split('/')[1] || 'dashboard')
   // Cook's two surfaced routes are never blocked (they're sidebar-allowed above).

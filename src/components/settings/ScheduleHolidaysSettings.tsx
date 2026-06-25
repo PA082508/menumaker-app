@@ -37,7 +37,14 @@ function MealScheduleSection() {
   const [savingId, setSavingId] = useState<string | null>(null)
   const [savedId, setSavedId] = useState<string | null>(null)
 
-  useEffect(() => { if (!centerId && (currentCenter?.id ?? centers[0]?.id)) setCenterId(currentCenter?.id ?? centers[0]?.id ?? '') }, [currentCenter, centers])
+  // Follow the header's active center: when currentCenter changes, switch this
+  // panel to it (so classrooms reload for the right center). In Organization
+  // view (currentCenter null) keep the manual selector, defaulting to the first
+  // center only when nothing is selected yet.
+  useEffect(() => {
+    if (currentCenter?.id) setCenterId(currentCenter.id)
+    else if (!centerId) setCenterId(centers[0]?.id ?? '')
+  }, [currentCenter?.id, centers]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!centerId) return

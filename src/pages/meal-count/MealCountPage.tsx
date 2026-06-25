@@ -508,14 +508,12 @@ export default function MealCountPage() {
             )}
           </div>
         )}
-        {mode === "week" && (
-          <button onClick={exportWeekCSV} title="Download CSV for Google Sheets"
-            style={{ position: "static", marginLeft: 12, padding: "7px 14px", borderRadius: 8,
-              border: "1px solid #0f4c35", background: "transparent", color: "#0f4c35",
-              fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
-            ⬇ Export for Google Sheets
-          </button>
-        )}
+        <button onClick={exportWeekCSV} title="Download CSV for Google Sheets"
+          style={{ position: "static", marginLeft: 12, padding: "7px 14px", borderRadius: 8,
+            border: "1px solid #0f4c35", background: "transparent", color: "#0f4c35",
+            fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
+          ⬇ Export for Google Sheets
+        </button>
       </div>
 
       <div className="mc-class-bar">

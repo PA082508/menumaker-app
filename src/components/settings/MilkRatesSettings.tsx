@@ -1,6 +1,7 @@
 // src/components/settings/MilkRatesSettings.tsx
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
+import { useOrg } from "@/contexts/OrgContext";
 
 interface MilkRate {
   id: string;
@@ -19,6 +20,7 @@ const MILK_TYPES = [
 ];
 
 export default function MilkRatesSettings() {
+  const { currentCenter, centers, setCurrentCenter } = useOrg();
   const [rates, setRates]     = useState<MilkRate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
@@ -58,7 +60,18 @@ export default function MilkRatesSettings() {
 
   return (
     <div style={{padding:"1.5rem",maxWidth:560}}>
-      <h2 style={{fontSize:"1.1rem",fontWeight:700,color:"#0f4c35",margin:"0 0 .4rem"}}>🥛 Milk Norms by Age</h2>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:".5rem",flexWrap:"wrap",marginBottom:".4rem"}}>
+        <h2 style={{fontSize:"1.1rem",fontWeight:700,color:"#0f4c35",margin:0}}>🥛 Milk Norms by Age</h2>
+        {centers.length > 1 && (
+          <select
+            value={currentCenter?.id ?? ""}
+            onChange={e => { const v = e.target.value; setCurrentCenter(v ? (centers.find(c => c.id === v) ?? null) : null); }}
+            style={{padding:".4rem .6rem",borderRadius:6,border:"1.5px solid #c0d8c0",fontSize:".85rem",fontFamily:"inherit",background:"#fff",color:"#0f4c35",cursor:"pointer",outline:"none"}}>
+            <option value="">🏢 Organization (all centers)</option>
+            {centers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        )}
+      </div>
       <p style={{fontSize:".85rem",color:"#666",margin:"0 0 1.25rem",lineHeight:1.5}}>
         Controls how much milk is counted per serving. Children under 12 months receive formula and are excluded from milk totals.
       </p>

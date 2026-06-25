@@ -7,7 +7,7 @@
 // ============================================================
 
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Navigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
 import { useAuth } from '@/hooks/useAuth'
@@ -155,10 +155,14 @@ export default function ChildrenPage() {
     </div>
   )
 
-  // which centers to show
-  const visibleCenters = currentCenter
-    ? CENTER_ORDER.filter(c => c.id === currentCenter.id)
-    : CENTER_ORDER
+  // When a specific center is selected → go directly to roster page
+  if (currentCenter) return <Navigate to={`/center/${currentCenter.id}`} replace />
+
+  // Org view only from here — currentCenter is null
+  const cc = null
+
+  // Org view: always show all 3 centers
+  const visibleCenters = CENTER_ORDER
 
   return (
     <div style={{ padding: '24px 32px', fontFamily: "'DM Sans', sans-serif", background: '#f4f6f4', minHeight: '100vh' }}>
@@ -168,7 +172,7 @@ export default function ChildrenPage() {
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 26, color: '#0a3320', marginBottom: 2 }}>Children</div>
         <div style={{ fontSize: 12, color: '#888' }}>
-          {currentCenter ? currentCenter.name : 'All centers'} · roster · {todayStr}
+          All centers · roster · {todayStr}
         </div>
       </div>
 
@@ -216,16 +220,6 @@ export default function ChildrenPage() {
                       </div>
                     )}
                   </div>
-                  <button
-                    onClick={() => navigate(`/center/${center.id}`)}
-                    style={{
-                      background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)',
-                      color: '#fff', borderRadius: 8, padding: '4px 10px', fontSize: 11,
-                      cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600,
-                    }}
-                  >
-                    Attendance →
-                  </button>
                 </div>
 
                 {/* Table header */}

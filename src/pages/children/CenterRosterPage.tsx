@@ -321,28 +321,16 @@ export default function CenterRosterPage() {
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Serif+Display&display=swap" rel="stylesheet" />
 
       {/* Header */}
-      <div style={{ marginBottom: 24, display: 'flex', alignItems: 'center', gap: 16 }}>
-        <button
-          onClick={() => navigate('/children')}
-          style={{
-            background: '#fff', border: '1px solid #e0e8e0', borderRadius: 8,
-            padding: '6px 12px', cursor: 'pointer', fontSize: 13, color: '#0f4c35',
-            fontFamily: 'inherit', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6,
-          }}
-        >
-          ← Children
-        </button>
-        <div>
-          <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 26, color: '#0a3320', marginBottom: 2 }}>
-            {center?.name ?? 'Center'} — Attendance
-          </div>
-          <div style={{ fontSize: 12, color: '#888', display: 'flex', gap: 16 }}>
-            <span>{todayStr}</span>
-            <span>·</span>
-            <span style={{ color: '#0f4c35', fontWeight: 600 }}>{presentTotal} present</span>
-            <span>·</span>
-            <span>{listedTotal} listed</span>
-          </div>
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 26, color: '#0a3320', marginBottom: 2 }}>
+          {center?.name ?? 'Center'} — Children
+        </div>
+        <div style={{ fontSize: 12, color: '#888', display: 'flex', gap: 16 }}>
+          <span>{todayStr}</span>
+          <span>·</span>
+          <span style={{ color: '#0f4c35', fontWeight: 600 }}>{presentTotal} present</span>
+          <span>·</span>
+          <span>{listedTotal} listed</span>
         </div>
       </div>
 

@@ -139,6 +139,7 @@ export default function ChildrenPage() {
       setClassrooms((cls ?? []) as Classroom[])
       setChildren((kids ?? []) as Child[])
       setStaff((staffData ?? []) as StaffRow[])
+      console.log('[ChildrenPage] staff loaded:', staffData?.length, staffData?.slice(0,3))
       setTodayCounts(todayMap)
       setCapacities(capMap)
       setLoading(false)

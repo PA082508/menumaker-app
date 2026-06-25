@@ -473,6 +473,16 @@ export default function MealCountPage() {
 
   return (
     <div className="mc-page">
+      {mode === "week" && (
+        <button onClick={exportWeekCSV} title="Download CSV for Google Sheets"
+          style={{ position: "fixed", top: 16, right: 24, zIndex: 200,
+            padding: "8px 16px", borderRadius: 8, border: "1px solid #0f4c35",
+            background: "#fff", color: "#0f4c35", fontSize: 13, fontWeight: 600,
+            cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.12)" }}>
+          ⬇ Export for Google Sheets
+        </button>
+      )}
       <div className="mc-header">
         <div className="mc-header-left">
           <h1 className="mc-title">Meal Count</h1>
@@ -507,14 +517,6 @@ export default function MealCountPage() {
               <button className={mode === "director" ? "active director" : ""} onClick={() => setMode("director")}>Director</button>
             )}
           </div>
-        )}
-        {mode === "week" && (
-          <button onClick={exportWeekCSV} title="Download CSV for Google Sheets"
-            style={{ marginLeft: 12, padding: "7px 14px", borderRadius: 8, border: "1px solid #0f4c35",
-              background: "transparent", color: "#0f4c35", fontSize: 13, fontWeight: 600,
-              cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
-            ⬇ Export for Google Sheets
-          </button>
         )}
       </div>
 

@@ -97,9 +97,13 @@ function MealScheduleSection() {
     <div style={card}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <h3 style={{ ...h3, marginBottom: 0 }}>🕐 Meal Schedule</h3>
-        <select value={centerId} onChange={e => setCenterId(e.target.value)} style={inp}>
-          {centers.map(c => <option key={c.id} value={c.id}>{short(c.name)}</option>)}
-        </select>
+        {/* In Organization view (no active center) let the user pick one here;
+            with a concrete center active the header is the source of truth. */}
+        {!currentCenter && (
+          <select value={centerId} onChange={e => setCenterId(e.target.value)} style={inp}>
+            {centers.map(c => <option key={c.id} value={c.id}>{short(c.name)}</option>)}
+          </select>
+        )}
       </div>
       <div style={{ fontSize: 12, color: '#888', margin: '6px 0 14px' }}>Start / End time per active slot, per classroom.</div>
 

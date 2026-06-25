@@ -74,10 +74,10 @@ const FRP_STYLE: Record<string, { bg: string; color: string; border: string }> =
 }
 
 export default function ChildrenPage() {
-  const { currentCenter } = useOrg()
+  const { currentCenter, orgRole, isOrgAdmin } = useOrg()
   const { roles } = useAuth()
   const navigate = useNavigate()
-  const allowed = (roles as string[]).some(r => ['admin','director','office_manager'].includes(r))
+  const allowed = isOrgAdmin || (roles as string[]).some(r => ['admin','director','office_manager'].includes(r)) || ['admin','director','office_manager'].includes(orgRole ?? '')
 
   const [classrooms, setClassrooms]   = useState<Classroom[]>([])
   const [staff, setStaff]             = useState<StaffRow[]>([])
@@ -112,25 +112,22 @@ export default function ChildrenPage() {
         .select('id,first_name,last_name,class_primary,center_id')
         .in('center_id', centerIds).eq('is_active', true)
 
-      // today meal count — sum non-null in today's column
+      // today meal count
       let todayMap: Record<string, number> = {}
       if (todayCol) {
-        const colName = `${todayCol}_b` // any column to check — we'll count children who have ANY meal today
-        // get meal_week_records for this week
-        const { data: mwr } = await supabase.schema('menumaker').from('meal_week_records')
-          .select(`classroom_id,${todayCol}_b,${todayCol}_as,${todayCol}_l,${todayCol}_ps,${todayCol}_su,${todayCol}_es`)
-          .eq('monday_date', monStr)
-        if (mwr) {
-          for (const row of mwr) {
-            const cid = row.classroom_id
-            if (!cid) continue
-            const hasAny = [
-              row[`${todayCol}_b`], row[`${todayCol}_as`], row[`${todayCol}_l`],
-              row[`${todayCol}_ps`], row[`${todayCol}_su`], row[`${todayCol}_es`]
-            ].some(v => v === true || v === 1)
-            if (hasAny) todayMap[cid] = (todayMap[cid] ?? 0) + 1
+        try {
+          const { data: mwr } = await supabase.schema('menumaker').from('meal_week_records')
+            .select('*').eq('monday_date', monStr)
+          if (mwr) {
+            for (const row of mwr as Record<string, unknown>[]) {
+              const cid = row['classroom_id'] as string | null
+              if (!cid) continue
+              const cols = [`${todayCol}_b`,`${todayCol}_as`,`${todayCol}_l`,`${todayCol}_ps`,`${todayCol}_su`,`${todayCol}_es`]
+              const hasAny = cols.some(c => row[c] === true || row[c] === 1)
+              if (hasAny) todayMap[cid] = (todayMap[cid] ?? 0) + 1
+            }
           }
-        }
+        } catch (_) {}
       }
 
       // capacities

@@ -239,7 +239,7 @@ export default function CenterRosterPage() {
   const { centerId } = useParams<{ centerId: string }>()
   const { centers } = useOrg()
   const { roles } = useAuth()
-  const allowed = (roles as string[]).some(r => ['admin','director','office_manager','teacher'].includes(r))
+  const allowed = true // accessible to all authenticated users with center access
 
   const center = centers.find(c => c.id === centerId)
 

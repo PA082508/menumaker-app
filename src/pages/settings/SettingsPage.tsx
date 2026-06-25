@@ -1358,12 +1358,15 @@ export default function SettingsPage() {
             {currentCenter?.name ?? '—'}{activeCard ? ` · ${activeCard.desc}` : ' · Configure your program'}
           </div>
         </div>
+        {/* Global center switcher — visible on every section EXCEPT Milk Rates
+            (milk norms are org-wide). Includes an Organization option so the
+            admin default (currentCenter = null) shows a meaningful selection. */}
         {orgRole === 'admin' && centers.length > 1 && view !== 'milk' && (
           <select
             value={currentCenter?.id ?? ''}
             onChange={e => {
-              const c = centers.find(x => x.id === e.target.value)
-              if (c) setCurrentCenter(c)
+              const v = e.target.value
+              setCurrentCenter(v ? (centers.find(x => x.id === v) ?? null) : null)
             }}
             style={{
               padding: '7px 12px', borderRadius: 8, border: '1.5px solid #d0d0d0',
@@ -1371,6 +1374,7 @@ export default function SettingsPage() {
               outline: 'none', cursor: 'pointer',
             }}
           >
+            <option value="">🏢 Organization (all centers)</option>
             {centers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         )}

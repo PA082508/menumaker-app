@@ -103,7 +103,6 @@ export default function ChildrenPage() {
       const { data: kids } = await supabase.schema('menumaker').from('roster')
         .select('id,first_name,last_name,child_name,age_group_food,frp,date_in,date_out,birthday,classroom_id')
         .in('center_id', centerIds).eq('is_active', true)
-        .lte('date_in', todayStr)
         .or(`date_out.is.null,date_out.gte.${todayStr}`)
         .order('last_name', { nullsFirst: false }).order('first_name')
 

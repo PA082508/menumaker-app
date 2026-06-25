@@ -268,7 +268,6 @@ export default function CenterRosterPage() {
         supabase.schema('menumaker').from('roster')
           .select('id,first_name,last_name,child_name,age_group_food,frp,date_in,date_out,birthday,milk_kind,classroom_id,photo_url')
           .eq('center_id', centerId).eq('is_active', true)
-          .lte('date_in', todayStr)
           .or(`date_out.is.null,date_out.gte.${todayStr}`)
           .order('last_name', { nullsFirst: false }).order('first_name'),
 

@@ -251,7 +251,13 @@ export default function ChildrenPage() {
                 ) : cls.map((room, ri) => {
                   const listed = children.filter(c => c.classroom_id === room.id).length
                   const today  = todayCounts[room.id] ?? 0
-                  const teachers = staff.filter(s => s.class_primary === room.id)
+                  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim()
+                  const teachers = staff.filter(s =>
+                    s.center_id === center.id && (
+                      s.class_primary === room.id ||
+                      norm(s.class_primary ?? '') === norm(room.name)
+                    )
+                  )
                   const teacherNames = teachers
                     .map(s => s.first_name ?? '').filter(Boolean).join(', ') || '—'
                   const expandKey = `${center.id}__${room.id}`

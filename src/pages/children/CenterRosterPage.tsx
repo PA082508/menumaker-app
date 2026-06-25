@@ -338,8 +338,12 @@ export default function CenterRosterPage() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           {classrooms.map(room => {
+            const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim()
             const roomChildren = children.filter(c => c.classroom_id === room.id)
-            const roomStaff    = staff.filter(s => s.class_primary === room.id)
+            const roomStaff    = staff.filter(s =>
+              s.class_primary === room.id ||
+              norm(s.class_primary ?? '') === norm(room.name)
+            )
             const presentHere  = roomChildren.filter(c =>
               attendMap[fullName(c).toLowerCase()]?.state === 'present'
             ).length

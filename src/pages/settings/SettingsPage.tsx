@@ -1272,7 +1272,7 @@ function ComingSoon({ title }: { title: string }) {
 
 export default function SettingsPage() {
   const [view, setView] = useState<SectionKey | null>(null)
-  const { currentCenter, centers, orgRole, setCurrentCenter } = useOrg()
+  const { currentCenter, orgRole } = useOrg()
   const { role } = useAuth()
   const canManageAccess = role === 'admin' || role === 'office_manager' || orgRole === 'admin'
   const isOwner = orgRole === 'admin'
@@ -1358,26 +1358,9 @@ export default function SettingsPage() {
             {currentCenter?.name ?? '—'}{activeCard ? ` · ${activeCard.desc}` : ' · Configure your program'}
           </div>
         </div>
-        {/* Global center switcher — visible on every section EXCEPT Milk Rates
-            (milk norms are org-wide). Includes an Organization option so the
-            admin default (currentCenter = null) shows a meaningful selection. */}
-        {orgRole === 'admin' && centers.length > 1 && view !== 'milk' && (
-          <select
-            value={currentCenter?.id ?? ''}
-            onChange={e => {
-              const v = e.target.value
-              setCurrentCenter(v ? (centers.find(x => x.id === v) ?? null) : null)
-            }}
-            style={{
-              padding: '7px 12px', borderRadius: 8, border: '1.5px solid #d0d0d0',
-              fontSize: 13, fontFamily: 'inherit', background: '#fff', color: '#0a3320',
-              outline: 'none', cursor: 'pointer',
-            }}
-          >
-            <option value="">🏢 Organization (all centers)</option>
-            {centers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        )}
+        {/* Center selection now lives inline inside specific sections (Schedule
+            & Holidays, Milk Rates) and in the left-sidebar switcher — no
+            page-level selector here. */}
       </div>
 
       {view === null ? (

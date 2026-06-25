@@ -510,10 +510,11 @@ export default function MealCountPage() {
         )}
       </div>
 
-      <div style={{ display: "flex", justifyContent: "flex-end", width: "100%", margin: "8px 0" }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", width: "100%",
+        background: "#0f4c35", padding: "0 1.25rem .75rem" }}>
         <button onClick={exportWeekCSV} title="Download CSV for Google Sheets"
           style={{ position: "static", padding: "7px 14px", borderRadius: 8,
-            border: "1px solid #0f4c35", background: "transparent", color: "#0f4c35",
+            border: "1px solid rgba(255,255,255,0.6)", background: "transparent", color: "#fff",
             fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
           ⬇ Export for Google Sheets
         </button>

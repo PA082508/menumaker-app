@@ -23,6 +23,8 @@ type Staff = {
   class_secondary: string | null
   hire_date: string | null
   is_active: boolean | null
+  phone: string | null
+  email: string | null
 }
 
 type FilterKey = 'all' | 'teachers' | 'directors' | 'cooks' | 'admin'
@@ -68,7 +70,7 @@ export default function StaffPage() {
     setLoading(true)
     ;(async () => {
       let q = supabase.schema('menumaker').from('staff')
-        .select('id,first_name,last_name,position,center_id,class_primary,class_secondary,hire_date,is_active')
+        .select('id,first_name,last_name,position,center_id,class_primary,class_secondary,hire_date,is_active,phone,email')
         .eq('org_id', org.id)
       if (currentCenter?.id) q = q.eq('center_id', currentCenter.id)
       const { data } = await q.order('last_name', { nullsFirst: false }).order('first_name')
@@ -177,6 +179,8 @@ export default function StaffPage() {
                   {(s.class_primary || s.class_secondary) && (
                     <Row icon="🚪" text={[s.class_primary, s.class_secondary].filter(Boolean).join(' · ')} />
                   )}
+                  {s.phone && <Row icon="📞" text={s.phone} href={`tel:${s.phone}`} />}
+                  {s.email && <Row icon="✉️" text={s.email} href={`mailto:${s.email}`} />}
                   <Row icon="📅" text={`Hired ${fmtDate(s.hire_date)}`} />
                 </div>
               </div>
@@ -188,11 +192,13 @@ export default function StaffPage() {
   )
 }
 
-function Row({ icon, text }: { icon: string; text: string }) {
+function Row({ icon, text, href }: { icon: string; text: string; href?: string }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
       <span style={{ fontSize: 13 }}>{icon}</span>
-      <span style={{ wordBreak: 'break-word' }}>{text}</span>
+      {href
+        ? <a href={href} style={{ color: '#1e6b4a', textDecoration: 'none', wordBreak: 'break-word' }}>{text}</a>
+        : <span style={{ wordBreak: 'break-word' }}>{text}</span>}
     </div>
   )
 }

@@ -1358,7 +1358,7 @@ export default function SettingsPage() {
             {currentCenter?.name ?? '—'}{activeCard ? ` · ${activeCard.desc}` : ' · Configure your program'}
           </div>
         </div>
-        {orgRole === 'admin' && centers.length > 1 && (
+        {orgRole === 'admin' && centers.length > 1 && view !== 'milk' && (
           <select
             value={currentCenter?.id ?? ''}
             onChange={e => {

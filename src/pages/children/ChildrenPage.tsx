@@ -7,6 +7,7 @@
 // ============================================================
 
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
 import { useAuth } from '@/hooks/useAuth'
@@ -75,6 +76,7 @@ const FRP_STYLE: Record<string, { bg: string; color: string; border: string }> =
 export default function ChildrenPage() {
   const { currentCenter } = useOrg()
   const { roles } = useAuth()
+  const navigate = useNavigate()
   const allowed = (roles as string[]).some(r => ['admin','director','office_manager'].includes(r))
 
   const [classrooms, setClassrooms]   = useState<Classroom[]>([])
@@ -206,15 +208,28 @@ export default function ChildrenPage() {
                 <div style={{
                   background: '#0f4c35',
                   padding: '12px 16px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 }}>
-                  <div style={{ color: '#fff', fontWeight: 700, fontSize: 14, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                    {center.name}
-                  </div>
-                  {cap > 0 && (
-                    <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: 11, marginTop: 2 }}>
-                      capacity {cap}
+                  <div>
+                    <div style={{ color: '#fff', fontWeight: 700, fontSize: 14, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                      {center.name}
                     </div>
-                  )}
+                    {cap > 0 && (
+                      <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: 11, marginTop: 2 }}>
+                        capacity {cap}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => navigate(`/center/${center.id}`)}
+                    style={{
+                      background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)',
+                      color: '#fff', borderRadius: 8, padding: '4px 10px', fontSize: 11,
+                      cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600,
+                    }}
+                  >
+                    Attendance →
+                  </button>
                 </div>
 
                 {/* Table header */}

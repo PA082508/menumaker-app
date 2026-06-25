@@ -96,10 +96,11 @@ export function OrgProvider({ children }: { children: ReactNode }) {
         setIsOrgAdmin(orgAdmin)
         setModules(data.modules ?? [])
         setCenters(accessible)
-        // Default to a concrete center so center-scoped pages (Meal Count,
-        // Reports, Menu…) always filter correctly. Admins can switch to the
-        // Organization view via the header dropdown (setCurrentCenter(null)).
-        setCurrentCenter(accessible[0] ?? null)
+        // Org admins / office managers land in the Organization view by default
+        // (currentCenter = null); they can pick a concrete center from the header.
+        // Everyone else defaults to their (first) accessible center so center-scoped
+        // pages (Meal Count, Reports, Menu…) filter correctly out of the box.
+        setCurrentCenter(orgAdmin ? null : (accessible[0] ?? null))
       }
 
       // Variant B — permission-driven navigation. On failure leave navModules

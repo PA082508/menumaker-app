@@ -235,8 +235,9 @@ function DetailPopup({ data, onClose }: { data: PopupData; onClose: () => void }
 }
 
 // ── Main Page ────────────────────────────────────────────────
-export default function CenterRosterPage() {
-  const { centerId } = useParams<{ centerId: string }>()
+export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?: string } = {}) {
+  const { centerId: centerIdParam } = useParams<{ centerId: string }>()
+  const centerId = centerIdProp ?? centerIdParam
   const { centers } = useOrg()
   const { roles } = useAuth()
   const navigate = useNavigate()

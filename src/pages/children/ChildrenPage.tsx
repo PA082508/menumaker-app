@@ -7,10 +7,11 @@
 // ============================================================
 
 import { useEffect, useState } from 'react'
-import { useNavigate, Navigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
 import { useAuth } from '@/hooks/useAuth'
+import CenterRosterPage from './CenterRosterPage'
 
 // Center IDs
 const CENTER_ORDER = [
@@ -155,11 +156,10 @@ export default function ChildrenPage() {
     </div>
   )
 
-  // When a specific center is selected → go directly to roster page
-  if (currentCenter) return <Navigate to={`/center/${currentCenter.id}`} replace />
+  // When a specific center is selected → show roster inline
+  if (currentCenter) return <CenterRosterPage centerId={currentCenter.id} />
 
-  // Org view only from here — currentCenter is null
-  const cc = null
+  // Org view only from here
 
   // Org view: always show all 3 centers
   const visibleCenters = CENTER_ORDER

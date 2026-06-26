@@ -33,6 +33,7 @@ import ChildrenPage from '@/pages/children/ChildrenPage'
 import CenterRosterPage from '@/pages/children/CenterRosterPage'
 import StaffPage from '@/pages/staff/StaffPage'
 import StaffSettingsPage from '@/pages/staff/StaffSettingsPage'
+import DailyTimeLogPage from '@/pages/staff/DailyTimeLogPage'
 import ChildrenImportPage from '@/pages/children/ChildrenImportPage'
 import ChildrenExportPage from '@/pages/children/ChildrenExportPage'
 
@@ -134,6 +135,7 @@ export default function App() {
               <Route path="center/:centerId"   element={<CenterRosterPage />} />
               <Route path="staff"              element={<StaffPage />} />
               <Route path="staff/:staffId/settings" element={<StaffSettingsPage />} />
+              <Route path="staff/time-log"    element={<DailyTimeLogPage />} />
               <Route path="children/import"    element={<ChildrenImportPage />} />
               <Route path="children/export"    element={<ChildrenExportPage />} />
               <Route path="org/users"  element={<UserManagementPage />} />

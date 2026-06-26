@@ -165,7 +165,7 @@ export default function DailyTimeLogPage() {
             .filter(m => m.start_time && m.end_time)
             .map(m => ({
               log_date: dateStr,
-              activity: MEAL_SLOTS[m.slot] ?? m.slot,
+              activity: 'Serve food and clean up',
               meal_slot: m.slot,
               begin_time: m.start_time!.slice(0,5),
               end_time: m.end_time!.slice(0,5),

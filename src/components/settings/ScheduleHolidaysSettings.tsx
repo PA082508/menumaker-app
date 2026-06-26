@@ -12,7 +12,6 @@ const card: React.CSSProperties = { background: '#fff', border: '1px solid #e8e8
 const h3: React.CSSProperties = { margin: '0 0 14px', fontSize: 16, fontWeight: 700, color: '#0a3320' }
 const lbl: React.CSSProperties = { display: 'block', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#999', marginBottom: 4 }
 const inp: React.CSSProperties = { padding: '8px 10px', borderRadius: 8, border: '1.5px solid #e0e0e0', fontSize: 14, fontFamily: 'inherit', outline: 'none' }
-// Center selector styled as a clear, clickable button with a ▾ arrow.
 const selStyle: React.CSSProperties = {
   appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none',
   background: "#fff url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M1 1l4 4 4-4' fill='none' stroke='%230f4c35' stroke-width='1.5'/></svg>\") no-repeat right 12px center",
@@ -21,6 +20,62 @@ const selStyle: React.CSSProperties = {
 }
 const btnPri: React.CSSProperties = { padding: '8px 16px', borderRadius: 9, border: 'none', background: '#0f4c35', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
 const btnSec: React.CSSProperties = { padding: '8px 14px', borderRadius: 9, border: '1.5px solid #0f4c35', background: '#fff', color: '#0f4c35', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
+
+// ── AM/PM time helpers ────────────────────────────────────────
+// Stored as "HH:MM" (24h). Displayed as h:MM + AM/PM picker.
+const to24 = (h: string, m: string, ap: string) => {
+  let hh = parseInt(h) || 0
+  if (ap === 'PM' && hh !== 12) hh += 12
+  if (ap === 'AM' && hh === 12) hh = 0
+  return `${String(hh).padStart(2,'0')}:${String(parseInt(m)||0).padStart(2,'0')}`
+}
+const from24 = (val: string): { h: string; m: string; ap: string } => {
+  if (!val) return { h: '', m: '', ap: 'AM' }
+  const [hStr, mStr] = val.slice(0,5).split(':')
+  let hh = parseInt(hStr) || 0
+  const mm = String(parseInt(mStr)||0).padStart(2,'0')
+  const ap = hh >= 12 ? 'PM' : 'AM'
+  if (hh === 0) hh = 12
+  else if (hh > 12) hh -= 12
+  return { h: String(hh), m: mm, ap }
+}
+
+// ── TimeAmPm component ────────────────────────────────────────
+function TimeAmPm({ value, onChange, compact }: {
+  value: string
+  onChange: (v: string) => void
+  compact?: boolean
+}) {
+  const { h, m, ap } = from24(value)
+  const hours = Array.from({length:12}, (_,i) => String(i+1))
+  const mins  = ['00','05','10','15','20','25','30','35','40','45','50','55']
+  const sz = compact ? 11 : 13
+  const pd = compact ? '4px 5px' : '6px 8px'
+  const sel: React.CSSProperties = {
+    padding: pd, borderRadius: 6, border: '1.5px solid #e0e0e0',
+    fontSize: sz, fontFamily: 'inherit', outline: 'none', background: '#fff',
+    cursor: 'pointer', appearance: 'none', WebkitAppearance: 'none',
+  }
+  const update = (nh: string, nm: string, nap: string) => onChange(to24(nh||h||'12', nm||m||'00', nap||ap))
+
+  return (
+    <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+      <select value={h} onChange={e => update(e.target.value, m, ap)} style={{ ...sel, width: compact ? 46 : 52 }}>
+        <option value="">--</option>
+        {hours.map(v => <option key={v} value={v}>{v}</option>)}
+      </select>
+      <span style={{ fontSize: sz, color: '#888' }}>:</span>
+      <select value={m} onChange={e => update(h, e.target.value, ap)} style={{ ...sel, width: compact ? 46 : 52 }}>
+        <option value="">--</option>
+        {mins.map(v => <option key={v} value={v}>{v}</option>)}
+      </select>
+      <select value={ap} onChange={e => update(h, m, e.target.value)} style={{ ...sel, width: compact ? 46 : 52, color: ap === 'AM' ? '#0f4c35' : '#7c4f4f', fontWeight: 700 }}>
+        <option value="AM">AM</option>
+        <option value="PM">PM</option>
+      </select>
+    </div>
+  )
+}
 
 export default function ScheduleHolidaysSettings() {
   return (
@@ -183,12 +238,12 @@ function MealScheduleSection() {
             {/* Start */}
             <div>
               <label style={lbl}>Start</label>
-              <input type="time" value={qaStart} onChange={e => setQaStart(e.target.value)} style={{ ...inp, width: 110 }} />
+              <TimeAmPm value={qaStart} onChange={setQaStart} />
             </div>
             {/* End */}
             <div>
               <label style={lbl}>End</label>
-              <input type="time" value={qaEnd} onChange={e => setQaEnd(e.target.value)} style={{ ...inp, width: 110 }} />
+              <TimeAmPm value={qaEnd} onChange={setQaEnd} />
             </div>
             {/* Apply button */}
             <button
@@ -266,26 +321,13 @@ function MealScheduleSection() {
                     const hasTime = t?.start || t?.end
                     return (
                       <td key={s} style={{ padding: '6px 8px' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'center' }}>
-                          <div style={{ display: 'flex', gap: 3 }}>
-                            <input
-                              type="time"
-                              value={t?.start ?? ''}
-                              onChange={e => setTime(c.id, s, 'start', e.target.value)}
-                              style={{ ...inp, padding: '5px 5px', width: 88, fontSize: 12 }}
-                            />
-                            <input
-                              type="time"
-                              value={t?.end ?? ''}
-                              onChange={e => setTime(c.id, s, 'end', e.target.value)}
-                              style={{ ...inp, padding: '5px 5px', width: 88, fontSize: 12 }}
-                            />
-                          </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <div style={{ fontSize: 9, color: '#aaa', textTransform: 'uppercase' }}>Start</div>
+                          <TimeAmPm value={t?.start ?? ''} onChange={v => setTime(c.id, s, 'start', v)} compact />
+                          <div style={{ fontSize: 9, color: '#aaa', textTransform: 'uppercase' }}>End</div>
+                          <TimeAmPm value={t?.end ?? ''} onChange={v => setTime(c.id, s, 'end', v)} compact />
                           {hasTime && (
-                            <button
-                              onClick={() => clearTime(c.id, s)}
-                              style={{ fontSize: 9, color: '#aaa', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                            >
+                            <button onClick={() => clearTime(c.id, s)} style={{ fontSize: 9, color: '#aaa', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
                               clear
                             </button>
                           )}

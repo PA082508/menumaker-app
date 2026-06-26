@@ -55,11 +55,36 @@ type Schedule = {
   shift_start: string; shift_end: string; break_minutes: number; is_active: boolean
 }
 
+type TrainingRecord = {
+  id: string; training_type: string; training_name: string
+  provider: string | null; completed_date: string; hours_earned: number
+  expires_date: string | null; certificate_url: string | null
+  verified_by: string | null; notes: string | null
+}
+type DocRecord = {
+  id: string; doc_type: string; title: string; file_name: string
+  storage_path: string; uploaded_at: string; expires_date: string | null
+  uploaded_by: string; notes: string | null
+}
+
 const fmtDate = (d: string | null) => d ? d.slice(0, 10) : ''
+const fmtDateDisplay = (d: string | null) => {
+  if (!d) return '—'
+  const [y,m,day] = d.slice(0,10).split('-')
+  return `${Number(m)}/${Number(day)}/${y}`
+}
 const avatarColor = (name: string) => {
   const colors = ['#0f4c35','#1a6b4a','#2d8f64','#4a7c6b','#5c4f7c','#7c4f4f','#4f6b7c']
   let h = 0; for (const c of name) h = (h * 31 + c.charCodeAt(0)) & 0xffff
   return colors[h % colors.length]
+}
+
+const TRAINING_TYPES = ['First Aid/CPR','Child Abuse Prevention','Health & Safety','Nutrition','Curriculum','Special Needs','CACFP','Fire Safety','Other']
+const DOC_TYPES: Record<string, string> = {
+  contract: 'Contract', i9: 'I-9', w4: 'W-4',
+  certification: 'Certification', training: 'Training',
+  performance: 'Performance Review', disciplinary: 'Disciplinary',
+  identity: 'ID Document', other: 'Other',
 }
 
 // Benefits eligibility
@@ -74,23 +99,30 @@ export default function StaffSettingsPage() {
   const { centers, org } = useOrg()
   const navigate = useNavigate()
 
-  const [data, setData]       = useState<StaffData | null>(null)
-  const [sched, setSched]     = useState<Schedule[]>([])
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving]   = useState(false)
-  const [saved, setSaved]     = useState(false)
-  const [tab, setTab]         = useState<'personal'|'payroll'|'schedule'|'benefits'|'emergency'>('personal')
+  const [data, setData]         = useState<StaffData | null>(null)
+  const [sched, setSched]       = useState<Schedule[]>([])
+  const [training, setTraining] = useState<TrainingRecord[]>([])
+  const [docs, setDocs]         = useState<DocRecord[]>([])
+  const [loading, setLoading]   = useState(true)
+  const [saving, setSaving]     = useState(false)
+  const [saved, setSaved]       = useState(false)
+  const [tab, setTab]           = useState<'personal'|'payroll'|'schedule'|'benefits'|'training'|'documents'|'emergency'>('personal')
+
+  // Training form
+  const [showTrainingForm, setShowTrainingForm] = useState(false)
+  const [tForm, setTForm] = useState({ training_type: '', training_name: '', provider: '', completed_date: '', hours_earned: '', expires_date: '', notes: '' })
+  const [addingTraining, setAddingTraining] = useState(false)
 
   useEffect(() => {
     if (!staffId) return
     ;(async () => {
-      const { data: s } = await supabase.schema('menumaker').from('staff')
-        .select('*').eq('id', staffId).single()
+      const [{ data: s }, { data: sc }, { data: tr }, { data: dc }] = await Promise.all([
+        supabase.schema('menumaker').from('staff').select('*').eq('id', staffId).single(),
+        supabase.schema('menumaker').from('staff_schedules').select('*').eq('staff_id', staffId),
+        supabase.schema('menumaker').from('staff_training_records').select('*').eq('staff_id', staffId).order('completed_date', { ascending: false }),
+        supabase.schema('menumaker').from('staff_documents').select('*').eq('staff_id', staffId).eq('is_active', true).order('uploaded_at', { ascending: false }),
+      ])
       setData(s as StaffData)
-
-      const { data: sc } = await supabase.schema('menumaker').from('staff_schedules')
-        .select('*').eq('staff_id', staffId)
-      // Build 5-day schedule
       const days = DAYS.map((_, i) => {
         const existing = (sc ?? []).find((r: any) => r.day_of_week === i)
         return existing
@@ -98,6 +130,8 @@ export default function StaffSettingsPage() {
           : { day_of_week: i, shift_start: '', shift_end: '', break_minutes: 30, is_active: false }
       })
       setSched(days)
+      setTraining((tr ?? []) as TrainingRecord[])
+      setDocs((dc ?? []) as DocRecord[])
       setLoading(false)
     })()
   }, [staffId])
@@ -166,6 +200,8 @@ export default function StaffSettingsPage() {
     { key: 'payroll',   label: '💰 Payroll' },
     { key: 'schedule',  label: '📅 Schedule' },
     { key: 'benefits',  label: `🎁 Benefits${hasBenefits ? ' ✓' : ''}` },
+    { key: 'training',  label: `📚 Training${training.length > 0 ? ` (${training.length})` : ''}` },
+    { key: 'documents', label: `📋 Documents${docs.length > 0 ? ` (${docs.length})` : ''}` },
     { key: 'emergency', label: '🚨 Emergency' },
   ]
 
@@ -510,6 +546,198 @@ export default function StaffSettingsPage() {
                       {isPast ? ' (completed)' : ` (in ${Math.ceil((anniv.getTime() - Date.now()) / 86400000)} days)`}
                     </span>
                   </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── TRAINING ── */}
+      {tab === 'training' && (
+        <div style={card}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, borderBottom: '1px solid #f0f0f0', paddingBottom: 10 }}>
+            <h3 style={{ ...h3, margin: 0, border: 'none', padding: 0 }}>📚 Training Records</h3>
+            <button onClick={() => setShowTrainingForm(!showTrainingForm)} style={btnPri}>
+              {showTrainingForm ? 'Cancel' : '+ Add Training'}
+            </button>
+          </div>
+
+          {/* Add form */}
+          {showTrainingForm && (
+            <div style={{ background: '#f0f7f2', borderRadius: 10, border: '1px solid #b8dfc8', padding: 16, marginBottom: 20 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: '#0f4c35', marginBottom: 12 }}>New Training Record</div>
+              <div style={{ ...grid2, marginBottom: 12 }}>
+                <div>
+                  <label style={lbl}>Type</label>
+                  <select style={sel} value={tForm.training_type} onChange={e => setTForm(p => ({ ...p, training_type: e.target.value }))}>
+                    <option value="">— select —</option>
+                    {TRAINING_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={lbl}>Training Name</label>
+                  <input style={inp} value={tForm.training_name} onChange={e => setTForm(p => ({ ...p, training_name: e.target.value }))} placeholder="Course or certificate name" />
+                </div>
+              </div>
+              <div style={{ ...grid3, marginBottom: 12 }}>
+                <div>
+                  <label style={lbl}>Provider</label>
+                  <input style={inp} value={tForm.provider} onChange={e => setTForm(p => ({ ...p, provider: e.target.value }))} placeholder="Organization" />
+                </div>
+                <div>
+                  <label style={lbl}>Completed Date</label>
+                  <input style={inp} type="date" value={tForm.completed_date} onChange={e => setTForm(p => ({ ...p, completed_date: e.target.value }))} />
+                </div>
+                <div>
+                  <label style={lbl}>Hours Earned</label>
+                  <input style={inp} type="number" step="0.5" min="0" value={tForm.hours_earned} onChange={e => setTForm(p => ({ ...p, hours_earned: e.target.value }))} />
+                </div>
+              </div>
+              <div style={{ ...grid2, marginBottom: 12 }}>
+                <div>
+                  <label style={lbl}>Expires Date (optional)</label>
+                  <input style={inp} type="date" value={tForm.expires_date} onChange={e => setTForm(p => ({ ...p, expires_date: e.target.value }))} />
+                </div>
+                <div>
+                  <label style={lbl}>Notes</label>
+                  <input style={inp} value={tForm.notes} onChange={e => setTForm(p => ({ ...p, notes: e.target.value }))} />
+                </div>
+              </div>
+              <button
+                disabled={addingTraining || !tForm.training_type || !tForm.training_name || !tForm.completed_date}
+                onClick={async () => {
+                  if (!staffId || !data) return
+                  setAddingTraining(true)
+                  const { data: rec } = await supabase.schema('menumaker').from('staff_training_records').insert({
+                    staff_id: staffId, org_id: org?.id, center_id: data.center_id,
+                    training_type: tForm.training_type, training_name: tForm.training_name,
+                    provider: tForm.provider || null, completed_date: tForm.completed_date,
+                    hours_earned: parseFloat(tForm.hours_earned) || 0,
+                    expires_date: tForm.expires_date || null, notes: tForm.notes || null,
+                    self_reported: true,
+                  }).select().single()
+                  if (rec) setTraining(prev => [rec as TrainingRecord, ...prev])
+                  setTForm({ training_type: '', training_name: '', provider: '', completed_date: '', hours_earned: '', expires_date: '', notes: '' })
+                  setShowTrainingForm(false)
+                  setAddingTraining(false)
+                }}
+                style={{ ...btnPri, opacity: (!tForm.training_type || !tForm.training_name || !tForm.completed_date) ? 0.5 : 1 }}
+              >
+                {addingTraining ? 'Saving…' : 'Save Record'}
+              </button>
+            </div>
+          )}
+
+          {/* Training list */}
+          {training.length === 0 ? (
+            <div style={{ color: '#aaa', fontSize: 13, padding: '20px 0' }}>No training records yet.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {training.map(t => {
+                const isExpired = t.expires_date && new Date(t.expires_date) < new Date()
+                const expiresSoon = t.expires_date && !isExpired && (new Date(t.expires_date).getTime() - Date.now()) < 30 * 86400000
+                return (
+                  <div key={t.id} style={{
+                    padding: '12px 16px', borderRadius: 10,
+                    border: `1px solid ${isExpired ? '#fca5a5' : expiresSoon ? '#fde68a' : '#e8e8e8'}`,
+                    background: isExpired ? '#fff5f5' : expiresSoon ? '#fffbeb' : '#fafbfa',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: '#1a2e1a' }}>{t.training_name}</div>
+                        <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
+                          {t.training_type} · {t.provider ?? 'Self-reported'} · {fmtDateDisplay(t.completed_date)}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: '#0f4c35' }}>{t.hours_earned}h</span>
+                        {t.expires_date && (
+                          <span style={{
+                            fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
+                            background: isExpired ? '#fee2e2' : expiresSoon ? '#fef3c7' : '#f0fff4',
+                            color: isExpired ? '#dc2626' : expiresSoon ? '#92400e' : '#0f4c35',
+                          }}>
+                            {isExpired ? '⚠ Expired' : `Expires ${fmtDateDisplay(t.expires_date)}`}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {t.notes && <div style={{ fontSize: 12, color: '#888', marginTop: 6 }}>{t.notes}</div>}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Summary */}
+          {training.length > 0 && (
+            <div style={{ marginTop: 16, padding: '10px 14px', background: '#f0f4f1', borderRadius: 8, fontSize: 13 }}>
+              <strong>Total:</strong> {training.reduce((s, t) => s + (t.hours_earned ?? 0), 0).toFixed(1)}h across {training.length} records
+              {training.filter(t => t.expires_date && new Date(t.expires_date) < new Date()).length > 0 && (
+                <span style={{ color: '#dc2626', marginLeft: 12 }}>
+                  ⚠ {training.filter(t => t.expires_date && new Date(t.expires_date) < new Date()).length} expired
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── DOCUMENTS ── */}
+      {tab === 'documents' && (
+        <div style={card}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, borderBottom: '1px solid #f0f0f0', paddingBottom: 10 }}>
+            <h3 style={{ ...h3, margin: 0, border: 'none', padding: 0 }}>📋 Documents</h3>
+            <div style={{ fontSize: 12, color: '#888' }}>Upload via Supabase Storage · staff-documents bucket</div>
+          </div>
+
+          {docs.length === 0 ? (
+            <div style={{ color: '#aaa', fontSize: 13, padding: '20px 0' }}>No documents on file.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {docs.map(d => {
+                const isExpired = d.expires_date && new Date(d.expires_date) < new Date()
+                return (
+                  <div key={d.id} style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '10px 14px', borderRadius: 10,
+                    border: `1px solid ${isExpired ? '#fca5a5' : '#e8e8e8'}`,
+                    background: isExpired ? '#fff5f5' : '#fafbfa',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ fontSize: 20 }}>
+                        {d.doc_type === 'contract' ? '📄' : d.doc_type === 'certification' ? '🎓' : d.doc_type === 'i9' || d.doc_type === 'w4' ? '🏛' : '📋'}
+                      </span>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 13, color: '#1a2e1a' }}>{d.title}</div>
+                        <div style={{ fontSize: 11, color: '#888' }}>
+                          {DOC_TYPES[d.doc_type] ?? d.doc_type} · Uploaded {fmtDateDisplay(d.uploaded_at)} by {d.uploaded_by}
+                          {d.expires_date && ` · ${isExpired ? '⚠ Expired' : `Expires ${fmtDateDisplay(d.expires_date)}`}`}
+                        </div>
+                      </div>
+                    </div>
+                    <a href={`https://trrmyqfpxntmgxnqkikp.supabase.co/storage/v1/object/public/staff-documents/${d.storage_path}`}
+                      target="_blank" rel="noopener noreferrer"
+                      style={{ fontSize: 12, color: '#0f4c35', fontWeight: 600, textDecoration: 'none' }}>
+                      View ↗
+                    </a>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Doc type breakdown */}
+          {docs.length > 0 && (
+            <div style={{ marginTop: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {Object.entries(DOC_TYPES).map(([key, label]) => {
+                const count = docs.filter(d => d.doc_type === key).length
+                if (!count) return null
+                return (
+                  <span key={key} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 6, background: '#f0f4f1', color: '#0f4c35', fontWeight: 600 }}>
+                    {label}: {count}
+                  </span>
                 )
               })}
             </div>

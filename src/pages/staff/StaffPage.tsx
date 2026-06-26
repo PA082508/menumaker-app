@@ -9,6 +9,7 @@
 // ============================================================
 
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
 import { useAuth } from '@/hooks/useAuth'
@@ -57,6 +58,7 @@ const selStyle: React.CSSProperties = {
 export default function StaffPage() {
   const { org, currentCenter, centers, setCurrentCenter } = useOrg()
   const { roles } = useAuth()
+  const navigate = useNavigate()
   const allowed = (roles as string[]).some(r => r === 'admin' || r === 'director' || r === 'office_manager')
 
   const [staff, setStaff] = useState<Staff[]>([])
@@ -182,6 +184,14 @@ export default function StaffPage() {
                   {s.phone && <Row icon="📞" text={s.phone} href={`tel:${s.phone}`} />}
                   {s.email && <Row icon="✉️" text={s.email} href={`mailto:${s.email}`} />}
                   <Row icon="📅" text={`Hired ${fmtDate(s.hire_date)}`} />
+                </div>
+                <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid #f0f0f0' }}>
+                  <button
+                    onClick={() => navigate(`/staff/${s.id}/settings`)}
+                    style={{ fontSize: 12, padding: '5px 12px', borderRadius: 7, border: '1px solid #e0e8e0', background: '#f8fbf8', color: '#0f4c35', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}
+                  >
+                    ⚙️ Settings
+                  </button>
                 </div>
               </div>
             )

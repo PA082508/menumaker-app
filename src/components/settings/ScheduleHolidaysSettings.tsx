@@ -188,7 +188,13 @@ function MealScheduleSection() {
       return next
     })
     setQaApplied(true)
-    setTimeout(() => setQaApplied(false), 1500)
+    setTimeout(() => {
+      setQaApplied(false)
+      setQaSelected(new Set())
+      setQaStart('')
+      setQaEnd('')
+      setQaSlot('')
+    }, 1200)
   }
 
   const toggleQaClass = (cid: string) =>

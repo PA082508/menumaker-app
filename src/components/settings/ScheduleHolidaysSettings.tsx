@@ -295,6 +295,20 @@ function MealScheduleSection() {
         </div>
       )}
 
+      {/* ── Classroom Management ── */}
+      {centerId && (
+        <ClassroomManager
+          centerId={centerId}
+          orgId={org?.id ?? ''}
+          classrooms={classrooms}
+          onReload={async () => {
+            const { data: cls } = await supabase.schema('menumaker').from('classrooms')
+              .select('id, name').eq('center_id', centerId).eq('is_active', true).order('sort_order')
+            setClassrooms((cls ?? []) as Classroom[])
+          }}
+        />
+      )}
+
       {/* ── Per-classroom table ── */}
       {classrooms.length === 0
         ? <div style={{ color: '#aaa', fontSize: 13 }}>No active classrooms for this center.</div>
@@ -350,6 +364,100 @@ function MealScheduleSection() {
           </table>
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── ClassroomManager ────────────────────────────────────────
+function ClassroomManager({ centerId, orgId, classrooms, onReload }: {
+  centerId: string; orgId: string
+  classrooms: Classroom[]; onReload: () => void
+}) {
+  const [newName, setNewName] = useState('')
+  const [adding, setAdding]   = useState(false)
+  const [busy, setBusy]       = useState(false)
+
+  const add = async () => {
+    const name = newName.trim()
+    if (!name || !centerId || !orgId) return
+    setAdding(true)
+    const maxOrder = classrooms.length
+    await supabase.schema('menumaker').from('classrooms').insert({
+      org_id: orgId, center_id: centerId, name, sort_order: maxOrder, is_active: true,
+    })
+    setNewName(''); setAdding(false); onReload()
+  }
+
+  const remove = async (c: Classroom) => {
+    if (!confirm(`Deactivate "${c.name}"? This hides it from all views.`)) return
+    setBusy(true)
+    await supabase.schema('menumaker').from('classrooms').update({ is_active: false }).eq('id', c.id)
+    setBusy(false); onReload()
+  }
+
+  const move = async (idx: number, dir: -1 | 1) => {
+    const swapIdx = idx + dir
+    if (swapIdx < 0 || swapIdx >= classrooms.length) return
+    const a = classrooms[idx]; const b = classrooms[swapIdx]
+    setBusy(true)
+    await Promise.all([
+      supabase.schema('menumaker').from('classrooms').update({ sort_order: swapIdx }).eq('id', a.id),
+      supabase.schema('menumaker').from('classrooms').update({ sort_order: idx }).eq('id', b.id),
+    ])
+    setBusy(false); onReload()
+  }
+
+  const rename = async (c: Classroom, newN: string) => {
+    if (!newN.trim() || newN === c.name) return
+    await supabase.schema('menumaker').from('classrooms').update({ name: newN.trim() }).eq('id', c.id)
+    onReload()
+  }
+
+  return (
+    <div style={{ marginBottom: 18, padding: '12px 16px', background: '#fafbfa', borderRadius: 10, border: '1px solid #e8ede8' }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#0f4c35', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
+        📋 Manage Classrooms
+      </div>
+
+      {/* Classroom list */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+        {classrooms.map((c, i) => (
+          <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {/* Up/Down */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              <button onClick={() => move(i, -1)} disabled={i === 0 || busy}
+                style={{ background: 'none', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer', padding: '1px 5px', fontSize: 10, color: '#666' }}>▲</button>
+              <button onClick={() => move(i, 1)} disabled={i === classrooms.length - 1 || busy}
+                style={{ background: 'none', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer', padding: '1px 5px', fontSize: 10, color: '#666' }}>▼</button>
+            </div>
+            {/* Name (editable) */}
+            <input
+              defaultValue={c.name}
+              onBlur={e => rename(c, e.target.value)}
+              style={{ ...inp, flex: 1, padding: '5px 10px', fontSize: 13 }}
+            />
+            {/* Delete */}
+            <button onClick={() => remove(c)} disabled={busy}
+              style={{ background: 'none', border: '1px solid #fca5a5', borderRadius: 6, color: '#dc2626', cursor: 'pointer', padding: '4px 10px', fontSize: 12, fontFamily: 'inherit' }}>
+              ✕
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* Add new */}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <input
+          value={newName}
+          onChange={e => setNewName(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && add()}
+          placeholder="New classroom name…"
+          style={{ ...inp, flex: 1, padding: '6px 10px', fontSize: 13 }}
+        />
+        <button onClick={add} disabled={!newName.trim() || adding} style={btnPri}>
+          {adding ? '…' : '+ Add'}
+        </button>
+      </div>
     </div>
   )
 }

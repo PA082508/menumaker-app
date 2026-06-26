@@ -83,6 +83,8 @@ export default function StaffPage() {
     return () => { cancelled = true }
   }, [org?.id, currentCenter?.id])
 
+  const [popup, setPopup] = useState<Staff | null>(null)
+
   const centerName = (id: string | null) => short(centers.find(c => c.id === id)?.name) || '—'
 
   const countFor = (f: FilterKey) =>
@@ -94,6 +96,7 @@ export default function StaffPage() {
     return staff
       .filter(s => !test || test.test(s.position ?? ''))
       .filter(s => !q || fullName(s).toLowerCase().includes(q))
+      .sort((a, b) => (a.last_name ?? '').localeCompare(b.last_name ?? '') || (a.first_name ?? '').localeCompare(b.first_name ?? ''))
   }, [staff, filter, search])
 
   if (!allowed) {
@@ -167,7 +170,10 @@ export default function StaffPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
                   <div style={{ width: 44, height: 44, borderRadius: '50%', flexShrink: 0, background: 'linear-gradient(135deg,#0f4c35,#1a6b4a)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700 }}>{initials(s)}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: '#0a3320' }}>{fullName(s)}</div>
+                    <div
+                      onClick={() => setPopup(s)}
+                      style={{ fontSize: 15, fontWeight: 700, color: '#0a3320', cursor: 'pointer', textDecoration: 'underline dotted' }}
+                    >{fullName(s)}</div>
                     <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>{s.position ?? 'Staff'}</div>
                   </div>
                   <span style={{
@@ -185,7 +191,13 @@ export default function StaffPage() {
                   {s.email && <Row icon="✉️" text={s.email} href={`mailto:${s.email}`} />}
                   <Row icon="📅" text={`Hired ${fmtDate(s.hire_date)}`} />
                 </div>
-                <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid #f0f0f0' }}>
+                <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid #f0f0f0', display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={() => setPopup(s)}
+                    style={{ fontSize: 12, padding: '5px 12px', borderRadius: 7, border: '1px solid #e0e8e0', background: '#f8fbf8', color: '#0f4c35', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}
+                  >
+                    👤 Details
+                  </button>
                   <button
                     onClick={() => navigate(`/staff/${s.id}/settings`)}
                     style={{ fontSize: 12, padding: '5px 12px', borderRadius: 7, border: '1px solid #e0e8e0', background: '#f8fbf8', color: '#0f4c35', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}
@@ -197,6 +209,44 @@ export default function StaffPage() {
             )
           })}
         </div>
+
+        {/* Staff detail popup */}
+        {popup && (
+          <div onClick={() => setPopup(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 18, width: '100%', maxWidth: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.18)', overflow: 'hidden', fontFamily: "'DM Sans', sans-serif" }}>
+              {/* Header */}
+              <div style={{ background: '#0f4c35', padding: '20px 24px', display: 'flex', gap: 14, alignItems: 'center' }}>
+                <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700, flexShrink: 0 }}>{initials(popup)}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ color: '#fff', fontWeight: 700, fontSize: 17 }}>{fullName(popup)}</div>
+                  <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, marginTop: 2 }}>{popup.position ?? 'Staff'} · {centerName(popup.center_id)}</div>
+                </div>
+                <button onClick={() => setPopup(null)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', fontSize: 18 }}>×</button>
+              </div>
+              {/* Body */}
+              <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {[
+                  { label: 'Email',      value: popup.email,        href: popup.email ? `mailto:${popup.email}` : undefined },
+                  { label: 'Phone',      value: popup.phone,        href: popup.phone ? `tel:${popup.phone}` : undefined },
+                  { label: 'Classroom',  value: [popup.class_primary, popup.class_secondary].filter(Boolean).join(' · ') || '—' },
+                  { label: 'Hire Date',  value: fmtDate(popup.hire_date) },
+                  { label: 'Status',     value: popup.is_active !== false ? 'Active' : 'Inactive' },
+                ].map(({ label, value, href }) => (
+                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f0f0f0', paddingBottom: 8 }}>
+                    <span style={{ fontSize: 12, color: '#888' }}>{label}</span>
+                    {href
+                      ? <a href={href} style={{ fontSize: 13, color: '#0f4c35', fontWeight: 500 }}>{value}</a>
+                      : <span style={{ fontSize: 13, color: '#1a2e1a', fontWeight: 500 }}>{value || '—'}</span>
+                    }
+                  </div>
+                ))}
+                <button onClick={() => { setPopup(null); navigate(`/staff/${popup.id}/settings`) }} style={{ marginTop: 8, padding: '10px', borderRadius: 9, border: 'none', background: '#0f4c35', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  ⚙️ Open Full Settings
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       )}
     </div>
   )

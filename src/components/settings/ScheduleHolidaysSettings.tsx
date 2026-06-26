@@ -123,10 +123,12 @@ function MealScheduleSection() {
   // Quick Apply: apply time to selected classrooms
   const applyQuick = () => {
     if (!qaSlot || !qaStart || !qaEnd || qaSelected.size === 0) return
+    const s = qaStart.slice(0, 5)
+    const e = qaEnd.slice(0, 5)
     setSched(prev => {
       const next = { ...prev }
       for (const cid of qaSelected) {
-        next[cid] = { ...next[cid], [qaSlot]: { start: qaStart, end: qaEnd } }
+        next[cid] = { ...next[cid], [qaSlot]: { start: s, end: e } }
       }
       return next
     })
@@ -191,7 +193,7 @@ function MealScheduleSection() {
             {/* Apply button */}
             <button
               onClick={applyQuick}
-              disabled={!qaSlot || !qaStart || !qaEnd || qaSelected.size === 0}
+              disabled={!qaSlot || qaStart.length < 4 || qaEnd.length < 4 || qaSelected.size === 0}
               style={{
                 ...btnPri,
                 opacity: (!qaSlot || !qaStart || !qaEnd || qaSelected.size === 0) ? 0.5 : 1,

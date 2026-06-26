@@ -101,14 +101,18 @@ export default function DailyTimeLogPage() {
   const selectedStaff = staffList.find(s => s.id === staffId)
   const daysInMonth   = getDaysInMonth(year, month)
 
-  // Load staff list
+  // Load staff list — filtered by current center
   useEffect(() => {
     if (!org?.id) return
-    supabase.schema('menumaker').from('staff')
+    let q = supabase.schema('menumaker').from('staff')
       .select('id,first_name,last_name,position,center_id,class_primary,hourly_rate')
       .eq('org_id', org.id).eq('is_active', true)
-      .then(({ data }) => setStaffList((data ?? []) as StaffRow[]))
-  }, [org?.id])
+    if (currentCenter?.id) q = q.eq('center_id', currentCenter.id)
+    q.order('last_name').then(({ data }) => {
+      setStaffList((data ?? []) as StaffRow[])
+      setStaffId('') // reset selection when center changes
+    })
+  }, [org?.id, currentCenter?.id])
 
   // Load meal schedule when staff selected
   useEffect(() => {
@@ -246,7 +250,10 @@ export default function DailyTimeLogPage() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 24, color: '#0a3320' }}>CACFP Daily Time Log</div>
+          <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 24, color: '#0a3320' }}>
+            CACFP Daily Time Log
+            {currentCenter && <span style={{ fontSize: 16, color: '#0f4c35', marginLeft: 10 }}>· {currentCenter.name.replace(/^Play Academy\s+/i,'')}</span>}
+          </div>
           <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>Keep on file for 3 years + current year (Ohio Admin Code 5180:2-12-18)</div>
         </div>
         <div className="no-print" style={{ display: 'flex', gap: 8 }}>
@@ -523,7 +530,9 @@ export default function DailyTimeLogPage() {
 
       {!staffId && (
         <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e0e8e0', padding: 40, textAlign: 'center', color: '#aaa', fontSize: 13 }}>
-          Select a staff member to view or generate their CACFP Daily Time Log.
+          {!currentCenter
+            ? 'Select a center in the sidebar first, then choose a staff member.'
+            : 'Select a staff member to view or generate their CACFP Daily Time Log.'}
         </div>
       )}
     </div>

@@ -94,6 +94,8 @@ export default function DailyTimeLogPage() {
   const [entries,   setEntries]   = useState<Record<string, TimeLogEntry[]>>({}) // date → entries[]
   const [saving,    setSaving]    = useState(false)
   const [saved,     setSaved]     = useState(false)
+  const [empSig,    setEmpSig]    = useState('')
+  const [adminSig,  setAdminSig]  = useState('')
 
   const centerId = currentCenter?.id ?? ''
   const selectedStaff = staffList.find(s => s.id === staffId)
@@ -458,15 +460,65 @@ export default function DailyTimeLogPage() {
               </div>
             </div>
 
-            {/* Signature lines */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 40, marginTop: 16, paddingTop: 16, borderTop: '1px solid #e0e8e0' }}>
-              <div>
-                <div style={{ borderBottom: '1px solid #555', marginBottom: 4, height: 28 }} />
-                <div style={{ fontSize: 11, color: '#666' }}>Employee Signature · Date</div>
+            {/* Signature section */}
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #e0e8e0' }}>
+              {/* Electronic signature fields — visible on screen, hidden on print if empty */}
+              <div className="no-print" style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 11, color: '#0f4c35', fontWeight: 700, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Electronic Signatures (optional — or leave blank to sign by hand when printed)
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                  <div>
+                    <div style={{ fontSize: 10, color: '#888', marginBottom: 4 }}>Employee — Type full name</div>
+                    <input
+                      value={empSig}
+                      onChange={e => setEmpSig(e.target.value)}
+                      placeholder="Full name as electronic signature"
+                      style={{ ...tinp, width: '100%', fontSize: 13, padding: '7px 10px', fontStyle: empSig ? 'italic' : 'normal', fontFamily: empSig ? 'Georgia, serif' : 'inherit' }}
+                    />
+                    {empSig && <div style={{ fontSize: 10, color: '#888', marginTop: 3 }}>Signed electronically · {new Date().toLocaleDateString()}</div>}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, color: '#888', marginBottom: 4 }}>Administrator — Type full name</div>
+                    <input
+                      value={adminSig}
+                      onChange={e => setAdminSig(e.target.value)}
+                      placeholder="Full name as electronic signature"
+                      style={{ ...tinp, width: '100%', fontSize: 13, padding: '7px 10px', fontStyle: adminSig ? 'italic' : 'normal', fontFamily: adminSig ? 'Georgia, serif' : 'inherit' }}
+                    />
+                    {adminSig && <div style={{ fontSize: 10, color: '#888', marginTop: 3 }}>Signed electronically · {new Date().toLocaleDateString()}</div>}
+                  </div>
+                </div>
               </div>
-              <div>
-                <div style={{ borderBottom: '1px solid #555', marginBottom: 4, height: 28 }} />
-                <div style={{ fontSize: 11, color: '#666' }}>Signature of Administrator · Date</div>
+
+              {/* Signature display — shown on screen AND in print */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 40 }}>
+                <div>
+                  {empSig ? (
+                    <div style={{ borderBottom: '1px solid #555', marginBottom: 4, padding: '4px 0', fontFamily: 'Georgia, serif', fontSize: 16, fontStyle: 'italic', color: '#1a2e1a' }}>
+                      {empSig}
+                    </div>
+                  ) : (
+                    <div style={{ borderBottom: '1px solid #555', marginBottom: 4, height: 32 }} />
+                  )}
+                  <div style={{ fontSize: 11, color: '#666' }}>
+                    Employee Signature · Date
+                    {empSig && <span style={{ marginLeft: 8, color: '#0f4c35' }}>{new Date().toLocaleDateString()}</span>}
+                  </div>
+                </div>
+                <div>
+                  {adminSig ? (
+                    <div style={{ borderBottom: '1px solid #555', marginBottom: 4, padding: '4px 0', fontFamily: 'Georgia, serif', fontSize: 16, fontStyle: 'italic', color: '#1a2e1a' }}>
+                      {adminSig}
+                    </div>
+                  ) : (
+                    <div style={{ borderBottom: '1px solid #555', marginBottom: 4, height: 32 }} />
+                  )}
+                  <div style={{ fontSize: 11, color: '#666' }}>
+                    Signature of Administrator · Date
+                    {adminSig && <span style={{ marginLeft: 8, color: '#0f4c35' }}>{new Date().toLocaleDateString()}</span>}
+                  </div>
+                </div>
               </div>
             </div>
           </div>

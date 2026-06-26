@@ -1,13 +1,3 @@
-// ============================================================
-// StaffPage.tsx — route /staff
-// Staff directory for the active center (or whole org in Organization view).
-// Source: menumaker.staff. Gated to admin/director/office_manager.
-//
-// NOTE: the staff table has no phone/email columns, so those aren't shown;
-// we surface position, center, class assignment, hire date and status instead.
-// staff has RLS disabled, so we scope the query by org_id ourselves.
-// ============================================================
-
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
@@ -16,38 +6,33 @@ import { useAuth } from '@/hooks/useAuth'
 
 type Staff = {
   id: string
-  first_name: string | null
-  last_name: string | null
-  position: string | null
-  center_id: string | null
-  class_primary: string | null
-  class_secondary: string | null
-  hire_date: string | null
-  is_active: boolean | null
-  phone: string | null
-  email: string | null
+  first_name: string | null; last_name: string | null
+  position: string | null; center_id: string | null
+  class_primary: string | null; class_secondary: string | null
+  hire_date: string | null; is_active: boolean | null
+  phone: string | null; email: string | null
 }
 
 type FilterKey = 'all' | 'teachers' | 'directors' | 'cooks' | 'admin'
 const FILTERS: { key: FilterKey; label: string; test?: RegExp }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'teachers', label: 'Teachers', test: /teacher/i },
-  { key: 'directors', label: 'Directors', test: /director/i },
-  { key: 'cooks', label: 'Cooks', test: /cook/i },
-  { key: 'admin', label: 'Admin', test: /admin/i },
+  { key: 'all',      label: 'All' },
+  { key: 'teachers', label: 'Teachers',  test: /teacher/i },
+  { key: 'directors',label: 'Directors', test: /director|administrator/i },
+  { key: 'cooks',    label: 'Cooks',     test: /cook/i },
+  { key: 'admin',    label: 'Admin',     test: /admin|manager|bookkeeper/i },
 ]
 
-const short = (n?: string | null) => (n ?? '').replace(/^Play Academy\s+/i, '').trim()
-const fmtDate = (d: string | null) => {
-  if (!d) return '—'
-  const [y, m, day] = String(d).slice(0, 10).split('-')
-  return m && day ? `${Number(m)}/${Number(day)}/${y}` : String(d)
-}
+const short    = (n?: string | null) => (n ?? '').replace(/^Play Academy\s+/i, '').trim()
+const fmtDate  = (d: string | null)  => { if (!d) return '—'; const [y,m,day] = d.slice(0,10).split('-'); return `${Number(m)}/${Number(day)}/${y}` }
 const fullName = (s: Staff) => [s.first_name, s.last_name].filter(Boolean).join(' ').trim() || '—'
-const initials = (s: Staff) =>
-  `${(s.first_name?.[0] ?? '')}${(s.last_name?.[0] ?? '')}`.toUpperCase() || '👤'
+const initials = (s: Staff) => `${s.first_name?.[0] ?? ''}${s.last_name?.[0] ?? ''}`.toUpperCase() || '?'
 
-// Center selector styled as a clear, clickable button with a ▾ arrow.
+const avatarColor = (name: string) => {
+  const colors = ['#0f4c35','#1a6b4a','#2d8f64','#4a7c6b','#5c4f7c','#7c4f4f','#4f6b7c']
+  let h = 0; for (const c of name) h = (h * 31 + c.charCodeAt(0)) & 0xffff
+  return colors[h % colors.length]
+}
+
 const selStyle: React.CSSProperties = {
   appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none',
   background: "#fff url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M1 1l4 4 4-4' fill='none' stroke='%230f4c35' stroke-width='1.5'/></svg>\") no-repeat right 12px center",
@@ -59,12 +44,13 @@ export default function StaffPage() {
   const { org, currentCenter, centers, setCurrentCenter } = useOrg()
   const { roles } = useAuth()
   const navigate = useNavigate()
-  const allowed = (roles as string[]).some(r => r === 'admin' || r === 'director' || r === 'office_manager')
+  const allowed = (roles as string[]).some(r => ['admin','director','office_manager'].includes(r))
 
-  const [staff, setStaff] = useState<Staff[]>([])
+  const [staff,   setStaff]   = useState<Staff[]>([])
   const [loading, setLoading] = useState(false)
-  const [filter, setFilter] = useState<FilterKey>('all')
-  const [search, setSearch] = useState('')
+  const [filter,  setFilter]  = useState<FilterKey>('all')
+  const [search,  setSearch]  = useState('')
+  const [popup,   setPopup]   = useState<Staff | null>(null)
 
   useEffect(() => {
     if (!org?.id) { setStaff([]); return }
@@ -83,12 +69,8 @@ export default function StaffPage() {
     return () => { cancelled = true }
   }, [org?.id, currentCenter?.id])
 
-  const [popup, setPopup] = useState<Staff | null>(null)
-
   const centerName = (id: string | null) => short(centers.find(c => c.id === id)?.name) || '—'
-
-  const countFor = (f: FilterKey) =>
-    f === 'all' ? staff.length : staff.filter(s => FILTERS.find(x => x.key === f)?.test?.test(s.position ?? '')).length
+  const countFor   = (f: FilterKey) => f === 'all' ? staff.length : staff.filter(s => FILTERS.find(x => x.key === f)?.test?.test(s.position ?? '')).length
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -99,30 +81,23 @@ export default function StaffPage() {
       .sort((a, b) => (a.last_name ?? '').localeCompare(b.last_name ?? '') || (a.first_name ?? '').localeCompare(b.first_name ?? ''))
   }, [staff, filter, search])
 
-  if (!allowed) {
-    return (
-      <div style={{ padding: 40, fontFamily: "'DM Sans', sans-serif", color: '#888' }}>
-        This page is available to admins, directors, and office managers only.
-      </div>
-    )
-  }
+  if (!allowed) return (
+    <div style={{ padding: 40, fontFamily: "'DM Sans', sans-serif", color: '#888' }}>
+      This page is available to admins, directors, and office managers only.
+    </div>
+  )
 
   return (
     <div style={{ padding: '24px 32px', fontFamily: "'DM Sans', sans-serif", background: '#f4f6f4', minHeight: '100vh' }}>
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Serif+Display&display=swap" rel="stylesheet" />
 
-      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 18 }}>
         <div>
           <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 26, color: '#0a3320', marginBottom: 2 }}>Staff</div>
           <div style={{ fontSize: 12, color: '#888' }}>{currentCenter?.name ?? 'Organization'} · {staff.length} staff</div>
         </div>
         {centers.length > 1 && (
-          <select
-            value={currentCenter?.id ?? ''}
-            onChange={e => { const v = e.target.value; setCurrentCenter(v ? (centers.find(c => c.id === v) ?? null) : null) }}
-            style={selStyle}
-          >
+          <select value={currentCenter?.id ?? ''} onChange={e => { const v = e.target.value; setCurrentCenter(v ? (centers.find(c => c.id === v) ?? null) : null) }} style={selStyle}>
             <option value="">🏢 Organization (all centers)</option>
             {centers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
@@ -165,43 +140,31 @@ export default function StaffPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
           {visible.map(s => {
             const active = s.is_active !== false
+            const bg = avatarColor(fullName(s))
             return (
               <div key={s.id} style={{ background: '#fff', borderRadius: 14, border: '1px solid #e8e8e8', padding: '16px 18px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-                  <div style={{ width: 44, height: 44, borderRadius: '50%', flexShrink: 0, background: 'linear-gradient(135deg,#0f4c35,#1a6b4a)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700 }}>{initials(s)}</div>
+                  <div style={{ width: 44, height: 44, borderRadius: '50%', flexShrink: 0, background: bg, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700 }}>{initials(s)}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div
-                      onClick={() => setPopup(s)}
-                      style={{ fontSize: 15, fontWeight: 700, color: '#0a3320', cursor: 'pointer', textDecoration: 'underline dotted' }}
-                    >{fullName(s)}</div>
+                    <div onClick={() => setPopup(s)} style={{ fontSize: 15, fontWeight: 700, color: '#0a3320', cursor: 'pointer' }}>{fullName(s)}</div>
                     <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>{s.position ?? 'Staff'}</div>
                   </div>
-                  <span style={{
-                    fontSize: 10, fontWeight: 600, padding: '3px 9px', borderRadius: 100, whiteSpace: 'nowrap',
-                    background: active ? '#f0fff4' : '#f4f4f5', color: active ? '#0f4c35' : '#9ca3af',
-                    border: `1px solid ${active ? '#bbf7d0' : '#e0e0e0'}`,
-                  }}>{active ? 'Active' : 'Inactive'}</span>
+                  <span style={{ fontSize: 10, fontWeight: 600, padding: '3px 9px', borderRadius: 100, whiteSpace: 'nowrap', background: active ? '#f0fff4' : '#f4f4f5', color: active ? '#0f4c35' : '#9ca3af', border: `1px solid ${active ? '#bbf7d0' : '#e0e0e0'}` }}>
+                    {active ? 'Active' : 'Inactive'}
+                  </span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12.5, color: '#555' }}>
                   <Row icon="🏫" text={centerName(s.center_id)} />
-                  {(s.class_primary || s.class_secondary) && (
-                    <Row icon="🚪" text={[s.class_primary, s.class_secondary].filter(Boolean).join(' · ')} />
-                  )}
+                  {(s.class_primary || s.class_secondary) && <Row icon="🚪" text={[s.class_primary, s.class_secondary].filter(Boolean).join(' · ')} />}
                   {s.phone && <Row icon="📞" text={s.phone} href={`tel:${s.phone}`} />}
                   {s.email && <Row icon="✉️" text={s.email} href={`mailto:${s.email}`} />}
                   <Row icon="📅" text={`Hired ${fmtDate(s.hire_date)}`} />
                 </div>
                 <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid #f0f0f0', display: 'flex', gap: 8 }}>
-                  <button
-                    onClick={() => setPopup(s)}
-                    style={{ fontSize: 12, padding: '5px 12px', borderRadius: 7, border: '1px solid #e0e8e0', background: '#f8fbf8', color: '#0f4c35', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}
-                  >
+                  <button onClick={() => setPopup(s)} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 7, border: '1px solid #e0e8e0', background: '#f8fbf8', color: '#0f4c35', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>
                     👤 Details
                   </button>
-                  <button
-                    onClick={() => navigate(`/staff/${s.id}/settings`)}
-                    style={{ fontSize: 12, padding: '5px 12px', borderRadius: 7, border: '1px solid #e0e8e0', background: '#f8fbf8', color: '#0f4c35', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}
-                  >
+                  <button onClick={() => navigate(`/staff/${s.id}/settings`)} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 7, border: '1px solid #e0e8e0', background: '#f8fbf8', color: '#0f4c35', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>
                     ⚙️ Settings
                   </button>
                 </div>
@@ -209,44 +172,42 @@ export default function StaffPage() {
             )
           })}
         </div>
+      )}
 
-        {/* Staff detail popup */}
-        {popup && (
-          <div onClick={() => setPopup(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
-            <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 18, width: '100%', maxWidth: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.18)', overflow: 'hidden', fontFamily: "'DM Sans', sans-serif" }}>
-              {/* Header */}
-              <div style={{ background: '#0f4c35', padding: '20px 24px', display: 'flex', gap: 14, alignItems: 'center' }}>
-                <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700, flexShrink: 0 }}>{initials(popup)}</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ color: '#fff', fontWeight: 700, fontSize: 17 }}>{fullName(popup)}</div>
-                  <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, marginTop: 2 }}>{popup.position ?? 'Staff'} · {centerName(popup.center_id)}</div>
+      {/* Detail popup */}
+      {popup && (
+        <div onClick={() => setPopup(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 18, width: '100%', maxWidth: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.18)', overflow: 'hidden', fontFamily: "'DM Sans', sans-serif" }}>
+            <div style={{ background: '#0f4c35', padding: '20px 24px', display: 'flex', gap: 14, alignItems: 'center' }}>
+              <div style={{ width: 52, height: 52, borderRadius: '50%', background: avatarColor(fullName(popup)), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700, flexShrink: 0 }}>{initials(popup)}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ color: '#fff', fontWeight: 700, fontSize: 17 }}>{fullName(popup)}</div>
+                <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, marginTop: 2 }}>{popup.position ?? 'Staff'} · {centerName(popup.center_id)}</div>
+              </div>
+              <button onClick={() => setPopup(null)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', fontSize: 18 }}>×</button>
+            </div>
+            <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {[
+                { label: 'Email',     value: popup.email,  href: popup.email  ? `mailto:${popup.email}`  : undefined },
+                { label: 'Phone',     value: popup.phone,  href: popup.phone  ? `tel:${popup.phone}`     : undefined },
+                { label: 'Classroom', value: [popup.class_primary, popup.class_secondary].filter(Boolean).join(' · ') || null },
+                { label: 'Hire Date', value: fmtDate(popup.hire_date) },
+                { label: 'Status',    value: popup.is_active !== false ? 'Active' : 'Inactive' },
+              ].map(({ label, value, href }) => (
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f0f0f0', paddingBottom: 8 }}>
+                  <span style={{ fontSize: 12, color: '#888' }}>{label}</span>
+                  {href
+                    ? <a href={href} style={{ fontSize: 13, color: '#0f4c35', fontWeight: 500 }}>{value}</a>
+                    : <span style={{ fontSize: 13, color: '#1a2e1a', fontWeight: 500 }}>{value || '—'}</span>
+                  }
                 </div>
-                <button onClick={() => setPopup(null)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', fontSize: 18 }}>×</button>
-              </div>
-              {/* Body */}
-              <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {[
-                  { label: 'Email',      value: popup.email,        href: popup.email ? `mailto:${popup.email}` : undefined },
-                  { label: 'Phone',      value: popup.phone,        href: popup.phone ? `tel:${popup.phone}` : undefined },
-                  { label: 'Classroom',  value: [popup.class_primary, popup.class_secondary].filter(Boolean).join(' · ') || '—' },
-                  { label: 'Hire Date',  value: fmtDate(popup.hire_date) },
-                  { label: 'Status',     value: popup.is_active !== false ? 'Active' : 'Inactive' },
-                ].map(({ label, value, href }) => (
-                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f0f0f0', paddingBottom: 8 }}>
-                    <span style={{ fontSize: 12, color: '#888' }}>{label}</span>
-                    {href
-                      ? <a href={href} style={{ fontSize: 13, color: '#0f4c35', fontWeight: 500 }}>{value}</a>
-                      : <span style={{ fontSize: 13, color: '#1a2e1a', fontWeight: 500 }}>{value || '—'}</span>
-                    }
-                  </div>
-                ))}
-                <button onClick={() => { setPopup(null); navigate(`/staff/${popup.id}/settings`) }} style={{ marginTop: 8, padding: '10px', borderRadius: 9, border: 'none', background: '#0f4c35', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-                  ⚙️ Open Full Settings
-                </button>
-              </div>
+              ))}
+              <button onClick={() => { setPopup(null); navigate(`/staff/${popup.id}/settings`) }} style={{ marginTop: 8, padding: 10, borderRadius: 9, border: 'none', background: '#0f4c35', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                ⚙️ Open Full Settings
+              </button>
             </div>
           </div>
-        )}
+        </div>
       )}
     </div>
   )

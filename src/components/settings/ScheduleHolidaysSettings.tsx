@@ -33,7 +33,12 @@ export default function ScheduleHolidaysSettings() {
 
 // ─── PART 1: per-classroom meal schedule ──────────────────────────────────────
 interface Classroom { id: string; name: string }
-type Sched = Record<string, Record<string, { start: string; end: string }>> // classroom → slot → times
+type Sched = Record<string, Record<string, { start: string; end: string }>>
+
+const SLOT_LABELS: Record<string, string> = {
+  breakfast: 'Breakfast', am_snack: 'AM Snack', lunch: 'Lunch',
+  pm_snack: 'PM Snack', supper: 'Supper', eve_snack: 'Eve Snack',
+}
 
 function MealScheduleSection() {
   const { org, centers, currentCenter } = useOrg()
@@ -42,14 +47,16 @@ function MealScheduleSection() {
   const [activeSlots, setActiveSlots] = useState<string[]>(['breakfast', 'am_snack', 'lunch', 'supper'])
   const [sched, setSched] = useState<Sched>({})
   const [savingId, setSavingId] = useState<string | null>(null)
-  const [savedId, setSavedId] = useState<string | null>(null)
+  const [savedId, setSavedId]   = useState<string | null>(null)
 
-  // Mirror the sidebar's active center: a concrete center shows that center;
-  // Organization view (currentCenter null) defaults to "Organization" ('').
-  // A manual pick in the dropdown persists until the sidebar center changes.
-  useEffect(() => {
-    setCenterId(currentCenter?.id ?? '')
-  }, [currentCenter?.id])
+  // Quick Apply state
+  const [qaSlot,  setQaSlot]    = useState('')
+  const [qaStart, setQaStart]   = useState('')
+  const [qaEnd,   setQaEnd]     = useState('')
+  const [qaSelected, setQaSelected] = useState<Set<string>>(new Set())
+  const [qaApplied, setQaApplied]   = useState(false)
+
+  useEffect(() => { setCenterId(currentCenter?.id ?? '') }, [currentCenter?.id])
 
   useEffect(() => {
     if (!centerId) return
@@ -62,9 +69,8 @@ function MealScheduleSection() {
       if (cancelled) return
       const rooms = (cls ?? []) as Classroom[]
       setClassrooms(rooms)
-      const slots = (mcs?.active_slots as string[] | undefined)?.filter(s => SLOTS.some(([k]) => k === s)) ?? ['breakfast', 'am_snack', 'lunch', 'supper']
+      const slots = (mcs?.active_slots as string[] | undefined)?.filter(s => s in SLOT_LABELS) ?? ['breakfast', 'am_snack', 'lunch', 'supper']
       setActiveSlots(slots.length ? slots : ['breakfast', 'am_snack', 'lunch', 'supper'])
-
       const ids = rooms.map(r => r.id)
       const { data: ms } = ids.length
         ? await supabase.schema('menumaker').from('meal_schedule').select('classroom_id, slot, start_time, end_time').in('classroom_id', ids)
@@ -85,58 +91,213 @@ function MealScheduleSection() {
       return { ...prev, [cid]: { ...prev[cid], [slot]: { ...cur, [field]: v } } }
     })
 
+  const clearTime = (cid: string, slot: string) =>
+    setSched(prev => ({ ...prev, [cid]: { ...prev[cid], [slot]: { start: '', end: '' } } }))
+
   const saveRow = async (cid: string) => {
     if (!org?.id) return
     setSavingId(cid); setSavedId(null)
     const rows = activeSlots.map(slot => ({
       classroom_id: cid, slot, center_id: centerId, org_id: org.id,
       start_time: sched[cid]?.[slot]?.start || null,
-      end_time: sched[cid]?.[slot]?.end || null,
+      end_time:   sched[cid]?.[slot]?.end   || null,
     }))
     await supabase.schema('menumaker').from('meal_schedule').upsert(rows, { onConflict: 'classroom_id,slot' })
     setSavingId(null); setSavedId(cid)
     setTimeout(() => setSavedId(s => s === cid ? null : s), 2000)
   }
 
+  const saveAll = async () => {
+    if (!org?.id) return
+    setSavingId('all')
+    const rows = classrooms.flatMap(c => activeSlots.map(slot => ({
+      classroom_id: c.id, slot, center_id: centerId, org_id: org.id,
+      start_time: sched[c.id]?.[slot]?.start || null,
+      end_time:   sched[c.id]?.[slot]?.end   || null,
+    })))
+    await supabase.schema('menumaker').from('meal_schedule').upsert(rows, { onConflict: 'classroom_id,slot' })
+    setSavingId(null); setSavedId('all')
+    setTimeout(() => setSavedId(s => s === 'all' ? null : s), 2500)
+  }
+
+  // Quick Apply: apply time to selected classrooms
+  const applyQuick = () => {
+    if (!qaSlot || !qaStart || !qaEnd || qaSelected.size === 0) return
+    setSched(prev => {
+      const next = { ...prev }
+      for (const cid of qaSelected) {
+        next[cid] = { ...next[cid], [qaSlot]: { start: qaStart, end: qaEnd } }
+      }
+      return next
+    })
+    setQaApplied(true)
+    setTimeout(() => setQaApplied(false), 1500)
+  }
+
+  const toggleQaClass = (cid: string) =>
+    setQaSelected(prev => { const s = new Set(prev); s.has(cid) ? s.delete(cid) : s.add(cid); return s })
+
+  const selectAllQa = () => setQaSelected(new Set(classrooms.map(c => c.id)))
+  const clearQaSelection = () => setQaSelected(new Set())
+
   return (
     <div style={card}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 6 }}>
         <h3 style={{ ...h3, marginBottom: 0 }}>🕐 Meal Schedule</h3>
-        {/* Inline center selector — always shown, Organization option first.
-            Defaults to the sidebar's active center; pick a center to edit its
-            classrooms' schedule. (Organization = no single center → pick one.) */}
-        <select value={centerId} onChange={e => setCenterId(e.target.value)} style={selStyle}>
-          <option value="">🏢 Organization (all centers)</option>
-          {centers.map(c => <option key={c.id} value={c.id}>{short(c.name)}</option>)}
-        </select>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <select value={centerId} onChange={e => setCenterId(e.target.value)} style={selStyle}>
+            <option value="">🏢 Organization</option>
+            {centers.map(c => <option key={c.id} value={c.id}>{short(c.name)}</option>)}
+          </select>
+          <button
+            style={savedId === 'all' ? { ...btnSec, borderColor: '#0f7a4a', color: '#0f7a4a' } : btnPri}
+            disabled={savingId === 'all' || classrooms.length === 0}
+            onClick={saveAll}
+          >
+            {savingId === 'all' ? '…' : savedId === 'all' ? 'Saved ✓' : 'Save All'}
+          </button>
+        </div>
       </div>
-      <div style={{ fontSize: 12, color: '#888', margin: '6px 0 14px' }}>Start / End time per active slot, per classroom.</div>
 
-      {classrooms.length === 0 ? <div style={{ color: '#aaa', fontSize: 13 }}>No active classrooms for this center.</div> : (
+      {/* ── Quick Apply Panel ── */}
+      {classrooms.length > 0 && (
+        <div style={{
+          background: '#f0f7f2', border: '1.5px solid #b8dfc8', borderRadius: 12,
+          padding: '14px 16px', marginBottom: 18,
+        }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#0f4c35', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
+            ⚡ Quick Apply — set one time slot for multiple classrooms
+          </div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            {/* Slot picker */}
+            <div>
+              <label style={lbl}>Meal slot</label>
+              <select value={qaSlot} onChange={e => setQaSlot(e.target.value)} style={{ ...inp, minWidth: 130 }}>
+                <option value="">— choose —</option>
+                {activeSlots.map(s => <option key={s} value={s}>{SLOT_LABELS[s] ?? s}</option>)}
+              </select>
+            </div>
+            {/* Start */}
+            <div>
+              <label style={lbl}>Start</label>
+              <input type="time" value={qaStart} onChange={e => setQaStart(e.target.value)} style={{ ...inp, width: 110 }} />
+            </div>
+            {/* End */}
+            <div>
+              <label style={lbl}>End</label>
+              <input type="time" value={qaEnd} onChange={e => setQaEnd(e.target.value)} style={{ ...inp, width: 110 }} />
+            </div>
+            {/* Apply button */}
+            <button
+              onClick={applyQuick}
+              disabled={!qaSlot || !qaStart || !qaEnd || qaSelected.size === 0}
+              style={{
+                ...btnPri,
+                opacity: (!qaSlot || !qaStart || !qaEnd || qaSelected.size === 0) ? 0.5 : 1,
+                background: qaApplied ? '#0f7a4a' : '#0f4c35',
+              }}
+            >
+              {qaApplied ? 'Applied ✓' : `Apply to ${qaSelected.size} class${qaSelected.size !== 1 ? 'es' : ''}`}
+            </button>
+          </div>
+
+          {/* Classroom multiselect */}
+          <div style={{ marginTop: 12 }}>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+              <span style={{ fontSize: 11, color: '#666' }}>Select classrooms:</span>
+              <button onClick={selectAllQa} style={{ ...btnSec, padding: '3px 10px', fontSize: 11 }}>All</button>
+              <button onClick={clearQaSelection} style={{ ...btnSec, padding: '3px 10px', fontSize: 11 }}>None</button>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {classrooms.map(c => {
+                const selected = qaSelected.has(c.id)
+                const hasTime = qaSlot && sched[c.id]?.[qaSlot]?.start
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => toggleQaClass(c.id)}
+                    style={{
+                      padding: '5px 12px', borderRadius: 8, fontSize: 12, fontFamily: 'inherit',
+                      cursor: 'pointer', fontWeight: selected ? 700 : 400,
+                      border: `1.5px solid ${selected ? '#0f4c35' : '#ccc'}`,
+                      background: selected ? '#0f4c35' : '#fff',
+                      color: selected ? '#fff' : '#333',
+                      position: 'relative',
+                    }}
+                  >
+                    {c.name}
+                    {hasTime && !selected && (
+                      <span style={{ marginLeft: 4, fontSize: 9, color: '#aaa' }}>✓</span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Per-classroom table ── */}
+      {classrooms.length === 0
+        ? <div style={{ color: '#aaa', fontSize: 13 }}>No active classrooms for this center.</div>
+        : (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr>
-                <th style={{ textAlign: 'left', padding: 8, color: '#888', fontSize: 11, textTransform: 'uppercase' }}>Classroom</th>
-                {activeSlots.map(s => <th key={s} style={{ padding: 8, color: '#888', fontSize: 11, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{SLOTS.find(([k]) => k === s)?.[1] ?? s}</th>)}
+                <th style={{ textAlign: 'left', padding: '6px 8px', color: '#888', fontSize: 11, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Classroom</th>
+                {activeSlots.map(s => (
+                  <th key={s} style={{ padding: '6px 8px', color: '#888', fontSize: 11, textTransform: 'uppercase', whiteSpace: 'nowrap', textAlign: 'center' }}>
+                    {SLOT_LABELS[s] ?? s}
+                  </th>
+                ))}
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {classrooms.map(c => (
-                <tr key={c.id} style={{ borderTop: '1px solid #f0f0f0' }}>
-                  <td style={{ padding: 8, fontWeight: 600, color: '#0a3320', whiteSpace: 'nowrap' }}>{c.name}</td>
-                  {activeSlots.map(s => (
-                    <td key={s} style={{ padding: 8 }}>
-                      <div style={{ display: 'flex', gap: 4 }}>
-                        <input type="time" value={sched[c.id]?.[s]?.start ?? ''} onChange={e => setTime(c.id, s, 'start', e.target.value)} style={{ ...inp, padding: '6px 6px', width: 96 }} />
-                        <input type="time" value={sched[c.id]?.[s]?.end ?? ''} onChange={e => setTime(c.id, s, 'end', e.target.value)} style={{ ...inp, padding: '6px 6px', width: 96 }} />
-                      </div>
-                    </td>
-                  ))}
-                  <td style={{ padding: 8 }}>
-                    <button style={savedId === c.id ? { ...btnSec, borderColor: '#0f7a4a', color: '#0f7a4a' } : btnPri} disabled={savingId === c.id} onClick={() => saveRow(c.id)}>
-                      {savingId === c.id ? '…' : savedId === c.id ? 'Saved ✓' : 'Save'}
+              {classrooms.map((c, ri) => (
+                <tr key={c.id} style={{ borderTop: '1px solid #f0f0f0', background: ri % 2 === 0 ? '#fff' : '#fafbfa' }}>
+                  <td style={{ padding: '8px', fontWeight: 600, color: '#0a3320', whiteSpace: 'nowrap' }}>{c.name}</td>
+                  {activeSlots.map(s => {
+                    const t = sched[c.id]?.[s]
+                    const hasTime = t?.start || t?.end
+                    return (
+                      <td key={s} style={{ padding: '6px 8px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'center' }}>
+                          <div style={{ display: 'flex', gap: 3 }}>
+                            <input
+                              type="time"
+                              value={t?.start ?? ''}
+                              onChange={e => setTime(c.id, s, 'start', e.target.value)}
+                              style={{ ...inp, padding: '5px 5px', width: 88, fontSize: 12 }}
+                            />
+                            <input
+                              type="time"
+                              value={t?.end ?? ''}
+                              onChange={e => setTime(c.id, s, 'end', e.target.value)}
+                              style={{ ...inp, padding: '5px 5px', width: 88, fontSize: 12 }}
+                            />
+                          </div>
+                          {hasTime && (
+                            <button
+                              onClick={() => clearTime(c.id, s)}
+                              style={{ fontSize: 9, color: '#aaa', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                            >
+                              clear
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    )
+                  })}
+                  <td style={{ padding: '6px 8px' }}>
+                    <button
+                      style={savedId === c.id ? { ...btnSec, borderColor: '#0f7a4a', color: '#0f7a4a' } : btnSec}
+                      disabled={savingId === c.id}
+                      onClick={() => saveRow(c.id)}
+                    >
+                      {savingId === c.id ? '…' : savedId === c.id ? '✓' : 'Save'}
                     </button>
                   </td>
                 </tr>

@@ -224,19 +224,10 @@ function MealScheduleSection() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 6 }}>
         <h3 style={{ ...h3, marginBottom: 0 }}>🕐 Meal Schedule</h3>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <select value={centerId} onChange={e => setCenterId(e.target.value)} style={selStyle}>
-            <option value="">🏢 Organization</option>
-            {centers.map(c => <option key={c.id} value={c.id}>{short(c.name)}</option>)}
-          </select>
-          <button
-            style={savedId === 'all' ? { ...btnSec, borderColor: '#0f7a4a', color: '#0f7a4a' } : btnPri}
-            disabled={savingId === 'all' || classrooms.length === 0}
-            onClick={saveAll}
-          >
-            {savingId === 'all' ? '…' : savedId === 'all' ? 'Saved ✓' : 'Save All'}
-          </button>
-        </div>
+        <select value={centerId} onChange={e => setCenterId(e.target.value)} style={selStyle}>
+          <option value="">🏢 Organization</option>
+          {centers.map(c => <option key={c.id} value={c.id}>{short(c.name)}</option>)}
+        </select>
       </div>
 
       {/* ── Quick Apply Panel ── */}
@@ -358,14 +349,18 @@ function MealScheduleSection() {
                     const t = sched[c.id]?.[s]
                     const hasTime = t?.start || t?.end
                     return (
-                      <td key={s} style={{ padding: '6px 8px' }} onMouseDown={e => e.stopPropagation()}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          <div style={{ fontSize: 9, color: '#aaa', textTransform: 'uppercase' }}>Start</div>
-                          <TimeAmPm value={t?.start ?? ''} onChange={v => setTime(c.id, s, 'start', v)} compact />
-                          <div style={{ fontSize: 9, color: '#aaa', textTransform: 'uppercase' }}>End</div>
-                          <TimeAmPm value={t?.end ?? ''} onChange={v => setTime(c.id, s, 'end', v)} compact />
+                      <td key={s} style={{ padding: '6px 8px', verticalAlign: 'middle' }} onMouseDown={e => e.stopPropagation()}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <span style={{ fontSize: 9, color: '#aaa', width: 28, flexShrink: 0 }}>Start</span>
+                            <TimeAmPm value={t?.start ?? ''} onChange={v => setTime(c.id, s, 'start', v)} compact />
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <span style={{ fontSize: 9, color: '#aaa', width: 28, flexShrink: 0 }}>End</span>
+                            <TimeAmPm value={t?.end ?? ''} onChange={v => setTime(c.id, s, 'end', v)} compact />
+                          </div>
                           {hasTime && (
-                            <button onClick={() => clearTime(c.id, s)} style={{ fontSize: 9, color: '#aaa', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                            <button onClick={() => clearTime(c.id, s)} style={{ fontSize: 9, color: '#aaa', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}>
                               clear
                             </button>
                           )}
@@ -395,10 +390,13 @@ function MealScheduleSection() {
                 </tr>
               ))}
               {/* Add new classroom row */}
-              {centerId && (
+              {centerId && org?.id && (
                 <tr style={{ borderTop: '2px dashed #e0e8e0' }}>
-                  <td colSpan={activeSlots.length + 3} style={{ padding: '8px' }}>
-                    <AddClassroomInline centerId={centerId} orgId={org?.id ?? ''} sortOrder={classrooms.length}
+                  <td colSpan={activeSlots.length + 3} style={{ padding: '10px 8px' }}>
+                    <AddClassroomInline
+                      centerId={centerId}
+                      orgId={org.id}
+                      sortOrder={classrooms.length}
                       onAdded={async () => {
                         const { data: cls } = await supabase.schema('menumaker').from('classrooms')
                           .select('id, name').eq('center_id', centerId).eq('is_active', true).order('sort_order')

@@ -60,6 +60,7 @@ export default function StaffPage() {
       let q = supabase.schema('menumaker').from('staff')
         .select('id,first_name,last_name,position,center_id,class_primary,class_secondary,hire_date,is_active,phone,email')
         .eq('org_id', org.id)
+        .eq('is_active', true)
       if (currentCenter?.id) q = q.eq('center_id', currentCenter.id)
       const { data } = await q.order('last_name', { nullsFirst: false }).order('first_name')
       if (cancelled) return

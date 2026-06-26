@@ -78,7 +78,7 @@ export default function StaffPage() {
     return staff
       .filter(s => !test || test.test(s.position ?? ''))
       .filter(s => !q || fullName(s).toLowerCase().includes(q))
-      .sort((a, b) => (a.last_name ?? '').localeCompare(b.last_name ?? '') || (a.first_name ?? '').localeCompare(b.first_name ?? ''))
+      .sort((a, b) => (a.first_name ?? '').localeCompare(b.first_name ?? '') || (a.last_name ?? '').localeCompare(b.last_name ?? ''))
   }, [staff, filter, search])
 
   if (!allowed) return (

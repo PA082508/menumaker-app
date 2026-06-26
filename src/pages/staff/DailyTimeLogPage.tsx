@@ -357,12 +357,13 @@ export default function DailyTimeLogPage() {
               <thead>
                 <tr style={{ background: '#f0f4f1', borderBottom: '1px solid #e0e8e0' }}>
                   <th style={{ padding: '8px 10px', textAlign: 'center', width: 40, fontWeight: 700, color: '#0f4c35', fontSize: 11 }}>Date</th>
-                  <th style={{ padding: '8px 10px', textAlign: 'center', width: 50, fontWeight: 700, color: '#0f4c35', fontSize: 11 }}>Day</th>
                   {logType === 'program' && <th style={{ padding: '8px 10px', textAlign: 'center', width: 60, fontWeight: 700, color: '#0f4c35', fontSize: 11 }}>Slot</th>}
                   <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 700, color: '#0f4c35', fontSize: 11 }}>Describe CACFP Activity</th>
-                  <th style={{ padding: '8px 10px', textAlign: 'center', width: 100, fontWeight: 700, color: '#0f4c35', fontSize: 11 }}>Begin Time</th>
-                  <th style={{ padding: '8px 10px', textAlign: 'center', width: 100, fontWeight: 700, color: '#0f4c35', fontSize: 11 }}>End Time</th>
-                  <th style={{ padding: '8px 10px', textAlign: 'center', width: 90, fontWeight: 700, color: '#0f4c35', fontSize: 11 }}>Daily Total</th>
+                  <th style={{ padding: '8px 4px', textAlign: 'center', fontWeight: 700, color: '#0f4c35', fontSize: 10, lineHeight: 1.2, width: 70 }}>Round Time<br/>to Nearest<br/>5 Minute</th>
+                  <th style={{ padding: '8px 10px', textAlign: 'center', width: 90, fontWeight: 700, color: '#0f4c35', fontSize: 11 }}>Begin Time</th>
+                  <th style={{ padding: '8px 10px', textAlign: 'center', width: 90, fontWeight: 700, color: '#0f4c35', fontSize: 11 }}>End Time</th>
+                  <th style={{ padding: '8px 4px', textAlign: 'center', fontWeight: 700, color: '#0f4c35', fontSize: 10, lineHeight: 1.2, width: 80 }}>Daily Total<br/>in MINUTES</th>
+                  <th style={{ padding: '8px 4px', textAlign: 'center', fontWeight: 700, color: '#0f4c35', fontSize: 10, lineHeight: 1.2, width: 60 }}>Worked on<br/>CACFP</th>
                   <th className="no-print" style={{ padding: '8px 6px', width: 60 }}></th>
                 </tr>
               </thead>
@@ -386,9 +387,6 @@ export default function DailyTimeLogPage() {
                         <>
                           <td rowSpan={rows.length} style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 600, color: isWknd ? '#aaa' : '#0a3320', verticalAlign: 'middle' }}>
                             {pad2(day)}
-                          </td>
-                          <td rowSpan={rows.length} style={{ padding: '6px 10px', textAlign: 'center', color: isWknd ? '#f59e0b' : '#555', fontSize: 11, verticalAlign: 'middle' }}>
-                            {DOW[dow]}
                           </td>
                         </>
                       )}
@@ -436,6 +434,11 @@ export default function DailyTimeLogPage() {
                       </td>
                       <td style={{ padding: '4px 8px', textAlign: 'center', fontWeight: 600, color: dayMins > 0 ? '#0f4c35' : '#ccc' }}>
                         {idx === 0 && dayMins > 0 ? fmtHM(dayMins) : idx === 0 ? '0:00' : ''}
+                      </td>
+                      <td style={{ padding: '4px 8px', textAlign: 'center' }}>
+                        {idx === 0 && !isWknd && (
+                          <input type="checkbox" defaultChecked={dayMins > 0} style={{ width: 14, height: 14, accentColor: '#0f4c35' }} />
+                        )}
                       </td>
                       <td className="no-print" style={{ padding: '4px 6px', textAlign: 'center' }}>
                         {!isWknd && (

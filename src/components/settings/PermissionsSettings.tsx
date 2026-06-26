@@ -206,7 +206,7 @@ function UserOverride({ orgId, modules }: {
     })
     setBusy(false)
     if (error) { setMsg({ kind: 'err', text: error.message }); return }
-    setMsg({ kind: 'ok', text: access === '__clear__' ? '\u2713 Override removed' : '\u2713 Override applied' })
+    setMsg({ kind: 'ok', text: access === '__clear__' ? '✓ Override removed' : '✓ Override applied' })
   }
 
   const short = (n: string) => n.replace(/^Play Academy\s+/i, '').trim()
@@ -219,17 +219,17 @@ function UserOverride({ orgId, modules }: {
         "Remove override" reverts them to their role-based access.
       </div>
       <div style={{ fontSize: 12, color: '#0f4c35', background: '#f0f7f2', borderRadius: 8, padding: '8px 12px', marginBottom: 14 }}>
-        <strong>How to use:</strong> Select a staff member \u2192 choose the section \u2192 set access level \u2192 click Apply.
+        <strong>How to use:</strong> Select a staff member → choose the section → set access level → click Apply.
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px 160px auto', gap: 12, alignItems: 'end' }}>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <span style={LABEL}>Staff member</span>
           <select value={userId} onChange={e => setUserId(e.target.value)} style={INPUT}>
-            <option value="">\u2014 select staff \u2014</option>
+            <option value="">— select staff —</option>
             {users.map(u => (
               <option key={u.auth_id} value={u.auth_id}>
-                {u.full_name} \u00b7 {u.job_title} \u00b7 {short(u.center_name)}
+                {u.full_name} · {u.job_title} · {short(u.center_name)}
               </option>
             ))}
           </select>
@@ -237,7 +237,7 @@ function UserOverride({ orgId, modules }: {
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <span style={LABEL}>Section</span>
           <select value={moduleCode} onChange={e => setModuleCode(e.target.value)} style={INPUT}>
-            <option value="">\u2014 select \u2014</option>
+            <option value="">— select —</option>
             {modules.map(m => <option key={m.code} value={m.code}>{m.label}</option>)}
           </select>
         </label>

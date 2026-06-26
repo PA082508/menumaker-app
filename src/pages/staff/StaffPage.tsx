@@ -148,24 +148,17 @@ export default function StaffPage() {
                   <div style={{ width: 44, height: 44, borderRadius: '50%', flexShrink: 0, background: bg, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700 }}>{initials(s)}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div onClick={() => setPopup(s)} style={{ fontSize: 15, fontWeight: 700, color: '#0a3320', cursor: 'pointer' }}>{fullName(s)}</div>
-                    <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>{s.position ?? 'Staff'}</div>
+                    <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>{centerName(s.center_id)}</div>
                   </div>
                   <span style={{ fontSize: 10, fontWeight: 600, padding: '3px 9px', borderRadius: 100, whiteSpace: 'nowrap', background: active ? '#f0fff4' : '#f4f4f5', color: active ? '#0f4c35' : '#9ca3af', border: `1px solid ${active ? '#bbf7d0' : '#e0e0e0'}` }}>
                     {active ? 'Active' : 'Inactive'}
                   </span>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12.5, color: '#555' }}>
-                  <Row icon="🏫" text={centerName(s.center_id)} />
-                  {(s.class_primary || s.class_secondary) && <Row icon="🚪" text={[s.class_primary, s.class_secondary].filter(Boolean).join(' · ')} />}
-                  {s.phone && <Row icon="📞" text={s.phone} href={`tel:${s.phone}`} />}
-                  {s.email && <Row icon="✉️" text={s.email} href={`mailto:${s.email}`} />}
-                  <Row icon="📅" text={`Hired ${fmtDate(s.hire_date)}`} />
-                </div>
-                <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid #f0f0f0', display: 'flex', gap: 8 }}>
-                  <button onClick={() => setPopup(s)} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 7, border: '1px solid #e0e8e0', background: '#f8fbf8', color: '#0f4c35', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => setPopup(s)} style={{ flex: 1, fontSize: 12, padding: '7px 0', borderRadius: 7, border: '1px solid #e0e8e0', background: '#f8fbf8', color: '#0f4c35', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>
                     👤 Details
                   </button>
-                  <button onClick={() => navigate(`/staff/${s.id}/settings`)} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 7, border: '1px solid #e0e8e0', background: '#f8fbf8', color: '#0f4c35', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>
+                  <button onClick={() => navigate(`/staff/${s.id}/settings`)} style={{ flex: 1, fontSize: 12, padding: '7px 0', borderRadius: 7, border: '1px solid #e0e8e0', background: '#f8fbf8', color: '#0f4c35', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>
                     ⚙️ Settings
                   </button>
                 </div>
@@ -189,9 +182,10 @@ export default function StaffPage() {
             </div>
             <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 10 }}>
               {[
+                { label: 'Position',  value: popup.position },
+                { label: 'Classroom', value: [popup.class_primary, popup.class_secondary].filter(Boolean).join(' · ') || null },
                 { label: 'Email',     value: popup.email,  href: popup.email  ? `mailto:${popup.email}`  : undefined },
                 { label: 'Phone',     value: popup.phone,  href: popup.phone  ? `tel:${popup.phone}`     : undefined },
-                { label: 'Classroom', value: [popup.class_primary, popup.class_secondary].filter(Boolean).join(' · ') || null },
                 { label: 'Hire Date', value: fmtDate(popup.hire_date) },
                 { label: 'Status',    value: popup.is_active !== false ? 'Active' : 'Inactive' },
               ].map(({ label, value, href }) => (

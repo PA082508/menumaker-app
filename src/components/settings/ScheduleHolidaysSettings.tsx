@@ -379,17 +379,18 @@ function ClassroomManager({ centerId, orgId, classrooms, onReload }: {
   centerId: string; orgId: string
   classrooms: Classroom[]; onReload: () => void
 }) {
-  const [newName, setNewName] = useState('')
-  const [adding, setAdding]   = useState(false)
-  const [busy, setBusy]       = useState(false)
+  const [newName, setNewName]   = useState('')
+  const [adding, setAdding]     = useState(false)
+  const [busy, setBusy]         = useState(false)
+  const [dragIdx, setDragIdx]   = useState<number | null>(null)
+  const [overIdx, setOverIdx]   = useState<number | null>(null)
 
   const add = async () => {
     const name = newName.trim()
     if (!name || !centerId || !orgId) return
     setAdding(true)
-    const maxOrder = classrooms.length
     await supabase.schema('menumaker').from('classrooms').insert({
-      org_id: orgId, center_id: centerId, name, sort_order: maxOrder, is_active: true,
+      org_id: orgId, center_id: centerId, name, sort_order: classrooms.length, is_active: true,
     })
     setNewName(''); setAdding(false); onReload()
   }
@@ -401,50 +402,72 @@ function ClassroomManager({ centerId, orgId, classrooms, onReload }: {
     setBusy(false); onReload()
   }
 
-  const move = async (idx: number, dir: -1 | 1) => {
-    const swapIdx = idx + dir
-    if (swapIdx < 0 || swapIdx >= classrooms.length) return
-    const a = classrooms[idx]; const b = classrooms[swapIdx]
-    setBusy(true)
-    await Promise.all([
-      supabase.schema('menumaker').from('classrooms').update({ sort_order: swapIdx }).eq('id', a.id),
-      supabase.schema('menumaker').from('classrooms').update({ sort_order: idx }).eq('id', b.id),
-    ])
-    setBusy(false); onReload()
-  }
-
   const rename = async (c: Classroom, newN: string) => {
     if (!newN.trim() || newN === c.name) return
     await supabase.schema('menumaker').from('classrooms').update({ name: newN.trim() }).eq('id', c.id)
     onReload()
   }
 
+  const onDrop = async (toIdx: number) => {
+    if (dragIdx === null || dragIdx === toIdx) { setDragIdx(null); setOverIdx(null); return }
+    // Reorder locally then save all sort_orders
+    const reordered = [...classrooms]
+    const [moved] = reordered.splice(dragIdx, 1)
+    reordered.splice(toIdx, 0, moved)
+    setBusy(true)
+    await Promise.all(
+      reordered.map((c, i) =>
+        supabase.schema('menumaker').from('classrooms').update({ sort_order: i }).eq('id', c.id)
+      )
+    )
+    setDragIdx(null); setOverIdx(null)
+    setBusy(false); onReload()
+  }
+
   return (
     <div style={{ marginBottom: 18, padding: '12px 16px', background: '#fafbfa', borderRadius: 10, border: '1px solid #e8ede8' }}>
       <div style={{ fontSize: 11, fontWeight: 700, color: '#0f4c35', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
         📋 Manage Classrooms
+        <span style={{ fontSize: 10, color: '#aaa', fontWeight: 400, marginLeft: 8, textTransform: 'none' }}>drag to reorder</span>
       </div>
 
-      {/* Classroom list */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
         {classrooms.map((c, i) => (
-          <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {/* Up/Down */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              <button onClick={() => move(i, -1)} disabled={i === 0 || busy}
-                style={{ background: 'none', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer', padding: '1px 5px', fontSize: 10, color: '#666' }}>▲</button>
-              <button onClick={() => move(i, 1)} disabled={i === classrooms.length - 1 || busy}
-                style={{ background: 'none', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer', padding: '1px 5px', fontSize: 10, color: '#666' }}>▼</button>
-            </div>
+          <div
+            key={c.id}
+            draggable
+            onDragStart={() => setDragIdx(i)}
+            onDragOver={e => { e.preventDefault(); setOverIdx(i) }}
+            onDragLeave={() => setOverIdx(null)}
+            onDrop={() => onDrop(i)}
+            onDragEnd={() => { setDragIdx(null); setOverIdx(null) }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '4px 8px', borderRadius: 8,
+              border: `1.5px solid ${overIdx === i ? '#0f4c35' : '#e8e8e8'}`,
+              background: dragIdx === i ? '#f0f7f2' : overIdx === i ? '#e8f4ee' : '#fff',
+              cursor: 'grab', transition: 'border-color 0.1s, background 0.1s',
+              opacity: dragIdx === i ? 0.5 : 1,
+            }}
+          >
+            {/* Drag handle */}
+            <span style={{ fontSize: 14, color: '#ccc', cursor: 'grab', userSelect: 'none', flexShrink: 0 }}>⠿</span>
+
             {/* Name (editable) */}
             <input
               defaultValue={c.name}
               onBlur={e => rename(c, e.target.value)}
-              style={{ ...inp, flex: 1, padding: '5px 10px', fontSize: 13 }}
+              onClick={e => e.stopPropagation()}
+              onMouseDown={e => e.stopPropagation()}
+              style={{ ...inp, flex: 1, padding: '4px 8px', fontSize: 13, cursor: 'text' }}
             />
+
             {/* Delete */}
-            <button onClick={() => remove(c)} disabled={busy}
-              style={{ background: 'none', border: '1px solid #fca5a5', borderRadius: 6, color: '#dc2626', cursor: 'pointer', padding: '4px 10px', fontSize: 12, fontFamily: 'inherit' }}>
+            <button
+              onClick={() => remove(c)}
+              disabled={busy}
+              style={{ background: 'none', border: '1px solid #fca5a5', borderRadius: 6, color: '#dc2626', cursor: 'pointer', padding: '3px 9px', fontSize: 12, fontFamily: 'inherit', flexShrink: 0 }}
+            >
               ✕
             </button>
           </div>

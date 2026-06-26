@@ -424,7 +424,9 @@ function AddClassroomInline({ centerId, orgId, sortOrder, onAdded }: {
     if (!n || !orgId) { console.warn('[Add] missing name or orgId', { n, orgId, centerId }); return }
     setAdding(true)
     const { error } = await supabase.schema('menumaker').from('classrooms').insert({
-      org_id: orgId, center_id: centerId, name: n, sort_order: sortOrder, is_active: true,
+      org_id: orgId, center_id: centerId, name: n,
+      class_key: n.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, ''),
+      sort_order: sortOrder, is_active: true,
     })
     console.log('[Add] result', { error, n, orgId, centerId })
     if (!error) { setName(''); onAdded() }

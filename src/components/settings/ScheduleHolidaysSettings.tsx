@@ -104,6 +104,22 @@ function MealScheduleSection() {
   const [savingId, setSavingId] = useState<string | null>(null)
   const [savedId, setSavedId]   = useState<string | null>(null)
 
+  const [dragIdx, setDragIdx] = useState<number | null>(null)
+  const [overIdx, setOverIdx] = useState<number | null>(null)
+
+  const reorderClassrooms = async (fromIdx: number, toIdx: number) => {
+    if (fromIdx === toIdx) return
+    const reordered = [...classrooms]
+    const [moved] = reordered.splice(fromIdx, 1)
+    reordered.splice(toIdx, 0, moved)
+    setClassrooms(reordered)
+    await Promise.all(
+      reordered.map((c, i) =>
+        supabase.schema('menumaker').from('classrooms').update({ sort_order: i }).eq('id', c.id)
+      )
+    )
+  }
+
   // Quick Apply state
   const [qaSlot,  setQaSlot]    = useState('')
   const [qaStart, setQaStart]   = useState('')
@@ -301,20 +317,6 @@ function MealScheduleSection() {
         </div>
       )}
 
-      {/* ── Classroom Management ── */}
-      {centerId && (
-        <ClassroomManager
-          centerId={centerId}
-          orgId={org?.id ?? ''}
-          classrooms={classrooms}
-          onReload={async () => {
-            const { data: cls } = await supabase.schema('menumaker').from('classrooms')
-              .select('id, name').eq('center_id', centerId).eq('is_active', true).order('sort_order')
-            setClassrooms((cls ?? []) as Classroom[])
-          }}
-        />
-      )}
-
       {/* ── Per-classroom table ── */}
       {classrooms.length === 0
         ? <div style={{ color: '#aaa', fontSize: 13 }}>No active classrooms for this center.</div>
@@ -323,6 +325,7 @@ function MealScheduleSection() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr>
+                <th style={{ width: 24 }}></th>
                 <th style={{ textAlign: 'left', padding: '6px 8px', color: '#888', fontSize: 11, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Classroom</th>
                 {activeSlots.map(s => (
                   <th key={s} style={{ padding: '6px 8px', color: '#888', fontSize: 11, textTransform: 'uppercase', whiteSpace: 'nowrap', textAlign: 'center' }}>
@@ -334,13 +337,28 @@ function MealScheduleSection() {
             </thead>
             <tbody>
               {classrooms.map((c, ri) => (
-                <tr key={c.id} style={{ borderTop: '1px solid #f0f0f0', background: ri % 2 === 0 ? '#fff' : '#fafbfa' }}>
+                <tr
+                  key={c.id}
+                  draggable
+                  onDragStart={() => setDragIdx(ri)}
+                  onDragOver={e => { e.preventDefault(); setOverIdx(ri) }}
+                  onDragLeave={() => setOverIdx(null)}
+                  onDrop={() => { reorderClassrooms(dragIdx!, ri); setDragIdx(null); setOverIdx(null) }}
+                  onDragEnd={() => { setDragIdx(null); setOverIdx(null) }}
+                  style={{
+                    borderTop: overIdx === ri ? '2px solid #0f4c35' : '1px solid #f0f0f0',
+                    background: dragIdx === ri ? '#f0f7f2' : ri % 2 === 0 ? '#fff' : '#fafbfa',
+                    opacity: dragIdx === ri ? 0.5 : 1,
+                    cursor: 'grab',
+                  }}
+                >
+                  <td style={{ padding: '8px 4px', color: '#ccc', fontSize: 14, cursor: 'grab', userSelect: 'none', textAlign: 'center' }}>⠿</td>
                   <td style={{ padding: '8px', fontWeight: 600, color: '#0a3320', whiteSpace: 'nowrap' }}>{c.name}</td>
                   {activeSlots.map(s => {
                     const t = sched[c.id]?.[s]
                     const hasTime = t?.start || t?.end
                     return (
-                      <td key={s} style={{ padding: '6px 8px' }}>
+                      <td key={s} style={{ padding: '6px 8px' }} onMouseDown={e => e.stopPropagation()}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                           <div style={{ fontSize: 9, color: '#aaa', textTransform: 'uppercase' }}>Start</div>
                           <TimeAmPm value={t?.start ?? ''} onChange={v => setTime(c.id, s, 'start', v)} compact />
@@ -355,17 +373,41 @@ function MealScheduleSection() {
                       </td>
                     )
                   })}
-                  <td style={{ padding: '6px 8px' }}>
-                    <button
-                      style={savedId === c.id ? { ...btnSec, borderColor: '#0f7a4a', color: '#0f7a4a' } : btnSec}
-                      disabled={savingId === c.id}
-                      onClick={() => saveRow(c.id)}
-                    >
-                      {savingId === c.id ? '…' : savedId === c.id ? '✓' : 'Save'}
-                    </button>
+                  <td style={{ padding: '6px 8px' }} onMouseDown={e => e.stopPropagation()}>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        style={savedId === c.id ? { ...btnSec, borderColor: '#0f7a4a', color: '#0f7a4a' } : btnSec}
+                        disabled={savingId === c.id}
+                        onClick={() => saveRow(c.id)}
+                      >
+                        {savingId === c.id ? '…' : savedId === c.id ? '✓' : 'Save'}
+                      </button>
+                      <button
+                        onClick={async () => {
+                          if (!confirm(`Deactivate "${c.name}"?`)) return
+                          await supabase.schema('menumaker').from('classrooms').update({ is_active: false }).eq('id', c.id)
+                          setClassrooms(prev => prev.filter(x => x.id !== c.id))
+                        }}
+                        style={{ background: 'none', border: '1px solid #fca5a5', borderRadius: 6, color: '#dc2626', cursor: 'pointer', padding: '4px 8px', fontSize: 11 }}
+                      >✕</button>
+                    </div>
                   </td>
                 </tr>
               ))}
+              {/* Add new classroom row */}
+              {centerId && (
+                <tr style={{ borderTop: '2px dashed #e0e8e0' }}>
+                  <td colSpan={activeSlots.length + 3} style={{ padding: '8px' }}>
+                    <AddClassroomInline centerId={centerId} orgId={org?.id ?? ''} sortOrder={classrooms.length}
+                      onAdded={async () => {
+                        const { data: cls } = await supabase.schema('menumaker').from('classrooms')
+                          .select('id, name').eq('center_id', centerId).eq('is_active', true).order('sort_order')
+                        setClassrooms((cls ?? []) as Classroom[])
+                      }}
+                    />
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -374,119 +416,31 @@ function MealScheduleSection() {
   )
 }
 
-// ─── ClassroomManager ────────────────────────────────────────
-function ClassroomManager({ centerId, orgId, classrooms, onReload }: {
-  centerId: string; orgId: string
-  classrooms: Classroom[]; onReload: () => void
+function AddClassroomInline({ centerId, orgId, sortOrder, onAdded }: {
+  centerId: string; orgId: string; sortOrder: number; onAdded: () => void
 }) {
-  const [newName, setNewName]   = useState('')
-  const [adding, setAdding]     = useState(false)
-  const [busy, setBusy]         = useState(false)
-  const [dragIdx, setDragIdx]   = useState<number | null>(null)
-  const [overIdx, setOverIdx]   = useState<number | null>(null)
-
+  const [name, setName] = useState('')
+  const [adding, setAdding] = useState(false)
   const add = async () => {
-    const name = newName.trim()
-    if (!name || !centerId || !orgId) return
+    if (!name.trim()) return
     setAdding(true)
     await supabase.schema('menumaker').from('classrooms').insert({
-      org_id: orgId, center_id: centerId, name, sort_order: classrooms.length, is_active: true,
+      org_id: orgId, center_id: centerId, name: name.trim(), sort_order: sortOrder, is_active: true,
     })
-    setNewName(''); setAdding(false); onReload()
+    setName(''); setAdding(false); onAdded()
   }
-
-  const remove = async (c: Classroom) => {
-    if (!confirm(`Deactivate "${c.name}"? This hides it from all views.`)) return
-    setBusy(true)
-    await supabase.schema('menumaker').from('classrooms').update({ is_active: false }).eq('id', c.id)
-    setBusy(false); onReload()
-  }
-
-  const rename = async (c: Classroom, newN: string) => {
-    if (!newN.trim() || newN === c.name) return
-    await supabase.schema('menumaker').from('classrooms').update({ name: newN.trim() }).eq('id', c.id)
-    onReload()
-  }
-
-  const onDrop = async (toIdx: number) => {
-    if (dragIdx === null || dragIdx === toIdx) { setDragIdx(null); setOverIdx(null); return }
-    // Reorder locally then save all sort_orders
-    const reordered = [...classrooms]
-    const [moved] = reordered.splice(dragIdx, 1)
-    reordered.splice(toIdx, 0, moved)
-    setBusy(true)
-    await Promise.all(
-      reordered.map((c, i) =>
-        supabase.schema('menumaker').from('classrooms').update({ sort_order: i }).eq('id', c.id)
-      )
-    )
-    setDragIdx(null); setOverIdx(null)
-    setBusy(false); onReload()
-  }
-
   return (
-    <div style={{ marginBottom: 18, padding: '12px 16px', background: '#fafbfa', borderRadius: 10, border: '1px solid #e8ede8' }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: '#0f4c35', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
-        📋 Manage Classrooms
-        <span style={{ fontSize: 10, color: '#aaa', fontWeight: 400, marginLeft: 8, textTransform: 'none' }}>drag to reorder</span>
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
-        {classrooms.map((c, i) => (
-          <div
-            key={c.id}
-            draggable
-            onDragStart={() => setDragIdx(i)}
-            onDragOver={e => { e.preventDefault(); setOverIdx(i) }}
-            onDragLeave={() => setOverIdx(null)}
-            onDrop={() => onDrop(i)}
-            onDragEnd={() => { setDragIdx(null); setOverIdx(null) }}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: '4px 8px', borderRadius: 8,
-              border: `1.5px solid ${overIdx === i ? '#0f4c35' : '#e8e8e8'}`,
-              background: dragIdx === i ? '#f0f7f2' : overIdx === i ? '#e8f4ee' : '#fff',
-              cursor: 'grab', transition: 'border-color 0.1s, background 0.1s',
-              opacity: dragIdx === i ? 0.5 : 1,
-            }}
-          >
-            {/* Drag handle */}
-            <span style={{ fontSize: 14, color: '#ccc', cursor: 'grab', userSelect: 'none', flexShrink: 0 }}>⠿</span>
-
-            {/* Name (editable) */}
-            <input
-              defaultValue={c.name}
-              onBlur={e => rename(c, e.target.value)}
-              onClick={e => e.stopPropagation()}
-              onMouseDown={e => e.stopPropagation()}
-              style={{ ...inp, flex: 1, padding: '4px 8px', fontSize: 13, cursor: 'text' }}
-            />
-
-            {/* Delete */}
-            <button
-              onClick={() => remove(c)}
-              disabled={busy}
-              style={{ background: 'none', border: '1px solid #fca5a5', borderRadius: 6, color: '#dc2626', cursor: 'pointer', padding: '3px 9px', fontSize: 12, fontFamily: 'inherit', flexShrink: 0 }}
-            >
-              ✕
-            </button>
-          </div>
-        ))}
-      </div>
-
-      {/* Add new */}
-      <div style={{ display: 'flex', gap: 8 }}>
-        <input
-          value={newName}
-          onChange={e => setNewName(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && add()}
-          placeholder="New classroom name…"
-          style={{ ...inp, flex: 1, padding: '6px 10px', fontSize: 13 }}
-        />
-        <button onClick={add} disabled={!newName.trim() || adding} style={btnPri}>
-          {adding ? '…' : '+ Add'}
-        </button>
-      </div>
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <span style={{ fontSize: 12, color: '#aaa' }}>+ New classroom:</span>
+      <input
+        value={name} onChange={e => setName(e.target.value)}
+        onKeyDown={e => e.key === 'Enter' && add()}
+        placeholder="Classroom name…"
+        style={{ ...inp, padding: '5px 10px', fontSize: 13, width: 200 }}
+      />
+      <button onClick={add} disabled={!name.trim() || adding} style={btnPri}>
+        {adding ? '…' : 'Add'}
+      </button>
     </div>
   )
 }

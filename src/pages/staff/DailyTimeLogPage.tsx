@@ -313,7 +313,17 @@ export default function DailyTimeLogPage() {
             ))}
           </div>
 
-          {/* Log type indicator */}
+          {/* Official CACFP Directions — must match form exactly */}
+          <div style={{ padding: '12px 20px', background: '#fff', borderBottom: '1px solid #e0e8e0', fontSize: 11, color: '#222', lineHeight: 1.6 }}>
+            <strong>Directions:</strong> Agencies can use this prototype Daily Time Log if they will be <u>claiming</u> CACFP operational program/food preparation labor costs or administrative costs of staff that on a daily basis do not spend 100% of their time on food/CACFP related duties. Labor costs for staff that spend 100% of their time on CACFP related duties each day can be documented with regular time/payment records.
+            <ul style={{ margin: '6px 0 0 16px', padding: 0, listStyle: 'disc' }}>
+              <li>Have each staff person complete their own time log each day. Staff that performs both operational program labor and administrative labor needs to complete a separate log for each.</li>
+              <li>Each staff person records the meal and/or CACFP related activity and the time spent on that activity (round to nearest 5 minute) each day</li>
+              <li>At end of month, tally total time worked on CACFP food related activities. Turn in completed log to director.</li>
+              <li>Administration to calculate total claimable labor costs by completing the bottom section.</li>
+              <li>Keep Daily Time Log on file with other CACFP documents for 3 years plus the current year.</li>
+            </ul>
+          </div>
           <div style={{ padding: '8px 16px', background: '#f8fbf8', borderBottom: '1px solid #e0e8e0', display: 'flex', gap: 16 }}>
             {['Program/Food Preparation Labor','Administrative Labor'].map(label => (
               <label key={label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
@@ -439,69 +449,71 @@ export default function DailyTimeLogPage() {
             </table>
           </div>
 
-          {/* Totals footer */}
+          {/* Totals footer — must match official CACFP form */}
           <div style={{ padding: '14px 20px', background: '#f0f4f1', borderTop: '2px solid #0f4c35' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
-              <div>
-                <div style={{ fontSize: 10, color: '#888', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Total CACFP Hours</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: '#0f4c35' }}>{totalHours.toFixed(2)}h</div>
-                <div style={{ fontSize: 11, color: '#888' }}>{totalMinutes} minutes</div>
+            {/* Total minutes row */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, padding: '6px 0', borderBottom: '1px solid #e0e8e0' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#1a2e1a' }}>Total MINUTES Worked in Month</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#0f4c35', minWidth: 80, textAlign: 'right' }}>{totalMinutes}</div>
+            </div>
+            {/* Total hours row */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, padding: '6px 0', borderBottom: '1px solid #e0e8e0' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#1a2e1a' }}>
+                TOTAL CACFP HOURS WORKED IN MONTH<br />
+                <span style={{ fontWeight: 400, fontSize: 11 }}>(Total Minutes divided by 60, carry out to 2 decimals)</span>
               </div>
-              <div>
-                <div style={{ fontSize: 10, color: '#888', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Hourly Rate</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: '#1a2e1a' }}>
-                  ${(selectedStaff?.hourly_rate ?? 0).toFixed(2)}/hr
-                </div>
-              </div>
-              <div>
-                <div style={{ fontSize: 10, color: '#888', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Total Claimable Labor</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: '#0f4c35' }}>${claimableCost.toFixed(2)}</div>
-                <div style={{ fontSize: 11, color: '#888' }}>{totalHours.toFixed(2)}h × ${(selectedStaff?.hourly_rate ?? 0).toFixed(2)}</div>
-              </div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#0f4c35', minWidth: 80, textAlign: 'right' }}>{totalHours.toFixed(2)}</div>
+            </div>
+            {/* Claimable cost row */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '6px 0', borderBottom: '1px solid #e0e8e0', fontSize: 12 }}>
+              <span style={{ fontWeight: 700 }}>Total CACFP Hours Worked</span>
+              <span style={{ fontWeight: 700, color: '#0f4c35', minWidth: 50 }}>{totalHours.toFixed(2)}</span>
+              <span>Hourly Wage $</span>
+              <span style={{ fontWeight: 700, color: '#0f4c35' }}>${(selectedStaff?.hourly_rate ?? 0).toFixed(2)}</span>
+              <span>Total Claimable Labor Costs $</span>
+              <span style={{ fontWeight: 700, color: '#0f4c35', fontSize: 14 }}>${claimableCost.toFixed(2)}</span>
             </div>
 
-            {/* Signature section */}
-            <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #e0e8e0' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 40 }}>
-                <div>
-                  <input
-                    className="no-print"
-                    value={empSig}
-                    onChange={e => setEmpSig(e.target.value)}
-                    placeholder="Employee — type full name to sign electronically"
-                    style={{ ...tinp, width: '100%', fontSize: 13, padding: '7px 10px',
-                      fontStyle: empSig ? 'italic' : 'normal',
-                      fontFamily: empSig ? 'Georgia, serif' : 'inherit',
-                      marginBottom: 4,
-                    }}
-                  />
-                  {empSig
-                    ? <div style={{ fontFamily: 'Georgia, serif', fontSize: 16, fontStyle: 'italic', color: '#1a2e1a', borderBottom: '1px solid #555', paddingBottom: 4, marginBottom: 4 }}>{empSig}</div>
-                    : <div style={{ borderBottom: '1px solid #555', height: 32, marginBottom: 4 }} />
-                  }
-                  <div style={{ fontSize: 11, color: '#666' }}>
-                    Employee Signature · {empSig ? new Date().toLocaleDateString() : 'Date'}
-                  </div>
+            {/* Signature lines */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 40, marginTop: 16 }}>
+              <div>
+                <input
+                  className="no-print"
+                  value={empSig}
+                  onChange={e => setEmpSig(e.target.value)}
+                  placeholder="Employee — type full name to sign electronically"
+                  style={{ ...tinp, width: '100%', fontSize: 13, padding: '7px 10px',
+                    fontStyle: empSig ? 'italic' : 'normal',
+                    fontFamily: empSig ? 'Georgia, serif' : 'inherit',
+                    marginBottom: 4,
+                  }}
+                />
+                {empSig
+                  ? <div style={{ fontFamily: 'Georgia, serif', fontSize: 16, fontStyle: 'italic', color: '#1a2e1a', borderBottom: '1px solid #555', paddingBottom: 4, marginBottom: 4 }}>{empSig}</div>
+                  : <div style={{ borderBottom: '1px solid #555', height: 32, marginBottom: 4 }} />
+                }
+                <div style={{ fontSize: 11, color: '#666' }}>
+                  Employee Signature · {empSig ? new Date().toLocaleDateString() : 'Date'}
                 </div>
-                <div>
-                  <input
-                    className="no-print"
-                    value={adminSig}
-                    onChange={e => setAdminSig(e.target.value)}
-                    placeholder="Administrator — type full name to sign electronically"
-                    style={{ ...tinp, width: '100%', fontSize: 13, padding: '7px 10px',
-                      fontStyle: adminSig ? 'italic' : 'normal',
-                      fontFamily: adminSig ? 'Georgia, serif' : 'inherit',
-                      marginBottom: 4,
-                    }}
-                  />
-                  {adminSig
-                    ? <div style={{ fontFamily: 'Georgia, serif', fontSize: 16, fontStyle: 'italic', color: '#1a2e1a', borderBottom: '1px solid #555', paddingBottom: 4, marginBottom: 4 }}>{adminSig}</div>
-                    : <div style={{ borderBottom: '1px solid #555', height: 32, marginBottom: 4 }} />
-                  }
-                  <div style={{ fontSize: 11, color: '#666' }}>
-                    Signature of Administrator · {adminSig ? new Date().toLocaleDateString() : 'Date'}
-                  </div>
+              </div>
+              <div>
+                <input
+                  className="no-print"
+                  value={adminSig}
+                  onChange={e => setAdminSig(e.target.value)}
+                  placeholder="Administrator — type full name to sign electronically"
+                  style={{ ...tinp, width: '100%', fontSize: 13, padding: '7px 10px',
+                    fontStyle: adminSig ? 'italic' : 'normal',
+                    fontFamily: adminSig ? 'Georgia, serif' : 'inherit',
+                    marginBottom: 4,
+                  }}
+                />
+                {adminSig
+                  ? <div style={{ fontFamily: 'Georgia, serif', fontSize: 16, fontStyle: 'italic', color: '#1a2e1a', borderBottom: '1px solid #555', paddingBottom: 4, marginBottom: 4 }}>{adminSig}</div>
+                  : <div style={{ borderBottom: '1px solid #555', height: 32, marginBottom: 4 }} />
+                }
+                <div style={{ fontSize: 11, color: '#666' }}>
+                  Signature of Administrator · {adminSig ? new Date().toLocaleDateString() : 'Date'}
                 </div>
               </div>
             </div>

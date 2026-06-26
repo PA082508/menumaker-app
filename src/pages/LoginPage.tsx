@@ -87,7 +87,7 @@ export default function LoginPage() {
             lineHeight: 1,
             marginBottom: 8,
           }}>
-            ClickClaim
+            ClickClaim CACFP
           </div>
           <div style={{
             fontSize: 13,
@@ -265,7 +265,7 @@ export default function LoginPage() {
           color: 'rgba(255,255,255,0.35)',
           letterSpacing: '0.06em',
         }}>
-          ClickClaim v1.0 · PLAY ACADEMY INC · MENTOR, OH
+          ClickClaim CACFP v1.0 · PLAY ACADEMY INC · MENTOR, OH
         </div>
       </div>
     </div>

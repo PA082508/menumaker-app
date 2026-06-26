@@ -193,7 +193,7 @@ function CenterDashboard() {
           Good {today.getHours() < 12 ? 'morning' : today.getHours() < 17 ? 'afternoon' : 'evening'}
         </div>
         <div style={{ fontSize: 14, color: '#666', marginTop: 4 }}>
-          {org?.name ?? 'MenuMaker'} · {role ? role.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) : ''}
+          {org?.name ?? 'ClickClaim'} · {role ? role.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) : ''}
         </div>
       </div>
 

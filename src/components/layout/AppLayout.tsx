@@ -184,7 +184,7 @@ export default function AppLayout() {
                 fontSize: 18,
                 lineHeight: 1,
               }}>
-                MenuMaker
+                ClickClaim
               </div>
               <div style={{
                 fontSize: 9,

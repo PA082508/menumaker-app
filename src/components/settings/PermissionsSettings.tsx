@@ -172,20 +172,29 @@ export default function PermissionsSettings() {
 
 // ─── Per-user override tool ─────────────────────────────────────────────────────
 
+type StaffUser = { auth_id: string; email: string; full_name: string; job_title: string; center_name: string }
+
 function UserOverride({ orgId, modules }: {
   orgId: string
   modules: { code: string; label: string }[]
 }) {
-  const [userId, setUserId] = useState('')
+  const [userId, setUserId]         = useState('')
   const [moduleCode, setModuleCode] = useState('')
-  const [access, setAccess] = useState<'view' | 'edit' | 'none' | '__clear__'>('view')
-  const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+  const [access, setAccess]         = useState<'view' | 'edit' | 'none' | '__clear__'>('view')
+  const [busy, setBusy]             = useState(false)
+  const [msg, setMsg]               = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+  const [users, setUsers]           = useState<StaffUser[]>([])
+
+  useEffect(() => {
+    if (!orgId) return
+    ;(supabase.schema('menumaker').rpc as any)('get_org_staff_users', { p_org_id: orgId })
+      .then(({ data }: any) => setUsers((data ?? []) as StaffUser[]))
+  }, [orgId])
 
   async function apply() {
     setMsg(null)
     if (!userId.trim() || !moduleCode) {
-      setMsg({ kind: 'err', text: 'Enter a user ID and pick a section.' })
+      setMsg({ kind: 'err', text: 'Select a user and a section.' })
       return
     }
     setBusy(true)
@@ -197,29 +206,38 @@ function UserOverride({ orgId, modules }: {
     })
     setBusy(false)
     if (error) { setMsg({ kind: 'err', text: error.message }); return }
-    setMsg({ kind: 'ok', text: access === '__clear__' ? '✓ Override removed' : '✓ Override applied' })
+    setMsg({ kind: 'ok', text: access === '__clear__' ? '\u2713 Override removed' : '\u2713 Override applied' })
   }
 
+  const short = (n: string) => n.replace(/^Play Academy\s+/i, '').trim()
+
   return (
-    <div style={{ marginTop: 24, background: '#fff', border: '1px solid #e8e8e8', borderRadius: 12, padding: 18, maxWidth: 720 }}>
-      <div style={{ fontSize: 14, fontWeight: 600, color: '#0a3320', marginBottom: 4 }}>
-        Per-user override
+    <div style={{ marginTop: 24, background: '#fff', border: '1px solid #e8e8e8', borderRadius: 12, padding: 18, maxWidth: 800 }}>
+      <div style={{ fontSize: 14, fontWeight: 600, color: '#0a3320', marginBottom: 4 }}>Per-user override</div>
+      <div style={{ fontSize: 12, color: '#888', marginBottom: 8 }}>
+        Grant or remove a section for one specific staff member. Each director automatically sees only their center's data.
+        "Remove override" reverts them to their role-based access.
       </div>
-      <div style={{ fontSize: 12, color: '#888', marginBottom: 14 }}>
-        Grant or remove a single section for one user — e.g. give a specific teacher the Menu Planner.
-        “Remove override” reverts them to their role-based access.
+      <div style={{ fontSize: 12, color: '#0f4c35', background: '#f0f7f2', borderRadius: 8, padding: '8px 12px', marginBottom: 14 }}>
+        <strong>How to use:</strong> Select a staff member \u2192 choose the section \u2192 set access level \u2192 click Apply.
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px 150px auto', gap: 12, alignItems: 'end' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px 160px auto', gap: 12, alignItems: 'end' }}>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={LABEL}>User ID (auth uid)</span>
-          {/* TODO: replace with a user picker once a user-listing source is available */}
-          <input value={userId} onChange={e => setUserId(e.target.value)} placeholder="uuid…" style={INPUT} />
+          <span style={LABEL}>Staff member</span>
+          <select value={userId} onChange={e => setUserId(e.target.value)} style={INPUT}>
+            <option value="">\u2014 select staff \u2014</option>
+            {users.map(u => (
+              <option key={u.auth_id} value={u.auth_id}>
+                {u.full_name} \u00b7 {u.job_title} \u00b7 {short(u.center_name)}
+              </option>
+            ))}
+          </select>
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <span style={LABEL}>Section</span>
           <select value={moduleCode} onChange={e => setModuleCode(e.target.value)} style={INPUT}>
-            <option value="">— select —</option>
+            <option value="">\u2014 select \u2014</option>
             {modules.map(m => <option key={m.code} value={m.code}>{m.label}</option>)}
           </select>
         </label>
@@ -237,7 +255,7 @@ function UserOverride({ orgId, modules }: {
           background: busy ? '#ccc' : '#0f4c35', color: '#fff', fontSize: 13, fontWeight: 600,
           cursor: busy ? 'default' : 'pointer',
         }}>
-          {busy ? 'Applying…' : 'Apply'}
+          {busy ? 'Applying\u2026' : 'Apply'}
         </button>
       </div>
 

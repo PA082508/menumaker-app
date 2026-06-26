@@ -32,7 +32,9 @@ type StaffData = {
   address: string | null
   is_active: boolean | null
   // payroll
+  pay_type: 'hourly' | 'salary' | null
   hourly_rate: number | null; contract_hours: number | null
+  salary_amount: number | null
   overtime_eligible: boolean | null; overtime_rate: number | null
   max_weekly_hours: number | null
   // education
@@ -157,6 +159,7 @@ export default function StaffSettingsPage() {
       hourly_rate: data.hourly_rate, contract_hours: data.contract_hours,
       overtime_eligible: data.overtime_eligible, overtime_rate: data.overtime_rate,
       max_weekly_hours: data.max_weekly_hours,
+      pay_type: data.pay_type ?? 'hourly', salary_amount: data.salary_amount,
       degree: data.degree, certification: data.certification,
       ece_credits: data.ece_credits, infant_toddler_credits: data.infant_toddler_credits,
       emergency_contact_name: data.emergency_contact_name,
@@ -327,50 +330,86 @@ export default function StaffSettingsPage() {
       {tab === 'payroll' && (
         <div style={card}>
           <h3 style={h3}>Payroll Settings</h3>
-          <div style={{ ...grid3, marginBottom: 16 }}>
-            <div>
-              <label style={lbl}>Hourly Rate ($)</label>
-              <input style={inp} type="number" step="0.01" min="0" value={data.hourly_rate ?? ''} onChange={e => set('hourly_rate', parseFloat(e.target.value) || null)} />
-            </div>
-            <div>
-              <label style={lbl}>Contract Hours / Week</label>
-              <input style={inp} type="number" step="1" min="0" value={data.contract_hours ?? ''} onChange={e => set('contract_hours', parseFloat(e.target.value) || null)} />
-            </div>
-            <div>
-              <label style={lbl}>Max Weekly Hours</label>
-              <input style={inp} type="number" step="1" min="0" value={data.max_weekly_hours ?? 40} onChange={e => set('max_weekly_hours', parseInt(e.target.value) || 40)} />
-            </div>
+
+          {/* Pay type toggle */}
+          <div style={{ display: 'flex', gap: 0, border: '1.5px solid #0f4c35', borderRadius: 8, overflow: 'hidden', marginBottom: 20, width: 'fit-content' }}>
+            {[['hourly','⏱ Hourly'],['salary','📅 Salary (fixed)']].map(([key, label]) => (
+              <button key={key} onClick={() => set('pay_type', key)} style={{
+                padding: '8px 20px', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                fontSize: 13, fontWeight: data.pay_type === key ? 700 : 400,
+                background: data.pay_type === key ? '#0f4c35' : '#fff',
+                color: data.pay_type === key ? '#fff' : '#0f4c35',
+              }}>{label}</button>
+            ))}
           </div>
 
-          {/* Overtime */}
-          <div style={{ background: '#f8fbf8', borderRadius: 10, border: '1px solid #e0e8e0', padding: 16, marginBottom: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <div style={{ fontWeight: 700, fontSize: 14, color: '#0a3320' }}>Overtime</div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
-                <div onClick={() => set('overtime_eligible', !data.overtime_eligible)} style={{
-                  width: 36, height: 20, borderRadius: 10, cursor: 'pointer', transition: 'background 0.2s',
-                  background: data.overtime_eligible ? '#0f4c35' : '#d1d5db', position: 'relative',
-                }}>
-                  <div style={{ position: 'absolute', top: 2, left: data.overtime_eligible ? 18 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
-                </div>
-                OT eligible
-              </label>
+          {/* Hourly fields */}
+          {(data.pay_type === 'hourly' || !data.pay_type) && (
+            <div style={{ ...grid3, marginBottom: 16 }}>
+              <div>
+                <label style={lbl}>Hourly Rate ($)</label>
+                <input style={inp} type="number" step="0.01" min="0" value={data.hourly_rate ?? ''} onChange={e => set('hourly_rate', parseFloat(e.target.value) || null)} />
+              </div>
+              <div>
+                <label style={lbl}>Contract Hours / Week</label>
+                <input style={inp} type="number" step="1" min="0" value={data.contract_hours ?? ''} onChange={e => set('contract_hours', parseFloat(e.target.value) || null)} />
+              </div>
+              <div>
+                <label style={lbl}>Max Weekly Hours</label>
+                <input style={inp} type="number" step="1" min="0" value={data.max_weekly_hours ?? 40} onChange={e => set('max_weekly_hours', parseInt(e.target.value) || 40)} />
+              </div>
             </div>
-            {data.overtime_eligible && (
-              <div style={grid2}>
-                <div>
-                  <label style={lbl}>OT Rate multiplier</label>
-                  <input style={inp} type="number" step="0.1" min="1" value={data.overtime_rate ?? 1.5} onChange={e => set('overtime_rate', parseFloat(e.target.value))} />
-                  <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>Standard: 1.5x · After 40h/week</div>
+          )}
+
+          {/* Salary fields */}
+          {data.pay_type === 'salary' && (
+            <div style={{ ...grid2, marginBottom: 16 }}>
+              <div>
+                <label style={lbl}>Fixed Amount per Period ($)</label>
+                <input style={inp} type="number" step="0.01" min="0" value={data.salary_amount ?? ''} onChange={e => set('salary_amount', parseFloat(e.target.value) || null)} />
+                <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>Weekly/biweekly/monthly — set period in notes</div>
+              </div>
+              <div>
+                <label style={lbl}>Annual Equivalent</label>
+                <div style={{ fontSize: 20, fontWeight: 700, color: '#0f4c35', padding: '9px 0' }}>
+                  ${data.salary_amount ? (data.salary_amount * 52).toLocaleString('en-US', {minimumFractionDigits: 2}) : '0.00'}
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                  <div style={{ fontSize: 13, color: '#555' }}>
-                    OT rate: <strong>${((data.hourly_rate ?? 0) * (data.overtime_rate ?? 1.5)).toFixed(2)}/hr</strong>
+                <div style={{ fontSize: 11, color: '#888' }}>× 52 weeks</div>
+              </div>
+            </div>
+          )}
+
+          {/* Overtime — only for hourly */}
+          {(data.pay_type === 'hourly' || !data.pay_type) && (
+            <div style={{ background: '#f8fbf8', borderRadius: 10, border: '1px solid #e0e8e0', padding: 16, marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: '#0a3320' }}>Overtime</div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
+                  <div onClick={() => set('overtime_eligible', !data.overtime_eligible)} style={{
+                    width: 36, height: 20, borderRadius: 10, cursor: 'pointer', transition: 'background 0.2s',
+                    background: data.overtime_eligible ? '#0f4c35' : '#d1d5db', position: 'relative',
+                  }}>
+                    <div style={{ position: 'absolute', top: 2, left: data.overtime_eligible ? 18 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
+                  </div>
+                  OT eligible
+                </label>
+              </div>
+              {data.overtime_eligible && (
+                <div style={grid2}>
+                  <div>
+                    <label style={lbl}>OT Rate multiplier</label>
+                    <input style={inp} type="number" step="0.1" min="1" value={data.overtime_rate ?? 1.5} onChange={e => set('overtime_rate', parseFloat(e.target.value))} />
+                    <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>Standard: 1.5x · After 40h/week</div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                    <div style={{ fontSize: 13, color: '#555' }}>
+                      OT rate: <strong>${((data.hourly_rate ?? 0) * (data.overtime_rate ?? 1.5)).toFixed(2)}/hr</strong>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
 
           {/* Bonus */}
           <div style={{ background: '#f8fbf8', borderRadius: 10, border: '1px solid #e0e8e0', padding: 16 }}>

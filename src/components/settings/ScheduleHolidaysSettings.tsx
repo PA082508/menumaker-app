@@ -420,21 +420,24 @@ function AddClassroomInline({ centerId, orgId, sortOrder, onAdded }: {
   const [name, setName] = useState('')
   const [adding, setAdding] = useState(false)
   const add = async () => {
-    if (!name.trim()) return
+    const n = name.trim()
+    if (!n || !orgId) return
     setAdding(true)
-    await supabase.schema('menumaker').from('classrooms').insert({
-      org_id: orgId, center_id: centerId, name: name.trim(), sort_order: sortOrder, is_active: true,
+    const { error } = await supabase.schema('menumaker').from('classrooms').insert({
+      org_id: orgId, center_id: centerId, name: n, sort_order: sortOrder, is_active: true,
     })
-    setName(''); setAdding(false); onAdded()
+    if (!error) { setName(''); onAdded() }
+    setAdding(false)
   }
   return (
-    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-      <span style={{ fontSize: 12, color: '#aaa' }}>+ New classroom:</span>
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }} onClick={e => e.stopPropagation()}>
+      <span style={{ fontSize: 12, color: '#888', whiteSpace: 'nowrap' }}>+ New classroom:</span>
       <input
-        value={name} onChange={e => setName(e.target.value)}
-        onKeyDown={e => e.key === 'Enter' && add()}
+        value={name}
+        onChange={e => setName(e.target.value)}
+        onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') add() }}
         placeholder="Classroom name…"
-        style={{ ...inp, padding: '5px 10px', fontSize: 13, width: 200 }}
+        style={{ ...inp, padding: '5px 10px', fontSize: 13, width: 220 }}
       />
       <button onClick={add} disabled={!name.trim() || adding} style={btnPri}>
         {adding ? '…' : 'Add'}

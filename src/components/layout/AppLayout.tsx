@@ -1,4 +1,4 @@
-import { useState, Fragment } from 'react'
+import { useState, useRef, useEffect, Fragment } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation, Link } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { useOrg } from '@/contexts/OrgContext'
@@ -10,7 +10,7 @@ type NavItem = {
   icon: string
   roles?: string[]
   badge?: string
-  section?: string   // optional group header rendered above the first item of a run
+  section?: string
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -33,388 +33,449 @@ const ROLE_COLORS: Record<string, string> = {
   purchaser:       '#16a085',
 }
 
+// ── menu structure ────────────────────────────────────────────
+type SubItem = { path: string; label: string; icon: string }
+type Section = { id: string; label: string; icon: string; noFlyout?: boolean; items?: SubItem[] }
+
+const SECTIONS: Section[] = [
+  {
+    id: 'dashboard', label: 'Dashboard', icon: 'ti-layout-dashboard', noFlyout: true,
+  },
+  {
+    id: 'operations', label: 'Operations', icon: 'ti-tool-kitchen-2',
+    items: [
+      { path: '/meal-count',    label: 'Meal Count',     icon: 'ti-circle-check' },
+      { path: '/kitchen',       label: 'Kitchen View',   icon: 'ti-chef-hat' },
+      { path: '/kitchen-report',label: 'Kitchen Report', icon: 'ti-report' },
+      { path: '/delivery',      label: 'Delivery',       icon: 'ti-truck-delivery' },
+      { path: '/receipt-review',label: 'Receipt Review', icon: 'ti-receipt' },
+    ],
+  },
+  {
+    id: 'planning', label: 'Planning', icon: 'ti-calendar-month',
+    items: [
+      { path: '/menu',          label: 'Menu Planner',  icon: 'ti-calendar-month' },
+      { path: '/recipes',       label: 'Recipes',       icon: 'ti-meat' },
+      { path: '/purchases',     label: 'Purchases',     icon: 'ti-shopping-cart' },
+      { path: '/kitchen-stock', label: 'Kitchen Stock', icon: 'ti-building-store' },
+      { path: '/inventory',     label: 'Inventory',     icon: 'ti-box' },
+    ],
+  },
+  {
+    id: 'people', label: 'People', icon: 'ti-users',
+    items: [
+      { path: '/children',       label: 'Children',       icon: 'ti-baby-carriage' },
+      { path: '/staff',          label: 'Staff',           icon: 'ti-id-badge' },
+      { path: '/staff/time-log', label: 'Daily Time Log',  icon: 'ti-clock' },
+    ],
+  },
+  {
+    id: 'reports', label: 'Reports', icon: 'ti-clipboard-list',
+    items: [
+      { path: '/claim-report',          label: 'Site Claim',         icon: 'ti-file-invoice' },
+      { path: '/reports',               label: 'Meal Count Summary', icon: 'ti-chart-bar' },
+      { path: '/staff/time-log',        label: 'Time Log Summary',   icon: 'ti-clock' },
+      { path: '/submissions',           label: 'Income Eligibility', icon: 'ti-forms' },
+      { path: '/export',                label: 'Custom Export',      icon: 'ti-download' },
+    ],
+  },
+  {
+    id: 'documents', label: 'Documents', icon: 'ti-folder',
+    items: [
+      { path: '/documents',   label: 'Upload',           icon: 'ti-upload' },
+      { path: '/submissions', label: 'Form Submissions', icon: 'ti-file-description' },
+      { path: '/dispatch',    label: 'Q&A / Instructions', icon: 'ti-message-question' },
+    ],
+  },
+  {
+    id: 'budget', label: 'Budget', icon: 'ti-coin',
+    items: [
+      { path: '/finance',               label: 'Fiscal Year Plan',  icon: 'ti-calendar-stats' },
+      { path: '/reimbursement-preview', label: 'YTD Results',       icon: 'ti-trending-up' },
+      { path: '/reimbursement-preview', label: 'Reimbursements',    icon: 'ti-file-dollar' },
+      { path: '/purchases',             label: 'Food Costs',        icon: 'ti-shopping-cart' },
+      { path: '/staff/time-log',        label: 'Labor Costs',       icon: 'ti-users' },
+    ],
+  },
+  {
+    id: 'resources', label: 'Resources', icon: 'ti-world',
+    items: [
+      { path: 'https://playacademyusa.com', label: 'Website',       icon: 'ti-world' },
+      { path: '/children',                  label: 'Parent Portal', icon: 'ti-app-window' },
+      { path: 'https://brightwheel.com',    label: 'Brightwheel',   icon: 'ti-link' },
+    ],
+  },
+  {
+    id: 'settings', label: 'Settings', icon: 'ti-settings', noFlyout: true,
+  },
+]
+
+// ── legacy flat nav (used for cook/teacher fallback) ──────────
+const NAV_ITEMS: NavItem[] = [
+  { path: '/dashboard',         label: 'Dashboard',      icon: '⊞' },
+  { path: '/meal-count',        label: 'Meal Count',     icon: '🍽️' },
+  { path: '/delivery',          label: 'Delivery',       icon: '🚐', roles: ['director','driver'] },
+]
+
 export default function AppLayout() {
   const { user, role, signOut } = useAuth()
   const { modules, navModules } = useOrg()
-  const hasCACFP = modules.includes('cacfp')
   const navigate = useNavigate()
   const location = useLocation()
   const [collapsed, setCollapsed] = useState(false)
 
-  const NAV_ITEMS: NavItem[] = [
-    { path: '/dashboard',  label: 'Dashboard',      icon: '⊞' },
-    { path: '/menu',       label: 'Menu Planner',   icon: '📅', roles: ['director','cook','office_manager','cacfp_inspector'] },
-    { path: '/recipes',    label: 'Recipes',        icon: '🍳', roles: ['director','cook','office_manager'] },
-    { path: '/kitchen',    label: 'Kitchen View',   icon: '👨‍🍳', roles: ['director','cook'] },
-    { path: '/delivery',   label: 'Delivery',       icon: '🚐', roles: ['director','driver'] },
-    { path: '/purchases',  label: 'Purchases',      icon: '🛒', roles: ['director','purchaser'] },
-    { path: '/kitchen-stock', label: 'Kitchen Stock', icon: '🏪', roles: ['director','cook','purchaser'] },
-    { path: '/inventory',  label: 'Inventory',      icon: '📦', roles: ['director','purchaser','cook'] },
-    { path: '/meal-count', label: 'Meal Count', icon: '🍽️', roles: ['admin','director','cook','office_manager'] },
-    { path: '/documents',  label: 'Documents',  icon: '📁', roles: ['admin','office_manager','director'] },
-    { path: '/dispatch',   label: 'Dispatch',   icon: '📨', roles: ['admin','office_manager'] },
-    { path: '/export',     label: 'Custom Export', icon: '📤', roles: ['admin','office_manager','director'] },
-    ...(hasCACFP ? [
-      { path: '/reports',               label: 'Reports',       icon: '📋', roles: ['admin','director','office_manager'], section: 'CACFP Compliance' },
-      { path: '/claim-report',          label: 'Site Claim',    icon: '📄', roles: ['admin','director','office_manager'], section: 'CACFP Compliance' },
-      { path: '/reimbursement-preview', label: 'Reimbursement', icon: '💰', roles: ['admin','director','office_manager'], section: 'CACFP Compliance' },
-      { path: '/cacfp-checklist',       label: 'Checklist',     icon: '✅', roles: ['admin','director','office_manager'], section: 'CACFP Compliance' },
-    ] : []),
-    { path: '/children',   label: 'Children',   icon: '👶', roles: ['admin','director','office_manager'], section: 'PEOPLE' },
-    { path: '/staff',           label: 'Staff',           icon: '👨‍🏫', roles: ['admin','director','office_manager'], section: 'PEOPLE' },
-    { path: '/staff/time-log',  label: 'Daily Time Log',  icon: '⏱',  roles: ['admin','director','office_manager'], section: 'PEOPLE' },
-    { path: '/receipt-review', label: 'Receipt Review',  icon: '🧾', roles: ['director','office_manager'] },
-    { path: '/kitchen-report', label: 'Kitchen Report', icon: '👨‍🍳', roles: ['director','cook','office_manager'] },
-    { path: '/submissions', label: 'Form Submissions', icon: '📨', roles: ['director','office_manager','cacfp_inspector'] },
-    { path: '/finance',    label: 'Finance',        icon: '💰', roles: ['director','accountant'] },
-    { path: '/settings',   label: 'Settings',       icon: '⚙️', roles: ['director','admin','office_manager'] },
-  ]
+  // flyout state
+  const [flyId, setFlyId] = useState<string | null>(null)
+  const [flyTop, setFlyTop] = useState(0)
+  const sbRef = useRef<HTMLElement>(null)
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Variant B: build nav from user_modules when available; otherwise fall back
-  // to the legacy role-based gating (keeps current behavior until the backend
-  // returns modules for every user).
-  const usingPerms = Array.isArray(navModules) && navModules.length > 0
+  const SB_FULL = 240
+  const SB_COLL = 58
+  const sidebarWidth = collapsed ? SB_COLL : SB_FULL
+  const OVERLAP = Math.round(sidebarWidth * 0.4)
 
-  const permItems: NavItem[] = usingPerms
-    ? [...navModules!]
-        .sort((a, b) => a.sort_order - b.sort_order)
-        .map(m => ({
-          path: routeForModule(m.module_code),
-          label: m.label,
-          icon: m.icon || MODULE_ICON_FALLBACK[m.module_code] || '•',
-        }))
-    : []
-
-  // Variant B builds nav from navModules, which does NOT include the legacy
-  // hasCACFP block — so the CACFP Compliance group vanishes under permission-driven
-  // nav. Re-append it (role-gated, deduped by path) when the org has the cacfp
-  // module, so the group shows regardless of which nav mode is active.
-  const cacfpGroup = NAV_ITEMS.filter(item => item.section === 'CACFP Compliance')
-  const cacfpPaths = new Set(cacfpGroup.map(i => i.path))
-
-  // Variant B nav may already surface some CACFP routes (e.g. /reports,
-  // /claim-report) as standalone items. Strip those from permItems so they
-  // appear ONLY inside the CACFP Compliance group below, not twice.
-  const permItemsFiltered = (usingPerms && hasCACFP)
-    ? permItems.filter(pi => !cacfpPaths.has(pi.path))
-    : permItems
-
-  const cacfpAppend = usingPerms && hasCACFP
-    ? cacfpGroup.filter(ci => !ci.roles || (role && ci.roles.includes(role)))
-    : []
-
-  // PEOPLE section (Children, …) — role-gated, not module-gated. Also absent
-  // from navModules, so append it under Variant B (deduped by path).
-  const peopleGroup = NAV_ITEMS.filter(item => item.section === 'PEOPLE')
-  const peopleAppend = usingPerms
-    ? peopleGroup.filter(ci => !permItems.some(pi => pi.path === ci.path) && (!ci.roles || (role && ci.roles.includes(role))))
-    : []
-
-  const baseVisible = usingPerms
-    ? [...permItemsFiltered, ...cacfpAppend, ...peopleAppend]
-    : NAV_ITEMS.filter(item => !item.roles || (role && item.roles.includes(role)))
-
-  // Cook: sidebar shows Meal Count + Delivery (dispatch). Teacher: Meal Count only.
-  // Sourced from NAV_ITEMS directly so it works regardless of permission-driven nav.
-  const isCook = role === 'cook'
-  const isCookOrTeacher = isCook || (role as string) === 'teacher'
-  const visibleItems = isCookOrTeacher
-    ? NAV_ITEMS.filter(item => item.path === '/meal-count' || (isCook && item.path === '/delivery'))
-    : baseVisible
-
-  // Route guard: if permissions are active and the user opened a guarded module
-  // route that is not in their allowed set, show a 403. Dashboard is never
-  // blocked (anti-lockout); unknown/utility routes pass through.
-  const allowedPaths = usingPerms
-    ? new Set([...permItems.map(i => i.path), ...cacfpAppend.map(i => i.path), ...peopleAppend.map(i => i.path)])
-    : null
-  const basePath = '/' + (location.pathname.split('/')[1] || 'dashboard')
-  // Cook's two surfaced routes are never blocked (they're sidebar-allowed above).
-  const cookAllowed = isCookOrTeacher && (basePath === '/meal-count' || (isCook && basePath === '/delivery'))
-  const blocked =
-    usingPerms &&
-    basePath !== '/dashboard' &&
-    !cookAllowed &&
-    KNOWN_MODULE_ROUTES.has(basePath) &&
-    !allowedPaths!.has(basePath)
-
-  const handleSignOut = async () => {
-    await signOut()
-    navigate('/login')
+  function openFly(id: string, triggerEl: HTMLElement) {
+    if (hideTimer.current) clearTimeout(hideTimer.current)
+    const sbRect = sbRef.current?.getBoundingClientRect()
+    const trRect = triggerEl.getBoundingClientRect()
+    if (sbRect) setFlyTop(trRect.top - sbRect.top)
+    setFlyId(id)
   }
 
-  const sidebarWidth = collapsed ? 64 : 220
+  function schedulHide(id: string) {
+    hideTimer.current = setTimeout(() => {
+      setFlyId(prev => prev === id ? null : prev)
+    }, 120)
+  }
+
+  function cancelHide() {
+    if (hideTimer.current) clearTimeout(hideTimer.current)
+  }
+
+  const isCook = role === 'cook'
+  const isCookOrTeacher = isCook || (role as string) === 'teacher'
+
+  const handleSignOut = async () => { await signOut(); navigate('/login') }
+
+  const hasCACFP = modules.includes('cacfp')
+
+  // block check (kept from original)
+  const usingPerms = Array.isArray(navModules) && navModules.length > 0
+  const permItems = usingPerms
+    ? [...navModules!].sort((a, b) => a.sort_order - b.sort_order)
+        .map(m => ({ path: routeForModule(m.module_code), label: m.label, icon: m.icon || MODULE_ICON_FALLBACK[m.module_code] || '•' }))
+    : []
+  const allowedPaths = usingPerms ? new Set(permItems.map(i => i.path)) : null
+  const basePath = '/' + (location.pathname.split('/')[1] || 'dashboard')
+  const cookAllowed = isCookOrTeacher && (basePath === '/meal-count' || (isCook && basePath === '/delivery'))
+  const blocked = usingPerms && basePath !== '/dashboard' && !cookAllowed && KNOWN_MODULE_ROUTES.has(basePath) && !allowedPaths!.has(basePath)
 
   return (
-    <div style={{
-      display: 'flex',
-      minHeight: '100vh',
-      background: '#f4f6f4',
-      fontFamily: "'DM Sans', sans-serif",
-    }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#f4f6f4', fontFamily: "'DM Sans', sans-serif" }}>
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Serif+Display&display=swap" rel="stylesheet"/>
+      <link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css" rel="stylesheet"/>
 
       {/* Sidebar */}
-      <aside style={{
-        width: sidebarWidth,
-        minHeight: '100vh',
-        background: '#0a3320',
-        display: 'flex',
-        flexDirection: 'column',
-        transition: 'width 0.2s ease',
-        position: 'fixed',
-        left: 0, top: 0, bottom: 0,
-        zIndex: 100,
-        overflow: 'hidden',
+      <aside ref={sbRef} style={{
+        width: sidebarWidth, minHeight: '100vh', background: '#2d5a45',
+        display: 'flex', flexDirection: 'column',
+        transition: 'width 0.22s ease', position: 'fixed',
+        left: 0, top: 0, bottom: 0, zIndex: 100, overflow: 'visible',
       }}>
+
         {/* Logo */}
         <div style={{
-          padding: collapsed ? '20px 0' : '20px 20px',
-          borderBottom: '1px solid rgba(255,255,255,0.08)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
+          padding: collapsed ? '16px 0' : '14px 14px 12px',
+          borderBottom: '0.5px solid rgba(255,255,255,0.12)',
+          display: 'flex', alignItems: 'center', gap: 10,
           justifyContent: collapsed ? 'center' : 'flex-start',
+          overflow: 'hidden', whiteSpace: 'nowrap', minHeight: 52,
         }}>
-          <span style={{ fontSize: 22, flexShrink: 0 }}>🍽️</span>
+          <i className="ti ti-tool-kitchen-2" style={{ fontSize: 20, color: '#a7f0d0', flexShrink: 0 }} />
           {!collapsed && (
             <div>
-              <div style={{
-                fontFamily: "'DM Serif Display', serif",
-                color: '#fff',
-                fontSize: 18,
-                lineHeight: 1,
-              }}>
-                ClickClaim CACFP
-              </div>
-              <div style={{
-                fontSize: 9,
-                color: 'rgba(255,255,255,0.4)',
-                letterSpacing: '0.1em',
-                textTransform: 'uppercase',
-                marginTop: 2,
-              }}>
-                Play Academy
-              </div>
+              <div style={{ color: '#fff', fontSize: 14, fontWeight: 500 }}>ClickClaim CACFP</div>
+              <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: 11 }}>Play Academy</div>
             </div>
           )}
         </div>
 
-        {/* Active center / Organization switcher */}
-        <CenterSwitcher collapsed={collapsed} />
+        {/* Toggle button */}
+        <button onClick={() => setCollapsed(c => !c)} style={{
+          position: 'absolute', right: -11, top: 16,
+          width: 22, height: 22, borderRadius: '50%',
+          background: '#2d5a45', border: '0.5px solid rgba(255,255,255,0.2)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer', color: 'rgba(255,255,255,0.8)', fontSize: 13, zIndex: 30,
+        }}>
+          <i className={collapsed ? 'ti ti-chevron-right' : 'ti ti-chevron-left'} />
+        </button>
 
-        {/* Navigation */}
-        <nav style={{ flex: 1, padding: '12px 0', overflowY: 'auto' }}>
-          {visibleItems.map((item, i) => {
-            const prevSection = i > 0 ? visibleItems[i - 1].section : undefined
-            const showHeader = !collapsed && item.section && item.section !== prevSection
-            return (
-            <Fragment key={item.path}>
-            {showHeader && (
-              <NavLink
-                to="/cacfp-checklist"
-                style={{
-                  display: 'block',
-                  padding: '14px 16px 6px',
-                  fontSize: 10, fontWeight: 700, letterSpacing: '0.08em',
-                  textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)',
-                  textDecoration: 'none', cursor: 'pointer', transition: 'all 0.15s',
-                  borderRadius: '0 8px 8px 0', marginRight: 8,
-                }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(126,232,176,0.1)'; e.currentTarget.style.color = '#7ee8b0' }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(255,255,255,0.35)' }}
-              >
-                {item.section}
+        {/* Organization switcher */}
+        <CenterSwitcher collapsed={collapsed} onOpen={openFly} onLeave={schedulHide} onEnterFly={cancelHide} flyId={flyId} flyTop={flyTop} sidebarWidth={sidebarWidth} overlap={OVERLAP} />
+
+        {/* Nav */}
+        <nav style={{ flex: 1, padding: '6px 0', overflowY: 'auto', overflowX: 'visible' }}>
+          {isCookOrTeacher ? (
+            // Simple nav for cook/teacher
+            NAV_ITEMS.filter(item => item.path === '/meal-count' || (isCook && item.path === '/delivery')).map(item => (
+              <NavLink key={item.path} to={item.path} style={({ isActive }) => navStyle(isActive, collapsed)}>
+                <span style={{ fontSize: 16, flexShrink: 0 }}>{item.icon}</span>
+                {!collapsed && <span style={{ fontSize: 14 }}>{item.label}</span>}
               </NavLink>
-            )}
-            <NavLink
-              to={item.path}
-              style={({ isActive }) => ({
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: collapsed ? '10px 0' : '10px 16px',
-                justifyContent: collapsed ? 'center' : 'flex-start',
-                color: isActive ? '#7ee8b0' : 'rgba(255,255,255,0.6)',
-                background: isActive ? 'rgba(126,232,176,0.1)' : 'transparent',
-                borderLeft: isActive ? '2px solid #7ee8b0' : '2px solid transparent',
-                textDecoration: 'none',
-                fontSize: 13,
-                fontWeight: isActive ? 600 : 400,
-                transition: 'all 0.15s',
-                borderRadius: collapsed ? 0 : '0 8px 8px 0',
-                marginRight: collapsed ? 0 : 8,
-              })}
-            >
-              <span style={{ fontSize: 16, flexShrink: 0 }}>{item.icon}</span>
-              {!collapsed && <span>{item.label}</span>}
-              {!collapsed && item.badge && (
-                <span style={{
-                  marginLeft: 'auto',
-                  background: '#c0392b',
-                  color: '#fff',
-                  fontSize: 10,
-                  fontWeight: 700,
-                  padding: '2px 6px',
-                  borderRadius: 10,
-                }}>
-                  {item.badge}
-                </span>
-              )}
-            </NavLink>
-            </Fragment>
-            )
-          })}
+            ))
+          ) : (
+            SECTIONS.map((sec, si) => {
+              const isDivided = si > 0 && (
+                (sec.id === 'reports') ||
+                (sec.id === 'settings')
+              )
+              const isActiveSec = sec.noFlyout
+                ? location.pathname === (sec.id === 'dashboard' ? '/dashboard' : '/settings')
+                : sec.items?.some(it => location.pathname.startsWith(it.path)) ?? false
+
+              return (
+                <Fragment key={sec.id}>
+                  {isDivided && <div style={{ height: '0.5px', background: 'rgba(255,255,255,0.1)', margin: '4px 0' }} />}
+                  <div
+                    style={{ position: 'relative' }}
+                    onMouseEnter={e => {
+                      if (!sec.noFlyout) openFly(sec.id, e.currentTarget as HTMLElement)
+                    }}
+                    onMouseLeave={() => {
+                      if (!sec.noFlyout) schedulHide(sec.id)
+                    }}
+                  >
+                    {sec.noFlyout ? (
+                      <NavLink
+                        to={sec.id === 'dashboard' ? '/dashboard' : '/settings'}
+                        style={({ isActive }) => navStyle(isActive, collapsed)}
+                      >
+                        <i className={`ti ${sec.icon}`} style={{ fontSize: 19, width: 20, textAlign: 'center', flexShrink: 0, color: isActiveSec ? '#a7f0d0' : undefined }} />
+                        {!collapsed && <span style={{ fontSize: 14 }}>{sec.label}</span>}
+                      </NavLink>
+                    ) : (
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: 12,
+                        padding: collapsed ? '11px 0' : '11px 16px',
+                        justifyContent: collapsed ? 'center' : 'flex-start',
+                        cursor: 'pointer',
+                        color: isActiveSec ? '#fff' : 'rgba(255,255,255,0.7)',
+                        background: isActiveSec ? 'rgba(255,255,255,0.1)' : flyId === sec.id ? 'rgba(255,255,255,0.08)' : 'transparent',
+                        borderLeft: isActiveSec ? '3px solid #a7f0d0' : '3px solid transparent',
+                        fontSize: 14, whiteSpace: 'nowrap',
+                        transition: 'background 0.12s, color 0.12s',
+                      }}>
+                        <i className={`ti ${sec.icon}`} style={{ fontSize: 19, width: 20, textAlign: 'center', flexShrink: 0, color: isActiveSec ? '#a7f0d0' : undefined }} />
+                        {!collapsed && <span>{sec.label}</span>}
+                        {!collapsed && <i className="ti ti-chevron-right" style={{ marginLeft: 'auto', fontSize: 13, color: 'rgba(255,255,255,0.25)' }} />}
+                      </div>
+                    )}
+                  </div>
+                </Fragment>
+              )
+            })
+          )}
         </nav>
 
-        {/* User info + collapse */}
-        <div style={{
-          borderTop: '1px solid rgba(255,255,255,0.08)',
-          padding: collapsed ? '12px 0' : '12px 16px',
-        }}>
-          {!collapsed && role && (
+        {/* User row */}
+        <div style={{ borderTop: '0.5px solid rgba(255,255,255,0.12)', padding: collapsed ? '12px 0' : '12px 14px' }}>
+          {!collapsed && (
             <div style={{ marginBottom: 10 }}>
               <div style={{
-                display: 'inline-block',
-                padding: '3px 8px',
-                borderRadius: 6,
-                background: (ROLE_COLORS[role] || '#333') + '30',
-                border: `1px solid ${ROLE_COLORS[role] || '#333'}50`,
-                color: '#7ee8b0',
-                fontSize: 10,
-                fontWeight: 600,
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
-                marginBottom: 4,
+                display: 'inline-block', padding: '3px 8px', borderRadius: 6,
+                background: ((role && ROLE_COLORS[role]) || '#333') + '30',
+                border: `1px solid ${(role && ROLE_COLORS[role]) || '#333'}50`,
+                color: '#a7f0d0', fontSize: 10, fontWeight: 600,
+                letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 4,
               }}>
-                {ROLE_LABELS[role] || role}
+                {role ? (ROLE_LABELS[role] || role) : 'System Administrator'}
               </div>
-              <div style={{
-                fontSize: 11,
-                color: 'rgba(255,255,255,0.45)',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {user?.email}
               </div>
             </div>
           )}
-
+          {collapsed && (
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
+              <div style={{
+                width: 30, height: 30, borderRadius: '50%', background: '#1a5c3f',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 12, fontWeight: 500, color: '#a7f0d0',
+              }}>
+                {(user?.email?.[0] || 'A').toUpperCase()}
+              </div>
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 6, justifyContent: collapsed ? 'center' : 'flex-start' }}>
-            <button
-              onClick={() => setCollapsed(!collapsed)}
-              style={{
-                padding: '6px 8px',
-                borderRadius: 6,
-                border: '1px solid rgba(255,255,255,0.15)',
-                background: 'transparent',
-                color: 'rgba(255,255,255,0.5)',
-                cursor: 'pointer',
-                fontSize: 12,
-              }}
-            >
-              {collapsed ? '→' : '←'}
-            </button>
             {!collapsed && (
-              <button
-                onClick={handleSignOut}
-                style={{
-                  flex: 1,
-                  padding: '6px 10px',
-                  borderRadius: 6,
-                  border: '1px solid rgba(255,255,255,0.15)',
-                  background: 'transparent',
-                  color: 'rgba(255,255,255,0.5)',
-                  cursor: 'pointer',
-                  fontSize: 12,
-                  fontFamily: 'inherit',
-                }}
-              >
+              <button onClick={handleSignOut} style={{
+                flex: 1, padding: '6px 10px', borderRadius: 6,
+                border: '1px solid rgba(255,255,255,0.15)', background: 'transparent',
+                color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit',
+              }}>
                 Sign Out
               </button>
             )}
           </div>
         </div>
+
+        {/* Flyout panels */}
+        {SECTIONS.filter(s => !s.noFlyout && s.items).map(sec => (
+          <div
+            key={sec.id}
+            onMouseEnter={cancelHide}
+            onMouseLeave={() => schedulHide(sec.id)}
+            style={{
+              position: 'absolute',
+              left: sidebarWidth - OVERLAP,
+              top: flyTop,
+              background: '#3d7a5e',
+              border: '0.5px solid rgba(255,255,255,0.15)',
+              borderRadius: 10,
+              minWidth: 200,
+              padding: '8px 0',
+              opacity: flyId === sec.id ? 1 : 0,
+              pointerEvents: flyId === sec.id ? 'all' : 'none',
+              transition: 'opacity 0.15s, transform 0.15s',
+              transform: flyId === sec.id ? 'translateX(0)' : 'translateX(-4px)',
+              zIndex: 200,
+              boxShadow: '6px 8px 28px rgba(0,0,0,0.28)',
+            }}
+          >
+            <div style={{ padding: '8px 14px 6px', fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+              {sec.label}
+            </div>
+            {sec.items!.map(item => (
+              item.path.startsWith('http') ? (
+                <a key={item.path} href={item.path} target="_blank" rel="noreferrer" style={flyItemStyle}>
+                  <i className={`ti ${item.icon}`} style={{ fontSize: 15, color: 'rgba(255,255,255,0.35)' }} />
+                  {item.label}
+                </a>
+              ) : (
+                <NavLink key={item.path + item.label} to={item.path} style={flyItemStyle} onClick={() => setFlyId(null)}>
+                  <i className={`ti ${item.icon}`} style={{ fontSize: 15, color: 'rgba(255,255,255,0.35)' }} />
+                  {item.label}
+                </NavLink>
+              )
+            ))}
+          </div>
+        ))}
       </aside>
 
-      {/* Main content */}
-      <main style={{
-        flex: 1,
-        marginLeft: sidebarWidth,
-        transition: 'margin-left 0.2s ease',
-        minHeight: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-      }}>
+      <main style={{ flex: 1, marginLeft: sidebarWidth, transition: 'margin-left 0.22s ease', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
         {blocked ? <Forbidden /> : <Outlet />}
       </main>
     </div>
   )
 }
 
-// Header center switcher. Admin / office_manager get a dropdown of their
-// accessible centers plus an "Organization" (org-wide) option. Center-mode
-// users (director/cook/teacher) see a static, non-switchable center label.
-function CenterSwitcher({ collapsed }: { collapsed: boolean }) {
+function navStyle(isActive: boolean, collapsed: boolean): React.CSSProperties {
+  return {
+    display: 'flex', alignItems: 'center', gap: 12,
+    padding: collapsed ? '11px 0' : '11px 16px',
+    justifyContent: collapsed ? 'center' : 'flex-start',
+    color: isActive ? '#fff' : 'rgba(255,255,255,0.7)',
+    background: isActive ? 'rgba(255,255,255,0.1)' : 'transparent',
+    borderLeft: isActive ? '3px solid #a7f0d0' : '3px solid transparent',
+    textDecoration: 'none', fontSize: 14, whiteSpace: 'nowrap',
+    transition: 'background 0.12s, color 0.12s',
+  }
+}
+
+const flyItemStyle: React.CSSProperties = {
+  padding: '9px 16px', fontSize: 13, color: 'rgba(255,255,255,0.75)',
+  cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 9,
+  whiteSpace: 'nowrap', textDecoration: 'none',
+  transition: 'color 0.1s, background 0.1s',
+}
+
+// ── CenterSwitcher ────────────────────────────────────────────
+function CenterSwitcher({ collapsed, onOpen, onLeave, onEnterFly, flyId, flyTop, sidebarWidth, overlap }: {
+  collapsed: boolean
+  onOpen: (id: string, el: HTMLElement) => void
+  onLeave: (id: string) => void
+  onEnterFly: () => void
+  flyId: string | null
+  flyTop: number
+  sidebarWidth: number
+  overlap: number
+}) {
   const { isOrgAdmin, centers, currentCenter, viewMode, setCurrentCenter } = useOrg()
   const short = (n?: string | null) => (n ?? '').replace(/^Play Academy\s+/i, '').trim() || '—'
 
-  // Nothing to show until centers resolve (and center-mode users with no center).
   if (!currentCenter && !isOrgAdmin) return null
 
-  if (collapsed) {
-    const glyph = viewMode === 'org' ? '🏢' : short(currentCenter?.name).charAt(0).toUpperCase()
-    return (
-      <div
-        title={viewMode === 'org' ? 'Organization' : currentCenter?.name ?? ''}
-        style={{
-          margin: '10px auto 4px', width: 34, height: 34, borderRadius: 8,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: 'rgba(126,232,176,0.12)', border: '1px solid rgba(126,232,176,0.25)',
-          color: '#7ee8b0', fontSize: 13, fontWeight: 700,
-        }}
-      >
-        {glyph}
-      </div>
-    )
-  }
+  const label = viewMode === 'org' ? 'Organization' : short(currentCenter?.name)
 
   return (
-    <div style={{ padding: '12px 16px 4px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+    <div
+      style={{ margin: '10px 10px 6px', position: 'relative' }}
+      onMouseEnter={e => isOrgAdmin && onOpen('__org__', e.currentTarget as HTMLElement)}
+      onMouseLeave={() => isOrgAdmin && onLeave('__org__')}
+    >
       <div style={{
-        fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase',
-        color: 'rgba(255,255,255,0.4)', marginBottom: 6,
+        display: 'flex', alignItems: 'center', gap: 9,
+        padding: collapsed ? '9px 10px' : '9px 12px',
+        background: '#3d7a5e', borderRadius: 8, cursor: 'pointer',
+        border: '0.5px solid rgba(255,255,255,0.15)',
+        justifyContent: collapsed ? 'center' : 'flex-start',
+        whiteSpace: 'nowrap', transition: 'background 0.1s',
       }}>
-        {viewMode === 'org' ? 'Viewing' : 'Center'}
+        <i className="ti ti-building-community" style={{ fontSize: 17, color: '#a7f0d0', flexShrink: 0 }} />
+        {!collapsed && <span style={{ color: '#fff', fontSize: 13, fontWeight: 500, flex: 1 }}>{label}</span>}
+        {!collapsed && isOrgAdmin && <i className="ti ti-chevron-right" style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }} />}
       </div>
 
-      {isOrgAdmin ? (
-        <select
-          value={viewMode === 'org' ? '__org__' : (currentCenter?.id ?? '')}
-          onChange={e => {
-            const v = e.target.value
-            if (v === '__org__') { setCurrentCenter(null); return }
-            const c = centers.find(c => c.id === v)
-            if (c) setCurrentCenter(c)
-          }}
+      {/* Flyout for org switcher */}
+      {isOrgAdmin && (
+        <div
+          onMouseEnter={onEnterFly}
+          onMouseLeave={() => onLeave('__org__')}
           style={{
-            width: '100%', padding: '8px 10px', borderRadius: 8,
-            background: '#0f4c35', color: '#fff', fontSize: 13, fontWeight: 600,
-            border: '1px solid rgba(126,232,176,0.3)', cursor: 'pointer',
-            fontFamily: 'inherit', appearance: 'none',
+            position: 'fixed',
+            left: sidebarWidth - overlap,
+            top: flyTop + (collapsed ? 10 : 10),
+            background: '#3d7a5e',
+            border: '0.5px solid rgba(255,255,255,0.15)',
+            borderRadius: 10, minWidth: 200, padding: '8px 0',
+            opacity: flyId === '__org__' ? 1 : 0,
+            pointerEvents: flyId === '__org__' ? 'all' : 'none',
+            transition: 'opacity 0.15s, transform 0.15s',
+            transform: flyId === '__org__' ? 'translateX(0)' : 'translateX(-4px)',
+            zIndex: 200, boxShadow: '6px 8px 28px rgba(0,0,0,0.28)',
           }}
         >
-          {centers.map(c => <option key={c.id} value={c.id} style={{ background: '#0a3320' }}>{short(c.name)}</option>)}
-          <option value="__org__" style={{ background: '#0a3320' }}>🏢 Organization</option>
-        </select>
-      ) : (
-        <div style={{ fontSize: 15, fontWeight: 600, color: '#fff' }}>
-          {short(currentCenter?.name)}
+          <div style={{ padding: '8px 14px 6px', fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            Center
+          </div>
+          <div
+            onClick={() => setCurrentCenter(null)}
+            style={{ ...orgItemStyle, color: viewMode === 'org' ? '#a7f0d0' : 'rgba(255,255,255,0.75)', fontWeight: viewMode === 'org' ? 500 : 400 }}
+          >
+            <i className="ti ti-building-community" style={{ fontSize: 15 }} /> Organization
+          </div>
+          <div style={{ height: '0.5px', background: 'rgba(255,255,255,0.1)', margin: '4px 0' }} />
+          {centers.map(c => (
+            <div
+              key={c.id}
+              onClick={() => setCurrentCenter(c)}
+              style={{ ...orgItemStyle, color: currentCenter?.id === c.id && viewMode !== 'org' ? '#a7f0d0' : 'rgba(255,255,255,0.75)' }}
+            >
+              <i className="ti ti-building" style={{ fontSize: 15 }} /> {short(c.name)}
+            </div>
+          ))}
         </div>
       )}
     </div>
   )
+}
+
+const orgItemStyle: React.CSSProperties = {
+  padding: '9px 16px', fontSize: 13, cursor: 'pointer',
+  display: 'flex', alignItems: 'center', gap: 9, whiteSpace: 'nowrap',
+  transition: 'color 0.1s, background 0.1s',
 }
 
 function Forbidden() {
@@ -427,7 +488,7 @@ function Forbidden() {
       <div style={{ fontSize: 44 }}>🔒</div>
       <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 24 }}>Access restricted</div>
       <div style={{ fontSize: 14, color: '#666', maxWidth: 420 }}>
-        You don’t have access to this section. If you think this is a mistake, ask an administrator
+        You don't have access to this section. If you think this is a mistake, ask an administrator
         to grant it in Settings → Permissions.
       </div>
       <Link to="/dashboard" style={{

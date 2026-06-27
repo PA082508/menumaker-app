@@ -39,10 +39,10 @@ type Section = { id: string; label: string; icon: string; noFlyout?: boolean; it
 
 const SECTIONS: Section[] = [
   {
-    id: 'dashboard', label: 'Dashboard', icon: 'ti-layout-dashboard', noFlyout: true,
+    id: 'dashboard', label: 'Dashboard', icon: '⊞', noFlyout: true,
   },
   {
-    id: 'operations', label: 'Operations', icon: 'ti-tool-kitchen-2',
+    id: 'operations', label: 'Operations', icon: '🍽',
     items: [
       { path: '/meal-count',    label: 'Meal Count',     icon: 'ti-circle-check' },
       { path: '/kitchen',       label: 'Kitchen View',   icon: 'ti-chef-hat' },
@@ -52,7 +52,7 @@ const SECTIONS: Section[] = [
     ],
   },
   {
-    id: 'planning', label: 'Planning', icon: 'ti-calendar-month',
+    id: 'planning', label: 'Planning', icon: '📅',
     items: [
       { path: '/menu',          label: 'Menu Planner',  icon: 'ti-calendar-month' },
       { path: '/recipes',       label: 'Recipes',       icon: 'ti-meat' },
@@ -62,7 +62,7 @@ const SECTIONS: Section[] = [
     ],
   },
   {
-    id: 'people', label: 'People', icon: 'ti-users',
+    id: 'people', label: 'People', icon: '👥',
     items: [
       { path: '/children',       label: 'Children',       icon: 'ti-baby-carriage' },
       { path: '/staff',          label: 'Staff',           icon: 'ti-id-badge' },
@@ -70,7 +70,7 @@ const SECTIONS: Section[] = [
     ],
   },
   {
-    id: 'reports', label: 'Reports', icon: 'ti-clipboard-list',
+    id: 'reports', label: 'Reports', icon: '📋',
     items: [
       { path: '/claim-report',          label: 'Site Claim',         icon: 'ti-file-invoice' },
       { path: '/reports',               label: 'Meal Count Summary', icon: 'ti-chart-bar' },
@@ -80,7 +80,7 @@ const SECTIONS: Section[] = [
     ],
   },
   {
-    id: 'documents', label: 'Documents', icon: 'ti-folder',
+    id: 'documents', label: 'Documents', icon: '📁',
     items: [
       { path: '/documents',   label: 'Upload',           icon: 'ti-upload' },
       { path: '/submissions', label: 'Form Submissions', icon: 'ti-file-description' },
@@ -88,7 +88,7 @@ const SECTIONS: Section[] = [
     ],
   },
   {
-    id: 'budget', label: 'Budget', icon: 'ti-coin',
+    id: 'budget', label: 'Budget', icon: '💰',
     items: [
       { path: '/finance',               label: 'Fiscal Year Plan',  icon: 'ti-calendar-stats' },
       { path: '/reimbursement-preview', label: 'YTD Results',       icon: 'ti-trending-up' },
@@ -98,7 +98,7 @@ const SECTIONS: Section[] = [
     ],
   },
   {
-    id: 'resources', label: 'Resources', icon: 'ti-world',
+    id: 'resources', label: 'Resources', icon: '🌐',
     items: [
       { path: 'https://playacademyusa.com', label: 'Website',       icon: 'ti-world' },
       { path: '/children',                  label: 'Parent Portal', icon: 'ti-app-window' },
@@ -111,7 +111,7 @@ const SECTIONS: Section[] = [
     { path: '/finance',         label: 'Finance',         icon: 'ti-currency-dollar' },
     { path: '/cacfp-checklist', label: 'CACFP Checklist', icon: 'ti-checkbox' },
   ]},
-    id: 'settings', label: 'Settings', icon: 'ti-settings', noFlyout: true,
+    id: 'settings', label: 'Settings', icon: '⚙️', noFlyout: true,
   },
 ]
 
@@ -257,7 +257,7 @@ export default function AppLayout() {
                         to={sec.id === 'dashboard' ? '/dashboard' : '/settings'}
                         style={({ isActive }) => navStyle(isActive, collapsed)}
                       >
-                        <i className={`ti ${sec.icon}`} style={{ fontSize: 19, width: 20, textAlign: 'center', flexShrink: 0, color: isActiveSec ? '#a7f0d0' : undefined }} />
+                        <span style={{ fontSize: 15, width: 20, textAlign: 'center', display: 'inline-block' }}>{sec.icon}</span>
                         {!collapsed && <span style={{ fontSize: 14 }}>{sec.label}</span>}
                       </NavLink>
                     ) : (
@@ -272,7 +272,7 @@ export default function AppLayout() {
                         fontSize: 14, whiteSpace: 'nowrap',
                         transition: 'background 0.12s, color 0.12s',
                       }}>
-                        <i className={`ti ${sec.icon}`} style={{ fontSize: 19, width: 20, textAlign: 'center', flexShrink: 0, color: isActiveSec ? '#a7f0d0' : undefined }} />
+                        <span style={{ fontSize: 15, width: 20, textAlign: 'center', display: 'inline-block' }}>{sec.icon}</span>
                         {!collapsed && <span>{sec.label}</span>}
                         {!collapsed && <i className="ti ti-chevron-right" style={{ marginLeft: 'auto', fontSize: 13, color: 'rgba(255,255,255,0.25)' }} />}
                       </div>

@@ -105,14 +105,12 @@ const SECTIONS: Section[] = [
       { path: 'https://brightwheel.com',    label: 'Brightwheel',   icon: 'ti-link' },
     ],
   },
-  {
-  { id: 'other', label: 'Other', icon: 'ti-dots', items: [
+  { id: 'other', label: 'Other', icon: 'ti-layout-grid', items: [
     { path: '/dispatch',        label: 'Dispatch',        icon: 'ti-send' },
     { path: '/finance',         label: 'Finance',         icon: 'ti-currency-dollar' },
     { path: '/cacfp-checklist', label: 'CACFP Checklist', icon: 'ti-checkbox' },
   ]},
-    id: 'settings', label: 'Settings', icon: 'ti-settings', noFlyout: true,
-  },
+  { id: 'settings', label: 'Settings', icon: 'ti-settings', noFlyout: true },
 ]
 
 // ── legacy flat nav (used for cook/teacher fallback) ──────────

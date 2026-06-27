@@ -106,6 +106,11 @@ const SECTIONS: Section[] = [
     ],
   },
   {
+  { id: 'other', label: 'Other', icon: 'ti-dots', items: [
+    { path: '/dispatch',        label: 'Dispatch',        icon: 'ti-send' },
+    { path: '/finance',         label: 'Finance',         icon: 'ti-currency-dollar' },
+    { path: '/cacfp-checklist', label: 'CACFP Checklist', icon: 'ti-checkbox' },
+  ]},
     id: 'settings', label: 'Settings', icon: 'ti-settings', noFlyout: true,
   },
 ]
@@ -349,12 +354,12 @@ export default function AppLayout() {
             </div>
             {sec.items!.map(item => (
               item.path.startsWith('http') ? (
-                <a key={item.path} href={item.path} target="_blank" rel="noreferrer" style={flyItemStyle}>
+                <a key={item.path} href={item.path} target="_blank" rel="noreferrer" style={flyItemStyle(false)}>
                   <i className={`ti ${item.icon}`} style={{ fontSize: 15, color: 'rgba(255,255,255,0.35)' }} />
                   {item.label}
                 </a>
               ) : (
-                <NavLink key={item.path + item.label} to={item.path} style={flyItemStyle} onClick={() => setFlyId(null)}>
+                <NavLink key={item.path + item.label} to={item.path} style={({ isActive }) => flyItemStyle(isActive)} onClick={() => setFlyId(null)}>
                   <i className={`ti ${item.icon}`} style={{ fontSize: 15, color: 'rgba(255,255,255,0.35)' }} />
                   {item.label}
                 </NavLink>
@@ -384,11 +389,17 @@ function navStyle(isActive: boolean, collapsed: boolean): React.CSSProperties {
   }
 }
 
-const flyItemStyle: React.CSSProperties = {
-  padding: '9px 16px', fontSize: 13, color: 'rgba(255,255,255,0.75)',
-  cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 9,
-  whiteSpace: 'nowrap', textDecoration: 'none',
-  transition: 'color 0.1s, background 0.1s',
+function flyItemStyle(isActive: boolean): React.CSSProperties {
+  return {
+    padding: '9px 16px', fontSize: 13,
+    color: isActive ? '#a7f0d0' : 'rgba(255,255,255,0.75)',
+    background: isActive ? 'rgba(255,255,255,0.08)' : 'transparent',
+    borderLeft: isActive ? '3px solid #a7f0d0' : '3px solid transparent',
+    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 9,
+    whiteSpace: 'nowrap', textDecoration: 'none',
+    fontWeight: isActive ? 500 : 400,
+    transition: 'color 0.1s, background 0.1s',
+  }
 }
 
 // ── CenterSwitcher ────────────────────────────────────────────

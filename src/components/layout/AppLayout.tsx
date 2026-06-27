@@ -257,7 +257,7 @@ export default function AppLayout() {
                         to={sec.id === 'dashboard' ? '/dashboard' : '/settings'}
                         style={({ isActive }) => navStyle(isActive, collapsed)}
                       >
-                        <span style={{ fontSize: 15, width: 20, textAlign: 'center', display: 'inline-block' }}>{sec.icon}</span>
+                        {sec.icon.startsWith('ti-') ? <i className={`ti ${sec.icon}`} style={{ fontSize: 18, width: 20, textAlign: 'center', flexShrink: 0 }} /> : <span style={{ fontSize: 15, width: 20, textAlign: 'center', display: 'inline-block' }}>{sec.icon}</span>}
                         {!collapsed && <span style={{ fontSize: 14 }}>{sec.label}</span>}
                       </NavLink>
                     ) : (
@@ -272,7 +272,7 @@ export default function AppLayout() {
                         fontSize: 14, whiteSpace: 'nowrap',
                         transition: 'background 0.12s, color 0.12s',
                       }}>
-                        <span style={{ fontSize: 15, width: 20, textAlign: 'center', display: 'inline-block' }}>{sec.icon}</span>
+                        {sec.icon.startsWith('ti-') ? <i className={`ti ${sec.icon}`} style={{ fontSize: 18, width: 20, textAlign: 'center', flexShrink: 0 }} /> : <span style={{ fontSize: 15, width: 20, textAlign: 'center', display: 'inline-block' }}>{sec.icon}</span>}
                         {!collapsed && <span>{sec.label}</span>}
                         {!collapsed && <i className="ti ti-chevron-right" style={{ marginLeft: 'auto', fontSize: 13, color: 'rgba(255,255,255,0.25)' }} />}
                       </div>

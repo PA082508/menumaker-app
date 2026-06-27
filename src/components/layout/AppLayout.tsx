@@ -42,7 +42,7 @@ const SECTIONS: Section[] = [
     id: 'dashboard', label: 'Dashboard', icon: '⊞', noFlyout: true,
   },
   {
-    id: 'operations', label: 'Operations', icon: 'ti-adjustments'
+    id: 'operations', label: 'Operations', icon: 'ti-star'
     items: [
       { path: '/meal-count',    label: 'Meal Count',     icon: 'ti-circle-check' },
       { path: '/kitchen',       label: 'Kitchen View',   icon: 'ti-chef-hat' },

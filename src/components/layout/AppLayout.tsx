@@ -85,6 +85,8 @@ const SECTIONS: Section[] = [
       { path: '/documents',   label: 'Upload',           icon: 'ti-upload' },
       { path: '/submissions', label: 'Form Submissions', icon: 'ti-file-description' },
       { path: '/dispatch',    label: 'Q&A / Instructions', icon: 'ti-message-question' },
+      { path: '/instructions',  label: 'Document Hub',       icon: 'ti-books' },
+      { path: '/byod-director', label: 'BYOD Signatures',    icon: 'ti-signature' },
     ],
   },
   {

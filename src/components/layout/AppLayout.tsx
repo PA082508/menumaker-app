@@ -42,7 +42,7 @@ const SECTIONS: Section[] = [
     id: 'dashboard', label: 'Dashboard', icon: '⊞', noFlyout: true,
   },
   {
-    id: 'operations', label: 'Operations', icon: 'ti-report'
+    id: 'operations', label: 'Operations', icon: 'ti-report',
     items: [
       { path: '/meal-count',    label: 'Meal Count',     icon: 'ti-circle-check' },
       { path: '/kitchen',       label: 'Kitchen View',   icon: 'ti-chef-hat' },
@@ -107,12 +107,12 @@ const SECTIONS: Section[] = [
       { path: 'https://brightwheel.com',    label: 'Brightwheel',   icon: 'ti-link' },
     ],
   },
-  {
   { id: 'other', label: 'Other', icon: 'ti-dots', items: [
     { path: '/dispatch',        label: 'Dispatch',        icon: 'ti-send' },
     { path: '/finance',         label: 'Finance',         icon: 'ti-currency-dollar' },
     { path: '/cacfp-checklist', label: 'CACFP Checklist', icon: 'ti-checkbox' },
   ]},
+  {
     id: 'settings', label: 'Settings', icon: '⚙️', noFlyout: true,
   },
 ]

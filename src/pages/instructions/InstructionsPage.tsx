@@ -187,7 +187,7 @@ export default function InstructionsPage(){
     supabase.schema('menumaker').from('byod_signatures')
       .select('id',{count:'exact',head:true}).eq('org_id',org?.id)
       .then(({count:c})=>setCount(c))
-  },[signOpen,currentOrg?.id])
+  },[signOpen,org?.id])
 
   const docs=DOCS.filter(d=>(cat==='all'||d.category===cat)&&(aud==='all'||d.audience===aud||d.audience==='all'))
   const TB=(a:boolean):React.CSSProperties=>({padding:'5px 14px',borderRadius:20,fontSize:12,cursor:'pointer',fontFamily:'inherit',border:'none',background:a?'#0f4c35':'#f3f4f6',color:a?'#fff':'#374151',fontWeight:a?600:400})

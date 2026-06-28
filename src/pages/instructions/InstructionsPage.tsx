@@ -218,7 +218,15 @@ export default function InstructionsPage() {
               </div>
               <div style={{marginTop:'auto'}}>
                 {(doc as any).canSign ? (
-                  <button onClick={()=>setSignOpen(true)} style={{width:'100%',padding:'8px 12px',borderRadius:8,fontSize:13,fontWeight:600,background:'#1a5c3f',color:'#fff',border:'none',cursor:'pointer',fontFamily:'inherit'}}>✍️ Sign Online</button>
+                  <div style={{display:'flex',gap:8}}>
+                    <button onClick={()=>setSignOpen(true)} style={{flex:1,padding:'8px 12px',borderRadius:8,fontSize:13,fontWeight:600,background:'#1a5c3f',color:'#fff',border:'none',cursor:'pointer',fontFamily:'inherit'}}>✍️ Sign Online</button>
+                    {(doc as any).driveUrl && <button onClick={()=>setQrDoc(doc)} style={{padding:'8px 14px',borderRadius:8,fontSize:13,background:'#f0f7f4',color:'#1a5c3f',border:'1px solid #d1fae5',cursor:'pointer',fontFamily:'inherit'}}>QR</button>}
+                  </div>
+                ) : (doc as any).driveUrl ? (
+                  <div style={{display:'flex',gap:8}}>
+                    <a href={(doc as any).driveUrl} target="_blank" rel="noreferrer" style={{flex:1,padding:'8px 12px',borderRadius:8,fontSize:13,fontWeight:500,background:'#0f4c35',color:'#fff',textDecoration:'none',textAlign:'center' as const,fontFamily:'inherit'}}>↓ Download</a>
+                    <button onClick={()=>setQrDoc(doc)} style={{padding:'8px 14px',borderRadius:8,fontSize:13,background:'#f0f7f4',color:'#1a5c3f',border:'1px solid #d1fae5',cursor:'pointer',fontFamily:'inherit'}}>QR</button>
+                  </div>
                 ) : (
                   <div style={{fontSize:12,color:'#9ca3af',fontStyle:'italic'}}>Coming soon</div>
                 )}

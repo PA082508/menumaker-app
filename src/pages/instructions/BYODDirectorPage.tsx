@@ -195,10 +195,10 @@ export default function BYODDirectorPage() {
   const load = useCallback(async () => {
     setLoading(true)
     const { data } = await supabase.schema('menumaker').from('byod_signatures')
-      .select('*').eq('org_id', currentOrg?.id).order('signed_at', { ascending: false })
+      .select('*').eq('org_id', org?.id).order('signed_at', { ascending: false })
     setSigs(data || [])
     setLoading(false)
-  }, [currentOrg?.id])
+  }, [org?.id])
 
   useEffect(() => { load() }, [load])
 

@@ -29,7 +29,7 @@ const ACOL: Record<string,{bg:string;text:string}> = {
 }
 
 function BYODModal({ onClose }: { onClose: ()=>void }) {
-  const { currentOrg } = useOrg()
+  const { org } = useOrg()
   const cvs = useRef<HTMLCanvasElement>(null)
   const [step, setStep] = useState(1)
   const [draw, setDraw] = useState(false)
@@ -61,7 +61,7 @@ function BYODModal({ onClose }: { onClose: ()=>void }) {
     setBusy(true)
     const sig=cvs.current!.toDataURL('image/png')
     const{data,error}=await supabase.schema('menumaker').from('byod_signatures')
-      .insert({org_id:currentOrg?.id,employee_name:f.name,employee_position:f.position,center_name:f.center,device_make_model:f.device,phone_number:f.phone,employee_signature:sig,status:'pending_director'})
+      .insert({org_id:org?.id,employee_name:f.name,employee_position:f.position,center_name:f.center,device_make_model:f.device,phone_number:f.phone,employee_signature:sig,status:'pending_director'})
       .select('id').single()
     if(error){alert('Error: '+error.message);setBusy(false);return}
     setRefId(data.id.slice(0,8).toUpperCase());setStep(4);setBusy(false)
@@ -181,11 +181,11 @@ export default function InstructionsPage(){
   const[qrDoc,setQrDoc]=useState<DocItem|null>(null)
   const[signOpen,setSignOpen]=useState(false)
   const[count,setCount]=useState<number|null>(null)
-  const{currentOrg}=useOrg()
+  const{org}=useOrg()
 
   useEffect(()=>{
     supabase.schema('menumaker').from('byod_signatures')
-      .select('id',{count:'exact',head:true}).eq('org_id',currentOrg?.id)
+      .select('id',{count:'exact',head:true}).eq('org_id',org?.id)
       .then(({count:c})=>setCount(c))
   },[signOpen,currentOrg?.id])
 

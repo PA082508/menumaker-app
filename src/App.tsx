@@ -143,6 +143,8 @@ export default function App() {
               <Route path="org/users"  element={<UserManagementPage />} />
               <Route path="org/consolidated-report" element={<ConsolidatedReport />} />
               <Route path="settings"   element={<SettingsPage />} />
+              <Route path="instructions" element={<InstructionsPage />} />
+              <Route path="byod-director" element={<BYODDirectorPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

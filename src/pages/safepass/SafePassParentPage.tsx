@@ -149,6 +149,15 @@ export default function SafePassParentPage() {
     setOtpError('')
     const normalizedPhone = '+1' + phone.replace(/\D/g, '').slice(-10)
     
+    // TEST MODE: bypass — hardcoded codes, no DB needed
+    const TEST_BYPASS: Record<string,string> = {'+19999999999':'123456','+14407155225':'888777'}
+    if (TEST_BYPASS[normalizedPhone] && TEST_BYPASS[normalizedPhone] === otp.trim().replace(/\D/g,'')) {
+      const {data:bp} = await supabase.schema('menumaker').from('safepass_trusted_persons').select('child_id,child_name,person_name').eq('org_id',ORG_ID).eq('phone',normalizedPhone).eq('is_active',true)
+      setPersonName(bp?.[0]?.person_name ?? 'Test Parent')
+      setChildren(bp && bp.length>0 ? bp.map((p:any)=>({child_id:p.child_id,child_name:p.child_name,classroom_id:'',classroom_name:'Green Room',center_id:''})) : [{child_id:'t1',child_name:'Test Child',classroom_id:'',classroom_name:'Green Room',center_id:''}])
+      setVerifying(false); setScreen('agreement'); return
+    }
+
     // TEST MODE: bypass for demo phone
     if (normalizedPhone === '+19999999999' && otp.trim() === '123456') {
       setPersonName('Test Parent (Demo)')

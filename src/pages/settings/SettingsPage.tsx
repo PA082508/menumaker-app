@@ -1235,6 +1235,10 @@ function CapacitySettings() {
   const [saving, setSaving] = useState<string | null>(null)
   const [saved, setSaved] = useState<string | null>(null)
   const [filter, setFilter] = useState<string>('all')
+  const [editingName, setEditingName] = useState<string | null>(null)
+  const [nameValue, setNameValue] = useState<string>('')
+  const [adding, setAdding] = useState(false)
+  const [newRoom, setNewRoom] = useState({ name: '', center_id: '' })
 
   useEffect(() => {
     if (!org?.id) return
@@ -1263,6 +1267,26 @@ function CapacitySettings() {
     }).eq('id', room.id)
     setSaving(null); setSaved(room.id)
     setTimeout(() => setSaved(null), 2000)
+  }
+
+  async function saveName(id: string) {
+    if (!nameValue.trim()) return
+    await supabase.schema('menumaker').from('classrooms').update({ name: nameValue.trim() }).eq('id', id)
+    setRooms(prev => prev.map(r => r.id === id ? { ...r, name: nameValue.trim() } : r))
+    setEditingName(null)
+  }
+
+  async function addClass() {
+    if (!newRoom.name.trim() || !newRoom.center_id) return
+    const { data } = await supabase.schema('menumaker').from('classrooms')
+      .insert({ org_id: org?.id, center_id: newRoom.center_id, name: newRoom.name.trim(), class_key: newRoom.name.trim().toLowerCase().replace(/\s+/g,'_'), age_group_primary: 'preschool', capacity_ohio: 12, capacity_internal: 10, capacity_room_max: 15, max_younger_children: 2, is_early_care: false, is_late_care: false, teachers_count: 1, room_sqft: 0, age_label: '', is_active: true, sort_order: 99 })
+      .select('id,name,age_label,age_group_primary,capacity_ohio,capacity_internal,max_younger_children,is_early_care,is_late_care,room_sqft,teachers_count,centers!inner(name)')
+      .single()
+    if (data) {
+      setRooms(prev => [...prev, { ...data, center_name: (data as any).centers?.name ?? '', teachers_count: 1, room_sqft: 0, age_label: '' }])
+      setNewRoom({ name: '', center_id: '' })
+      setAdding(false)
+    }
   }
 
   function upd(id: string, field: keyof ClassroomCapacity, val: any) {
@@ -1332,197 +1356,166 @@ function CapacitySettings() {
         ))}
       </div>
 
+      {/* Add Classroom */}
+      <div style={{ marginBottom: 16 }}>
+        {!adding ? (
+          <button onClick={() => setAdding(true)}
+            style={{ padding: '8px 18px', borderRadius: 8, background: '#f0f7f4', color: '#1a5c3f', border: '1.5px solid #d1fae5', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+            ➕ Add Classroom
+          </button>
+        ) : (
+          <div style={{ background: '#f0f7f4', borderRadius: 12, padding: '16px 20px', border: '1.5px solid #d1fae5', display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' as const }}>
+            <div>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Room Name *</label>
+              <input autoFocus type="text" value={newRoom.name} onChange={e => setNewRoom(p => ({...p, name: e.target.value}))}
+                placeholder="e.g. Green Room"
+                style={{ padding: '7px 10px', border: '1.5px solid #e5e7eb', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', width: 160 }}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Center *</label>
+              <select value={newRoom.center_id} onChange={e => setNewRoom(p => ({...p, center_id: e.target.value}))}
+                style={{ padding: '7px 10px', border: '1.5px solid #e5e7eb', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }}>
+                <option value="">Select...</option>
+                {centers.map(cn => {
+                  const ctr = rooms.find(r => r.center_name === cn)
+                  return <option key={cn} value={ctr?.id ?? ''}>{cn.replace('Play Academy ', '')}</option>
+                })}
+              </select>
+            </div>
+            <button onClick={addClass} style={{ padding: '8px 18px', background: '#1a5c3f', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Save</button>
+            <button onClick={() => { setAdding(false); setNewRoom({ name: '', center_id: '' }) }} style={{ padding: '8px 14px', background: '#f3f4f6', color: '#6b7280', border: 'none', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+          </div>
+        )}
+      </div>
+
       {/* Rooms */}
-      <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
+      <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 12 }}>
         {filtered.map(room => {
-          const ohioMax = OHIO_RATIOS[room.age_group_primary]?.max ?? 12
-          const ohioGroupMax = (OHIO_RATIOS[room.age_group_primary]?.groupMax ?? 12) * room.teachers_count
-          const overLimit = room.capacity_internal > ohioGroupMax
+          const gMax = OHIO_RATIOS[room.age_group_primary]?.groupMax ?? 12
+          const sqftMax = room.room_sqft > 0 ? Math.floor(room.room_sqft / 35) : null
+          const refMax = sqftMax !== null ? Math.min(gMax * room.teachers_count, sqftMax) : gMax * room.teachers_count
+          const over = room.capacity_internal > refMax
+          const warn = over ? `⚠️ Limit for ${room.teachers_count} teacher${room.teachers_count>1?'s':''} in ${room.room_sqft} sq ft is ${refMax} children (Ohio ratio: ${gMax * room.teachers_count}, Room: ${sqftMax ?? '—'}). Please lower the limit or increase teachers/room size.` : ''
           return (
-            <div key={room.id} style={{
-              background: '#fff', borderRadius: 12,
-              border: `1.5px solid ${overLimit ? '#fca5a5' : '#e5e7eb'}`,
-              padding: '14px 18px', display: 'flex', gap: 14,
-              alignItems: 'center', flexWrap: 'wrap' as const,
-            }}>
-              {/* Name */}
-              <div style={{ minWidth: 150, flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: 14, color: '#0a3320' }}>{room.name}</div>
-                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>{room.center_name}</div>
-                <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap' as const }}>
-                  {room.is_early_care && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10, background: '#dbeafe', color: '#1e40af' }}>EARLY CARE</span>}
-                {OHIO_RATIOS[room.age_group_primary]?.note && <div style={{ fontSize: 10, color: '#92400e', background: '#fef3c7', borderRadius: 6, padding: '3px 7px', marginTop: 4 }}>ℹ️ {OHIO_RATIOS[room.age_group_primary]?.note}</div>}
-                  {room.is_late_care && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10, background: '#fce7f3', color: '#9d174d' }}>LATE CARE</span>}
+            <div key={room.id} style={{ background: '#fff', borderRadius: 12, border: `1.5px solid ${over ? '#fca5a5' : '#e5e7eb'}`, padding: '18px 22px' }}>
+
+              {/* Row 1 — Room name (editable) + Save */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {editingName === room.id ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <input autoFocus value={nameValue} onChange={e => setNameValue(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') saveName(room.id); if (e.key === 'Escape') setEditingName(null) }}
+                        style={{ fontSize: 15, fontWeight: 700, padding: '4px 8px', border: '2px solid #1a5c3f', borderRadius: 7, fontFamily: 'inherit', width: 180 }}
+                      />
+                      <button onClick={() => saveName(room.id)} style={{ padding: '4px 10px', background: '#1a5c3f', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' }}>✓</button>
+                      <button onClick={() => setEditingName(null)} style={{ padding: '4px 8px', background: '#f3f4f6', color: '#6b7280', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' }}>✕</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontWeight: 700, fontSize: 15, color: '#0a3320' }}>{room.name}</span>
+                      <button onClick={() => { setEditingName(room.id); setNameValue(room.name) }}
+                        title="Rename classroom — updates everywhere"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#9ca3af', padding: '2px 4px', borderRadius: 4 }}>✏️</button>
+                    </div>
+                  )}
+                  {room.age_label && <span style={{ fontSize: 12, color: '#1a5c3f', fontWeight: 600 }}>{room.age_label}</span>}
+                  <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+                    {room.is_early_care && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: '#dbeafe', color: '#1e40af' }}>EARLY CARE</span>}
+                    {room.is_late_care && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: '#fce7f3', color: '#9d174d' }}>LATE CARE</span>}
+                  </div>
                 </div>
+                <button onClick={() => save(room)} disabled={saving === room.id}
+                  style={{ padding: '8px 20px', borderRadius: 8, fontSize: 13, fontWeight: 600, background: saved === room.id ? '#059669' : '#0f4c35', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  {saving === room.id ? '…' : saved === room.id ? '✓ Saved' : 'Save'}
+                </button>
               </div>
 
-              {/* COL 2 — Director inputs: Age group + internal label */}
-              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8, minWidth: 190 }}>
+              {/* Row 2 — 5 fields in a row */}
+              <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap' as const }}>
+
+                {/* 1. Ohio Age Group */}
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                    <span style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' as const }}>Ohio Age Group</span>
-                    <span title="Ohio licensing category per OAC 5180:2-12-18 Appendix A. Determines ratio and group size." style={{ cursor: 'help', fontSize: 11, color: '#9ca3af' }}>ⓘ</span>
-                  </div>
-                  <select value={room.age_group_primary} onChange={e => upd(room.id, 'age_group_primary', e.target.value)} style={{ ...sel, width: '100%', fontSize: 11 }}>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>
+                    Age Group <span title="Ohio licensing category per OAC 5180:2-12-18. Sets ratio and group size." style={{ cursor: 'help' }}>ⓘ</span>
+                  </label>
+                  <select value={room.age_group_primary} onChange={e => upd(room.id, 'age_group_primary', e.target.value)}
+                    style={{ padding: '7px 10px', border: '1.5px solid #e5e7eb', borderRadius: 8, fontSize: 12, fontFamily: 'inherit', minWidth: 180 }}>
                     {Object.entries(OHIO_RATIOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                   </select>
                 </div>
+
+                {/* 2. Internal Age Label */}
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                    <span style={{ fontSize: 10, fontWeight: 600, color: '#1a5c3f', textTransform: 'uppercase' as const }}>Age Label</span>
-                    <span title="Your internal name for this age group (e.g. 'Infant Room', 'Toddlers 2s'). Shown on rosters and teacher view — does not affect Ohio calculations." style={{ cursor: 'help', fontSize: 11, color: '#9ca3af' }}>ⓘ</span>
-                  </div>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>
+                    Age Label <span title="Your internal name shown on rosters and teacher view (e.g. Infant Room, Toddlers 2s). Does not affect Ohio calculations." style={{ cursor: 'help' }}>ⓘ</span>
+                  </label>
                   <input type="text" value={room.age_label} onChange={e => upd(room.id, 'age_label', e.target.value)}
-                    placeholder="e.g. Infant Room, Toddlers 2s"
-                    style={{ ...sel, width: '100%', fontSize: 11 }}
+                    placeholder="e.g. Infant Room"
+                    style={{ padding: '7px 10px', border: '1.5px solid #e5e7eb', borderRadius: 8, fontSize: 12, fontFamily: 'inherit', width: 160 }}
                   />
                 </div>
+
+                {/* 3. Room sq ft */}
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                    <span style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' as const }}>Max Younger</span>
-                    <span title="Max younger-age children allowed before ratio changes. Infant (<12m) always triggers 1:5 immediately." style={{ cursor: 'help', fontSize: 11, color: '#9ca3af' }}>ⓘ</span>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>
+                    Room Area <span title="Usable sq ft wall-to-wall. Exclude hallways, storage, bathrooms. Bathrooms counted only if used exclusively by enrolled children (OAC 5180:2-12-11)." style={{ cursor: 'help' }}>ⓘ</span>
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <input type="number" value={room.room_sqft || ''} min={0} placeholder="0"
+                      onChange={e => upd(room.id, 'room_sqft', parseInt(e.target.value) || 0)}
+                      style={{ width: 75, padding: '7px 8px', border: '1.5px solid #e5e7eb', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', textAlign: 'center' as const }}
+                    />
+                    <span style={{ fontSize: 11, color: '#9ca3af' }}>sq ft</span>
                   </div>
-                  <input type="number" value={room.max_younger_children} min={0} max={5}
-                    onChange={e => upd(room.id, 'max_younger_children', parseInt(e.target.value) || 0)}
-                    style={{ ...inp, width: 60 }}
-                  />
+                  {sqftMax !== null && <div style={{ fontSize: 10, color: '#6b7280', marginTop: 3 }}>÷ 35 = {sqftMax} children max</div>}
                 </div>
-              </div>
 
-              {/* COL 3 — Reference panel (auto-calculated, read-only) */}
-              {(() => {
-                const gMax = OHIO_RATIOS[room.age_group_primary]?.groupMax ?? 12
-                const sqftMax = room.room_sqft > 0 ? Math.floor(room.room_sqft / 35) : null
-                return (
-                  <div style={{ minWidth: 230, background: '#f8faf8', borderRadius: 10, border: '1px solid #e5e7eb', padding: '12px 14px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 10 }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Reference — Max Children</span>
-                      <span title="Auto-calculated from Ohio ratio × teachers and room size ÷ 35 sq ft. Use these as your upper limits." style={{ cursor: 'help', fontSize: 11, color: '#9ca3af' }}>ⓘ</span>
-                    </div>
-
-                    {/* Room sqft — individual per classroom */}
-                    <div style={{ marginBottom: 10 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                        <span style={{ fontSize: 9, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' as const }}>Room Area (individual)</span>
-                        <span title="Enter actual usable sq ft for THIS classroom. Exclude hallways, storage, bathrooms. Bathrooms counted only if used exclusively by enrolled children (OAC 5180:2-12-11)." style={{ cursor: 'help', fontSize: 11, color: '#9ca3af' }}>ⓘ</span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <input type="number" value={room.room_sqft || ''} min={0} placeholder="sq ft"
-                          onChange={e => upd(room.id, 'room_sqft', parseInt(e.target.value) || 0)}
-                          style={{ width: 80, padding: '5px 7px', border: '1.5px solid #d1d5db', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', textAlign: 'center' as const }}
-                        />
-                        <span style={{ fontSize: 11, color: '#6b7280' }}>
-                          ft² {sqftMax !== null ? `÷ 35 = ${sqftMax} max` : ''}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Teachers × ratio table */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 5 }}>
-                      {[1,2,3].map(n => {
-                        const ratioMax = gMax * n
-                        const eff = sqftMax !== null ? Math.min(ratioMax, sqftMax) : ratioMax
-                        const limited = sqftMax !== null && sqftMax < ratioMax
-                        return (
-                          <div key={n} style={{ textAlign: 'center' as const, background: '#fff', borderRadius: 7, padding: '6px 4px', border: `1px solid ${limited ? '#fde68a' : '#e5e7eb'}` }}>
-                            <div style={{ fontSize: 9, color: '#9ca3af', marginBottom: 2 }}>{n} teacher{n>1?'s':''}</div>
-                            <div style={{ fontSize: 17, fontWeight: 800, color: limited ? '#92400e' : '#1a5c3f' }}>{eff}</div>
-                            <div style={{ fontSize: 8, color: limited ? '#f59e0b' : '#9ca3af', fontWeight: limited ? 600 : 400 }}>
-                              {limited ? 'room limits' : `ratio: ${ratioMax}`}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                    <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 8 }}>Ohio 1:{OHIO_RATIOS[room.age_group_primary]?.max ?? '?'} · OAC 5180:2-12-18</div>
-                  </div>
-                )
-              })()}
-
-              {/* COL 4 — Director sets actual limit */}
-              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10, minWidth: 120 }}>
-                {(() => {
-                  const gMax = OHIO_RATIOS[room.age_group_primary]?.groupMax ?? 12
-                  const sqftMax = room.room_sqft > 0 ? Math.floor(room.room_sqft / 35) : null
-                  const refMax = sqftMax !== null ? Math.min(gMax, sqftMax) : gMax
-                  const over = room.capacity_internal > (sqftMax !== null ? Math.min(gMax * 3, sqftMax) : gMax * 3)
-                  return (
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6 }}>
-                        <span style={{ fontSize: 10, fontWeight: 600, color: '#1a5c3f', textTransform: 'uppercase' as const }}>Actual Limit</span>
-                        <span title="Director sets the actual classroom limit. Must not exceed the Reference max. Can be lower due to program requirements (Step Up to Quality, Head Start, etc.)" style={{ cursor: 'help', fontSize: 11, color: '#9ca3af' }}>ⓘ</span>
-                      </div>
-                      <input type="number" value={room.capacity_internal} min={1}
-                        onChange={e => upd(room.id, 'capacity_internal', parseInt(e.target.value) || 1)}
-                        style={{ width: 72, padding: '10px 8px', border: `2.5px solid ${over ? '#fca5a5' : '#1a5c3f'}`, borderRadius: 10, fontSize: 22, fontWeight: 800, fontFamily: 'inherit', textAlign: 'center' as const, color: over ? '#dc2626' : '#0a3320', background: over ? '#fef2f2' : '#f0fdf4', display: 'block' }}
-                      />
-                      <div style={{ fontSize: 9, marginTop: 4, color: over ? '#dc2626' : '#059669', fontWeight: 600 }}>
-                        {over ? '⚠️ Exceeds limit!' : '✓ Within limits'}
-                      </div>
-                      <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 6, lineHeight: 1.5 }}>
-                        Your decision.<br/>
-                        Can be lower than<br/>
-                        reference for SUTQ,<br/>
-                        Head Start, etc.
-                      </div>
-                    </div>
-                  )
-                })()}
-
-                {/* Teachers selector */}
+                {/* 4. Teachers */}
                 <div>
-                  <div style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', marginBottom: 4, textTransform: 'uppercase' as const }}>Teachers</div>
-                  <div style={{ display: 'flex', gap: 3 }}>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Teachers</label>
+                  <div style={{ display: 'flex', gap: 4 }}>
                     {[1,2,3].map(n => (
                       <button key={n} onClick={() => upd(room.id, 'teachers_count', n)}
-                        style={{ width: 30, height: 30, borderRadius: 7, border: `2px solid ${room.teachers_count === n ? '#1a5c3f' : '#e5e7eb'}`, background: room.teachers_count === n ? '#1a5c3f' : '#fff', color: room.teachers_count === n ? '#fff' : '#374151', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        style={{ width: 32, height: 32, borderRadius: 7, border: `2px solid ${room.teachers_count === n ? '#1a5c3f' : '#e5e7eb'}`, background: room.teachers_count === n ? '#1a5c3f' : '#fff', color: room.teachers_count === n ? '#fff' : '#374151', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
                         {n}
                       </button>
                     ))}
                   </div>
-                  <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 3 }}>assigned teachers</div>
+                  <div style={{ fontSize: 10, color: '#6b7280', marginTop: 3 }}>Ohio max: {gMax * room.teachers_count}</div>
                 </div>
 
-                {/* Toggles */}
-                <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 5 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, cursor: 'pointer' }}>
-                    <input type="checkbox" checked={room.is_early_care} onChange={e => upd(room.id, 'is_early_care', e.target.checked)} style={{ accentColor: '#1a5c3f' }}/>
-                    Early Care
+                {/* 5. Actual limit */}
+                <div>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#1a5c3f', marginBottom: 4 }}>
+                    Limit <span title="Your actual classroom limit. Cannot exceed Ohio ratio × teachers OR room size ÷ 35, whichever is less. Can be lower for SUTQ, Head Start, etc." style={{ cursor: 'help' }}>ⓘ</span>
                   </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, cursor: 'pointer' }}>
-                    <input type="checkbox" checked={room.is_late_care} onChange={e => upd(room.id, 'is_late_care', e.target.checked)} style={{ accentColor: '#1a5c3f' }}/>
-                    Late Care
+                  <input type="number" value={room.capacity_internal} min={1}
+                    onChange={e => upd(room.id, 'capacity_internal', parseInt(e.target.value) || 1)}
+                    style={{ width: 64, padding: '6px 8px', border: `2px solid ${over ? '#fca5a5' : '#1a5c3f'}`, borderRadius: 8, fontSize: 20, fontWeight: 800, fontFamily: 'inherit', textAlign: 'center' as const, color: over ? '#dc2626' : '#0a3320', background: over ? '#fef2f2' : '#f0fdf4' }}
+                  />
+                </div>
+
+                {/* Early / Late Care */}
+                <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 6 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={room.is_early_care} onChange={e => upd(room.id, 'is_early_care', e.target.checked)} style={{ accentColor: '#1a5c3f' }}/> Early Care
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={room.is_late_care} onChange={e => upd(room.id, 'is_late_care', e.target.checked)} style={{ accentColor: '#1a5c3f' }}/> Late Care
                   </label>
                 </div>
+
               </div>
 
-              {/* Toggles */}
-              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 6 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={room.is_early_care}
-                    onChange={e => upd(room.id, 'is_early_care', e.target.checked)}
-                    style={{ accentColor: '#1a5c3f' }}/>
-                  Early Care
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={room.is_late_care}
-                    onChange={e => upd(room.id, 'is_late_care', e.target.checked)}
-                    style={{ accentColor: '#1a5c3f' }}/>
-                  Late Care
-                </label>
-              </div>
+              {/* Row 3 — Warning (only when over limit) */}
+              {over && (
+                <div style={{ marginTop: 12, padding: '10px 14px', background: '#fef3c7', borderRadius: 8, fontSize: 12, color: '#92400e', fontWeight: 500 }}>
+                  ⚠️ {warn}
+                </div>
+              )}
 
-              {/* Save */}
-              <button onClick={() => save(room)} disabled={saving === room.id}
-                style={{
-                  padding: '8px 18px', borderRadius: 8, fontSize: 13, fontWeight: 600,
-                  background: saved === room.id ? '#059669' : '#0f4c35',
-                  color: '#fff', border: 'none',
-                  cursor: saving === room.id ? 'wait' : 'pointer',
-                  fontFamily: 'inherit', minWidth: 80, transition: 'background 0.2s',
-                }}>
-                {saving === room.id ? '...' : saved === room.id ? '✓ Saved' : 'Save'}
-              </button>
             </div>
           )
         })}

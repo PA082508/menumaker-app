@@ -1392,16 +1392,25 @@ function CapacitySettings() {
                 <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 2 }}>before ratio↑</div>
               </div>
 
-              {/* Teachers count */}
+              {/* Teachers count + capacity result */}
               <div style={{ textAlign: 'center' as const }}>
-                <div style={{ fontSize: 10, fontWeight: 600, color: '#2d5a45', marginBottom: 4, textTransform: 'uppercase' as const }}>Teachers</div>
-                <select value={room.teachers_count} onChange={e => upd(room.id, 'teachers_count', parseInt(e.target.value))} style={{ ...inp, width: 68 }}>
-                  <option value={1}>1</option>
-                  <option value={2}>2</option>
-                  <option value={3}>3</option>
-                </select>
-                <div style={{ fontSize: 9, color: '#059669', marginTop: 2, fontWeight: 600 }}>
-                  Ohio max: {(OHIO_RATIOS[room.age_group_primary]?.groupMax ?? 12) * room.teachers_count}
+                <div style={{ fontSize: 10, fontWeight: 600, color: '#2d5a45', marginBottom: 4, textTransform: 'uppercase' as const }}>Teachers on shift</div>
+                <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+                  {[1,2,3].map(n => (
+                    <button key={n} onClick={() => upd(room.id, 'teachers_count', n)}
+                      style={{ width: 32, height: 32, borderRadius: 8, border: `2px solid ${room.teachers_count === n ? '#1a5c3f' : '#e5e7eb'}`, background: room.teachers_count === n ? '#1a5c3f' : '#fff', color: room.teachers_count === n ? '#fff' : '#374151', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      {n}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ marginTop: 6, background: '#f0f7f4', borderRadius: 6, padding: '4px 8px', fontSize: 11 }}>
+                  <span style={{ color: '#6b7280' }}>Ohio max: </span>
+                  <span style={{ fontWeight: 700, color: '#1a5c3f', fontSize: 13 }}>
+                    {(OHIO_RATIOS[room.age_group_primary]?.groupMax ?? 12) * room.teachers_count} children
+                  </span>
+                </div>
+                <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 2 }}>
+                  {OHIO_RATIOS[room.age_group_primary]?.groupMax ?? 12} × {room.teachers_count} teacher{room.teachers_count > 1 ? 's' : ''}
                 </div>
               </div>
 

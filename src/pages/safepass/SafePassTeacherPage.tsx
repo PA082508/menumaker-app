@@ -490,10 +490,9 @@ export default function SafePassTeacherPage() {
             Tap <em>Accept</em> only when the child is physically in your hands. Tap <em>Release</em> only when the child is physically in the authorized person's hands. Your tap is your legal signature of physical transfer.
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* TOAST */}
-      </div>}
 
       {toast && (
         <div style={{ position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)', background: toast.amber ? C.amber : C.green, color: C.bg, fontSize: 15, fontWeight: 700, padding: '14px 28px', borderRadius: 100, zIndex: 999, whiteSpace: 'nowrap', boxShadow: '0 8px 30px rgba(0,0,0,0.4)' }}>

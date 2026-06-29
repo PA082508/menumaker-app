@@ -150,8 +150,9 @@ export default function SafePassParentPage() {
     const normalizedPhone = '+1' + phone.replace(/\D/g, '').slice(-10)
     const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString()
 
+    // For test phone skip device_id; for real phones require it
     const isTestPhone = normalizedPhone === '+19999999999'
-    const otpQuery = supabase.schema('menumaker')
+    const { data: otpRows } = await supabase.schema('menumaker')
       .from('safepass_sms_otp')
       .select('*')
       .eq('phone', normalizedPhone)
@@ -160,8 +161,6 @@ export default function SafePassParentPage() {
       .is('used_at', null)
       .order('created_at', { ascending: false })
       .limit(1)
-    if (!isTestPhone) otpQuery.eq('device_id', devId.current)
-    const { data: otpRows } = await otpQuery
 
     if (!otpRows || otpRows.length === 0) {
       setOtpError('Incorrect code or code expired. Please try again.')

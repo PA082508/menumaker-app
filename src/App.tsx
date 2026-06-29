@@ -25,6 +25,7 @@ import ReimbursementPreview from './pages/reports/ReimbursementPreview'
 import CACFPChecklistPage from './pages/cacfp-reports/CACFPChecklistPage'
 import SafePassTeacherPage from './pages/safepass/SafePassTeacherPage'
 import SafePassParentPage from './pages/safepass/SafePassParentPage'
+import SafePassHelpPage from './pages/safepass/SafePassHelpPage'
 import KitchenPlanningReport from './pages/reports/KitchenPlanningReport'
 import ReceiptReviewPage from '@/pages/receipt-review/ReceiptReviewPage'
 import UserManagementPage from '@/pages/org/UserManagementPage'
@@ -131,6 +132,7 @@ export default function App() {
               <Route path="reimbursement-preview" element={<ReimbursementPreview />} />
               <Route path="cacfp-checklist" element={<CACFPChecklistPage />} />
               <Route path="safepass/teacher" element={<SafePassTeacherPage />} />
+              <Route path="safepass/help" element={<SafePassHelpPage />} />
               <Route path="kitchen-report"      element={<KitchenPlanningReport />} />
               <Route path="receipt-review"     element={<ReceiptReviewPage />} />
               <Route path="children"           element={<ChildrenPage />} />

@@ -1204,16 +1204,19 @@ function AssignTab() {
 // ─── Capacity & Ratio Settings ────────────────────────────────────────────────
 
 // Ohio Appendix A to Rule 5180:2-12-18 (effective 10/29/2021)
-// School-age: up to 15 years. Children 15+ cannot be in licensed childcare.
-const OHIO_RATIOS: Record<string, { label: string; max: number; groupMax: number; minMonths: number; maxMonths: number }> = {
-  young_infant:      { label: 'Young Infant (0–<12m)',          max: 5,  groupMax: 12, minMonths: 0,   maxMonths: 11  },
-  older_infant:      { label: 'Older Infant (12–<18m)',         max: 6,  groupMax: 12, minMonths: 12,  maxMonths: 17  },
-  young_toddler:     { label: 'Young Toddler (18m–<2.5yr)',     max: 7,  groupMax: 14, minMonths: 18,  maxMonths: 29  },
-  older_toddler:     { label: 'Older Toddler (2.5–<3yr)',       max: 8,  groupMax: 16, minMonths: 30,  maxMonths: 35  },
-  young_preschool:   { label: 'Young Preschool (3–<4yr)',       max: 12, groupMax: 24, minMonths: 36,  maxMonths: 47  },
-  older_preschool:   { label: 'Older Preschool (4yr–pre-K)',    max: 14, groupMax: 28, minMonths: 48,  maxMonths: 71  },
-  young_schoolage:   { label: 'Young School-Age (K–<11yr)',     max: 18, groupMax: 36, minMonths: 60,  maxMonths: 131 },
-  older_schoolage:   { label: 'Older School-Age (11–<15yr)',    max: 20, groupMax: 40, minMonths: 132, maxMonths: 179 },
+// Multi-teacher: groupMax multiplies by number of teachers (2 teachers = 2x groupMax)
+// Mixed infant room (0-18m): ratio governed by youngest child = 1:5
+// School-age max age: <15 years. Children 15+ cannot be in licensed childcare.
+const OHIO_RATIOS: Record<string, { label: string; max: number; groupMax: number; minMonths: number; maxMonths: number; note?: string }> = {
+  young_infant:      { label: 'Young Infant (0–<12m)',          max: 5,  groupMax: 12, minMonths: 0,   maxMonths: 11,  },
+  mixed_infant:      { label: 'Mixed Infant (0–<18m)',          max: 5,  groupMax: 12, minMonths: 0,   maxMonths: 17,  note: 'Ratio by youngest child (1:5). Use when room serves both 0–12m and 12–18m.' },
+  older_infant:      { label: 'Older Infant (12–<18m)',         max: 6,  groupMax: 12, minMonths: 12,  maxMonths: 17,  },
+  young_toddler:     { label: 'Young Toddler (18m–<2.5yr)',     max: 7,  groupMax: 14, minMonths: 18,  maxMonths: 29,  },
+  older_toddler:     { label: 'Older Toddler (2.5–<3yr)',       max: 8,  groupMax: 16, minMonths: 30,  maxMonths: 35,  },
+  young_preschool:   { label: 'Young Preschool (3–<4yr)',       max: 12, groupMax: 24, minMonths: 36,  maxMonths: 47,  },
+  older_preschool:   { label: 'Older Preschool (4yr–pre-K)',    max: 14, groupMax: 28, minMonths: 48,  maxMonths: 71,  },
+  young_schoolage:   { label: 'Young School-Age (K–<11yr)',     max: 18, groupMax: 36, minMonths: 60,  maxMonths: 131, },
+  older_schoolage:   { label: 'Older School-Age (11–<15yr)',    max: 20, groupMax: 40, minMonths: 132, maxMonths: 179, },
 }
 
 type ClassroomCapacity = {
@@ -1221,6 +1224,7 @@ type ClassroomCapacity = {
   age_group_primary: string; capacity_ohio: number
   capacity_internal: number; capacity_room_max: number
   max_younger_children: number; is_early_care: boolean; is_late_care: boolean
+  teachers_count: number
 }
 
 function CapacitySettings() {
@@ -1240,7 +1244,7 @@ function CapacitySettings() {
       .not('class_key', 'ilike', '%Staff%')
       .order('name')
       .then(({ data }) => {
-        if (data) setRooms(data.map((r: any) => ({ ...r, center_name: r.centers?.name ?? '' })))
+        if (data) setRooms(data.map((r: any) => ({ ...r, center_name: r.centers?.name ?? '', teachers_count: r.teachers_count ?? 1 })))
       })
   }, [org?.id])
 
@@ -1253,6 +1257,7 @@ function CapacitySettings() {
       max_younger_children: room.max_younger_children,
       is_early_care:        room.is_early_care,
       is_late_care:         room.is_late_care,
+      teachers_count:       room.teachers_count,
     }).eq('id', room.id)
     setSaving(null); setSaved(room.id)
     setTimeout(() => setSaved(null), 2000)
@@ -1336,6 +1341,7 @@ function CapacitySettings() {
                 <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>{room.center_name}</div>
                 <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap' as const }}>
                   {room.is_early_care && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10, background: '#dbeafe', color: '#1e40af' }}>EARLY CARE</span>}
+                {OHIO_RATIOS[room.age_group_primary]?.note && <div style={{ fontSize: 10, color: '#92400e', background: '#fef3c7', borderRadius: 6, padding: '3px 7px', marginTop: 4 }}>ℹ️ {OHIO_RATIOS[room.age_group_primary]?.note}</div>}
                   {room.is_late_care && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10, background: '#fce7f3', color: '#9d174d' }}>LATE CARE</span>}
                 </div>
               </div>
@@ -1384,6 +1390,19 @@ function CapacitySettings() {
                   style={inp}
                 />
                 <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 2 }}>before ratio↑</div>
+              </div>
+
+              {/* Teachers count */}
+              <div style={{ textAlign: 'center' as const }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: '#2d5a45', marginBottom: 4, textTransform: 'uppercase' as const }}>Teachers</div>
+                <select value={room.teachers_count} onChange={e => upd(room.id, 'teachers_count', parseInt(e.target.value))} style={{ ...inp, width: 68 }}>
+                  <option value={1}>1</option>
+                  <option value={2}>2</option>
+                  <option value={3}>3</option>
+                </select>
+                <div style={{ fontSize: 9, color: '#059669', marginTop: 2, fontWeight: 600 }}>
+                  Ohio max: {(OHIO_RATIOS[room.age_group_primary]?.groupMax ?? 12) * room.teachers_count}
+                </div>
               </div>
 
               {/* Toggles */}

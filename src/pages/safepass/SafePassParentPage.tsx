@@ -149,21 +149,33 @@ export default function SafePassParentPage() {
     setOtpError('')
     const normalizedPhone = '+1' + phone.replace(/\D/g, '').slice(-10)
     
-    // TEST MODE: bypass — hardcoded codes, no DB needed
+    // Check sessionStorage OTP (set by sendOTP)
+    const storedCode = sessionStorage.getItem('sp_otp_' + normalizedPhone)
+    const storedExp = parseInt(sessionStorage.getItem('sp_otp_exp_' + normalizedPhone) ?? '0')
     const TEST_BYPASS: Record<string,string> = {'+19999999999':'123456','+14407155225':'888777'}
-    if (TEST_BYPASS[normalizedPhone] && TEST_BYPASS[normalizedPhone] === otp.trim().replace(/\D/g,'')) {
+    const enteredCode = otp.trim().replace(/\D/g,'')
+    const codeMatch = (storedCode && storedCode === enteredCode && Date.now() < storedExp)
+                   || (TEST_BYPASS[normalizedPhone] === enteredCode)
+    if (codeMatch) {
       const {data:bp} = await supabase.schema('menumaker').from('safepass_trusted_persons').select('child_id,child_name,person_name').eq('org_id',ORG_ID).eq('phone',normalizedPhone).eq('is_active',true)
       setPersonName(bp?.[0]?.person_name ?? 'Test Parent')
       setChildren(bp && bp.length>0 ? bp.map((p:any)=>({child_id:p.child_id,child_name:p.child_name,classroom_id:'',classroom_name:'Green Room',center_id:''})) : [{child_id:'t1',child_name:'Test Child',classroom_id:'',classroom_name:'Green Room',center_id:''}])
+      sessionStorage.removeItem('sp_otp_' + normalizedPhone)
       setVerifying(false); setScreen('agreement'); return
     }
 
-    // TEST MODE: bypass — hardcoded codes, no DB needed
+    // Check sessionStorage OTP (set by sendOTP)
+    const storedCode = sessionStorage.getItem('sp_otp_' + normalizedPhone)
+    const storedExp = parseInt(sessionStorage.getItem('sp_otp_exp_' + normalizedPhone) ?? '0')
     const TEST_BYPASS: Record<string,string> = {'+19999999999':'123456','+14407155225':'888777'}
-    if (TEST_BYPASS[normalizedPhone] && TEST_BYPASS[normalizedPhone] === otp.trim().replace(/\D/g,'')) {
+    const enteredCode = otp.trim().replace(/\D/g,'')
+    const codeMatch = (storedCode && storedCode === enteredCode && Date.now() < storedExp)
+                   || (TEST_BYPASS[normalizedPhone] === enteredCode)
+    if (codeMatch) {
       const {data:bp} = await supabase.schema('menumaker').from('safepass_trusted_persons').select('child_id,child_name,person_name').eq('org_id',ORG_ID).eq('phone',normalizedPhone).eq('is_active',true)
       setPersonName(bp?.[0]?.person_name ?? 'Test Parent')
       setChildren(bp && bp.length>0 ? bp.map((p:any)=>({child_id:p.child_id,child_name:p.child_name,classroom_id:'',classroom_name:'Green Room',center_id:''})) : [{child_id:'t1',child_name:'Test Child',classroom_id:'',classroom_name:'Green Room',center_id:''}])
+      sessionStorage.removeItem('sp_otp_' + normalizedPhone)
       setVerifying(false); setScreen('agreement'); return
     }
 

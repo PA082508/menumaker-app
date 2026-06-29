@@ -1356,128 +1356,144 @@ function CapacitySettings() {
                 </div>
               </div>
 
-              {/* Age group */}
-              <div style={{ textAlign: 'center' as const }}>
-                <div style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', marginBottom: 4, textTransform: 'uppercase' as const }}>Age Group</div>
-                <select value={room.age_group_primary} onChange={e => upd(room.id, 'age_group_primary', e.target.value)} style={sel}>
-                  {Object.entries(OHIO_RATIOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                </select>
-              </div>
-
-              {/* Ohio — read only */}
-              <div style={{ textAlign: 'center' as const }}>
-                <div style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', marginBottom: 4, textTransform: 'uppercase' as const }}>Ohio Min</div>
-                <div style={{ width: 68, padding: '7px 8px', background: '#f8faf8', borderRadius: 7, fontSize: 13, textAlign: 'center' as const, color: '#9ca3af', border: '1.5px solid #f0f0f0', fontWeight: 700 }}>
-                  1 : {ohioMax}
-                </div>
-                <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 2 }}>read-only</div>
-              </div>
-
-              {/* Internal */}
-              <div style={{ textAlign: 'center' as const }}>
-                <div style={{ fontSize: 10, fontWeight: 600, color: '#1a5c3f', marginBottom: 4, textTransform: 'uppercase' as const }}>Internal Max</div>
-                <input type="number" value={room.capacity_internal} min={1} max={30}
-                  onChange={e => upd(room.id, 'capacity_internal', parseInt(e.target.value) || 1)}
-                  style={{ ...inp, borderColor: overLimit ? '#fca5a5' : '#e5e7eb' }}
-                />
-                {overLimit && <div style={{ fontSize: 9, color: '#dc2626', marginTop: 2 }}>Exceeds Ohio group max ({ohioGroupMax})!</div>}
-              </div>
-
-              {/* Room max */}
-              <div style={{ textAlign: 'center' as const }}>
-                <div style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', marginBottom: 4, textTransform: 'uppercase' as const }}>Room Max</div>
-                <input type="number" value={room.capacity_room_max} min={1}
-                  onChange={e => upd(room.id, 'capacity_room_max', parseInt(e.target.value) || 1)}
-                  style={inp}
-                />
-              </div>
-
-              {/* Max younger */}
-              <div style={{ textAlign: 'center' as const }}>
-                <div style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', marginBottom: 4, textTransform: 'uppercase' as const }}>Max Younger</div>
-                <input type="number" value={room.max_younger_children} min={0} max={5}
-                  onChange={e => upd(room.id, 'max_younger_children', parseInt(e.target.value) || 0)}
-                  style={inp}
-                />
-                <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 2 }}>before ratio↑</div>
-              </div>
-
-              {/* Teachers + Room sqft + Effective capacity */}
-              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10, minWidth: 200 }}>
-
-                {/* Teachers */}
+              {/* COL 2 — Director inputs: Age group + internal label */}
+              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8, minWidth: 190 }}>
                 <div>
-                  <div style={{ fontSize: 10, fontWeight: 600, color: '#2d5a45', marginBottom: 4, textTransform: 'uppercase' as const }}>Teachers on Shift</div>
-                  <div style={{ display: 'flex', gap: 4 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                    <span style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' as const }}>Ohio Age Group</span>
+                    <span title="Ohio licensing category per OAC 5180:2-12-18 Appendix A. Determines ratio and group size." style={{ cursor: 'help', fontSize: 11, color: '#9ca3af' }}>ⓘ</span>
+                  </div>
+                  <select value={room.age_group_primary} onChange={e => upd(room.id, 'age_group_primary', e.target.value)} style={{ ...sel, width: '100%', fontSize: 11 }}>
+                    {Object.entries(OHIO_RATIOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                    <span style={{ fontSize: 10, fontWeight: 600, color: '#1a5c3f', textTransform: 'uppercase' as const }}>Age Label</span>
+                    <span title="Your internal name for this age group (e.g. 'Infant Room', 'Toddlers 2s'). Shown on rosters and teacher view — does not affect Ohio calculations." style={{ cursor: 'help', fontSize: 11, color: '#9ca3af' }}>ⓘ</span>
+                  </div>
+                  <input type="text" value={room.age_label} onChange={e => upd(room.id, 'age_label', e.target.value)}
+                    placeholder="e.g. Infant Room, Toddlers 2s"
+                    style={{ ...sel, width: '100%', fontSize: 11 }}
+                  />
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                    <span style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' as const }}>Max Younger</span>
+                    <span title="Max younger-age children allowed before ratio changes. Infant (<12m) always triggers 1:5 immediately." style={{ cursor: 'help', fontSize: 11, color: '#9ca3af' }}>ⓘ</span>
+                  </div>
+                  <input type="number" value={room.max_younger_children} min={0} max={5}
+                    onChange={e => upd(room.id, 'max_younger_children', parseInt(e.target.value) || 0)}
+                    style={{ ...inp, width: 60 }}
+                  />
+                </div>
+              </div>
+
+              {/* COL 3 — Reference panel (auto-calculated, read-only) */}
+              {(() => {
+                const gMax = OHIO_RATIOS[room.age_group_primary]?.groupMax ?? 12
+                const sqftMax = room.room_sqft > 0 ? Math.floor(room.room_sqft / 35) : null
+                return (
+                  <div style={{ minWidth: 230, background: '#f8faf8', borderRadius: 10, border: '1px solid #e5e7eb', padding: '12px 14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 10 }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Reference — Max Children</span>
+                      <span title="Auto-calculated from Ohio ratio × teachers and room size ÷ 35 sq ft. Use these as your upper limits." style={{ cursor: 'help', fontSize: 11, color: '#9ca3af' }}>ⓘ</span>
+                    </div>
+
+                    {/* Room sqft — individual per classroom */}
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                        <span style={{ fontSize: 9, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' as const }}>Room Area (individual)</span>
+                        <span title="Enter actual usable sq ft for THIS classroom. Exclude hallways, storage, bathrooms. Bathrooms counted only if used exclusively by enrolled children (OAC 5180:2-12-11)." style={{ cursor: 'help', fontSize: 11, color: '#9ca3af' }}>ⓘ</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <input type="number" value={room.room_sqft || ''} min={0} placeholder="sq ft"
+                          onChange={e => upd(room.id, 'room_sqft', parseInt(e.target.value) || 0)}
+                          style={{ width: 80, padding: '5px 7px', border: '1.5px solid #d1d5db', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', textAlign: 'center' as const }}
+                        />
+                        <span style={{ fontSize: 11, color: '#6b7280' }}>
+                          ft² {sqftMax !== null ? `÷ 35 = ${sqftMax} max` : ''}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Teachers × ratio table */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 5 }}>
+                      {[1,2,3].map(n => {
+                        const ratioMax = gMax * n
+                        const eff = sqftMax !== null ? Math.min(ratioMax, sqftMax) : ratioMax
+                        const limited = sqftMax !== null && sqftMax < ratioMax
+                        return (
+                          <div key={n} style={{ textAlign: 'center' as const, background: '#fff', borderRadius: 7, padding: '6px 4px', border: `1px solid ${limited ? '#fde68a' : '#e5e7eb'}` }}>
+                            <div style={{ fontSize: 9, color: '#9ca3af', marginBottom: 2 }}>{n} teacher{n>1?'s':''}</div>
+                            <div style={{ fontSize: 17, fontWeight: 800, color: limited ? '#92400e' : '#1a5c3f' }}>{eff}</div>
+                            <div style={{ fontSize: 8, color: limited ? '#f59e0b' : '#9ca3af', fontWeight: limited ? 600 : 400 }}>
+                              {limited ? 'room limits' : `ratio: ${ratioMax}`}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                    <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 8 }}>Ohio 1:{OHIO_RATIOS[room.age_group_primary]?.max ?? '?'} · OAC 5180:2-12-18</div>
+                  </div>
+                )
+              })()}
+
+              {/* COL 4 — Director sets actual limit */}
+              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10, minWidth: 120 }}>
+                {(() => {
+                  const gMax = OHIO_RATIOS[room.age_group_primary]?.groupMax ?? 12
+                  const sqftMax = room.room_sqft > 0 ? Math.floor(room.room_sqft / 35) : null
+                  const refMax = sqftMax !== null ? Math.min(gMax, sqftMax) : gMax
+                  const over = room.capacity_internal > (sqftMax !== null ? Math.min(gMax * 3, sqftMax) : gMax * 3)
+                  return (
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6 }}>
+                        <span style={{ fontSize: 10, fontWeight: 600, color: '#1a5c3f', textTransform: 'uppercase' as const }}>Actual Limit</span>
+                        <span title="Director sets the actual classroom limit. Must not exceed the Reference max. Can be lower due to program requirements (Step Up to Quality, Head Start, etc.)" style={{ cursor: 'help', fontSize: 11, color: '#9ca3af' }}>ⓘ</span>
+                      </div>
+                      <input type="number" value={room.capacity_internal} min={1}
+                        onChange={e => upd(room.id, 'capacity_internal', parseInt(e.target.value) || 1)}
+                        style={{ width: 72, padding: '10px 8px', border: `2.5px solid ${over ? '#fca5a5' : '#1a5c3f'}`, borderRadius: 10, fontSize: 22, fontWeight: 800, fontFamily: 'inherit', textAlign: 'center' as const, color: over ? '#dc2626' : '#0a3320', background: over ? '#fef2f2' : '#f0fdf4', display: 'block' }}
+                      />
+                      <div style={{ fontSize: 9, marginTop: 4, color: over ? '#dc2626' : '#059669', fontWeight: 600 }}>
+                        {over ? '⚠️ Exceeds limit!' : '✓ Within limits'}
+                      </div>
+                      <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 6, lineHeight: 1.5 }}>
+                        Your decision.<br/>
+                        Can be lower than<br/>
+                        reference for SUTQ,<br/>
+                        Head Start, etc.
+                      </div>
+                    </div>
+                  )
+                })()}
+
+                {/* Teachers selector */}
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', marginBottom: 4, textTransform: 'uppercase' as const }}>Teachers</div>
+                  <div style={{ display: 'flex', gap: 3 }}>
                     {[1,2,3].map(n => (
                       <button key={n} onClick={() => upd(room.id, 'teachers_count', n)}
-                        style={{ width: 34, height: 34, borderRadius: 8, border: `2px solid ${room.teachers_count === n ? '#1a5c3f' : '#e5e7eb'}`, background: room.teachers_count === n ? '#1a5c3f' : '#fff', color: room.teachers_count === n ? '#fff' : '#374151', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        style={{ width: 30, height: 30, borderRadius: 7, border: `2px solid ${room.teachers_count === n ? '#1a5c3f' : '#e5e7eb'}`, background: room.teachers_count === n ? '#1a5c3f' : '#fff', color: room.teachers_count === n ? '#fff' : '#374151', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
                         {n}
                       </button>
                     ))}
                   </div>
+                  <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 3 }}>assigned teachers</div>
                 </div>
 
-                {/* Room sqft */}
-                <div>
-                  <div style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', marginBottom: 4, textTransform: 'uppercase' as const }}>Room Area (sq ft)</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <input type="number" value={room.room_sqft || ''} min={0} placeholder="e.g. 700"
-                      onChange={e => upd(room.id, 'room_sqft', parseInt(e.target.value) || 0)}
-                      style={{ ...inp, width: 90 }}
-                    />
-                    <span style={{ fontSize: 11, color: '#9ca3af' }}>ft²</span>
-                  </div>
-                  <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 3, lineHeight: 1.4 }}>
-                    Wall-to-wall usable area only.<br/>
-                    Exclude: hallways, storage, bathrooms<br/>
-                    <span style={{ color: '#059669' }}>Include bathrooms only if used exclusively by enrolled children (OAC 5180:2-12-11)</span>
-                  </div>
-                  {room.room_sqft > 0 && (
-                    <div style={{ fontSize: 10, color: '#6b7280', marginTop: 4, fontWeight: 600 }}>
-                      {room.room_sqft} ft² ÷ 35 = {Math.floor(room.room_sqft / 35)} children max
-                    </div>
-                  )}
+                {/* Toggles */}
+                <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 5 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={room.is_early_care} onChange={e => upd(room.id, 'is_early_care', e.target.checked)} style={{ accentColor: '#1a5c3f' }}/>
+                    Early Care
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={room.is_late_care} onChange={e => upd(room.id, 'is_late_care', e.target.checked)} style={{ accentColor: '#1a5c3f' }}/>
+                    Late Care
+                  </label>
                 </div>
-
-                {/* Effective capacity — the real limit */}
-                {(() => {
-                  const ratioMax = (OHIO_RATIOS[room.age_group_primary]?.groupMax ?? 12) * room.teachers_count
-                  const sqftMax = room.room_sqft > 0 ? Math.floor(room.room_sqft / 35) : ratioMax
-                  const effectiveMax = Math.min(ratioMax, sqftMax)
-                  const limitedBySpace = room.room_sqft > 0 && sqftMax < ratioMax
-                  return (
-                    <div style={{ background: limitedBySpace ? '#fef3c7' : '#f0f7f4', borderRadius: 8, padding: '8px 12px', border: `1.5px solid ${limitedBySpace ? '#fbbf24' : '#d1fae5'}` }}>
-                      <div style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' as const, marginBottom: 4 }}>
-                        {limitedBySpace ? '⚠️ Limited by Room Size' : '✓ Effective Capacity'}
-                      </div>
-                      <div style={{ fontSize: 18, fontWeight: 800, color: limitedBySpace ? '#92400e' : '#1a5c3f' }}>
-                        {effectiveMax} children
-                      </div>
-                      <div style={{ fontSize: 10, color: '#6b7280', marginTop: 2 }}>
-                        {limitedBySpace
-                          ? `Room: ${sqftMax} · Ohio ratio: ${ratioMax} → room wins`
-                          : `Ohio: ${ratioMax} · Room: ${room.room_sqft > 0 ? sqftMax : '—'}`}
-                      </div>
-                      {limitedBySpace && (
-                        <div style={{ fontSize: 10, color: '#92400e', marginTop: 4, fontWeight: 600 }}>
-                          To add a {room.teachers_count + 1}{room.teachers_count === 1 ? 'nd' : 'rd'} teacher you need ≥ {Math.ceil(sqftMax * (room.teachers_count + 1) / room.teachers_count * 35)} sq ft
-                        </div>
-                      )}
-                      {/* Click to accept effective max into Internal Max */}
-                      {room.capacity_internal !== effectiveMax && (
-                        <button
-                          onClick={() => upd(room.id, 'capacity_internal', effectiveMax)}
-                          style={{ marginTop: 8, width: '100%', padding: '6px 10px', borderRadius: 7, border: `1.5px solid ${limitedBySpace ? '#f59e0b' : '#1a5c3f'}`, background: limitedBySpace ? '#fffbeb' : '#f0f7f4', color: limitedBySpace ? '#92400e' : '#1a5c3f', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                          ✓ Set Internal Max to {effectiveMax}
-                        </button>
-                      )}
-                      {room.capacity_internal === effectiveMax && (
-                        <div style={{ marginTop: 6, fontSize: 10, color: '#059669', fontWeight: 600 }}>✓ Internal Max matches limit</div>
-                      )}
-                    </div>
-                  )
-                })()}
               </div>
 
               {/* Toggles */}

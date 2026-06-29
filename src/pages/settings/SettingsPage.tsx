@@ -1271,7 +1271,14 @@ function CapacitySettings() {
 
   const AGE_ORDER = ['young_infant','older_infant','young_toddler','older_toddler','young_preschool','older_preschool','young_schoolage','older_schoolage']
   const centers = [...Array.from(new Set(rooms.map(r => r.center_name))).sort()]
-  const filtered = (filter === 'all' ? rooms : rooms.filter(r => r.center_name === filter))
+  // Auto-select first center when rooms load
+  useEffect(() => {
+    if (rooms.length > 0 && (filter === 'all' || !centers.includes(filter))) {
+      setFilter(centers[0] ?? 'all')
+    }
+  }, [rooms])
+  const filtered = rooms
+    .filter(r => filter === 'all' || r.center_name === filter)
     .sort((a,b) => AGE_ORDER.indexOf(a.age_group_primary) - AGE_ORDER.indexOf(b.age_group_primary))
 
   const inp: React.CSSProperties = {
@@ -1314,14 +1321,14 @@ function CapacitySettings() {
 
       {/* Center tabs */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' as const }}>
-        {['all', ...centers].map(cn => (
+        {centers.map(cn => (
           <button key={cn} onClick={() => setFilter(cn)} style={{
             padding: '7px 16px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
             fontFamily: 'inherit', border: `1.5px solid ${filter === cn ? '#0f4c35' : '#e5e7eb'}`,
             background: filter === cn ? '#0f4c35' : '#fff',
             color: filter === cn ? '#fff' : '#374151',
             fontWeight: filter === cn ? 600 : 400,
-          }}>{cn === 'all' ? 'All Centers' : cn.replace('Play Academy ', '')}</button>
+          }}>{cn.replace('Play Academy ', '')}</button>
         ))}
       </div>
 

@@ -125,18 +125,10 @@ export default function SafePassParentPage() {
     const code = Math.floor(100000 + Math.random() * 900000).toString()
     const normalizedPhone = '+1' + phone.replace(/\D/g, '').slice(-10)
 
-    // Store OTP in DB
-    await supabase.schema('menumaker').from('safepass_sms_otp').insert({
-      org_id: ORG_ID, phone: normalizedPhone,
-      otp_code: code, device_id: 'browser',
-    })
-
-    // In production: call SMS API (Twilio/etc.)
-    // For now: show code in console for testing
+    // Store in sessionStorage only (no DB for testing)
+    sessionStorage.setItem('sp_otp_' + normalizedPhone, code)
+    sessionStorage.setItem('sp_otp_exp_' + normalizedPhone, String(Date.now() + 10 * 60 * 1000))
     console.log('SafePass OTP for', normalizedPhone, ':', code)
-
-    // TODO: call edge function for real SMS
-    // await supabase.functions.invoke('send-sms', { body: { phone: normalizedPhone, code } })
 
     setSending(false)
     setOtpSent(true)

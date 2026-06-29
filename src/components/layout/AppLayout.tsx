@@ -45,6 +45,7 @@ const SECTIONS: Section[] = [
     id: 'operations', label: 'Operations', icon: 'ti-report',
     items: [
       { path: '/meal-count',    label: 'Meal Count',     icon: 'ti-circle-check' },
+      { path: '/safepass/teacher', label: 'SafePass',       icon: 'ti-shield-check' },
       { path: '/kitchen',       label: 'Kitchen View',   icon: 'ti-chef-hat' },
       { path: '/kitchen-report',label: 'Kitchen Report', icon: 'ti-report' },
       { path: '/delivery',      label: 'Delivery',       icon: 'ti-truck-delivery' },

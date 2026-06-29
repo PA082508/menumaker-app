@@ -1223,6 +1223,7 @@ type ClassroomCapacity = {
   id: string; name: string; center_name: string
   age_group_primary: string; capacity_ohio: number
   capacity_internal: number
+  age_label: string
   max_younger_children: number; is_early_care: boolean; is_late_care: boolean
   teachers_count: number
   room_sqft: number

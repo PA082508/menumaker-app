@@ -28,7 +28,7 @@ function deviceId() {
 }
 
 // ── Types ─────────────────────────────────────────────────────
-type Screen = 'phone' | 'otp' | 'agreement' | 'child_select' | 'home' | 'waiting' | 'confirmed' | 'early_care' | 'late_care'
+type Screen = 'how_it_works' | 'phone' | 'otp' | 'agreement' | 'child_select' | 'home' | 'waiting' | 'confirmed'
 type Child = { child_id: string; child_name: string; classroom_id: string; classroom_name: string; center_id: string }
 type Session = { id: string; action_type: string; status: string; teacher_name: string | null; teacher_confirmed_at: string | null }
 
@@ -58,7 +58,7 @@ const inp: React.CSSProperties = {
 }
 
 export default function SafePassParentPage() {
-  const [screen, setScreen] = useState<Screen>('phone')
+  const [screen, setScreen] = useState<Screen>('how_it_works')
   const [phone, setPhone] = useState('')
   const [otp, setOtp] = useState('')
   const [otpError, setOtpError] = useState('')
@@ -76,6 +76,47 @@ export default function SafePassParentPage() {
   const [otpSent, setOtpSent] = useState(false)
   const waitTimer = useRef<ReturnType<typeof setInterval> | null>(null)
   const devId = useRef(deviceId())
+
+  // ── How It Works screen ────────────────────────────────────────
+  if (screen === 'how_it_works') return (
+    <div style={wrap}>
+      {header}
+      <div style={card}>
+        <div style={{ textAlign: 'center', marginTop: 16, marginBottom: 24 }}>
+          <div style={{ fontSize: 48, marginBottom: 10 }}>🔒</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: C.text }}>How SafePass Works</div>
+          <div style={{ fontSize: 14, color: C.muted, marginTop: 6, lineHeight: 1.6 }}>
+            Play Academy Wickliffe uses SafePass to confirm every drop-off and pick-up with a legal timestamp.
+          </div>
+        </div>
+
+        {[
+          { icon: '📱', step: 'Step 1', title: 'You tap Drop Off or Pick Up', desc: 'Open this app when you arrive. Tap the button for your child.' },
+          { icon: '👩‍🏫', step: 'Step 2', title: 'Teacher physically receives the child', desc: 'The teacher goes to you, takes your child into their hands, then taps Accept on their iPad.' },
+          { icon: '✅', step: 'Step 3', title: 'You receive confirmation', desc: 'Your phone shows a green ✅ with the teacher's name and exact time. Only then you may leave.' },
+          { icon: '⚠️', step: 'Important', title: 'Do not leave until you see ✅', desc: 'Your tap alone is not confirmation. The teacher's tap of Accept is the legal timestamp of transfer.' },
+        ].map((item, i) => (
+          <div key={i} style={{ display: 'flex', gap: 14, marginBottom: 16, background: item.icon === '⚠️' ? 'rgba(255,183,64,0.08)' : C.surface, borderRadius: 12, padding: '14px 16px', border: `1px solid ${item.icon === '⚠️' ? C.amber : C.border}` }}>
+            <div style={{ fontSize: 28, flexShrink: 0 }}>{item.icon}</div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: item.icon === '⚠️' ? C.amber : C.green, textTransform: 'uppercase' as const, letterSpacing: '0.06em', marginBottom: 2 }}>{item.step}</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4 }}>{item.title}</div>
+              <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.5 }}>{item.desc}</div>
+            </div>
+          </div>
+        ))}
+
+        <div style={{ height: 8 }} />
+        <button onClick={() => setScreen('phone')} style={btn(C.bg, C.green)}>
+          Continue → Sign In
+        </button>
+        <div style={{ marginTop: 14, fontSize: 12, color: C.muted, textAlign: 'center', lineHeight: 1.6 }}>
+          Your phone must be registered with Play Academy Wickliffe.<br/>
+          Contact Director Sonia Texidor to register.
+        </div>
+      </div>
+    </div>
+  )
 
   // ── Generate and send OTP ──────────────────────────────────
   async function sendOTP() {

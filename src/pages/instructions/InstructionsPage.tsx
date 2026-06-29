@@ -154,6 +154,7 @@ export default function InstructionsPage() {
   const [cat, setCat] = useState('all')
   const [aud, setAud] = useState('all')
   const [signOpen, setSignOpen] = useState(false)
+  const [qrDoc, setQrDoc] = useState<any>(null)
   const [count, setCount] = useState<number|null>(null)
 
   useEffect(()=>{
@@ -236,6 +237,16 @@ export default function InstructionsPage() {
         })}
       </div>
       {signOpen && <SignModal onClose={()=>setSignOpen(false)}/>}
+      {qrDoc && (
+        <div onClick={()=>setQrDoc(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+          <div onClick={(e:any)=>e.stopPropagation()} style={{background:'#fff',borderRadius:16,padding:32,maxWidth:300,width:'100%',textAlign:'center',boxShadow:'0 24px 80px rgba(0,0,0,0.25)'}}>
+            <div style={{fontSize:14,fontWeight:600,color:'#0a3320',marginBottom:4}}>{qrDoc.title}</div>
+            <div style={{fontSize:12,color:'#6b7280',marginBottom:18}}>Scan to open on any device</div>
+            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrDoc.driveUrl||'')}`} alt="QR" style={{width:200,height:200,borderRadius:8,border:'1px solid #e5e7eb'}}/>
+            <button onClick={()=>setQrDoc(null)} style={{marginTop:16,padding:'8px 24px',borderRadius:8,background:'#1a5c3f',color:'#fff',border:'none',cursor:'pointer',fontSize:13,fontFamily:'inherit'}}>Close</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }// drive urls added Sun Jun 28 20:00:14 EDT 2026

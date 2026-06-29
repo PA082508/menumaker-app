@@ -476,6 +476,10 @@ export default function MealCountPage() {
       <div className="mc-header">
         <div className="mc-header-left">
           <h1 className="mc-title">Meal Count</h1>
+          <a href="/meal-count/help" target="_blank"
+            style={{ fontSize: 12, color: '#1a5c3f', textDecoration: 'none', fontWeight: 600, padding: '6px 12px', borderRadius: 8, background: '#f0f7f4', border: '1px solid #d1fae5', display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 12 }}>
+            ❓ Help
+          </a>
           <div className="mc-week-nav">
             {mode === "director" ? (
               <select className="mc-week-select" value={format(weekStart, "yyyy-MM-dd")}

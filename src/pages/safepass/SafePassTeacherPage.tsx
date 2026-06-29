@@ -194,7 +194,7 @@ function TransportPanelView({ runs, onConfirmRun, C }: {
 export default function SafePassTeacherPage() {
   const { currentCenter } = useOrg()
   const { user, roles } = useAuth()
-  const allowed = (roles as string[]).some(r => r === 'cook' || r === 'teacher' || r === 'director')
+  const allowed = (roles as string[]).some(r => r === 'cook' || r === 'teacher' || r === 'director' || r === 'admin' || r === 'org_admin' || r === 'office_manager')
   const teacherId = user?.id ?? 'unknown'
   const teacherName =
     (user?.user_metadata?.full_name as string) || (user?.email?.split('@')[0]) || 'Teacher'

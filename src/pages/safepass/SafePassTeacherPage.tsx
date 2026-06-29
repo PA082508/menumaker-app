@@ -219,12 +219,28 @@ export default function SafePassTeacherPage() {
     return () => clearInterval(t)
   }, [])
 
+  const [selectedCenterId, setSelectedCenterId] = useState<string>(currentCenter?.id ?? '')
+  const [allCenters, setAllCenters] = useState<{id:string;name:string}[]>([])
+
+  // load all centers for selector
+  useEffect(() => {
+    supabase.schema('menumaker').from('centers')
+      .select('id,name').eq('org_id', '3a9a290e-7e49-491e-946b-ad86f2399910').eq('is_active', true).order('name')
+      .then(({data}) => { setAllCenters(data ?? []); if (!selectedCenterId && data?.[0]) setSelectedCenterId(data[0].id) })
+  }, [])
+
+  useEffect(() => {
+    if (currentCenter?.id) setSelectedCenterId(currentCenter.id)
+  }, [currentCenter?.id])
+
+  const activeCenterId = selectedCenterId || currentCenter?.id
+
   // load classrooms for the active center
   useEffect(() => {
-    if (!currentCenter?.id) { setClassrooms([]); return }
+    if (!activeCenterId) { setClassrooms([]); return }
     ;(async () => {
       const { data } = await supabase.schema('menumaker').from('classrooms')
-        .select('id,name,center_id').eq('is_active', true).eq('center_id', currentCenter.id).order('sort_order')
+        .select('id,name,center_id').eq('is_active', true).eq('center_id', activeCenterId).order('sort_order')
       const cls = (data ?? []) as Classroom[]
       setClassrooms(cls)
       setClassId(prev => (prev && cls.some(c => c.id === prev)) ? prev : (cls[0]?.id ?? ''))
@@ -363,6 +379,22 @@ export default function SafePassTeacherPage() {
       </header>
 
       {/* MAIN */}
+      {/* Center selector — shown when in org view */}
+      {!currentCenter?.id && allCenters.length > 0 && (
+        <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>CENTER:</span>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {allCenters.map(ct => (
+              <button key={ct.id} onClick={() => setSelectedCenterId(ct.id)}
+                style={{ padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: 'none', background: selectedCenterId===ct.id ? C.green : C.surface2, color: selectedCenterId===ct.id ? C.bg : C.muted }}>
+                {ct.name.replace('Play Academy ','')}
+              </button>
+            ))}
+          </div>
+          {selectedCenterId && <span style={{ fontSize: 11, color: C.green, marginLeft: 'auto' }}>✓ {allCenters.find(ct=>ct.id===selectedCenterId)?.name}</span>}
+        </div>
+      )}
+
       {/* Mode switcher */}
       <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: '8px 20px', display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
         {(['regular','early_care','late_care','transport'] as const).map(m => (

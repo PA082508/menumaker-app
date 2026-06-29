@@ -128,7 +128,7 @@ export default function SafePassParentPage() {
     // Store OTP in DB
     await supabase.schema('menumaker').from('safepass_sms_otp').insert({
       org_id: ORG_ID, phone: normalizedPhone,
-      otp_code: code, device_id: devId.current,
+      otp_code: code, device_id: 'browser',
     })
 
     // In production: call SMS API (Twilio/etc.)

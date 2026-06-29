@@ -1,346 +1,558 @@
 // ============================================================
-// SafePassParentPage.tsx — route /safepass/parent (PUBLIC, no role gate)
-// Parent PWA — Step 3: app auth method, full ping-pong with the teacher iPad.
-//
-// Visual reference: safepass-parent.html (dark mobile theme, max 430px, Inter).
-// Screens: Agreement → Home → Waiting → Confirmed.
-//   • Sign  → INSERT safepass_agreements (signature_method 'pin'); cached in localStorage.
-//   • Drop/Pick → INSERT safepass_sessions (status='waiting', auth_method='app').
-//   • Subscribe safepass:parent:{session_id}; UPDATE status='confirmed' → Confirmed.
-//
-// Step-3 test parent is hardcoded (real parent auth comes later). The page runs
-// the shared Supabase client, so during testing the logged-in tester's JWT
-// satisfies RLS; truly anonymous parents need parent auth + anon policies later.
+// SafePassParentPage.tsx — route /safepass/parent (PUBLIC)
+// Parent PWA — SMS OTP auth → child selection → drop-off/pick-up
+// Early Care / Late Care / Transportation aware
 // ============================================================
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
-// ─── hardcoded test parent (Blue Room · Pearl) ────────────────────────────────
 const ORG_ID = '3a9a290e-7e49-491e-946b-ad86f2399910'
-const CENTER_ID = '881ef4ce-1a27-4d3b-aa60-59d2a307bf2b'
-const CLASSROOM_ID = '26d73e53-3e95-4969-a015-005b01fa641d'
-const CLASSROOM_NAME = 'Blue Room'
-const CENTER_NAME = 'Pearl'
-const PARENT_ID = 'PRL-PARENT-001'
-const PARENT_NAME = 'Elena Ivanova'
-const CHILD_ID = 'PRL-001'
-const CHILD_NAME = 'Masha Ivanova'
-const CHILD_FIRST = 'Masha'
-const DOC_VERSION = '1.0'
 
-// ─── palette (from safepass-parent.html) ──────────────────────────────────────
+// ── Palette ───────────────────────────────────────────────────
 const C = {
   bg: '#0a0c12', surface: '#13161f', surface2: '#1c2030', border: '#252a3d',
   text: '#f0f2ff', muted: '#6b7299',
   green: '#00e896', greenDim: 'rgba(0,232,150,0.1)',
   amber: '#ffb740', amberDim: 'rgba(255,183,64,0.1)',
-  red: '#ff4d6a', blue: '#5b8bff',
+  red: '#ff4d6a', blue: '#5b8bff', blueDim: 'rgba(91,139,255,0.1)',
 }
 
-type Action = 'drop_off' | 'pick_up'
-type Screen = 'loading' | 'agreement' | 'home' | 'waiting' | 'confirmed'
-type Sess = { id: string; action_type: Action; status: string; teacher_name: string | null; teacher_confirmed_at: string | null }
+// ── Device ID (no localStorage — use sessionStorage fallback) ──
+function deviceId() {
+  try {
+    let d = sessionStorage.getItem('sp_device')
+    if (!d) { d = 'dev-' + Math.random().toString(36).slice(2); sessionStorage.setItem('sp_device', d) }
+    return d
+  } catch { return 'dev-' + Math.random().toString(36).slice(2) }
+}
+
+// ── Types ─────────────────────────────────────────────────────
+type Screen = 'phone' | 'otp' | 'agreement' | 'child_select' | 'home' | 'waiting' | 'confirmed' | 'early_care' | 'late_care'
+type Child = { child_id: string; child_name: string; classroom_id: string; classroom_name: string; center_id: string }
+type Session = { id: string; action_type: string; status: string; teacher_name: string | null; teacher_confirmed_at: string | null }
 
 const hhmm = (iso: string | null) =>
   iso ? new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }) : '--:--'
-const startOfTodayISO = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.toISOString() }
-function deviceId() {
-  let d = localStorage.getItem('safepass_device_id')
-  if (!d) { d = 'dev-' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('safepass_device_id', d) }
-  return d
-}
 
 const AGREEMENT_RULES = [
-  <><strong>Entering the building does not transfer responsibility.</strong> My child remains my responsibility until I physically place them into the teacher's hands and the teacher taps <strong>Accept</strong> in SafePass.</>,
-  <><strong>Leaving the building does not end the center's responsibility.</strong> The center remains responsible until the teacher physically places my child into my hands and taps <strong>Release</strong> — not when I walk through the door.</>,
-  <>I must complete the physical handoff to the teacher <strong>in person</strong> — I may not leave my child at the entrance, hallway, or classroom door unattended.</>,
-  <>I must wait for ✅ confirmation on my phone <strong>before stepping away</strong> — confirmation means the teacher has physically received my child.</>,
-  <>If the teacher doesn't respond within 30 seconds, I use the <strong>Remind</strong> button and remain present with my child until confirmed.</>,
-  <>Bypassing this system — including leaving without confirmation — releases Play Academy from all liability for that period.</>,
-  <>All SafePass records are legally valid documents and may be used in any safety or liability dispute.</>,
+  'Entering the building does not transfer responsibility. My child remains my responsibility until the teacher physically receives them and taps Accept.',
+  'Leaving the building does not end the center\'s responsibility. The center remains responsible until the teacher physically releases my child and taps Release.',
+  'I must complete the physical handoff in person — I may not leave my child at the door unattended.',
+  'I must wait for ✅ confirmation on my phone before stepping away.',
+  'If the teacher doesn\'t respond within 30 seconds, I use the Remind button and remain present with my child.',
+  'All SafePass records are legally valid documents.',
 ]
 
+// ── Shared styles ─────────────────────────────────────────────
+const btn = (color: string, bg: string): React.CSSProperties => ({
+  width: '100%', padding: '16px', borderRadius: 12, border: 'none',
+  background: bg, color, fontSize: 16, fontWeight: 700,
+  cursor: 'pointer', fontFamily: 'inherit',
+})
+const inp: React.CSSProperties = {
+  width: '100%', padding: '14px 16px', borderRadius: 12,
+  border: `1.5px solid ${C.border}`, background: C.surface2,
+  color: C.text, fontSize: 18, fontFamily: 'inherit',
+  textAlign: 'center', letterSpacing: '0.1em', boxSizing: 'border-box',
+}
+
 export default function SafePassParentPage() {
-  const [screen, setScreen] = useState<Screen>('loading')
-  const [confirmedList, setConfirmedList] = useState<Sess[]>([])
-  const [action, setAction] = useState<Action>('drop_off')
+  const [screen, setScreen] = useState<Screen>('phone')
+  const [phone, setPhone] = useState('')
+  const [otp, setOtp] = useState('')
+  const [otpError, setOtpError] = useState('')
+  const [sending, setSending] = useState(false)
+  const [verifying, setVerifying] = useState(false)
+  const [personName, setPersonName] = useState('')
+  const [children, setChildren] = useState<Child[]>([])
+  const [selectedChild, setSelectedChild] = useState<Child | null>(null)
+  const [action, setAction] = useState<'drop_off' | 'pick_up'>('drop_off')
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [waitSecs, setWaitSecs] = useState(0)
-  const [remindCount, setRemindCount] = useState(0)
-  const [remindCooldown, setRemindCooldown] = useState(false)
-  const [confirmedInfo, setConfirmedInfo] = useState<{ teacher: string; time: string; action: Action } | null>(null)
-  const [signing, setSigning] = useState(false)
+  const [confirmedInfo, setConfirmedInfo] = useState<{ teacher: string; time: string; action: string } | null>(null)
+  const [todaySessions, setTodaySessions] = useState<Session[]>([])
+  const [agreed, setAgreed] = useState(false)
+  const [otpSent, setOtpSent] = useState(false)
   const waitTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const devId = useRef(deviceId())
 
-  // ── derived child status from today's confirmed sessions ─────────────────────
-  const last = confirmedList[confirmedList.length - 1]
-  const atCenter = last?.action_type === 'drop_off'
-  const statusTime = hhmm(last?.teacher_confirmed_at ?? null)
+  // ── Generate and send OTP ──────────────────────────────────
+  async function sendOTP() {
+    if (!phone || phone.replace(/\D/g, '').length < 10) return
+    setSending(true)
+    const code = Math.floor(100000 + Math.random() * 900000).toString()
+    const normalizedPhone = '+1' + phone.replace(/\D/g, '').slice(-10)
 
-  const loadHome = useCallback(async () => {
-    const { data } = await supabase.schema('menumaker').from('safepass_sessions')
-      .select('id,action_type,status,teacher_name,teacher_confirmed_at')
-      .eq('child_id', CHILD_ID).eq('status', 'confirmed')
-      .gte('created_at', startOfTodayISO())
-      .order('teacher_confirmed_at', { ascending: true })
-    setConfirmedList((data ?? []) as Sess[])
-  }, [])
-
-  // ── first launch: agreement gate ─────────────────────────────────────────────
-  useEffect(() => {
-    if (localStorage.getItem(`safepass_agreement_${PARENT_ID}`)) { setScreen('home'); loadHome(); return }
-    ;(async () => {
-      const { data } = await supabase.schema('menumaker').from('safepass_agreements')
-        .select('id').eq('person_type', 'parent').eq('person_id', PARENT_ID).eq('document_version', DOC_VERSION).limit(1).maybeSingle()
-      if (data) { localStorage.setItem(`safepass_agreement_${PARENT_ID}`, '1'); setScreen('home'); loadHome() }
-      else setScreen('agreement')
-    })()
-  }, [loadHome])
-
-  async function sign() {
-    setSigning(true)
-    const { error } = await supabase.schema('menumaker').from('safepass_agreements').insert({
-      org_id: ORG_ID, center_id: CENTER_ID, person_type: 'parent', person_id: PARENT_ID,
-      person_name: PARENT_NAME, document_version: DOC_VERSION, signature_method: 'pin', device_id: deviceId(),
+    // Store OTP in DB
+    await supabase.schema('menumaker').from('safepass_sms_otp').insert({
+      org_id: ORG_ID, phone: normalizedPhone,
+      otp_code: code, device_id: devId.current,
     })
-    setSigning(false)
-    // 23505 = already signed → treat as success
-    if (error && error.code !== '23505') { alert('Could not save agreement — ' + error.message); return }
-    localStorage.setItem(`safepass_agreement_${PARENT_ID}`, '1')
-    setScreen('home'); loadHome()
+
+    // In production: call SMS API (Twilio/etc.)
+    // For now: show code in console for testing
+    console.log('SafePass OTP for', normalizedPhone, ':', code)
+
+    // TODO: call edge function for real SMS
+    // await supabase.functions.invoke('send-sms', { body: { phone: normalizedPhone, code } })
+
+    setSending(false)
+    setOtpSent(true)
+    setScreen('otp')
   }
 
-  // ── start a handoff: insert waiting session + subscribe ──────────────────────
-  async function startHandoff(act: Action) {
-    const { data, error } = await supabase.schema('menumaker').from('safepass_sessions').insert({
-      org_id: ORG_ID, center_id: CENTER_ID, classroom_id: CLASSROOM_ID,
-      child_id: CHILD_ID, child_name: CHILD_NAME,
-      parent_id: PARENT_ID, parent_name: PARENT_NAME, parent_device_id: deviceId(),
-      auth_method: 'app', action_type: act, location: 'classroom',
-      teacher_id: 'pending', teacher_name: '—', status: 'waiting',
-    }).select('id').single()
-    if (error || !data) { alert('Could not start — ' + (error?.message ?? 'unknown')); return }
+  // ── Verify OTP ─────────────────────────────────────────────
+  async function verifyOTP() {
+    setVerifying(true)
+    setOtpError('')
+    const normalizedPhone = '+1' + phone.replace(/\D/g, '').slice(-10)
+    const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString()
+
+    const { data: otpRows } = await supabase.schema('menumaker')
+      .from('safepass_sms_otp')
+      .select('*')
+      .eq('phone', normalizedPhone)
+      .eq('otp_code', otp.trim())
+      .eq('device_id', devId.current)
+      .gt('expires_at', new Date().toISOString())
+      .is('used_at', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+
+    if (!otpRows || otpRows.length === 0) {
+      setOtpError('Incorrect code or code expired. Please try again.')
+      setVerifying(false)
+      return
+    }
+
+    // Mark OTP used
+    await supabase.schema('menumaker').from('safepass_sms_otp')
+      .update({ used_at: new Date().toISOString() }).eq('id', otpRows[0].id)
+
+    // Find children for this phone
+    const { data: persons } = await supabase.schema('menumaker')
+      .from('safepass_trusted_persons')
+      .select('child_id,child_name,person_name,relationship')
+      .eq('org_id', ORG_ID)
+      .eq('phone', normalizedPhone)
+      .eq('is_active', true)
+
+    if (persons && persons.length > 0) {
+      setPersonName(persons[0].person_name || '')
+      // Get classroom info for each child
+      const childIds = [...new Set(persons.map(p => p.child_id))]
+      const { data: rosterData } = await supabase.schema('menumaker')
+        .from('roster')
+        .select('id,child_name,classroom_id,center_id,classrooms!inner(name)')
+        .in('id', childIds)
+        .eq('is_active', true)
+
+      if (rosterData && rosterData.length > 0) {
+        setChildren(rosterData.map((r: any) => ({
+          child_id: r.id,
+          child_name: r.child_name,
+          classroom_id: r.classroom_id,
+          classroom_name: r.classrooms?.name ?? '',
+          center_id: r.center_id,
+        })))
+      }
+    }
+
+    // Create parent session
+    await supabase.schema('menumaker').from('safepass_parent_sessions').insert({
+      org_id: ORG_ID, phone: normalizedPhone,
+      device_id: devId.current, person_name: persons?.[0]?.person_name ?? '',
+    })
+
+    setVerifying(false)
+    setScreen('agreement')
+  }
+
+  // ── Load today's sessions for child ───────────────────────
+  async function loadTodaySessions(child: Child) {
+    const startOfDay = new Date(); startOfDay.setHours(0,0,0,0)
+    const { data } = await supabase.schema('menumaker')
+      .from('safepass_sessions')
+      .select('id,action_type,status,teacher_name,teacher_confirmed_at')
+      .eq('child_id', child.child_id)
+      .gte('created_at', startOfDay.toISOString())
+      .order('created_at', { ascending: false })
+    setTodaySessions(data || [])
+  }
+
+  // ── Select child and go to home ────────────────────────────
+  async function selectChild(child: Child) {
+    setSelectedChild(child)
+    await loadTodaySessions(child)
+    setScreen('home')
+  }
+
+  // ── Start drop-off or pick-up ──────────────────────────────
+  async function startAction(act: 'drop_off' | 'pick_up') {
+    if (!selectedChild) return
     setAction(act)
+
+    const { data, error } = await supabase.schema('menumaker')
+      .from('safepass_sessions')
+      .insert({
+        org_id: ORG_ID,
+        center_id: selectedChild.center_id,
+        classroom_id: selectedChild.classroom_id,
+        child_id: selectedChild.child_id,
+        child_name: selectedChild.child_name,
+        action_type: act,
+        status: 'waiting',
+        auth_method: 'app',
+        parent_device_id: devId.current,
+      })
+      .select('id').single()
+
+    if (error || !data) { alert('Error: ' + error?.message); return }
     setSessionId(data.id)
-    setWaitSecs(0); setRemindCount(0); setRemindCooldown(false)
+    setWaitSecs(0)
     setScreen('waiting')
+    subscribeToSession(data.id)
   }
 
-  // ── waiting: timer + realtime subscription on this session ───────────────────
-  useEffect(() => {
-    if (screen !== 'waiting' || !sessionId) return
+  // ── Subscribe to session updates ───────────────────────────
+  function subscribeToSession(sid: string) {
+    if (waitTimer.current) clearInterval(waitTimer.current)
     waitTimer.current = setInterval(() => setWaitSecs(s => s + 1), 1000)
 
-    const channel = supabase
-      .channel(`safepass:parent:${sessionId}`)
-      .on('postgres_changes',
-        { event: 'UPDATE', schema: 'menumaker', table: 'safepass_sessions', filter: `id=eq.${sessionId}` },
-        ({ new: s }: any) => {
-          if (s.status === 'confirmed') {
-            setConfirmedInfo({ teacher: s.teacher_name || 'Teacher', time: hhmm(s.teacher_confirmed_at), action: s.action_type })
-            setScreen('confirmed')
-          }
-        })
+    supabase.channel('safepass:parent:' + sid)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'menumaker', table: 'safepass_sessions',
+        filter: 'id=eq.' + sid,
+      }, (payload: any) => {
+        if (payload.new.status === 'confirmed') {
+          if (waitTimer.current) clearInterval(waitTimer.current)
+          setConfirmedInfo({
+            teacher: payload.new.teacher_name || 'Teacher',
+            time: hhmm(payload.new.teacher_confirmed_at),
+            action: action,
+          })
+          loadTodaySessions(selectedChild!)
+          setScreen('confirmed')
+        }
+      })
       .subscribe()
-
-    return () => {
-      if (waitTimer.current) clearInterval(waitTimer.current)
-      supabase.removeChannel(channel)
-    }
-  }, [screen, sessionId])
-
-  async function sendReminder() {
-    if (!sessionId || remindCooldown) return
-    const next = remindCount + 1
-    const { error } = await supabase.schema('menumaker').from('safepass_sessions')
-      .update({ reminder_count: next, reminder_sent_at: new Date().toISOString() }).eq('id', sessionId)
-    if (error) return
-    setRemindCount(next); setRemindCooldown(true)
-    setTimeout(() => setRemindCooldown(false), 10000)
   }
 
-  function doneToHome() {
-    setSessionId(null); setConfirmedInfo(null); setScreen('home'); loadHome()
+  // ── Send remind ────────────────────────────────────────────
+  async function sendRemind() {
+    if (!sessionId) return
+    await supabase.schema('menumaker').from('safepass_sessions')
+      .update({ remind_count: 1, reminded_at: new Date().toISOString() })
+      .eq('id', sessionId)
   }
 
-  // ─── shared styles ───────────────────────────────────────────────────────────
-  const page: React.CSSProperties = {
-    fontFamily: "'Inter', system-ui, -apple-system, sans-serif", background: C.bg, color: C.text,
-    minHeight: '100vh', maxWidth: 430, margin: '0 auto', display: 'flex', flexDirection: 'column', position: 'relative',
+  const wrap: React.CSSProperties = {
+    minHeight: '100vh', background: C.bg, color: C.text,
+    fontFamily: "'Inter', 'DM Sans', sans-serif",
+    display: 'flex', flexDirection: 'column', alignItems: 'center',
+    padding: '0 0 40px',
   }
-  const sectionTitle: React.CSSProperties = { fontSize: 13, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: C.muted, margin: '24px 0 12px' }
-  const fonts = <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  const spin = <style>{`@keyframes sp-spin{to{transform:rotate(360deg)}}@keyframes sp-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}@keyframes sp-pop{0%{transform:scale(0);opacity:0}100%{transform:scale(1);opacity:1}}`}</style>
-
-  const mm = Math.floor(waitSecs / 60), ss = String(waitSecs % 60).padStart(2, '0')
-  const drop = action === 'drop_off'
-
-  // ── LOADING ──────────────────────────────────────────────────────────────────
-  if (screen === 'loading') {
-    return <div style={{ ...page, alignItems: 'center', justifyContent: 'center' }}>{fonts}<div style={{ color: C.muted, fontSize: 14 }}>Loading…</div></div>
+  const card: React.CSSProperties = {
+    width: '100%', maxWidth: 430, padding: '24px 20px',
   }
 
-  // ── AGREEMENT ────────────────────────────────────────────────────────────────
-  if (screen === 'agreement') {
-    return (
-      <div style={page}>{fonts}
-        <div style={{ height: 44, background: C.bg }} />
-        <div style={{ padding: '24px 20px 40px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 28 }}>
-            <div style={{ width: 44, height: 44, background: C.green, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>🛡️</div>
-            <div>
-              <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: -0.5 }}>SafePass</div>
-              <div style={{ fontSize: 13, color: C.muted }}>Play Academy · {CENTER_NAME} Center</div>
-            </div>
-          </div>
-          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: 20, marginBottom: 20, fontSize: 14, lineHeight: 1.8 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 12 }}>Parent Responsibility Agreement</h3>
-            {AGREEMENT_RULES.map((r, i) => (
-              <div key={i} style={{ padding: '8px 0', borderBottom: i < AGREEMENT_RULES.length - 1 ? `1px solid ${C.border}` : 'none', color: C.text, display: 'flex', gap: 10 }}>
-                <span style={{ color: C.green, fontWeight: 700, flexShrink: 0 }}>{i + 1}.</span>
-                <span>{r}</span>
-              </div>
-            ))}
-          </div>
-          <button onClick={sign} disabled={signing} style={{ width: '100%', padding: 18, borderRadius: 14, border: 'none', fontSize: 16, fontWeight: 800, cursor: 'pointer', background: C.green, color: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, opacity: signing ? 0.6 : 1 }}>
-            {signing ? 'Signing…' : '🔒 Sign with PIN · Agree'}
-          </button>
+  // ── Header ─────────────────────────────────────────────────
+  const header = (
+    <div style={{ width: '100%', maxWidth: 430, padding: '20px 20px 0', marginBottom: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ width: 36, height: 36, borderRadius: 10, background: C.green, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>🔒</div>
+        <div>
+          <div style={{ fontWeight: 800, fontSize: 16, color: C.text }}>SafePass</div>
+          <div style={{ fontSize: 11, color: C.muted }}>Play Academy Wickliffe</div>
         </div>
-      </div>
-    )
-  }
-
-  // ── WAITING ──────────────────────────────────────────────────────────────────
-  if (screen === 'waiting') {
-    const remindDisabled = waitSecs < 30 || remindCooldown
-    return (
-      <div style={page}>{fonts}{spin}
-        <div style={{ height: 44, background: C.bg }} />
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '0 28px 80px' }}>
-          <div style={{ fontSize: 72, marginBottom: 24, animation: 'sp-float 3s ease-in-out infinite' }}>{drop ? '👧' : '🚗'}</div>
-          <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: -0.6, marginBottom: 8 }}>
-            {drop ? 'Waiting for teacher to accept' : `Waiting for teacher to release ${CHILD_FIRST}`}
-          </div>
-          <div style={{ fontSize: 16, color: C.muted, lineHeight: 1.6, marginBottom: 32 }}>
-            {drop
-              ? <>Stay with your child until you receive ✅.<br />Do not leave until the teacher physically takes your child.</>
-              : <>Stay at the classroom — your child is still under the center's care.<br />You will be notified when the teacher is ready for handoff.</>}
-          </div>
-          <div style={{ width: 80, height: 80, borderRadius: '50%', border: `3px solid ${C.border}`, borderTopColor: C.green, animation: 'sp-spin 1.2s linear infinite', marginBottom: 24 }} />
-          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 100, padding: '10px 24px', fontSize: 14, color: C.muted, marginBottom: 32 }}>
-            Waiting <span style={{ color: C.amber, fontWeight: 700 }}>{mm}:{ss}</span>
-          </div>
-          <button onClick={sendReminder} disabled={remindDisabled}
-            style={{ background: C.amberDim, border: `1px solid ${C.amber}`, color: C.amber, padding: '14px 32px', borderRadius: 100, fontSize: 15, fontWeight: 700, cursor: remindDisabled ? 'default' : 'pointer', opacity: remindDisabled ? 0.4 : 1, marginBottom: 16 }}>
-            {remindCount > 0 && remindCooldown ? `✓ Reminder sent (${remindCount})` : '🔔 Remind Teacher'}
-          </button>
-          <div style={{ fontSize: 13, color: C.muted, maxWidth: 280 }}>
-            Stay with {CHILD_FIRST} until ✅ — you can't leave this screen until the teacher confirms.
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // ── CONFIRMED ────────────────────────────────────────────────────────────────
-  if (screen === 'confirmed' && confirmedInfo) {
-    const cdrop = confirmedInfo.action === 'drop_off'
-    return (
-      <div style={page}>{fonts}{spin}
-        <div style={{ height: 44, background: C.bg }} />
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '0 28px 80px' }}>
-          <div style={{ width: 100, height: 100, borderRadius: '50%', background: C.greenDim, border: `3px solid ${C.green}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 48, marginBottom: 24, animation: 'sp-pop 0.5s cubic-bezier(0.34,1.56,0.64,1)' }}>✅</div>
-          <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: -0.7, marginBottom: 8, color: C.green }}>
-            {CHILD_FIRST} {cdrop ? 'Accepted' : 'Released'} ✅
-          </div>
-          <div style={{ fontSize: 16, color: C.muted, lineHeight: 1.6, marginBottom: 32 }}>
-            {cdrop
-              ? <>{CHILD_FIRST} is now under the center's care.<br />You may leave safely.</>
-              : <>You may now take {CHILD_FIRST}.<br />Teacher has confirmed handoff.</>}
-          </div>
-          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: 20, width: '100%', textAlign: 'left', marginBottom: 16 }}>
-            {[
-              ['Child', CHILD_NAME], ['Action', cdrop ? 'Drop-off' : 'Pick-up'],
-              ['Teacher', confirmedInfo.teacher], ['Time', confirmedInfo.time, true],
-              ['Center', `${CENTER_NAME} · ${CLASSROOM_NAME}`],
-            ].map(([label, value, green], i, arr) => (
-              <div key={label as string} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: i < arr.length - 1 ? `1px solid ${C.border}` : 'none', fontSize: 14 }}>
-                <span style={{ color: C.muted }}>{label as string}</span>
-                <span style={{ fontWeight: 600, color: green ? C.green : C.text }}>{value as string}</span>
-              </div>
-            ))}
-          </div>
-          <div style={{ fontSize: 13, color: C.amber, marginBottom: 28, fontWeight: 600 }}>📋 This time = write it in the paper log.</div>
-          <button onClick={doneToHome} style={{ background: C.green, color: C.bg, padding: '16px 48px', borderRadius: 100, border: 'none', fontSize: 16, fontWeight: 800, cursor: 'pointer' }}>Done</button>
-        </div>
-      </div>
-    )
-  }
-
-  // ── HOME ─────────────────────────────────────────────────────────────────────
-  return (
-    <div style={page}>{fonts}
-      <div style={{ height: 44, background: C.bg }} />
-      <div style={{ flex: 1, padding: '0 20px 100px' }}>
-        <div style={{ padding: '16px 0 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ fontSize: 13, color: C.muted }}>Welcome</div>
-            <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: -0.5, marginTop: 2 }}>{PARENT_NAME}</div>
-          </div>
-          <div style={{ width: 40, height: 40, background: C.surface2, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, border: `1px solid ${C.border}` }}>🔔</div>
-        </div>
-
-        {/* Child card */}
-        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 20, padding: 22, marginBottom: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 }}>
-            <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg,#5b8bff,#00e896)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>👧</div>
-            <div>
-              <div style={{ fontSize: 20, fontWeight: 700 }}>{CHILD_FIRST}</div>
-              <div style={{ fontSize: 13, color: C.muted, marginTop: 3 }}>{CLASSROOM_NAME} · {CENTER_NAME}</div>
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', background: C.surface2, borderRadius: 12, fontSize: 14 }}>
-            <div style={{ width: 8, height: 8, borderRadius: '50%', background: atCenter ? C.green : C.muted, boxShadow: atCenter ? `0 0 6px ${C.green}` : 'none' }} />
-            <div style={{ fontWeight: 600, flex: 1 }}>{atCenter ? 'At center' : 'Not yet arrived'}</div>
-            <div style={{ color: C.muted, fontSize: 13 }}>{atCenter ? `in since ${statusTime}` : 'today'}</div>
-          </div>
-
-          {atCenter ? (
-            <button onClick={() => startHandoff('pick_up')} style={{ width: '100%', padding: 16, borderRadius: 14, border: 'none', fontSize: 16, fontWeight: 700, cursor: 'pointer', marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: C.amber, color: C.bg }}>
-              🚗 I'm here to pick up {CHILD_FIRST}
-            </button>
-          ) : (
-            <button onClick={() => startHandoff('drop_off')} style={{ width: '100%', padding: 16, borderRadius: 14, border: 'none', fontSize: 16, fontWeight: 700, cursor: 'pointer', marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: C.blue, color: '#fff' }}>
-              👋 I'm here to drop off {CHILD_FIRST}
-            </button>
-          )}
-        </div>
-
-        {/* Today's activity */}
-        <div style={sectionTitle}>Today's Activity</div>
-        {confirmedList.length === 0 && <div style={{ fontSize: 13, color: C.muted }}>No handoffs yet today.</div>}
-        {[...confirmedList].reverse().map(s => (
-          <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: C.surface, borderRadius: 12, marginBottom: 8, border: `1px solid ${C.border}` }}>
-            <div style={{ fontSize: 18 }}>{s.action_type === 'drop_off' ? '✅' : '🔄'}</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 600 }}>{CHILD_FIRST} {s.action_type === 'drop_off' ? 'dropped off' : 'picked up'}</div>
-              <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Confirmed by {s.teacher_name || 'teacher'}</div>
-            </div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: C.green }}>{hhmm(s.teacher_confirmed_at)}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* bottom nav */}
-      <div style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 430, background: 'rgba(10,12,18,0.9)', backdropFilter: 'blur(20px)', borderTop: `1px solid ${C.border}`, display: 'flex', padding: '12px 0 28px' }}>
-        {[['🏠', 'Home', true], ['📋', 'Agreement', false], ['📅', 'History', false], ['⚙️', 'Settings', false]].map(([icon, label, active]) => (
-          <div key={label as string} onClick={() => { if (label === 'Agreement') setScreen('agreement') }}
-            style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, fontSize: 10, color: active ? C.green : C.muted, cursor: 'pointer', padding: 4 }}>
-            <div style={{ fontSize: 22 }}>{icon as string}</div>{label as string}
-          </div>
-        ))}
       </div>
     </div>
   )
+
+  // ─────────────────────────────────────────────────────────────
+  // SCREEN: PHONE
+  // ─────────────────────────────────────────────────────────────
+  if (screen === 'phone') return (
+    <div style={wrap}>
+      {header}
+      <div style={card}>
+        <div style={{ textAlign: 'center', marginBottom: 32, marginTop: 20 }}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>📱</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: C.text }}>Welcome to SafePass</div>
+          <div style={{ fontSize: 14, color: C.muted, marginTop: 8 }}>Enter your registered phone number to sign in</div>
+        </div>
+        <input
+          type="tel" value={phone}
+          onChange={e => setPhone(e.target.value)}
+          placeholder="(555) 000-0000"
+          style={inp}
+          onKeyDown={e => e.key === 'Enter' && sendOTP()}
+        />
+        <div style={{ fontSize: 11, color: C.muted, textAlign: 'center', marginTop: 8, marginBottom: 20 }}>
+          We'll send a 6-digit verification code to this number
+        </div>
+        <button onClick={sendOTP} disabled={sending || phone.replace(/\D/g,'').length < 10}
+          style={btn(C.bg, phone.replace(/\D/g,'').length >= 10 ? C.green : C.border)}>
+          {sending ? 'Sending…' : 'Send Code →'}
+        </button>
+        <div style={{ marginTop: 24, padding: 16, background: C.surface, borderRadius: 12, fontSize: 12, color: C.muted, lineHeight: 1.6 }}>
+          Your phone must be registered with Play Academy Wickliffe.<br/>
+          Contact Director Sonia Texidor to register.
+        </div>
+      </div>
+    </div>
+  )
+
+  // ─────────────────────────────────────────────────────────────
+  // SCREEN: OTP
+  // ─────────────────────────────────────────────────────────────
+  if (screen === 'otp') return (
+    <div style={wrap}>
+      {header}
+      <div style={card}>
+        <div style={{ textAlign: 'center', marginBottom: 32, marginTop: 20 }}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>💬</div>
+          <div style={{ fontSize: 22, fontWeight: 800 }}>Enter Code</div>
+          <div style={{ fontSize: 14, color: C.muted, marginTop: 8 }}>
+            Code sent to {phone}<br/>
+            <span style={{ color: C.muted, fontSize: 12 }}>Valid for 10 minutes</span>
+          </div>
+        </div>
+        <input
+          type="number" value={otp} onChange={e => setOtp(e.target.value)}
+          placeholder="000000" maxLength={6} style={{ ...inp, fontSize: 32, letterSpacing: '0.3em' }}
+          onKeyDown={e => e.key === 'Enter' && verifyOTP()}
+        />
+        {otpError && <div style={{ color: C.red, fontSize: 13, textAlign: 'center', marginTop: 8 }}>{otpError}</div>}
+        <div style={{ height: 16 }} />
+        <button onClick={verifyOTP} disabled={verifying || otp.length < 6}
+          style={btn(C.bg, otp.length >= 6 ? C.green : C.border)}>
+          {verifying ? 'Verifying…' : 'Verify →'}
+        </button>
+        <button onClick={() => setScreen('phone')}
+          style={{ ...btn(C.muted, 'transparent'), marginTop: 12, border: `1px solid ${C.border}` }}>
+          ← Back
+        </button>
+      </div>
+    </div>
+  )
+
+  // ─────────────────────────────────────────────────────────────
+  // SCREEN: AGREEMENT
+  // ─────────────────────────────────────────────────────────────
+  if (screen === 'agreement') return (
+    <div style={wrap}>
+      {header}
+      <div style={card}>
+        <div style={{ marginBottom: 20, marginTop: 12 }}>
+          <div style={{ fontSize: 18, fontWeight: 800 }}>SafePass Agreement</div>
+          <div style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>Please read and accept to continue</div>
+        </div>
+        <div style={{ background: C.surface, borderRadius: 12, padding: '16px', marginBottom: 20, maxHeight: 360, overflowY: 'auto' }}>
+          {AGREEMENT_RULES.map((rule, i) => (
+            <div key={i} style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
+              <div style={{ color: C.green, fontWeight: 700, fontSize: 14, flexShrink: 0 }}>{i + 1}.</div>
+              <div style={{ fontSize: 13, color: C.text, lineHeight: 1.6 }}>{rule}</div>
+            </div>
+          ))}
+        </div>
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 20, cursor: 'pointer' }}>
+          <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)}
+            style={{ width: 20, height: 20, marginTop: 2, accentColor: C.green, flexShrink: 0 }} />
+          <span style={{ fontSize: 13, color: C.text, lineHeight: 1.6 }}>
+            I have read and agree to the SafePass agreement. I understand that physical handoff — not proximity to the building — determines legal responsibility.
+          </span>
+        </label>
+        <button onClick={() => agreed && setScreen(children.length === 1 ? 'home' : 'child_select')}
+          disabled={!agreed} style={btn(C.bg, agreed ? C.green : C.border)}>
+          Continue →
+        </button>
+      </div>
+    </div>
+  )
+
+  // ─────────────────────────────────────────────────────────────
+  // SCREEN: CHILD SELECT
+  // ─────────────────────────────────────────────────────────────
+  if (screen === 'child_select') return (
+    <div style={wrap}>
+      {header}
+      <div style={card}>
+        <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6, marginTop: 12 }}>Select Child</div>
+        <div style={{ fontSize: 13, color: C.muted, marginBottom: 20 }}>
+          Welcome{personName ? ', ' + personName : ''}. Which child are you dropping off or picking up?
+        </div>
+        {children.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 40, color: C.muted }}>
+            No children found for this phone number.<br/>
+            Please contact Director Texidor to register.
+          </div>
+        ) : (
+          children.map(child => (
+            <button key={child.child_id} onClick={() => selectChild(child)}
+              style={{ width: '100%', background: C.surface, border: `1.5px solid ${C.border}`, borderRadius: 14, padding: '16px 18px', marginBottom: 10, cursor: 'pointer', textAlign: 'left', color: C.text, fontFamily: 'inherit' }}>
+              <div style={{ fontWeight: 700, fontSize: 16 }}>{child.child_name}</div>
+              <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>{child.classroom_name}</div>
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  )
+
+  // ─────────────────────────────────────────────────────────────
+  // SCREEN: HOME
+  // ─────────────────────────────────────────────────────────────
+  if (screen === 'home') {
+    const last = todaySessions[0]
+    const atCenter = last?.action_type === 'drop_off' && last?.status === 'confirmed'
+    return (
+      <div style={wrap}>
+        {header}
+        <div style={card}>
+          <div style={{ marginTop: 12, marginBottom: 20 }}>
+            <div style={{ fontSize: 20, fontWeight: 800 }}>{selectedChild?.child_name}</div>
+            <div style={{ fontSize: 13, color: C.muted }}>{selectedChild?.classroom_name}</div>
+          </div>
+
+          {/* Status */}
+          <div style={{ background: atCenter ? C.greenDim : C.surface, border: `1.5px solid ${atCenter ? C.green : C.border}`, borderRadius: 14, padding: '16px 18px', marginBottom: 24, textAlign: 'center' }}>
+            <div style={{ fontSize: 28 }}>{atCenter ? '🏫' : '🏠'}</div>
+            <div style={{ fontWeight: 700, fontSize: 15, color: atCenter ? C.green : C.text, marginTop: 6 }}>
+              {atCenter ? 'At Play Academy' : 'Not checked in today'}
+            </div>
+            {last && <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>
+              {last.action_type === 'drop_off' ? 'Dropped off' : 'Picked up'} at {hhmm(last.teacher_confirmed_at)} by {last.teacher_name}
+            </div>}
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {!atCenter && (
+              <button onClick={() => startAction('drop_off')}
+                style={{ ...btn(C.bg, C.green), fontSize: 17 }}>
+                🚗 Drop Off {selectedChild?.child_name?.split(' ')[0]}
+              </button>
+            )}
+            {atCenter && (
+              <button onClick={() => startAction('pick_up')}
+                style={{ ...btn(C.bg, C.amber), fontSize: 17 }}>
+                👋 Pick Up {selectedChild?.child_name?.split(' ')[0]}
+              </button>
+            )}
+          </div>
+
+          {/* Today's log */}
+          {todaySessions.length > 0 && (
+            <div style={{ marginTop: 24 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Today's Log</div>
+              {todaySessions.map(s => (
+                <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: `1px solid ${C.border}`, fontSize: 13 }}>
+                  <span style={{ color: s.action_type === 'drop_off' ? C.green : C.amber }}>
+                    {s.action_type === 'drop_off' ? '↓ Drop-off' : '↑ Pick-up'}
+                  </span>
+                  <span style={{ color: C.muted }}>{hhmm(s.teacher_confirmed_at)} · {s.teacher_name}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {children.length > 1 && (
+            <button onClick={() => setScreen('child_select')}
+              style={{ ...btn(C.muted, 'transparent'), marginTop: 16, border: `1px solid ${C.border}`, fontSize: 14 }}>
+              Switch Child
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // SCREEN: WAITING
+  // ─────────────────────────────────────────────────────────────
+  if (screen === 'waiting') return (
+    <div style={wrap}>
+      {header}
+      <div style={card}>
+        <div style={{ textAlign: 'center', marginTop: 32 }}>
+          <div style={{ fontSize: 56, marginBottom: 16 }}>
+            {action === 'drop_off' ? '🤝' : '👋'}
+          </div>
+          <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>
+            {action === 'drop_off' ? 'Waiting for teacher to accept' : 'Waiting for teacher to release'}
+          </div>
+          <div style={{ fontSize: 14, color: C.muted, marginBottom: 24 }}>
+            {selectedChild?.child_name} · {selectedChild?.classroom_name}
+          </div>
+
+          {/* Timer */}
+          <div style={{ background: C.surface, borderRadius: 16, padding: '20px', marginBottom: 20 }}>
+            <div style={{ fontSize: 40, fontWeight: 800, color: waitSecs > 30 ? C.amber : C.green, fontVariantNumeric: 'tabular-nums' }}>
+              {Math.floor(waitSecs / 60).toString().padStart(2, '0')}:{(waitSecs % 60).toString().padStart(2, '0')}
+            </div>
+            <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>
+              {action === 'drop_off' ? 'Do not leave until you see ✅' : 'Your child is being prepared for release'}
+            </div>
+          </div>
+
+          {waitSecs >= 30 && (
+            <button onClick={sendRemind}
+              style={{ ...btn(C.bg, C.amber), marginBottom: 12 }}>
+              🔔 Remind Teacher
+            </button>
+          )}
+
+          <div style={{ padding: '14px', background: C.surface, borderRadius: 12, fontSize: 12, color: C.muted, lineHeight: 1.6, textAlign: 'left' }}>
+            {action === 'drop_off'
+              ? '⚠️ Stay with your child until the teacher physically receives them and you see the green confirmation screen.'
+              : '⚠️ Wait here. Your child will be brought to you by the teacher.'}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+
+  // ─────────────────────────────────────────────────────────────
+  // SCREEN: CONFIRMED
+  // ─────────────────────────────────────────────────────────────
+  if (screen === 'confirmed') return (
+    <div style={wrap}>
+      {header}
+      <div style={card}>
+        <div style={{ textAlign: 'center', marginTop: 32 }}>
+          <div style={{ fontSize: 72, marginBottom: 16 }}>✅</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: C.green, marginBottom: 8 }}>
+            {confirmedInfo?.action === 'drop_off' ? 'Drop-off Confirmed' : 'Pick-up Confirmed'}
+          </div>
+          <div style={{ fontSize: 15, color: C.text, marginBottom: 24 }}>
+            {selectedChild?.child_name} is now in the care of<br/>
+            <strong>{confirmedInfo?.teacher}</strong>
+          </div>
+          <div style={{ background: C.greenDim, border: `1px solid ${C.green}`, borderRadius: 14, padding: '16px', marginBottom: 28 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div>
+                <div style={{ fontSize: 11, color: C.muted }}>Time</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: C.green }}>{confirmedInfo?.time}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: C.muted }}>Classroom</div>
+                <div style={{ fontSize: 14, fontWeight: 700 }}>{selectedChild?.classroom_name}</div>
+              </div>
+            </div>
+          </div>
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 24, lineHeight: 1.6 }}>
+            This record is legally timestamped and stored securely.<br/>Play Academy Wickliffe · {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+          </div>
+          <button onClick={() => { setScreen('home'); loadTodaySessions(selectedChild!) }}
+            style={btn(C.bg, C.green)}>
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+
+  return null
 }

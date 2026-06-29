@@ -57,6 +57,140 @@ function elapsed(fromISO: string, now: number) {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
+
+// ─── Duty types ────────────────────────────────────────────────────────────────
+type DutyMode = 'regular' | 'early_care' | 'late_care' | 'transport'
+type DutyChild = {
+  session_id: string; child_name: string; child_id: string
+  classroom_name: string; classroom_id: string
+  arrived_at: string; minutes_waiting: number; escalation_level: number
+}
+type TransportRun = {
+  id: string; run_type: 'morning_to_school' | 'afternoon_from_school'
+  driver_name: string; school_name: string; children_count: number
+  status: string; departed_at: string | null; arrived_at: string | null
+}
+
+function EarlyCarePanelView({ dutyChildren, onTransfer, onEscalate, C }: {
+  dutyChildren: DutyChild[]; onTransfer: (c: DutyChild) => void
+  onEscalate: (c: DutyChild) => void; C: Record<string,string>
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: C.muted, textTransform: 'uppercase' as const, letterSpacing: '0.06em', marginBottom: 4 }}>
+        Early Care — {dutyChildren.length} children · Ohio minimum ratios apply
+      </div>
+      {dutyChildren.length === 0 ? (
+        <div style={{ textAlign: 'center' as const, padding: '32px 0', color: C.muted, fontSize: 13 }}>No children in Early Care yet</div>
+      ) : dutyChildren.map(child => {
+        const mins = child.minutes_waiting
+        const urgent = mins >= 45; const warn = mins >= 15
+        return (
+          <div key={child.session_id} style={{ background: urgent ? 'rgba(255,77,106,0.08)' : warn ? 'rgba(255,183,64,0.08)' : C.surface, border: `1.5px solid ${urgent ? C.red : warn ? C.amber : C.border}`, borderRadius: 12, padding: '14px 16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 15 }}>{child.child_name}</div>
+                <div style={{ fontSize: 12, color: C.muted }}>→ {child.classroom_name}</div>
+              </div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: urgent ? C.red : warn ? C.amber : C.green }}>{mins}m</div>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => onTransfer(child)} style={{ flex: 1, padding: '8px', borderRadius: 8, background: C.green, color: C.bg, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, fontFamily: 'inherit' }}>Transfer to Class →</button>
+              {warn && <button onClick={() => onEscalate(child)} style={{ padding: '8px 12px', borderRadius: 8, background: urgent ? C.red : C.amber, color: C.bg, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, fontFamily: 'inherit' }}>{urgent ? '🚨 CPS' : '📞 Call'}</button>}
+            </div>
+            {urgent && <div style={{ marginTop: 8, fontSize: 11, color: C.red, fontWeight: 600 }}>⚠️ 45+ min — Contact all emergency persons. Prepare CPS notification.</div>}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function LateCarePanelView({ dutyChildren, onParentArrived, onEscalate, C }: {
+  dutyChildren: DutyChild[]; onParentArrived: (c: DutyChild) => void
+  onEscalate: (c: DutyChild) => void; C: Record<string,string>
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: C.muted, textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>Late Care — {dutyChildren.length} children</div>
+        {dutyChildren.length > 0 && <div style={{ fontSize: 11, color: C.amber, fontWeight: 600 }}>🔒 Cannot close shift</div>}
+      </div>
+      {dutyChildren.length > 0 && (
+        <div style={{ background: 'rgba(255,183,64,0.08)', border: `1px solid ${C.amber}`, borderRadius: 10, padding: '10px 14px', fontSize: 12, color: C.amber, marginBottom: 4 }}>
+          ⚠️ Shift cannot be closed while children are present.
+        </div>
+      )}
+      {dutyChildren.length === 0
+        ? <div style={{ textAlign: 'center' as const, padding: '32px 0', color: C.green, fontSize: 13, fontWeight: 700 }}>✓ All children picked up — shift can close</div>
+        : dutyChildren.map(child => {
+          const mins = child.minutes_waiting
+          const urgent = mins >= 45; const warn = mins >= 15
+          return (
+            <div key={child.session_id} style={{ background: urgent ? 'rgba(255,77,106,0.08)' : warn ? 'rgba(255,183,64,0.08)' : C.surface, border: `1.5px solid ${urgent ? C.red : warn ? C.amber : C.border}`, borderRadius: 12, padding: '14px 16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>{child.child_name}</div>
+                  <div style={{ fontSize: 12, color: C.muted }}>from {child.classroom_name}</div>
+                </div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: urgent ? C.red : warn ? C.amber : C.text }}>{mins}m</div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 4, marginBottom: 8 }}>
+                {[{t:15,l:'Call parent'},{t:30,l:'Director'},{t:45,l:'Emergency'},{t:60,l:'CPS'}].map(s => (
+                  <div key={s.t} style={{ textAlign: 'center' as const, padding: '4px 2px', borderRadius: 6, background: mins>=s.t ? (mins>=45?C.red:C.amber) : C.surface2, fontSize: 9, color: mins>=s.t ? C.bg : C.muted, fontWeight: mins>=s.t ? 700 : 400 }}>{s.t}m {s.l.split(' ')[0]}</div>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => onParentArrived(child)} style={{ flex: 1, padding: '8px', borderRadius: 8, background: C.green, color: C.bg, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, fontFamily: 'inherit' }}>✓ Parent Arrived</button>
+                <button onClick={() => onEscalate(child)} style={{ padding: '8px 12px', borderRadius: 8, background: urgent?C.red:C.amber, color: C.bg, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, fontFamily: 'inherit' }}>{mins>=60?'🚨 CPS':mins>=45?'🚨 911':mins>=30?'📋 Dir':'📞 Call'}</button>
+              </div>
+            </div>
+          )
+        })
+      }
+    </div>
+  )
+}
+
+function TransportPanelView({ runs, onConfirmRun, C }: {
+  runs: TransportRun[]; onConfirmRun: (id: string) => void; C: Record<string,string>
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: C.muted, textTransform: 'uppercase' as const, letterSpacing: '0.06em', marginBottom: 4 }}>
+        Transportation · {new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}
+      </div>
+      {runs.length === 0
+        ? <div style={{ textAlign: 'center' as const, padding: '32px 0', color: C.muted, fontSize: 13 }}>No transport runs today</div>
+        : runs.map(run => (
+          <div key={run.id} style={{ background: C.surface, border: `1.5px solid ${C.border}`, borderRadius: 12, padding: '14px 16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>{run.run_type==='morning_to_school'?'🚌 Morning → School':'🚌 Afternoon ← School'}</div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{run.school_name} · {run.driver_name} · {run.children_count} children</div>
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 20, background: run.status==='completed'?C.greenDim:C.surface2, color: run.status==='completed'?C.green:C.muted, textTransform: 'uppercase' as const }}>{run.status}</div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 10 }}>
+              {['1. Center → Driver','2. Driver → School','3. School → Driver','4. Driver → Center'].map((p,i) => (
+                <div key={i} style={{ fontSize: 11, color: i < (run.status==='completed'?4:run.status==='arrived'?2:1) ? C.green : C.muted }}>
+                  {i < (run.status==='completed'?4:run.status==='arrived'?2:1) ? '✓' : '○'} {p}
+                </div>
+              ))}
+            </div>
+            {run.status==='arrived' && (
+              <button onClick={() => onConfirmRun(run.id)} style={{ width: '100%', padding: '10px', borderRadius: 8, background: C.green, color: C.bg, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>✓ Confirm All Children Returned</button>
+            )}
+          </div>
+        ))
+      }
+      <div style={{ padding: '12px', background: C.surface, borderRadius: 10, fontSize: 11, color: C.muted, lineHeight: 1.6 }}>
+        Per Ohio law, responsibility ends at the school's designated drop-off point. GPS timestamp + driver checklist = legal proof of delivery.
+      </div>
+    </div>
+  )
+}
+
 export default function SafePassTeacherPage() {
   const { currentCenter } = useOrg()
   const { user, roles } = useAuth()
@@ -72,6 +206,9 @@ export default function SafePassTeacherPage() {
   const [confirmed, setConfirmed] = useState<Session[]>([])
   const [now, setNow] = useState(Date.now())
   const [toast, setToast] = useState<{ text: string; amber?: boolean } | null>(null)
+  const [mode, setMode] = useState<DutyMode>('regular')
+  const [dutyChildren, setDutyChildren] = useState<DutyChild[]>([])
+  const [transportRuns, setTransportRuns] = useState<TransportRun[]>([])
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const className = classrooms.find(c => c.id === classId)?.name ?? '—'
@@ -226,7 +363,22 @@ export default function SafePassTeacherPage() {
       </header>
 
       {/* MAIN */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', minHeight: 'calc(100vh - 77px)' }}>
+      {/* Mode switcher */}
+      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: '8px 20px', display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+        {(['regular','early_care','late_care','transport'] as const).map(m => (
+          <button key={m} onClick={() => setMode(m)}
+            style={{ padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: 'none', background: mode===m?C.green:C.surface2, color: mode===m?C.bg:C.muted }}>
+            {m==='regular'?'Regular':m==='early_care'?'☀️ Early Care':m==='late_care'?'🌙 Late Care':'🚌 Transport'}
+          </button>
+        ))}
+        {dutyChildren.length>0 && <span style={{ marginLeft:'auto', fontSize:12, color:C.amber, fontWeight:700, display:'flex', alignItems:'center' }}>⚠️ {dutyChildren.length} in duty care</span>}
+      </div>
+
+      {mode==='early_care' && <div style={{ padding: '20px', maxWidth: 800, margin: '0 auto' }}><EarlyCarePanelView dutyChildren={dutyChildren} onTransfer={c=>flashToast(c.child_name+' transferred')} onEscalate={c=>flashToast('Escalating: '+c.child_name,true)} C={C}/></div>}
+      {mode==='late_care' && <div style={{ padding: '20px', maxWidth: 800, margin: '0 auto' }}><LateCarePanelView dutyChildren={dutyChildren} onParentArrived={c=>flashToast(c.child_name+' picked up')} onEscalate={c=>flashToast('Escalating: '+c.child_name,true)} C={C}/></div>}
+      {mode==='transport' && <div style={{ padding: '20px', maxWidth: 800, margin: '0 auto' }}><TransportPanelView runs={transportRuns} onConfirmRun={async id=>{await supabase.schema('menumaker').from('safepass_transport_runs').update({status:'completed'}).eq('id',id);flashToast('Run completed ✓')}} C={C}/></div>}
+
+      {mode==='regular' && <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', minHeight: 'calc(100vh - 77px)' }}>
 
         {/* QUEUE PANEL */}
         <div style={{ padding: '24px 28px', overflowY: 'auto', borderRight: `1px solid ${C.border}` }}>
@@ -341,6 +493,8 @@ export default function SafePassTeacherPage() {
       </div>
 
       {/* TOAST */}
+      </div>}
+
       {toast && (
         <div style={{ position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)', background: toast.amber ? C.amber : C.green, color: C.bg, fontSize: 15, fontWeight: 700, padding: '14px 28px', borderRadius: 100, zIndex: 999, whiteSpace: 'nowrap', boxShadow: '0 8px 30px rgba(0,0,0,0.4)' }}>
           {toast.text}

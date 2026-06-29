@@ -1336,7 +1336,8 @@ function CapacitySettings() {
       <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
         {filtered.map(room => {
           const ohioMax = OHIO_RATIOS[room.age_group_primary]?.max ?? 12
-          const overLimit = room.capacity_internal > ohioMax
+          const ohioGroupMax = (OHIO_RATIOS[room.age_group_primary]?.groupMax ?? 12) * room.teachers_count
+          const overLimit = room.capacity_internal > ohioGroupMax
           return (
             <div key={room.id} style={{
               background: '#fff', borderRadius: 12,
@@ -1379,7 +1380,7 @@ function CapacitySettings() {
                   onChange={e => upd(room.id, 'capacity_internal', parseInt(e.target.value) || 1)}
                   style={{ ...inp, borderColor: overLimit ? '#fca5a5' : '#e5e7eb' }}
                 />
-                {overLimit && <div style={{ fontSize: 9, color: '#dc2626', marginTop: 2 }}>Exceeds Ohio!</div>}
+                {overLimit && <div style={{ fontSize: 9, color: '#dc2626', marginTop: 2 }}>Exceeds Ohio group max ({ohioGroupMax})!</div>}
               </div>
 
               {/* Room max */}

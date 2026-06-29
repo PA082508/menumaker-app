@@ -395,6 +395,14 @@ export default function SafePassTeacherPage() {
         </div>
       )}
 
+      {/* Help link */}
+      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: '6px 20px', display: 'flex', justifyContent: 'flex-end' }}>
+        <a href="/safepass/help" target="_blank"
+          style={{ fontSize: 12, color: C.blue, textDecoration: 'none', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+          ❓ Teacher Guide & Help
+        </a>
+      </div>
+
       {/* Mode switcher */}
       <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: '8px 20px', display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
         {(['regular','early_care','late_care','transport'] as const).map(m => (

@@ -1222,7 +1222,7 @@ const OHIO_RATIOS: Record<string, { label: string; max: number; groupMax: number
 type ClassroomCapacity = {
   id: string; name: string; center_name: string
   age_group_primary: string; capacity_ohio: number
-  capacity_internal: number; capacity_room_max: number
+  capacity_internal: number
   max_younger_children: number; is_early_care: boolean; is_late_care: boolean
   teachers_count: number
   room_sqft: number
@@ -1239,7 +1239,7 @@ function CapacitySettings() {
     if (!org?.id) return
     supabase.schema('menumaker')
       .from('classrooms')
-      .select('id,name,age_group_primary,capacity_ohio,capacity_internal,capacity_room_max,max_younger_children,is_early_care,is_late_care,centers!inner(name)')
+      .select('id,name,age_label,age_group_primary,capacity_ohio,capacity_internal,max_younger_children,is_early_care,is_late_care,room_sqft,teachers_count,centers!inner(name)')
       .eq('org_id', org.id)
       .eq('is_active', true)
       .not('class_key', 'ilike', '%Staff%')
@@ -1254,7 +1254,6 @@ function CapacitySettings() {
     await supabase.schema('menumaker').from('classrooms').update({
       age_group_primary:    room.age_group_primary,
       capacity_internal:    room.capacity_internal,
-      capacity_room_max:    room.capacity_room_max,
       max_younger_children: room.max_younger_children,
       is_early_care:        room.is_early_care,
       is_late_care:         room.is_late_care,
@@ -1295,7 +1294,7 @@ function CapacitySettings() {
       {/* Info banner */}
       <div style={{ background: '#f0f7f4', border: '1px solid #d1fae5', borderRadius: 10, padding: '14px 18px', marginBottom: 20, fontSize: 13, color: '#374151', lineHeight: 1.6 }}>
         <strong style={{ color: '#1a5c3f' }}>Ohio State Minimums (OAC 5180:2-12-08)</strong> are shown for reference only — they cannot be changed.<br/>
-        Set your <strong>Internal Limit</strong> (your own standard, usually stricter) and <strong>Room Max</strong> (physical capacity by square footage).<br/>
+        Set your <strong>Actual Limit</strong> — your own standard, based on your program requirements.<br/>
         <span style={{ color: '#6b7280', fontSize: 12 }}>
           Early Care hours use Ohio minimums automatically. Mixed age rule: up to N younger children allowed before ratio changes.
         </span>

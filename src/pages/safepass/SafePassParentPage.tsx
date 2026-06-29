@@ -93,8 +93,8 @@ export default function SafePassParentPage() {
         {[
           { icon: '📱', step: 'Step 1', title: 'You tap Drop Off or Pick Up', desc: 'Open this app when you arrive. Tap the button for your child.' },
           { icon: '👩‍🏫', step: 'Step 2', title: 'Teacher physically receives the child', desc: 'The teacher goes to you, takes your child into their hands, then taps Accept on their iPad.' },
-          { icon: '✅', step: 'Step 3', title: 'You receive confirmation', desc: 'Your phone shows a green ✅ with the teacher's name and exact time. Only then you may leave.' },
-          { icon: '⚠️', step: 'Important', title: 'Do not leave until you see ✅', desc: 'Your tap alone is not confirmation. The teacher's tap of Accept is the legal timestamp of transfer.' },
+          { icon: '✅', step: 'Step 3', title: 'You receive confirmation', desc: "Your phone shows a green ✅ with the teacher's name and exact time. Only then you may leave." },
+          { icon: '⚠️', step: 'Important', title: 'Do not leave until you see ✅', desc: "Your tap alone is not confirmation. The teacher's tap of Accept is the legal timestamp of transfer." },
         ].map((item, i) => (
           <div key={i} style={{ display: 'flex', gap: 14, marginBottom: 16, background: item.icon === '⚠️' ? 'rgba(255,183,64,0.08)' : C.surface, borderRadius: 12, padding: '14px 16px', border: `1px solid ${item.icon === '⚠️' ? C.amber : C.border}` }}>
             <div style={{ fontSize: 28, flexShrink: 0 }}>{item.icon}</div>

@@ -12,7 +12,7 @@ export default function SafePassHelpPage(){
       <div style={{width:36,height:36,borderRadius:10,background:C.green,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>🔒</div>
       <div><div style={{fontWeight:800,fontSize:16}}>SafePass — Teacher Guide</div><div style={{fontSize:11,color:C.muted}}>Play Academy Wickliffe · Step-by-step instructions</div></div>
       <button onClick={()=>window.history.back()} style={{padding:'8px 16px',borderRadius:8,background:'transparent',color:C.muted,border:`1px solid ${C.border}`,cursor:'pointer',fontSize:12,fontFamily:'inherit'}}>← Back</button>
-      <button onClick={()=>window.print()} style={{marginLeft:'auto',padding:'8px 16px',borderRadius:8,background:C.surface2,color:C.muted,border:`1px solid ${C.border}`,cursor:'pointer',fontSize:12,fontFamily:'inherit'}}>🖨 Print</button>
+      <a href='/safepass/teacher' style={{padding:'8px 14px',borderRadius:8,background:'transparent',color:'#7b82a6',border:'1px solid #2e3350',cursor:'pointer',fontSize:12,fontFamily:'inherit',textDecoration:'none',marginLeft:'auto',marginRight:8}}>← Back</a><button onClick={()=>window.print()} style={{marginLeft:'auto',padding:'8px 16px',borderRadius:8,background:C.surface2,color:C.muted,border:`1px solid ${C.border}`,cursor:'pointer',fontSize:12,fontFamily:'inherit'}}>🖨 Print</button>
     </div>
     <div style={{display:'flex',gap:6,flexWrap:'wrap' as const,padding:'12px 20px',background:C.surface,borderBottom:`1px solid ${C.border}`}}>
       {nb('overview','📋 Overview')}{nb('regular','✅ Regular Day')}{nb('early','☀️ Early Care')}{nb('late','🌙 Late Care')}{nb('transport','🚌 Transport')}{nb('rules','⚖️ Rules')}

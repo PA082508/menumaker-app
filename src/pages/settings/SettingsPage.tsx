@@ -1200,9 +1200,228 @@ function AssignTab() {
   )
 }
 
+
+// ─── Capacity & Ratio Settings ────────────────────────────────────────────────
+
+const OHIO_RATIOS: Record<string, { label: string; max: number }> = {
+  infant:     { label: 'Infant (<12m)',      max: 5  },
+  toddler:    { label: 'Toddler (12-24m)',   max: 6  },
+  two_year:   { label: '2 Year Old',          max: 8  },
+  preschool:  { label: 'Preschool (3-5yr)',  max: 12 },
+  school_age: { label: 'School Age (5+yr)',  max: 18 },
+}
+
+type ClassroomCapacity = {
+  id: string; name: string; center_name: string
+  age_group_primary: string; capacity_ohio: number
+  capacity_internal: number; capacity_room_max: number
+  max_younger_children: number; is_early_care: boolean; is_late_care: boolean
+}
+
+function CapacitySettings() {
+  const { org } = useOrg()
+  const [rooms, setRooms] = useState<ClassroomCapacity[]>([])
+  const [saving, setSaving] = useState<string | null>(null)
+  const [saved, setSaved] = useState<string | null>(null)
+  const [filter, setFilter] = useState<string>('all')
+
+  useEffect(() => {
+    if (!org?.id) return
+    supabase.schema('menumaker')
+      .from('classrooms')
+      .select('id,name,age_group_primary,capacity_ohio,capacity_internal,capacity_room_max,max_younger_children,is_early_care,is_late_care,centers!inner(name)')
+      .eq('org_id', org.id)
+      .eq('is_active', true)
+      .not('class_key', 'ilike', '%Staff%')
+      .order('name')
+      .then(({ data }) => {
+        if (data) setRooms(data.map((r: any) => ({ ...r, center_name: r.centers?.name ?? '' })))
+      })
+  }, [org?.id])
+
+  async function save(room: ClassroomCapacity) {
+    setSaving(room.id)
+    await supabase.schema('menumaker').from('classrooms').update({
+      age_group_primary:    room.age_group_primary,
+      capacity_internal:    room.capacity_internal,
+      capacity_room_max:    room.capacity_room_max,
+      max_younger_children: room.max_younger_children,
+      is_early_care:        room.is_early_care,
+      is_late_care:         room.is_late_care,
+    }).eq('id', room.id)
+    setSaving(null); setSaved(room.id)
+    setTimeout(() => setSaved(null), 2000)
+  }
+
+  function upd(id: string, field: keyof ClassroomCapacity, val: any) {
+    setRooms(prev => prev.map(r => r.id === id ? { ...r, [field]: val } : r))
+  }
+
+  const centers = ['all', ...Array.from(new Set(rooms.map(r => r.center_name)))]
+  const filtered = filter === 'all' ? rooms : rooms.filter(r => r.center_name === filter)
+
+  const inp: React.CSSProperties = {
+    width: 68, padding: '6px 8px', border: '1.5px solid #e5e7eb',
+    borderRadius: 7, fontSize: 13, fontFamily: 'inherit', textAlign: 'center' as const,
+  }
+  const sel: React.CSSProperties = {
+    padding: '6px 8px', border: '1.5px solid #e5e7eb',
+    borderRadius: 7, fontSize: 12, fontFamily: 'inherit',
+  }
+
+  return (
+    <div>
+      {/* Info banner */}
+      <div style={{ background: '#f0f7f4', border: '1px solid #d1fae5', borderRadius: 10, padding: '14px 18px', marginBottom: 20, fontSize: 13, color: '#374151', lineHeight: 1.6 }}>
+        <strong style={{ color: '#1a5c3f' }}>Ohio State Minimums (OAC 5180:2-12-08)</strong> are shown for reference only — they cannot be changed.<br/>
+        Set your <strong>Internal Limit</strong> (your own standard, usually stricter) and <strong>Room Max</strong> (physical capacity by square footage).<br/>
+        <span style={{ color: '#6b7280', fontSize: 12 }}>
+          Early Care hours use Ohio minimums automatically. Mixed age rule: up to N younger children allowed before ratio changes.
+        </span>
+      </div>
+
+      {/* Ohio reference */}
+      <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb', padding: '14px 18px', marginBottom: 20 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#1a5c3f', marginBottom: 10, textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>
+          Ohio State Ratio Reference (OAC 5180:2-12-08) — read only
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
+          {Object.entries(OHIO_RATIOS).map(([key, val]) => (
+            <div key={key} style={{ background: '#f8faf8', borderRadius: 8, padding: '8px 14px', fontSize: 12, textAlign: 'center' as const, border: '1px solid #e5e7eb' }}>
+              <div style={{ fontWeight: 700, color: '#0a3320', fontSize: 14 }}>1 : {val.max}</div>
+              <div style={{ color: '#6b7280', marginTop: 2, fontSize: 11 }}>{val.label}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 10, lineHeight: 1.5 }}>
+          Mixed age: ratio set by youngest child present. Exception: up to the configured number of younger children does not trigger ratio change. Infant (&lt;12m) always triggers 1:5 ratio immediately regardless of count.
+        </div>
+      </div>
+
+      {/* Center filter */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' as const }}>
+        {centers.map(cn => (
+          <button key={cn} onClick={() => setFilter(cn)} style={{
+            padding: '5px 14px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
+            fontFamily: 'inherit', border: 'none',
+            background: filter === cn ? '#0f4c35' : '#f3f4f6',
+            color: filter === cn ? '#fff' : '#374151',
+            fontWeight: filter === cn ? 600 : 400,
+          }}>{cn === 'all' ? 'All Centers' : cn}</button>
+        ))}
+      </div>
+
+      {/* Rooms */}
+      <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
+        {filtered.map(room => {
+          const ohioMax = OHIO_RATIOS[room.age_group_primary]?.max ?? 12
+          const overLimit = room.capacity_internal > ohioMax
+          return (
+            <div key={room.id} style={{
+              background: '#fff', borderRadius: 12,
+              border: `1.5px solid ${overLimit ? '#fca5a5' : '#e5e7eb'}`,
+              padding: '14px 18px', display: 'flex', gap: 14,
+              alignItems: 'center', flexWrap: 'wrap' as const,
+            }}>
+              {/* Name */}
+              <div style={{ minWidth: 150, flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: '#0a3320' }}>{room.name}</div>
+                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>{room.center_name}</div>
+                <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap' as const }}>
+                  {room.is_early_care && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10, background: '#dbeafe', color: '#1e40af' }}>EARLY CARE</span>}
+                  {room.is_late_care && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10, background: '#fce7f3', color: '#9d174d' }}>LATE CARE</span>}
+                </div>
+              </div>
+
+              {/* Age group */}
+              <div style={{ textAlign: 'center' as const }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', marginBottom: 4, textTransform: 'uppercase' as const }}>Age Group</div>
+                <select value={room.age_group_primary} onChange={e => upd(room.id, 'age_group_primary', e.target.value)} style={sel}>
+                  {Object.entries(OHIO_RATIOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                </select>
+              </div>
+
+              {/* Ohio — read only */}
+              <div style={{ textAlign: 'center' as const }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', marginBottom: 4, textTransform: 'uppercase' as const }}>Ohio Min</div>
+                <div style={{ width: 68, padding: '7px 8px', background: '#f8faf8', borderRadius: 7, fontSize: 13, textAlign: 'center' as const, color: '#9ca3af', border: '1.5px solid #f0f0f0', fontWeight: 700 }}>
+                  1 : {ohioMax}
+                </div>
+                <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 2 }}>read-only</div>
+              </div>
+
+              {/* Internal */}
+              <div style={{ textAlign: 'center' as const }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: '#1a5c3f', marginBottom: 4, textTransform: 'uppercase' as const }}>Internal Max</div>
+                <input type="number" value={room.capacity_internal} min={1} max={30}
+                  onChange={e => upd(room.id, 'capacity_internal', parseInt(e.target.value) || 1)}
+                  style={{ ...inp, borderColor: overLimit ? '#fca5a5' : '#e5e7eb' }}
+                />
+                {overLimit && <div style={{ fontSize: 9, color: '#dc2626', marginTop: 2 }}>Exceeds Ohio!</div>}
+              </div>
+
+              {/* Room max */}
+              <div style={{ textAlign: 'center' as const }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', marginBottom: 4, textTransform: 'uppercase' as const }}>Room Max</div>
+                <input type="number" value={room.capacity_room_max} min={1}
+                  onChange={e => upd(room.id, 'capacity_room_max', parseInt(e.target.value) || 1)}
+                  style={inp}
+                />
+              </div>
+
+              {/* Max younger */}
+              <div style={{ textAlign: 'center' as const }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', marginBottom: 4, textTransform: 'uppercase' as const }}>Max Younger</div>
+                <input type="number" value={room.max_younger_children} min={0} max={5}
+                  onChange={e => upd(room.id, 'max_younger_children', parseInt(e.target.value) || 0)}
+                  style={inp}
+                />
+                <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 2 }}>before ratio↑</div>
+              </div>
+
+              {/* Toggles */}
+              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 6 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={room.is_early_care}
+                    onChange={e => upd(room.id, 'is_early_care', e.target.checked)}
+                    style={{ accentColor: '#1a5c3f' }}/>
+                  Early Care
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={room.is_late_care}
+                    onChange={e => upd(room.id, 'is_late_care', e.target.checked)}
+                    style={{ accentColor: '#1a5c3f' }}/>
+                  Late Care
+                </label>
+              </div>
+
+              {/* Save */}
+              <button onClick={() => save(room)} disabled={saving === room.id}
+                style={{
+                  padding: '8px 18px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                  background: saved === room.id ? '#059669' : '#0f4c35',
+                  color: '#fff', border: 'none',
+                  cursor: saving === room.id ? 'wait' : 'pointer',
+                  fontFamily: 'inherit', minWidth: 80, transition: 'background 0.2s',
+                }}>
+                {saving === room.id ? '...' : saved === room.id ? '✓ Saved' : 'Save'}
+              </button>
+            </div>
+          )
+        })}
+        {filtered.length === 0 && (
+          <div style={{ textAlign: 'center' as const, padding: 40, color: '#9ca3af', background: '#f9fafb', borderRadius: 12 }}>
+            No classrooms found
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Settings landing cards ───────────────────────────────────────────────────
 
-type SectionKey = Tab | 'center_info' | 'cacfp_rates' | 'delivery_settings'
+type SectionKey = Tab | 'center_info' | 'cacfp_rates' | 'delivery_settings' | 'capacity'
 
 interface CardDef {
   key: SectionKey
@@ -1309,6 +1528,7 @@ export default function SettingsPage() {
         ...(canManageAccess ? [{ key: 'center_info', icon: '🏢', title: 'Center Info', desc: 'Name, address, licensing & contacts' } as CardDef] : []),
         { key: 'cacfp_rates', icon: '💵', title: 'CACFP Rates', desc: 'Reimbursement rates', placeholder: true },
         { key: 'delivery_settings', icon: '🚚', title: 'Delivery Settings', desc: 'Dispatch & delivery options', placeholder: true },
+        ...(canManageAccess ? [{ key: 'capacity', icon: '📊', title: 'Capacity & Ratio', desc: 'Classroom limits, age groups, Ohio rules & internal standards' } as CardDef] : []),
       ],
     },
   ] as CardGroup[]).filter(g => g.cards.length > 0)
@@ -1327,6 +1547,7 @@ export default function SettingsPage() {
       case 'permissions': return isOwner ? <PermissionsSettings /> : null
       case 'schedule':    return canSchedule ? <ScheduleHolidaysSettings /> : null
       case 'center_info': return canManageAccess ? <CenterInfoSettings /> : null
+      case 'capacity':    return canManageAccess ? <CapacitySettings /> : null
       default:            return <ComingSoon title={activeCard?.title ?? 'Coming soon'} />
     }
   }

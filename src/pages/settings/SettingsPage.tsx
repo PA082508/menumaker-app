@@ -1203,12 +1203,17 @@ function AssignTab() {
 
 // ─── Capacity & Ratio Settings ────────────────────────────────────────────────
 
-const OHIO_RATIOS: Record<string, { label: string; max: number }> = {
-  infant:     { label: 'Infant (<12m)',      max: 5  },
-  toddler:    { label: 'Toddler (12-24m)',   max: 6  },
-  two_year:   { label: '2 Year Old',          max: 8  },
-  preschool:  { label: 'Preschool (3-5yr)',  max: 12 },
-  school_age: { label: 'School Age (5+yr)',  max: 18 },
+// Ohio Appendix A to Rule 5180:2-12-18 (effective 10/29/2021)
+// School-age: up to 15 years. Children 15+ cannot be in licensed childcare.
+const OHIO_RATIOS: Record<string, { label: string; max: number; groupMax: number; minMonths: number; maxMonths: number }> = {
+  young_infant:      { label: 'Young Infant (0–<12m)',          max: 5,  groupMax: 12, minMonths: 0,   maxMonths: 11  },
+  older_infant:      { label: 'Older Infant (12–<18m)',         max: 6,  groupMax: 12, minMonths: 12,  maxMonths: 17  },
+  young_toddler:     { label: 'Young Toddler (18m–<2.5yr)',     max: 7,  groupMax: 14, minMonths: 18,  maxMonths: 29  },
+  older_toddler:     { label: 'Older Toddler (2.5–<3yr)',       max: 8,  groupMax: 16, minMonths: 30,  maxMonths: 35  },
+  young_preschool:   { label: 'Young Preschool (3–<4yr)',       max: 12, groupMax: 24, minMonths: 36,  maxMonths: 47  },
+  older_preschool:   { label: 'Older Preschool (4yr–pre-K)',    max: 14, groupMax: 28, minMonths: 48,  maxMonths: 71  },
+  young_schoolage:   { label: 'Young School-Age (K–<11yr)',     max: 18, groupMax: 36, minMonths: 60,  maxMonths: 131 },
+  older_schoolage:   { label: 'Older School-Age (11–<15yr)',    max: 20, groupMax: 40, minMonths: 132, maxMonths: 179 },
 }
 
 type ClassroomCapacity = {

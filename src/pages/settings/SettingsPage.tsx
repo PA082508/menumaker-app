@@ -1224,7 +1224,7 @@ type ClassroomCapacity = {
   age_group_primary: string; capacity_ohio: number
   capacity_internal: number
   age_label: string
-  max_younger_children: number; is_early_care: boolean; is_late_care: boolean
+  is_early_care: boolean; is_late_care: boolean
   teachers_count: number
   room_sqft: number
 }
@@ -1244,7 +1244,7 @@ function CapacitySettings() {
     if (!org?.id) return
     supabase.schema('menumaker')
       .from('classrooms')
-      .select('id,name,age_label,age_group_primary,capacity_ohio,capacity_internal,max_younger_children,is_early_care,is_late_care,room_sqft,teachers_count,centers!inner(name)')
+      .select('id,name,age_label,age_group_primary,capacity_ohio,capacity_internal,is_early_care,is_late_care,room_sqft,teachers_count,centers!inner(name)')
       .eq('org_id', org.id)
       .eq('is_active', true)
       .not('class_key', 'ilike', '%Staff%')
@@ -1259,7 +1259,6 @@ function CapacitySettings() {
     await supabase.schema('menumaker').from('classrooms').update({
       age_group_primary:    room.age_group_primary,
       capacity_internal:    room.capacity_internal,
-      max_younger_children: room.max_younger_children,
       is_early_care:        room.is_early_care,
       is_late_care:         room.is_late_care,
       teachers_count:       room.teachers_count,
@@ -1279,8 +1278,8 @@ function CapacitySettings() {
   async function addClass() {
     if (!newRoom.name.trim() || !newRoom.center_id) return
     const { data } = await supabase.schema('menumaker').from('classrooms')
-      .insert({ org_id: org?.id, center_id: newRoom.center_id, name: newRoom.name.trim(), class_key: newRoom.name.trim().toLowerCase().replace(/\s+/g,'_'), age_group_primary: 'preschool', capacity_ohio: 12, capacity_internal: 10, capacity_room_max: 15, max_younger_children: 2, is_early_care: false, is_late_care: false, teachers_count: 1, room_sqft: 0, age_label: '', is_active: true, sort_order: 99 })
-      .select('id,name,age_label,age_group_primary,capacity_ohio,capacity_internal,max_younger_children,is_early_care,is_late_care,room_sqft,teachers_count,centers!inner(name)')
+      .insert({ org_id: org?.id, center_id: newRoom.center_id, name: newRoom.name.trim(), class_key: newRoom.name.trim().toLowerCase().replace(/\s+/g,'_'), age_group_primary: 'preschool', capacity_ohio: 12, capacity_internal: 10, capacity_room_max: 15, is_early_care: false, is_late_care: false, teachers_count: 1, room_sqft: 0, age_label: '', is_active: true, sort_order: 99 })
+      .select('id,name,age_label,age_group_primary,capacity_ohio,capacity_internal,is_early_care,is_late_care,room_sqft,teachers_count,centers!inner(name)')
       .single()
     if (data) {
       setRooms(prev => [...prev, { ...data, center_name: (data as any).centers?.name ?? '', teachers_count: 1, room_sqft: 0, age_label: '' }])
@@ -1339,7 +1338,7 @@ function CapacitySettings() {
           ))}
         </div>
         <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 10, lineHeight: 1.5 }}>
-          Mixed age: ratio set by youngest child present. Exception: up to the configured number of younger children does not trigger ratio change. Infant (&lt;12m) always triggers 1:5 ratio immediately regardless of count.
+          Mixed age: ratio always set by youngest child. One exception: one child under 3yr in a 3-5yr group does not change the ratio. Infant (&lt;12m) — always 1:5, no exceptions.
         </div>
       </div>
 

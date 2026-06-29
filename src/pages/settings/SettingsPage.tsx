@@ -1460,8 +1460,19 @@ function CapacitySettings() {
                       </div>
                       {limitedBySpace && (
                         <div style={{ fontSize: 10, color: '#92400e', marginTop: 4, fontWeight: 600 }}>
-                          To add a {room.teachers_count + 1}rd teacher you need ≥ {Math.ceil(ratioMax * 2 / room.teachers_count * 35)} sq ft
+                          To add a {room.teachers_count + 1}{room.teachers_count === 1 ? 'nd' : 'rd'} teacher you need ≥ {Math.ceil(sqftMax * (room.teachers_count + 1) / room.teachers_count * 35)} sq ft
                         </div>
+                      )}
+                      {/* Click to accept effective max into Internal Max */}
+                      {room.capacity_internal !== effectiveMax && (
+                        <button
+                          onClick={() => upd(room.id, 'capacity_internal', effectiveMax)}
+                          style={{ marginTop: 8, width: '100%', padding: '6px 10px', borderRadius: 7, border: `1.5px solid ${limitedBySpace ? '#f59e0b' : '#1a5c3f'}`, background: limitedBySpace ? '#fffbeb' : '#f0f7f4', color: limitedBySpace ? '#92400e' : '#1a5c3f', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                          ✓ Set Internal Max to {effectiveMax}
+                        </button>
+                      )}
+                      {room.capacity_internal === effectiveMax && (
+                        <div style={{ marginTop: 6, fontSize: 10, color: '#059669', fontWeight: 600 }}>✓ Internal Max matches limit</div>
                       )}
                     </div>
                   )

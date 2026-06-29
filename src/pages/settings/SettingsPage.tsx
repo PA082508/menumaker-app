@@ -1225,6 +1225,7 @@ type ClassroomCapacity = {
   capacity_internal: number; capacity_room_max: number
   max_younger_children: number; is_early_care: boolean; is_late_care: boolean
   teachers_count: number
+  room_sqft: number
 }
 
 function CapacitySettings() {
@@ -1244,7 +1245,7 @@ function CapacitySettings() {
       .not('class_key', 'ilike', '%Staff%')
       .order('name')
       .then(({ data }) => {
-        if (data) setRooms(data.map((r: any) => ({ ...r, center_name: r.centers?.name ?? '', teachers_count: r.teachers_count ?? 1 })))
+        if (data) setRooms(data.map((r: any) => ({ ...r, center_name: r.centers?.name ?? '', teachers_count: r.teachers_count ?? 1, room_sqft: r.room_sqft ?? 0 })))
       })
   }, [org?.id])
 
@@ -1258,6 +1259,7 @@ function CapacitySettings() {
       is_early_care:        room.is_early_care,
       is_late_care:         room.is_late_care,
       teachers_count:       room.teachers_count,
+      room_sqft:            room.room_sqft,
     }).eq('id', room.id)
     setSaving(null); setSaved(room.id)
     setTimeout(() => setSaved(null), 2000)
@@ -1392,26 +1394,66 @@ function CapacitySettings() {
                 <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 2 }}>before ratio↑</div>
               </div>
 
-              {/* Teachers count + capacity result */}
-              <div style={{ textAlign: 'center' as const }}>
-                <div style={{ fontSize: 10, fontWeight: 600, color: '#2d5a45', marginBottom: 4, textTransform: 'uppercase' as const }}>Teachers on shift</div>
-                <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
-                  {[1,2,3].map(n => (
-                    <button key={n} onClick={() => upd(room.id, 'teachers_count', n)}
-                      style={{ width: 32, height: 32, borderRadius: 8, border: `2px solid ${room.teachers_count === n ? '#1a5c3f' : '#e5e7eb'}`, background: room.teachers_count === n ? '#1a5c3f' : '#fff', color: room.teachers_count === n ? '#fff' : '#374151', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>
-                      {n}
-                    </button>
-                  ))}
+              {/* Teachers + Room sqft + Effective capacity */}
+              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10, minWidth: 200 }}>
+
+                {/* Teachers */}
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: '#2d5a45', marginBottom: 4, textTransform: 'uppercase' as const }}>Teachers on Shift</div>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {[1,2,3].map(n => (
+                      <button key={n} onClick={() => upd(room.id, 'teachers_count', n)}
+                        style={{ width: 34, height: 34, borderRadius: 8, border: `2px solid ${room.teachers_count === n ? '#1a5c3f' : '#e5e7eb'}`, background: room.teachers_count === n ? '#1a5c3f' : '#fff', color: room.teachers_count === n ? '#fff' : '#374151', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        {n}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div style={{ marginTop: 6, background: '#f0f7f4', borderRadius: 6, padding: '4px 8px', fontSize: 11 }}>
-                  <span style={{ color: '#6b7280' }}>Ohio max: </span>
-                  <span style={{ fontWeight: 700, color: '#1a5c3f', fontSize: 13 }}>
-                    {(OHIO_RATIOS[room.age_group_primary]?.groupMax ?? 12) * room.teachers_count} children
-                  </span>
+
+                {/* Room sqft */}
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', marginBottom: 4, textTransform: 'uppercase' as const }}>Room Area (sq ft)</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <input type="number" value={room.room_sqft || ''} min={0} placeholder="e.g. 700"
+                      onChange={e => upd(room.id, 'room_sqft', parseInt(e.target.value) || 0)}
+                      style={{ ...inp, width: 90 }}
+                    />
+                    <span style={{ fontSize: 11, color: '#9ca3af' }}>ft²</span>
+                  </div>
+                  {room.room_sqft > 0 && (
+                    <div style={{ fontSize: 10, color: '#6b7280', marginTop: 2 }}>
+                      ÷ 35 = {Math.floor(room.room_sqft / 35)} children max
+                    </div>
+                  )}
                 </div>
-                <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 2 }}>
-                  {OHIO_RATIOS[room.age_group_primary]?.groupMax ?? 12} × {room.teachers_count} teacher{room.teachers_count > 1 ? 's' : ''}
-                </div>
+
+                {/* Effective capacity — the real limit */}
+                {(() => {
+                  const ratioMax = (OHIO_RATIOS[room.age_group_primary]?.groupMax ?? 12) * room.teachers_count
+                  const sqftMax = room.room_sqft > 0 ? Math.floor(room.room_sqft / 35) : ratioMax
+                  const effectiveMax = Math.min(ratioMax, sqftMax)
+                  const limitedBySpace = room.room_sqft > 0 && sqftMax < ratioMax
+                  return (
+                    <div style={{ background: limitedBySpace ? '#fef3c7' : '#f0f7f4', borderRadius: 8, padding: '8px 12px', border: `1.5px solid ${limitedBySpace ? '#fbbf24' : '#d1fae5'}` }}>
+                      <div style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' as const, marginBottom: 4 }}>
+                        {limitedBySpace ? '⚠️ Limited by Room Size' : '✓ Effective Capacity'}
+                      </div>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: limitedBySpace ? '#92400e' : '#1a5c3f' }}>
+                        {effectiveMax} children
+                      </div>
+                      <div style={{ fontSize: 10, color: '#6b7280', marginTop: 2 }}>
+                        {limitedBySpace
+                          ? `Room: ${sqftMax} · Ohio ratio: ${ratioMax} → room wins`
+                          : `Ohio: ${ratioMax} · Room: ${room.room_sqft > 0 ? sqftMax : '—'}`}
+                      </div>
+                      {limitedBySpace && (
+                        <div style={{ fontSize: 10, color: '#92400e', marginTop: 4, fontWeight: 600 }}>
+                          To add a {room.teachers_count + 1}rd teacher you need ≥ {Math.ceil(ratioMax * 2 / room.teachers_count * 35)} sq ft
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
               </div>
 
               {/* Toggles */}

@@ -1262,8 +1262,10 @@ function CapacitySettings() {
     setRooms(prev => prev.map(r => r.id === id ? { ...r, [field]: val } : r))
   }
 
-  const centers = ['all', ...Array.from(new Set(rooms.map(r => r.center_name)))]
-  const filtered = filter === 'all' ? rooms : rooms.filter(r => r.center_name === filter)
+  const AGE_ORDER = ['young_infant','older_infant','young_toddler','older_toddler','young_preschool','older_preschool','young_schoolage','older_schoolage']
+  const centers = [...Array.from(new Set(rooms.map(r => r.center_name))).sort()]
+  const filtered = (filter === 'all' ? rooms : rooms.filter(r => r.center_name === filter))
+    .sort((a,b) => AGE_ORDER.indexOf(a.age_group_primary) - AGE_ORDER.indexOf(b.age_group_primary))
 
   const inp: React.CSSProperties = {
     width: 68, padding: '6px 8px', border: '1.5px solid #e5e7eb',
@@ -1303,16 +1305,16 @@ function CapacitySettings() {
         </div>
       </div>
 
-      {/* Center filter */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' as const }}>
-        {centers.map(cn => (
+      {/* Center tabs */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' as const }}>
+        {['all', ...centers].map(cn => (
           <button key={cn} onClick={() => setFilter(cn)} style={{
-            padding: '5px 14px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
-            fontFamily: 'inherit', border: 'none',
-            background: filter === cn ? '#0f4c35' : '#f3f4f6',
+            padding: '7px 16px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
+            fontFamily: 'inherit', border: `1.5px solid ${filter === cn ? '#0f4c35' : '#e5e7eb'}`,
+            background: filter === cn ? '#0f4c35' : '#fff',
             color: filter === cn ? '#fff' : '#374151',
             fontWeight: filter === cn ? 600 : 400,
-          }}>{cn === 'all' ? 'All Centers' : cn}</button>
+          }}>{cn === 'all' ? 'All Centers' : cn.replace('Play Academy ', '')}</button>
         ))}
       </div>
 

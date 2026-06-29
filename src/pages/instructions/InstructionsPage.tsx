@@ -9,8 +9,12 @@ const DOCS = [
   { id:'safepass-app', title:'SafePass — Parent App', description:'Open SafePass on your phone to drop off or pick up your child.', audience:'Parent', category:'SafePass', driveUrl:'https://menumaker-app.vercel.app/safepass/parent' },
   { id:'safepass-teacher', title:'SafePass — Teacher Quick Guide', description:'iPad guide: drop-off, pick-up, unknown person protocol.', audience:'Teacher', category:'SafePass', driveUrl:'https://drive.google.com/file/d/1XkL64gCrgtLj4e-8nLdG4FSD9S580l1i/view?usp=sharing' },
   { id:'safepass-concept', title:'SafePass — Concept Document v1.1', description:'Full concept: legal basis, chain of custody, transportation, school partnership.', audience:'Director', category:'SafePass', driveUrl:'https://drive.google.com/file/d/1Qtg9C47ulJEVwXEGKSku7vdu4KUnrp6G/view?usp=sharing' },
-  { id:'mealcount-teacher', title:'Meal Count — Teacher Guide', description:'How to record meals in ClickClaim.', audience:'Teacher', category:'Meal Count' },
+  { id:'mealcount-teacher', title:'Meal Count — Teacher Guide', description:'How to record meals in ClickClaim.', audience:'Teacher', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/meal-count/help' },
   { id:'receipts', title:'Receipt Upload Guide', description:'How to photograph and upload food purchase receipts.', audience:'All', category:'Purchases' },
+  { id:'safepass-app-parent', title:'SafePass — Parent App', description:'Drop-off and pick-up for Wickliffe families. Open on your phone.', audience:'Parent', category:'SafePass', driveUrl:'https://menumaker-app.vercel.app/safepass/parent' },
+  { id:'safepass-help-teacher', title:'SafePass — Teacher Guide (App)', description:'Step-by-step: Regular, Early Care, Late Care, Transport modes.', audience:'Teacher', category:'SafePass', driveUrl:'https://menumaker-app.vercel.app/safepass/help' },
+  { id:'mealcount-cook', title:'Meal Count — Cook Guide', description:'Kitchen View, weekly totals, CACFP export for cooks.', audience:'Teacher', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/meal-count/help' },
+  { id:'mealcount-director', title:'Meal Count — Director Guide', description:'Review counts, export site claim report, CACFP compliance.', audience:'Director', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/meal-count/help' },
 ]
 
 function SignModal({ onClose }: { onClose: ()=>void }) {

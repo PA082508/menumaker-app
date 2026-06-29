@@ -156,7 +156,7 @@ export default function SafePassParentPage() {
       .from('safepass_sms_otp')
       .select('*')
       .eq('phone', normalizedPhone)
-      .eq('otp_code', otp.trim())
+      .eq('otp_code', otp.trim().replace(/\s/g,''))
       .gt('expires_at', new Date().toISOString())
       .is('used_at', null)
       .order('created_at', { ascending: false })

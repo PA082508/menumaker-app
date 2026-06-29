@@ -1420,9 +1420,14 @@ function CapacitySettings() {
                     />
                     <span style={{ fontSize: 11, color: '#9ca3af' }}>ft²</span>
                   </div>
+                  <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 3, lineHeight: 1.4 }}>
+                    Wall-to-wall usable area only.<br/>
+                    Exclude: hallways, storage, bathrooms<br/>
+                    <span style={{ color: '#059669' }}>Include bathrooms only if used exclusively by enrolled children (OAC 5180:2-12-11)</span>
+                  </div>
                   {room.room_sqft > 0 && (
-                    <div style={{ fontSize: 10, color: '#6b7280', marginTop: 2 }}>
-                      ÷ 35 = {Math.floor(room.room_sqft / 35)} children max
+                    <div style={{ fontSize: 10, color: '#6b7280', marginTop: 4, fontWeight: 600 }}>
+                      {room.room_sqft} ft² ÷ 35 = {Math.floor(room.room_sqft / 35)} children max
                     </div>
                   )}
                 </div>

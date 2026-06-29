@@ -148,6 +148,25 @@ export default function SafePassParentPage() {
     setVerifying(true)
     setOtpError('')
     const normalizedPhone = '+1' + phone.replace(/\D/g, '').slice(-10)
+    
+    // TEST MODE: bypass for demo phone
+    if (normalizedPhone === '+19999999999' && otp.trim() === '123456') {
+      setPersonName('Test Parent (Demo)')
+      setChildren([{
+        child_id: 'test-child-001',
+        child_name: 'Test Child (Green Room)',
+        classroom_id: 'test-class-001',
+        classroom_name: 'Green Room',
+        center_id: 'test-center-001',
+      }])
+      await supabase.schema('menumaker').from('safepass_parent_sessions').insert({
+        org_id: ORG_ID, phone: normalizedPhone,
+        device_id: devId.current, person_name: 'Test Parent (Demo)',
+      })
+      setVerifying(false)
+      setScreen('agreement')
+      return
+    }
     const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString()
 
     // For test phone skip device_id; for real phones require it

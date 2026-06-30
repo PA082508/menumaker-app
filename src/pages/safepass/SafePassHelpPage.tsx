@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 
 const C = {
   bg:'#0f1117', surface:'#1a1d27', surface2:'#22263a', border:'#2e3350',
@@ -52,7 +53,16 @@ const RULES = [
 ]
 
 export default function SafePassHelpPage() {
-  const [s, setS] = useState<S>('overview')
+  const [searchParams] = useSearchParams()
+  const role = searchParams.get('role') // 'teacher' | 'director' | null
+
+  const ROLE_TABS: Record<string, S[]> = {
+    teacher:  ['regular', 'early', 'late', 'transport', 'rules'],
+    director: ['overview', 'rules'],
+  }
+  const visibleTabs = role && ROLE_TABS[role] ? ROLE_TABS[role] : ['overview','regular','early','late','transport','rules'] as S[]
+
+  const [s, setS] = useState<S>(role && ROLE_TABS[role] ? ROLE_TABS[role][0] : 'overview')
 
   const nb = (v: S, label: string) => (
     <button key={v} onClick={() => setS(v)} style={{
@@ -97,12 +107,12 @@ export default function SafePassHelpPage() {
 
       {/* Nav */}
       <div style={{ display:'flex', gap:8, flexWrap:'wrap', padding:'14px 24px', background:C.surface, borderBottom:`1px solid ${C.border}` }}>
-        {nb('overview','📋 Overview')}
-        {nb('regular','✅ Regular Day')}
-        {nb('early','☀️ Early Care')}
-        {nb('late','🌙 Late Care')}
-        {nb('transport','🚌 Transport')}
-        {nb('rules','⚖️ Rules')}
+        {visibleTabs.includes('overview') && nb('overview','📋 Overview')}
+        {visibleTabs.includes('regular') && nb('regular','✅ Regular Day')}
+        {visibleTabs.includes('early') && nb('early','☀️ Early Care')}
+        {visibleTabs.includes('late') && nb('late','🌙 Late Care')}
+        {visibleTabs.includes('transport') && nb('transport','🚌 Transport')}
+        {visibleTabs.includes('rules') && nb('rules','⚖️ Rules')}
       </div>
 
       {/* Content */}

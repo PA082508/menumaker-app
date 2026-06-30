@@ -1,5 +1,6 @@
 // MealCountHelpPage.tsx — route /meal-count/help
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 
 const C = {
   bg:'#f9fafb', surface:'#ffffff', border:'#e5e7eb',
@@ -45,7 +46,18 @@ const RULES = [
 ]
 
 export default function MealCountHelpPage() {
-  const [s, setS] = useState<S>('overview')
+  const [searchParams] = useSearchParams()
+  const role = searchParams.get('role') // 'teacher' | 'cook' | 'director' | null
+
+  // Tabs visible per role (null = show all)
+  const ROLE_TABS: Record<string, S[]> = {
+    teacher:  ['teacher', 'rules'],
+    cook:     ['cook', 'rules'],
+    director: ['director', 'rules'],
+  }
+  const visibleTabs = role && ROLE_TABS[role] ? ROLE_TABS[role] : ['overview','teacher','cook','director','rules'] as S[]
+
+  const [s, setS] = useState<S>(role && ROLE_TABS[role] ? ROLE_TABS[role][0] : 'overview')
 
   const nb = (v: S, label: string) => (
     <button key={v} onClick={() => setS(v)} style={{
@@ -89,11 +101,11 @@ export default function MealCountHelpPage() {
 
       {/* Nav */}
       <div style={{ display:'flex', gap:8, flexWrap:'wrap', padding:'14px 24px', background:C.surface, borderBottom:`1px solid ${C.border}` }}>
-        {nb('overview','📋 Overview')}
-        {nb('teacher','👩‍🏫 For Teachers')}
-        {nb('cook','👨‍🍳 For Cooks')}
-        {nb('director','📊 For Directors')}
-        {nb('rules','⚖️ CACFP Rules')}
+        {visibleTabs.includes('overview') && nb('overview','📋 Overview')}
+        {visibleTabs.includes('teacher') && nb('teacher','👩‍🏫 For Teachers')}
+        {visibleTabs.includes('cook') && nb('cook','👨‍🍳 For Cooks')}
+        {visibleTabs.includes('director') && nb('director','📊 For Directors')}
+        {visibleTabs.includes('rules') && nb('rules','⚖️ CACFP Rules')}
       </div>
 
       {/* Content */}

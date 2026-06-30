@@ -1,19 +1,29 @@
 // src/pages/portal/PortalPage.tsx
 // Minimal staff portal — no sidebar, no main nav.
+// Auto-logs in with a center-specific service account so the page works
+// without any visible login UI (like /safepass/parent).
 //
 // TODO — после доработки Settings → Meal Schedule:
 //   Видимость табов вынести в настройки (meal_schedule_role_access),
 //   чтобы владелец конфигурировал доступ per-center per-role.
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, Navigate, useNavigate } from 'react-router-dom'
 import { useOrg } from '@/contexts/OrgContext'
+import { useAuth } from '@/hooks/useAuth'
 import MealCountPage from '@/pages/meal-count/MealCountPage'
 
 const CENTER_NAMES: Record<string, string> = {
   ridge: 'Wickliffe',
   pearl: 'Parma Heights',
   alpha: 'Mayfield Hills',
+}
+
+// Service accounts per center — auto-login, invisible to user
+const CENTER_CREDENTIALS: Record<string, { email: string; password: string }> = {
+  ridge: { email: 'playacademyusa+ridge.cook@gmail.com', password: 'Ridge2026!' },
+  pearl: { email: 'playacademyusa+pearl.cook@gmail.com', password: 'Pearl2026!' },
+  alpha: { email: 'playacademyusa+alpha.cook@gmail.com', password: 'Alpha2026!' },
 }
 
 const PORTAL_ROLES: Record<string, string[]> = {
@@ -25,7 +35,10 @@ const PORTAL_ROLES: Record<string, string[]> = {
 export default function PortalPage() {
   const navigate = useNavigate()
   const { role: urlRole, center: urlCenter } = useParams<{ role: string; center?: string }>()
+  const { session, signIn } = useAuth()
   const { centers, setCurrentCenter } = useOrg()
+  const [authReady, setAuthReady] = useState(false)
+  const [authError, setAuthError] = useState('')
 
   const portalRole = urlRole?.toLowerCase() ?? ''
   const centerCode = urlCenter?.toLowerCase() ?? ''
@@ -39,12 +52,40 @@ export default function PortalPage() {
   const roles = PORTAL_ROLES[portalRole]
   const centerName = CENTER_NAMES[centerCode] ?? null
   const showCenterSwitcher = portalRole === 'cook'
+  const creds = CENTER_CREDENTIALS[centerCode]
 
+  // Auto-login with service account if no active session
+  useEffect(() => {
+    if (!centerCode || !creds) { setAuthReady(true); return }
+    if (session) { setAuthReady(true); return }
+    signIn(creds.email, creds.password).then(({ error }) => {
+      if (error) setAuthError(error.message)
+      setAuthReady(true)
+    })
+  }, [centerCode, session])
+
+  // Set center in OrgContext once centers[] is loaded
   useEffect(() => {
     if (!centerCode || !centers.length) return
     const match = centers.find(c => c.slug?.toLowerCase() === centerCode)
     if (match) setCurrentCenter(match)
   }, [centerCode, centers])
+
+  if (!authReady) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#0a3320', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ color: '#7ee8b0', fontSize: 14, fontFamily: "'DM Sans', sans-serif" }}>Loading…</span>
+      </div>
+    )
+  }
+
+  if (authError) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#0a3320', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ color: '#ff6b6b', fontSize: 14, fontFamily: "'DM Sans', sans-serif" }}>Error: {authError}</span>
+      </div>
+    )
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: '#f4f7f4', fontFamily: "'DM Sans', sans-serif" }}>

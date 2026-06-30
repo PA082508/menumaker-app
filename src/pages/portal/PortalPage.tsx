@@ -94,6 +94,8 @@ export default function PortalPage() {
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <img src="https://rkabxzqcikojcphwrkty.supabase.co/storage/v1/object/public/assets/PA-Logo-144x144.png"
+            alt="Play Academy" style={{ width: 32, height: 32, borderRadius: 8, objectFit: 'contain', background: '#fff', padding: 2 }} />
           <span style={{ color: '#7ee8b0', fontWeight: 800, fontSize: 15 }}>ClickClaim CACFP</span>
           {centerName && (
             <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13 }}>· {centerName}</span>

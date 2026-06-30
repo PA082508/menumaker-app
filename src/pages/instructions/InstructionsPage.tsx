@@ -27,7 +27,8 @@ const DOCS = [
   { id:'mc-help', title:'Meal Count — Help', description:'Full guide: teachers, cooks, directors and CACFP rules.', audience:'All', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/meal-count/help' },
 
   // ── Purchases ─────────────────────────────────────────────────────────────
-  { id:'receipt-buyer', title:'Receipt Upload — Purchasers', description:'Larysa, Philippe, Ross, Tatiana: upload food purchase receipts after shopping.', audience:'Staff', category:'Purchases', driveUrl:'https://menumaker-app.vercel.app/receipts' },
+  { id:'receipt-buyer', title:'Purchasing Staff App', description:'Larysa, Philippe, Ross, Tatiana: purchase orders and receipt upload.', audience:'Staff', category:'Purchases', driveUrl:'https://pa082508.github.io/cacfp-receipt/purchasing-app.html' },
+  { id:'receipt-director', title:'Director — Receipt Upload', description:'Directors: upload food purchase receipts. Place originals in envelope for delivery driver.', audience:'Director', category:'Purchases', driveUrl:'https://pa082508.github.io/cacfp-receipt/' },
 ]
 
 function SignModal({ onClose }: { onClose: ()=>void }) {

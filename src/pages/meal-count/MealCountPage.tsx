@@ -782,6 +782,47 @@ function WeekMode(props: GridProps) {
 
 // ─── Director Mode ────────────────────────────────────────────────────────────
 
+// Document detection — crops receipt/scan edges automatically
+async function detectAndCropReceipt(file: File): Promise<File> {
+  if (!file.type.startsWith('image/')) return file;
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d')!;
+      canvas.width = img.width; canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+      const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      const w = canvas.width, h = canvas.height;
+      let minX = w, maxX = 0, minY = h, maxY = 0;
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const i = (y * w + x) * 4;
+          if (data[i] < 240 || data[i+1] < 240 || data[i+2] < 240) {
+            if (x < minX) minX = x; if (x > maxX) maxX = x;
+            if (y < minY) minY = y; if (y > maxY) maxY = y;
+          }
+        }
+      }
+      const pad = 20;
+      minX = Math.max(0, minX - pad); minY = Math.max(0, minY - pad);
+      maxX = Math.min(w, maxX + pad); maxY = Math.min(h, maxY + pad);
+      const cropW = maxX - minX, cropH = maxY - minY;
+      if (cropW > w * 0.3 && cropH > h * 0.3 && (cropW < w * 0.95 || cropH < h * 0.95)) {
+        const out = document.createElement('canvas');
+        out.width = cropW; out.height = cropH;
+        out.getContext('2d')!.drawImage(canvas, minX, minY, cropW, cropH, 0, 0, cropW, cropH);
+        out.toBlob(blob => {
+          if (blob) resolve(new File([blob], file.name.replace(/\.[^.]+$/, '') + '_cropped.jpg', { type: 'image/jpeg' }));
+          else resolve(file);
+        }, 'image/jpeg', 0.92);
+      } else { resolve(file); }
+    };
+    img.onerror = () => resolve(file);
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 function DirectorMode({ isApproved, onApprove, showApprove, ...gridProps }: GridProps & {
   isApproved: boolean;
   showApprove: boolean;
@@ -828,8 +869,8 @@ function DirectorMode({ isApproved, onApprove, showApprove, ...gridProps }: Grid
                     📎 {scanFile ? scanFile.name : "Attach file"}
                   </button>
                   {scanFile && <button className="mc-scan-clear" onClick={() => setScanFile(null)}>✕</button>}
-                  <input ref={fileRef} type="file" accept="application/pdf,image/*" style={{ display: "none" }}
-                    onChange={(e) => setScanFile(e.target.files?.[0] ?? null)} />
+                  <input ref={fileRef} type="file" accept="application/pdf,image/*" capture="environment" style={{ display: "none" }}
+                    onChange={async (e) => { const f = e.target.files?.[0]; if (f) setScanFile(await detectAndCropReceipt(f)); }} />
                 </div>
               </div>
               <button className="mc-approve-btn" disabled={!initials.trim() || approving} onClick={handleApprove}>

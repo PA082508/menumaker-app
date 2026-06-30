@@ -3,32 +3,31 @@ import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
 
 const DOCS = [
+  // ── BYOD ─────────────────────────────────────────────────────────────────
   { id:'byod-agreement', title:'BYOD Device Use Agreement', description:'Sign online — saved securely. Director countersigns digitally.', audience:'Staff', category:'BYOD', canSign:true, highlight:true },
   { id:'byod-policy', title:'BYOD Policy HR-BYOD-001', description:'Voluntary participation, $20/month stipend, privacy protections.', audience:'Staff', category:'BYOD', driveUrl:'https://drive.google.com/file/d/1BsJks_GR4oGKtccX6jZX58oOnj2QCZQW/view?usp=sharing' },
-  { id:'safepass-parent', title:'SafePass — Parent Letter (Wickliffe)', description:'Pilot announcement. Registration July 1-14, mandatory July 15.', audience:'Parent', category:'SafePass', driveUrl:'https://drive.google.com/file/d/1pDFFpKA462Cffs_-AS5rfCMRLk37QkGh/view?usp=sharing' },
-  { id:'safepass-app', title:'SafePass — Parent App', description:'Open SafePass on your phone to drop off or pick up your child.', audience:'Parent', category:'SafePass', driveUrl:'https://menumaker-app.vercel.app/safepass/parent' },
-  { id:'safepass-teacher', title:'SafePass — Teacher Quick Guide', description:'iPad guide: drop-off, pick-up, unknown person protocol.', audience:'Teacher', category:'SafePass', driveUrl:'https://drive.google.com/file/d/1XkL64gCrgtLj4e-8nLdG4FSD9S580l1i/view?usp=sharing' },
+
+  // ── SafePass ──────────────────────────────────────────────────────────────
+  { id:'safepass-parent-letter', title:'SafePass — Parent Letter (Wickliffe)', description:'Pilot announcement. Registration July 1–14, mandatory July 15.', audience:'Parent', category:'SafePass', driveUrl:'https://drive.google.com/file/d/1pDFFpKA462Cffs_-AS5rfCMRLk37QkGh/view?usp=sharing' },
+  { id:'safepass-parent-app', title:'SafePass — Parent App (Wickliffe)', description:'Wickliffe parents: drop-off and pick-up. Open on your phone.', audience:'Parent', category:'SafePass', driveUrl:'https://menumaker-app.vercel.app/safepass/parent' },
+  { id:'safepass-teacher-guide', title:'SafePass — Teacher Quick Guide', description:'iPad guide: drop-off, pick-up, unknown person protocol.', audience:'Teacher', category:'SafePass', driveUrl:'https://drive.google.com/file/d/1XkL64gCrgtLj4e-8nLdG4FSD9S580l1i/view?usp=sharing' },
+  { id:'safepass-teacher-app', title:'SafePass — Teacher View (App)', description:'Accept and release children. Early Care, Late Care, Transport modes.', audience:'Teacher', category:'SafePass', driveUrl:'https://menumaker-app.vercel.app/safepass/teacher' },
+  { id:'safepass-driver', title:'SafePass — Driver (Transport)', description:'Drivers: school-age bus run checklist. 4 transfer points with GPS.', audience:'Staff', category:'SafePass', driveUrl:'https://menumaker-app.vercel.app/safepass/teacher' },
+  { id:'safepass-director', title:'SafePass — Director Dashboard', description:'Monitor all classrooms, ratio alerts, Early Care and Late Care overview.', audience:'Director', category:'SafePass', driveUrl:'https://menumaker-app.vercel.app/safepass/teacher' },
   { id:'safepass-concept', title:'SafePass — Concept Document v1.1', description:'Full concept: legal basis, chain of custody, transportation, school partnership.', audience:'Director', category:'SafePass', driveUrl:'https://drive.google.com/file/d/1Qtg9C47ulJEVwXEGKSku7vdu4KUnrp6G/view?usp=sharing' },
-  { id:'mealcount-teacher', title:'Meal Count — Teacher Guide', description:'How to record meals in ClickClaim.', audience:'Teacher', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/meal-count/help' },
-  { id:'receipts', title:'Receipt Upload Guide', description:'How to photograph and upload food purchase receipts.', audience:'All', category:'Purchases' },
-  { id:'mc-wickliffe-teacher', title:'Meal Count — Wickliffe Teacher', description:'Wickliffe teachers: record daily meals for your classroom.', audience:'Teacher', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/meal-count' },
-  { id:'mc-parma-teacher', title:'Meal Count — Parma Heights Teacher', description:'Parma Heights teachers: record daily meals for your classroom.', audience:'Teacher', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/meal-count' },
-  { id:'mc-mayfield-teacher', title:'Meal Count — Mayfield Hills Teacher', description:'Mayfield Hills teachers: record daily meals for your classroom.', audience:'Teacher', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/meal-count' },
-  { id:'mc-cook', title:'Meal Count — Cook (Kitchen View)', description:'All cooks: Kitchen View, weekly totals, food planning and CACFP export.', audience:'Teacher', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/kitchen-view' },
-  { id:'mc-director', title:'Meal Count — Director View', description:'Directors: review all classroom counts and export site claim report.', audience:'Director', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/meal-count' },
-  { id:'sp-parent-wickliffe', title:'SafePass — Parent App (Wickliffe)', description:'Wickliffe parents: drop-off and pick-up. Open on your phone.', audience:'Parent', category:'SafePass', driveUrl:'https://menumaker-app.vercel.app/safepass/parent' },
-  { id:'sp-teacher', title:'SafePass — Teacher View', description:'Teachers: accept and release children. Early Care, Late Care, Transport.', audience:'Teacher', category:'SafePass', driveUrl:'https://menumaker-app.vercel.app/safepass/teacher' },
-  { id:'sp-driver', title:'SafePass — Driver (Transport)', description:'Drivers: school-age bus run checklist. 4 transfer points with GPS.', audience:'Staff', category:'SafePass', driveUrl:'https://menumaker-app.vercel.app/safepass/teacher' },
+
+  // ── Meal Count ────────────────────────────────────────────────────────────
+  { id:'mc-wickliffe-teacher', title:'Meal Count — Wickliffe Teacher', description:'Wickliffe teachers: record daily meals for your classroom.', audience:'Teacher', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/portal/teacher/ridge' },
+  { id:'mc-parma-teacher', title:'Meal Count — Parma Heights Teacher', description:'Parma Heights teachers: record daily meals for your classroom.', audience:'Teacher', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/portal/teacher/pearl' },
+  { id:'mc-mayfield-teacher', title:'Meal Count — Mayfield Hills Teacher', description:'Mayfield Hills teachers: record daily meals for your classroom.', audience:'Teacher', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/portal/teacher/alpha' },
+  { id:'mc-cook', title:'Meal Count — Cook (Kitchen View)', description:'All cooks: Current Meal and Week View with CACFP export.', audience:'Staff', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/portal/cook' },
+  { id:'mc-director-ridge', title:'Meal Count — Director View (Wickliffe)', description:'Review all classroom counts and approve weekly records.', audience:'Director', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/portal/director/ridge' },
+  { id:'mc-director-pearl', title:'Meal Count — Director View (Parma Heights)', description:'Review all classroom counts and approve weekly records.', audience:'Director', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/portal/director/pearl' },
+  { id:'mc-director-alpha', title:'Meal Count — Director View (Mayfield Hills)', description:'Review all classroom counts and approve weekly records.', audience:'Director', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/portal/director/alpha' },
+  { id:'mc-help', title:'Meal Count — Help', description:'Full guide: teachers, cooks, directors and CACFP rules.', audience:'All', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/meal-count/help' },
+
+  // ── Purchases ─────────────────────────────────────────────────────────────
   { id:'receipt-buyer', title:'Receipt Upload — Purchasers', description:'Larysa, Philippe, Ross, Tatiana: upload food purchase receipts after shopping.', audience:'Staff', category:'Purchases', driveUrl:'https://menumaker-app.vercel.app/receipts' },
-  { id:'sp-director', title:'SafePass — Director Dashboard', description:'Directors: monitor all classrooms, ratio alerts, Early Care and Late Care overview.', audience:'Director', category:'SafePass', driveUrl:'https://menumaker-app.vercel.app/safepass/teacher' },
-  { id:'safepass-parent-app', title:'SafePass — Parent App', description:'Drop-off and pick-up for Wickliffe families. Open on your phone.', audience:'Parent', category:'SafePass', driveUrl:'https://menumaker-app.vercel.app/safepass/parent' },
-  { id:'safepass-teacher-help', title:'SafePass — Teacher Guide (App)', description:'Step-by-step: Regular, Early Care, Late Care, Transport modes.', audience:'Teacher', category:'SafePass', driveUrl:'https://menumaker-app.vercel.app/safepass/help' },
-  { id:'mealcount-cook', title:'Meal Count — Cook Guide', description:'Kitchen View, weekly totals and CACFP export for cooks.', audience:'Teacher', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/meal-count/help' },
-  { id:'mealcount-director', title:'Meal Count — Director Guide', description:'Review counts, export site claim, CACFP compliance.', audience:'Director', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/meal-count/help' },
-  { id:'safepass-app-parent', title:'SafePass — Parent App', description:'Drop-off and pick-up for Wickliffe families. Open on your phone.', audience:'Parent', category:'SafePass', driveUrl:'https://menumaker-app.vercel.app/safepass/parent' },
-  { id:'safepass-help-teacher', title:'SafePass — Teacher Guide (App)', description:'Step-by-step: Regular, Early Care, Late Care, Transport modes.', audience:'Teacher', category:'SafePass', driveUrl:'https://menumaker-app.vercel.app/safepass/help' },
-  { id:'mealcount-cook', title:'Meal Count — Cook Guide', description:'Kitchen View, weekly totals, CACFP export for cooks.', audience:'Teacher', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/meal-count/help' },
-  { id:'mealcount-director', title:'Meal Count — Director Guide', description:'Review counts, export site claim report, CACFP compliance.', audience:'Director', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/meal-count/help' },
 ]
 
 function SignModal({ onClose }: { onClose: ()=>void }) {

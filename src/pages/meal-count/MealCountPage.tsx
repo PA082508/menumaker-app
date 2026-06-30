@@ -141,17 +141,18 @@ interface MilkBucket { label: string; oz: number; }
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function MealCountPage() {
+export default function MealCountPage({ portalRoles }: { portalRoles?: string[] } = {}) {
   const { role, roles } = useAuth();
   const { currentCenter, orgRole } = useOrg();
 
   // Union of user_roles + admin from org bootstrap.
   const effectiveRoles = useMemo(() => {
+    if (portalRoles?.length) return new Set<string>(portalRoles);
     const s = new Set<string>(roles);
     if (orgRole === "admin") s.add("admin");
     if (role) s.add(role);
     return s;
-  }, [roles, orgRole, role]);
+  }, [roles, orgRole, role, portalRoles]);
 
   const availableModes = useMemo(() => modesForRoles(effectiveRoles), [effectiveRoles]);
   const showApprove = effectiveRoles.has("director") || effectiveRoles.has("admin");

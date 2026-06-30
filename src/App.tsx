@@ -40,6 +40,7 @@ import StaffSettingsPage from '@/pages/staff/StaffSettingsPage'
 import DailyTimeLogPage from '@/pages/staff/DailyTimeLogPage'
 import ChildrenImportPage from '@/pages/children/ChildrenImportPage'
 import ChildrenExportPage from '@/pages/children/ChildrenExportPage'
+import PortalPage from '@/pages/portal/PortalPage'
 
 // Lazy placeholders for other pages
 const PlaceholderPage = ({ title }: { title: string }) => (
@@ -104,6 +105,8 @@ export default function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/purchaser-app" element={<PurchaserApp />} />
             <Route path="/safepass/parent" element={<SafePassParentPage />} />
+            <Route path="/portal/:role/:center" element={<PortalPage />} />
+            <Route path="/portal/:role" element={<PortalPage />} />
             <Route
               path="/"
               element={

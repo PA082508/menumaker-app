@@ -35,6 +35,8 @@ import ChildrenPage from '@/pages/children/ChildrenPage'
 import CenterRosterPage from '@/pages/children/CenterRosterPage'
 import StaffPage from '@/pages/staff/StaffPage'
 import InstructionsPage from '@/pages/instructions/InstructionsPage'
+import MessagesPage from '@/pages/messages/MessagesPage'
+import MessagesPage from '@/pages/messages/MessagesPage'
 import BYODDirectorPage from '@/pages/instructions/BYODDirectorPage'
 import StaffSettingsPage from '@/pages/staff/StaffSettingsPage'
 import DailyTimeLogPage from '@/pages/staff/DailyTimeLogPage'
@@ -151,6 +153,8 @@ export default function App() {
               <Route path="org/consolidated-report" element={<ConsolidatedReport />} />
               <Route path="settings"   element={<SettingsPage />} />
               <Route path="instructions" element={<InstructionsPage />} />
+              <Route path="messages" element={<MessagesPage />} />
+              <Route path="messages" element={<MessagesPage />} />
               <Route path="byod-director" element={<BYODDirectorPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/dashboard" replace />} />

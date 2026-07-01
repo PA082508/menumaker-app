@@ -78,7 +78,7 @@ function Avatar({ name, size = 40, photo }: { name: string; size?: number; photo
   )
 }
 
-function DetailPopup({ data, onClose }: { data: PopupData; onClose: () => void }) {
+function DetailPopup({ data, onClose, classrooms }: { data: PopupData; onClose: () => void; classrooms: Classroom[] }) {
   const name = data.kind === 'child' ? fullName(data.child) : staffName(data.staff)
   const photo = data.kind === 'child' ? null : data.staff.photo_url
   return (
@@ -149,7 +149,7 @@ function DetailPopup({ data, onClose }: { data: PopupData; onClose: () => void }
                     <span style={{ fontSize: 13, color: '#1a2e1a', fontWeight: 500 }}>{value}</span>
                   </div>
                 ))}
-                <TransferChildPanel child={c} classrooms={classrooms} onDone={() => { setPopup(null); window.location.reload() }} />
+                <TransferChildPanel child={c} classrooms={classrooms} onDone={() => { onClose(); window.location.reload() }} />
               </div>
             )
           })()}
@@ -446,7 +446,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
         </div>
       )}
 
-      {popup && <DetailPopup data={popup} onClose={() => setPopup(null)} />}
+      {popup && <DetailPopup data={popup} onClose={() => setPopup(null)} classrooms={classrooms} />}
     </div>
   )
 }

@@ -202,6 +202,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
   const [expanded,   setExpanded]   = useState<Record<string, boolean>>({})
   const [popup,      setPopup]      = useState<PopupData | null>(null)
   const [showAddChild, setShowAddChild] = useState(false)
+  const [viewMode, setViewMode] = useState<'cards'|'list'>('cards')
 
   useEffect(() => {
     if (!centerId) return
@@ -290,14 +291,56 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
             ))}
           </div>
 
-          {/* Add Child button */}
-          <div style={{ display:'flex', justifyContent:'flex-end', padding:'8px 20px', borderBottom:'1px solid #f0f4f1' }}>
-            <button onClick={() => setShowAddChild(true)} style={{
-              padding:'8px 18px', borderRadius:9, background:'#0f4c35', color:'#fff',
-              border:'none', cursor:'pointer', fontWeight:700, fontSize:13, fontFamily:'inherit',
-              display:'flex', alignItems:'center', gap:6
-            }}>➕ Add Child</button>
+          {/* Toolbar */}
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 20px', borderBottom:'1px solid #f0f4f1' }}>
+            <div style={{ display:'flex', gap:6 }}>
+              <button onClick={() => setViewMode('cards')} style={{ padding:'6px 14px', borderRadius:8, border:'1.5px solid #c0d8c0', background: viewMode==='cards' ? '#0f4c35' : '#fff', color: viewMode==='cards' ? '#fff' : '#555', cursor:'pointer', fontFamily:'inherit', fontSize:13, fontWeight:600 }}>⊞ Cards</button>
+              <button onClick={() => setViewMode('list')} style={{ padding:'6px 14px', borderRadius:8, border:'1.5px solid #c0d8c0', background: viewMode==='list' ? '#0f4c35' : '#fff', color: viewMode==='list' ? '#fff' : '#555', cursor:'pointer', fontFamily:'inherit', fontSize:13, fontWeight:600 }}>☰ List</button>
+            </div>
+            <button onClick={() => setShowAddChild(true)} style={{ padding:'8px 18px', borderRadius:9, background:'#0f4c35', color:'#fff', border:'none', cursor:'pointer', fontWeight:700, fontSize:13, fontFamily:'inherit', display:'flex', alignItems:'center', gap:6 }}>➕ Add Child</button>
           </div>
+          {viewMode === 'list' && (
+            <div style={{ overflowX:'auto' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+                <thead>
+                  <tr style={{ background:'#f0f4f1' }}>
+                    {['#','Last Name','First Name','Classroom','Birthday','Age','FRP','Milk','Date In'].map(h => (
+                      <th key={h} style={{ padding:'8px 12px', textAlign:'left', fontWeight:700, fontSize:11, color:'#0f4c35', textTransform:'uppercase', letterSpacing:'0.04em', whiteSpace:'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...children].sort((a,b) => (a.last_name??'').localeCompare(b.last_name??'')).map((child, idx) => {
+                    const room = classrooms.find(c => c.id === child.classroom_id)
+                    const frpLabel = child.frp?.trim().toUpperCase().slice(0,1)
+                    const frpColor = frpLabel==='F' ? '#16a34a' : frpLabel==='R' ? '#d97706' : '#6b7280'
+                    const ageMs = child.birthday ? Date.now() - new Date(child.birthday).getTime() : 0
+                    const ageY = Math.floor(ageMs / (1000*60*60*24*365.25))
+                    return (
+                      <tr key={child.id} onClick={() => setPopup({ kind:'child', child, attend: null })}
+                        style={{ borderBottom:'1px solid #f0f4f1', cursor:'pointer', background: idx%2===0 ? '#fff' : '#fafbfa' }}
+                        onMouseEnter={e => (e.currentTarget.style.background='#f0f7f2')}
+                        onMouseLeave={e => (e.currentTarget.style.background=idx%2===0?'#fff':'#fafbfa')}>
+                        <td style={{ padding:'8px 12px', color:'#aaa' }}>{idx+1}</td>
+                        <td style={{ padding:'8px 12px', fontWeight:600, color:'#1a2e1a' }}>{child.last_name ?? '—'}</td>
+                        <td style={{ padding:'8px 12px', color:'#1a2e1a' }}>{child.first_name ?? '—'}</td>
+                        <td style={{ padding:'8px 12px', color:'#555' }}>{room?.name ?? '—'}</td>
+                        <td style={{ padding:'8px 12px', color:'#555', whiteSpace:'nowrap' }}>{child.birthday ? new Date(child.birthday).toLocaleDateString('en-US') : '—'}</td>
+                        <td style={{ padding:'8px 12px', color:'#555', textAlign:'center' }}>{child.birthday ? `${ageY}y` : '—'}</td>
+                        <td style={{ padding:'8px 12px', textAlign:'center' }}>
+                          <span style={{ fontWeight:700, color: frpColor, background: frpLabel==='F'?'#dcfce7':frpLabel==='R'?'#fef3c7':'#f3f4f6', padding:'2px 8px', borderRadius:6, fontSize:12 }}>
+                            {frpLabel==='F'?'Free':frpLabel==='R'?'Reduced':frpLabel==='P'?'Paid':'—'}
+                          </span>
+                        </td>
+                        <td style={{ padding:'8px 12px', color:'#555' }}>{child.milk_kind ?? '—'}</td>
+                        <td style={{ padding:'8px 12px', color:'#555', whiteSpace:'nowrap' }}>{child.date_in ? new Date(child.date_in).toLocaleDateString('en-US') : '—'}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
           {classrooms.map((room, ri) => {
             const roomChildren = children.filter(c => c.classroom_id === room.id)
             const roomStaff    = staff.filter(s =>

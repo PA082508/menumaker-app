@@ -190,7 +190,7 @@ function DetailPopup({ data, onClose, classrooms }: { data: PopupData; onClose: 
 export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?: string } = {}) {
   const { centerId: centerIdParam } = useParams<{ centerId: string }>()
   const centerId = centerIdProp ?? centerIdParam
-  const { centers } = useOrg()
+  const { centers, currentCenter, org } = useOrg()
   const navigate = useNavigate()
   const center = centers.find(c => c.id === centerId)
 
@@ -201,6 +201,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
   const [loading,    setLoading]    = useState(false)
   const [expanded,   setExpanded]   = useState<Record<string, boolean>>({})
   const [popup,      setPopup]      = useState<PopupData | null>(null)
+  const [showAddChild, setShowAddChild] = useState(false)
 
   useEffect(() => {
     if (!centerId) return
@@ -289,6 +290,14 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
             ))}
           </div>
 
+          {/* Add Child button */}
+          <div style={{ display:'flex', justifyContent:'flex-end', padding:'8px 20px', borderBottom:'1px solid #f0f4f1' }}>
+            <button onClick={() => setShowAddChild(true)} style={{
+              padding:'8px 18px', borderRadius:9, background:'#0f4c35', color:'#fff',
+              border:'none', cursor:'pointer', fontWeight:700, fontSize:13, fontFamily:'inherit',
+              display:'flex', alignItems:'center', gap:6
+            }}>➕ Add Child</button>
+          </div>
           {classrooms.map((room, ri) => {
             const roomChildren = children.filter(c => c.classroom_id === room.id)
             const roomStaff    = staff.filter(s =>
@@ -447,6 +456,117 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
       )}
 
       {popup && <DetailPopup data={popup} onClose={() => setPopup(null)} classrooms={classrooms} />}
+      {showAddChild && currentCenter && (
+        <AddChildModal
+          centerId={currentCenter.id}
+          orgId={org?.id ?? ''}
+          classrooms={classrooms}
+          onDone={() => { setShowAddChild(false); window.location.reload() }}
+          onClose={() => setShowAddChild(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Add Child Modal ──────────────────────────────────────────────────────────
+
+function AddChildModal({ centerId, orgId, classrooms, onDone, onClose }: {
+  centerId: string; orgId: string; classrooms: Classroom[]; onDone: () => void; onClose: () => void
+}) {
+  const [form, setForm] = useState({
+    first_name: '', last_name: '', birthday: '', classroom_id: '',
+    date_in: new Date().toISOString().slice(0,10), frp: 'F'
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }))
+
+  async function save() {
+    if (!form.first_name || !form.last_name || !form.birthday || !form.classroom_id) {
+      setError('Please fill in all required fields'); return
+    }
+    setSaving(true); setError('')
+    try {
+      const child_name = `${form.last_name} ${form.first_name}`
+      const { error: err } = await supabase.schema('menumaker').from('roster').insert({
+        org_id: orgId, center_id: centerId,
+        classroom_id: form.classroom_id,
+        first_name: form.first_name, last_name: form.last_name,
+        child_name, birthday: form.birthday,
+        date_in: form.date_in, frp: form.frp,
+        is_active: true,
+      })
+      if (err) throw err
+      onDone()
+    } catch (e: any) {
+      setError(e.message)
+    } finally { setSaving(false) }
+  }
+
+  const inp: React.CSSProperties = {
+    width: '100%', padding: '10px 12px', borderRadius: 8,
+    border: '1.5px solid #c0d8c0', fontSize: 14, fontFamily: 'inherit',
+    background: '#fff', boxSizing: 'border-box' as const, outline: 'none'
+  }
+  const lbl: React.CSSProperties = {
+    fontSize: 11, fontWeight: 700, color: '#6b7280',
+    textTransform: 'uppercase' as const, letterSpacing: '0.06em',
+    display: 'block', marginBottom: 4
+  }
+
+  return (
+    <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2000, padding:20 }}>
+      <div onClick={e=>e.stopPropagation()} style={{ background:'#fff', borderRadius:16, width:'100%', maxWidth:420, boxShadow:'0 20px 60px rgba(0,0,0,0.2)', fontFamily:"'DM Sans',sans-serif", overflow:'hidden' }}>
+        <div style={{ background:'#0f4c35', padding:'20px 24px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <div style={{ color:'#fff', fontWeight:700, fontSize:17 }}>➕ Add Child</div>
+          <button onClick={onClose} style={{ background:'rgba(255,255,255,0.15)', border:'none', color:'#fff', width:30, height:30, borderRadius:'50%', cursor:'pointer', fontSize:18 }}>×</button>
+        </div>
+        <div style={{ padding:24, display:'flex', flexDirection:'column', gap:14 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+            <div>
+              <label style={lbl}>First Name *</label>
+              <input style={inp} placeholder="First" value={form.first_name} onChange={e=>set('first_name',e.target.value)}/>
+            </div>
+            <div>
+              <label style={lbl}>Last Name *</label>
+              <input style={inp} placeholder="Last" value={form.last_name} onChange={e=>set('last_name',e.target.value)}/>
+            </div>
+          </div>
+          <div>
+            <label style={lbl}>Birthday *</label>
+            <input type="date" style={inp} value={form.birthday} onChange={e=>set('birthday',e.target.value)}/>
+          </div>
+          <div>
+            <label style={lbl}>Classroom *</label>
+            <select style={inp} value={form.classroom_id} onChange={e=>set('classroom_id',e.target.value)}>
+              <option value="">Select classroom...</option>
+              {classrooms.filter(c=>!c.name.toLowerCase().includes('staff')).map(c=>(
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label style={lbl}>Date In</label>
+            <input type="date" style={inp} value={form.date_in} onChange={e=>set('date_in',e.target.value)}/>
+          </div>
+          <div>
+            <label style={lbl}>Meal Status (FRP)</label>
+            <select style={inp} value={form.frp} onChange={e=>set('frp',e.target.value)}>
+              <option value="F">Free</option>
+              <option value="R">Reduced</option>
+              <option value="P">Paid</option>
+            </select>
+          </div>
+          {error && <div style={{ color:'#dc2626', fontSize:13 }}>{error}</div>}
+          <div style={{ display:'flex', gap:10, marginTop:4 }}>
+            <button onClick={onClose} style={{ flex:1, padding:'11px', borderRadius:9, border:'1.5px solid #c0d8c0', background:'#fff', cursor:'pointer', fontFamily:'inherit', fontSize:14 }}>Cancel</button>
+            <button onClick={save} disabled={saving} style={{ flex:2, padding:'11px', borderRadius:9, background:'#0f4c35', color:'#fff', border:'none', cursor:'pointer', fontWeight:700, fontSize:14, fontFamily:'inherit', opacity:saving?0.6:1 }}>
+              {saving ? 'Saving…' : '✓ Add Child'}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

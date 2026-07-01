@@ -149,6 +149,7 @@ function DetailPopup({ data, onClose }: { data: PopupData; onClose: () => void }
                     <span style={{ fontSize: 13, color: '#1a2e1a', fontWeight: 500 }}>{value}</span>
                   </div>
                 ))}
+                <TransferChildPanel child={c} classrooms={classrooms} onDone={() => { setPopup(null); window.location.reload() }} />
               </div>
             )
           })()}

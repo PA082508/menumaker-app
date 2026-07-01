@@ -175,7 +175,7 @@ export default function AppLayout() {
   const usingPerms = Array.isArray(navModules) && navModules.length > 0
   const permItems = usingPerms
     ? [...navModules!].sort((a, b) => a.sort_order - b.sort_order)
-        .map(m => ({ path: routeForModule(m.module_code ?? m.code), label: m.label, icon: m.icon || MODULE_ICON_FALLBACK[m.module_code ?? m.code] || '•' }))
+        .map(m => ({ path: routeForModule(m.module_code), label: m.label, icon: m.icon || MODULE_ICON_FALLBACK[m.module_code] || '•' }))
     : []
   const allowedPaths = usingPerms ? new Set(permItems.map(i => i.path)) : null
   const basePath = '/' + (location.pathname.split('/')[1] || 'dashboard')

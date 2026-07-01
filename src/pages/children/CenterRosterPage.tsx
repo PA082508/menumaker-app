@@ -532,7 +532,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                             const frpKey = (child.frp ?? '').trim().toUpperCase().slice(0,1)
                             return (
                               <div key={child.id}
-                                onClick={() => setPopup({ kind: 'child', child, attend: at ?? null })}
+                                onClick={() => setChildSettingsId(child.id)}
                                 style={{
                                   display: 'flex', alignItems: 'center', gap: 10,
                                   padding: '8px 12px', borderRadius: 10, cursor: 'pointer',

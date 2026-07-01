@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, Fragment } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation, Link } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
+import { usePushNotifications } from '@/hooks/usePushNotifications'
 import { useOrg } from '@/contexts/OrgContext'
 import { routeForModule, KNOWN_MODULE_ROUTES, MODULE_ICON_FALLBACK } from '@/lib/modules'
 
@@ -126,6 +127,7 @@ const NAV_ITEMS: NavItem[] = [
 ]
 
 export default function AppLayout() {
+  usePushNotifications() // Auto-subscribe to push notifications
   const { user, role, signOut } = useAuth()
   const { modules, navModules } = useOrg()
   const navigate = useNavigate()

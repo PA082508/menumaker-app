@@ -210,6 +210,12 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
   const [popup,      setPopup]      = useState<PopupData | null>(null)
   const [showAddChild, setShowAddChild] = useState(false)
   const [viewMode, setViewMode] = useState<'cards'|'list'>('cards')
+  const [listClassFilter, setListClassFilter] = useState('all')
+  const [listCols, setListCols] = useState({
+    classroom: true, birthday: true, age: false,
+    frp: true, milk: true, date_in: false
+  })
+  const toggleCol = (k: string) => setListCols(p => ({ ...p, [k]: !(p as any)[k] }))
 
   useEffect(() => {
     if (!centerId) return
@@ -306,48 +312,124 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
             </div>
             <button onClick={() => setShowAddChild(true)} style={{ padding:'8px 18px', borderRadius:9, background:'#0f4c35', color:'#fff', border:'none', cursor:'pointer', fontWeight:700, fontSize:13, fontFamily:'inherit', display:'flex', alignItems:'center', gap:6 }}>➕ Add Child</button>
           </div>
-          {viewMode === 'list' && (
-            <div style={{ overflowX:'auto' }}>
-              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
-                <thead>
-                  <tr style={{ background:'#f0f4f1' }}>
-                    {['#','Last Name','First Name','Classroom','Birthday','Age','FRP','Milk','Date In'].map(h => (
-                      <th key={h} style={{ padding:'8px 12px', textAlign:'left', fontWeight:700, fontSize:11, color:'#0f4c35', textTransform:'uppercase', letterSpacing:'0.04em', whiteSpace:'nowrap' }}>{h}</th>
+          {viewMode === 'list' && (() => {
+            const COLS = [
+              { key:'classroom', label:'Classroom' },
+              { key:'birthday',  label:'Birthday' },
+              { key:'age',       label:'Age' },
+              { key:'frp',       label:'FRP' },
+              { key:'milk',      label:'Milk' },
+              { key:'date_in',   label:'Date In' },
+            ]
+            const filtered = [...children]
+              .filter(c => listClassFilter === 'all' || c.classroom_id === listClassFilter)
+              .sort((a,b) => (a.last_name??'').localeCompare(b.last_name??''))
+
+            function exportCSV() {
+              const headers = ['#','Last Name','First Name',...COLS.filter(c=>(listCols as any)[c.key]).map(c=>c.label)]
+              const rows = filtered.map((child,i) => {
+                const room = classrooms.find(c=>c.id===child.classroom_id)
+                const ageMs = child.birthday ? Date.now()-new Date(child.birthday).getTime() : 0
+                const ageY = Math.floor(ageMs/(1000*60*60*24*365.25))
+                const frpLabel = child.frp?.trim().toUpperCase().slice(0,1)
+                const vals: string[] = [String(i+1), child.last_name??'', child.first_name??'']
+                if(listCols.classroom) vals.push(room?.name??'')
+                if(listCols.birthday) vals.push(child.birthday ? new Date(child.birthday).toLocaleDateString('en-US') : '')
+                if(listCols.age) vals.push(child.birthday ? `${ageY}y` : '')
+                if(listCols.frp) vals.push(frpLabel==='F'?'Free':frpLabel==='R'?'Reduced':frpLabel==='P'?'Paid':'')
+                if(listCols.milk) vals.push(child.milk_kind??'')
+                if(listCols.date_in) vals.push(child.date_in ? new Date((child as any).date_in).toLocaleDateString('en-US') : '')
+                return vals.map(v => /[,"]/.test(v) ? `"${v}"` : v).join(',')
+              })
+              const csv = [headers.join(','), ...rows].join('\r\n')
+              const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv'}))
+              const cls = classrooms.find(c=>c.id===listClassFilter)
+              a.download = `${center?.name??'center'}_${cls?.name??'all'}_roster.csv`; a.click()
+            }
+
+            return (
+              <div>
+                {/* Smart toolbar */}
+                <div style={{ padding:'10px 16px', background:'#f8faf8', borderBottom:'1px solid #e8f0e8', display:'flex', flexWrap:'wrap', gap:10, alignItems:'center' }}>
+                  {/* Class filter */}
+                  <select value={listClassFilter} onChange={e=>setListClassFilter(e.target.value)}
+                    style={{ padding:'6px 12px', borderRadius:8, border:'1.5px solid #c0d8c0', fontSize:13, fontFamily:'inherit', background:'#fff', color:'#0f4c35', fontWeight:600 }}>
+                    <option value="all">All Classes ({children.length})</option>
+                    {classrooms.filter(c=>!c.name.toLowerCase().includes('staff')).map(c => (
+                      <option key={c.id} value={c.id}>{c.name} ({children.filter(ch=>ch.classroom_id===c.id).length})</option>
                     ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...children].sort((a,b) => (a.last_name??'').localeCompare(b.last_name??'')).map((child, idx) => {
-                    const room = classrooms.find(c => c.id === child.classroom_id)
-                    const frpLabel = child.frp?.trim().toUpperCase().slice(0,1)
-                    const frpColor = frpLabel==='F' ? '#16a34a' : frpLabel==='R' ? '#d97706' : '#6b7280'
-                    const ageMs = child.birthday ? Date.now() - new Date(child.birthday).getTime() : 0
-                    const ageY = Math.floor(ageMs / (1000*60*60*24*365.25))
-                    return (
-                      <tr key={child.id} onClick={() => setPopup({ kind:'child', child, attend: null })}
-                        style={{ borderBottom:'1px solid #f0f4f1', cursor:'pointer', background: idx%2===0 ? '#fff' : '#fafbfa' }}
-                        onMouseEnter={e => (e.currentTarget.style.background='#f0f7f2')}
-                        onMouseLeave={e => (e.currentTarget.style.background=idx%2===0?'#fff':'#fafbfa')}>
-                        <td style={{ padding:'8px 12px', color:'#aaa' }}>{idx+1}</td>
-                        <td style={{ padding:'8px 12px', fontWeight:600, color:'#1a2e1a' }}>{child.last_name ?? '—'}</td>
-                        <td style={{ padding:'8px 12px', color:'#1a2e1a' }}>{child.first_name ?? '—'}</td>
-                        <td style={{ padding:'8px 12px', color:'#555' }}>{room?.name ?? '—'}</td>
-                        <td style={{ padding:'8px 12px', color:'#555', whiteSpace:'nowrap' }}>{child.birthday ? new Date(child.birthday).toLocaleDateString('en-US') : '—'}</td>
-                        <td style={{ padding:'8px 12px', color:'#555', textAlign:'center' }}>{child.birthday ? `${ageY}y` : '—'}</td>
-                        <td style={{ padding:'8px 12px', textAlign:'center' }}>
-                          <span style={{ fontWeight:700, color: frpColor, background: frpLabel==='F'?'#dcfce7':frpLabel==='R'?'#fef3c7':'#f3f4f6', padding:'2px 8px', borderRadius:6, fontSize:12 }}>
-                            {frpLabel==='F'?'Free':frpLabel==='R'?'Reduced':frpLabel==='P'?'Paid':'—'}
-                          </span>
-                        </td>
-                        <td style={{ padding:'8px 12px', color:'#555' }}>{child.milk_kind ?? '—'}</td>
-                        <td style={{ padding:'8px 12px', color:'#555', whiteSpace:'nowrap' }}>{child.date_in ? new Date(child.date_in).toLocaleDateString('en-US') : '—'}</td>
+                  </select>
+                  {/* Column toggles */}
+                  <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                    {COLS.map(col => (
+                      <button key={col.key} onClick={()=>toggleCol(col.key)}
+                        style={{ padding:'4px 10px', borderRadius:6, fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'inherit',
+                          border:`1.5px solid ${(listCols as any)[col.key] ? '#0f4c35' : '#d0d0d0'}`,
+                          background:(listCols as any)[col.key] ? '#0f4c35' : '#fff',
+                          color:(listCols as any)[col.key] ? '#fff' : '#888' }}>
+                        {(listCols as any)[col.key] ? '✓' : '+'} {col.label}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Actions */}
+                  <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>
+                    <button onClick={exportCSV}
+                      style={{ padding:'6px 14px', borderRadius:8, border:'1.5px solid #c0d8c0', background:'#fff', cursor:'pointer', fontSize:12, fontWeight:600, fontFamily:'inherit', color:'#0f4c35' }}>
+                      💾 CSV
+                    </button>
+                    <button onClick={()=>window.print()}
+                      style={{ padding:'6px 14px', borderRadius:8, border:'1.5px solid #c0d8c0', background:'#fff', cursor:'pointer', fontSize:12, fontWeight:600, fontFamily:'inherit', color:'#0f4c35' }}>
+                      🖨️ Print
+                    </button>
+                  </div>
+                </div>
+                {/* Table */}
+                <div style={{ overflowX:'auto' }}>
+                  <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+                    <thead>
+                      <tr style={{ background:'#f0f4f1' }}>
+                        <th style={{ padding:'8px 12px', textAlign:'left', fontWeight:700, fontSize:11, color:'#0f4c35', textTransform:'uppercase', whiteSpace:'nowrap' }}>#</th>
+                        <th style={{ padding:'8px 12px', textAlign:'left', fontWeight:700, fontSize:11, color:'#0f4c35', textTransform:'uppercase', whiteSpace:'nowrap' }}>Last Name</th>
+                        <th style={{ padding:'8px 12px', textAlign:'left', fontWeight:700, fontSize:11, color:'#0f4c35', textTransform:'uppercase', whiteSpace:'nowrap' }}>First Name</th>
+                        {COLS.filter(c=>(listCols as any)[c.key]).map(col => (
+                          <th key={col.key} style={{ padding:'8px 12px', textAlign:'left', fontWeight:700, fontSize:11, color:'#0f4c35', textTransform:'uppercase', whiteSpace:'nowrap' }}>{col.label}</th>
+                        ))}
                       </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+                    </thead>
+                    <tbody>
+                      {filtered.map((child, idx) => {
+                        const room = classrooms.find(c => c.id === child.classroom_id)
+                        const frpLabel = child.frp?.trim().toUpperCase().slice(0,1)
+                        const frpColor = frpLabel==='F' ? '#16a34a' : frpLabel==='R' ? '#d97706' : '#6b7280'
+                        const frpBg = frpLabel==='F'?'#dcfce7':frpLabel==='R'?'#fef3c7':frpLabel==='P'?'#f3f4f6':'#fff'
+                        const ageMs = child.birthday ? Date.now() - new Date(child.birthday).getTime() : 0
+                        const ageY = Math.floor(ageMs / (1000*60*60*24*365.25))
+                        return (
+                          <tr key={child.id} onClick={() => setPopup({ kind:'child', child, attend: null })}
+                            style={{ borderBottom:'1px solid #f0f4f1', cursor:'pointer', background: idx%2===0 ? '#fff' : '#fafbfa' }}
+                            onMouseEnter={e => (e.currentTarget.style.background='#f0f7f2')}
+                            onMouseLeave={e => (e.currentTarget.style.background=idx%2===0?'#fff':'#fafbfa')}>
+                            <td style={{ padding:'7px 12px', color:'#aaa', fontSize:12 }}>{idx+1}</td>
+                            <td style={{ padding:'7px 12px', fontWeight:600, color:'#1a2e1a' }}>{child.last_name ?? '—'}</td>
+                            <td style={{ padding:'7px 12px', color:'#1a2e1a' }}>{child.first_name ?? '—'}</td>
+                            {listCols.classroom && <td style={{ padding:'7px 12px', color:'#555' }}>{room?.name ?? '—'}</td>}
+                            {listCols.birthday && <td style={{ padding:'7px 12px', color:'#555', whiteSpace:'nowrap' }}>{child.birthday ? new Date(child.birthday).toLocaleDateString('en-US') : '—'}</td>}
+                            {listCols.age && <td style={{ padding:'7px 12px', color:'#555', textAlign:'center' }}>{child.birthday ? `${ageY}y` : '—'}</td>}
+                            {listCols.frp && <td style={{ padding:'7px 12px', textAlign:'center' }}><span style={{ fontWeight:700, color:frpColor, background:frpBg, padding:'2px 8px', borderRadius:6, fontSize:12 }}>{frpLabel==='F'?'Free':frpLabel==='R'?'Reduced':frpLabel==='P'?'Paid':'—'}</span></td>}
+                            {listCols.milk && <td style={{ padding:'7px 12px', color:'#555' }}>{child.milk_kind ?? '—'}</td>}
+                            {listCols.date_in && <td style={{ padding:'7px 12px', color:'#555', whiteSpace:'nowrap' }}>{(child as any).date_in ? new Date((child as any).date_in).toLocaleDateString('en-US') : '—'}</td>}
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ padding:'8px 16px', fontSize:12, color:'#888', borderTop:'1px solid #f0f4f1' }}>
+                  {filtered.length} children · {filtered.filter(c=>c.frp==='F').length} Free · {filtered.filter(c=>c.frp==='R').length} Reduced · {filtered.filter(c=>c.frp==='P').length} Paid
+                </div>
+              </div>
+            )
+          })()}
           {classrooms.map((room, ri) => {
             const roomChildren = children.filter(c => c.classroom_id === room.id)
             const roomStaff    = staff.filter(s =>

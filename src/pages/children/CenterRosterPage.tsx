@@ -150,6 +150,7 @@ function DetailPopup({ data, onClose, classrooms }: { data: PopupData; onClose: 
                   </div>
                 ))}
                 <TransferChildPanel child={c} classrooms={classrooms} onDone={() => { onClose(); window.location.reload() }} />
+                <EditChildPanel child={c} classrooms={classrooms} onDone={() => { onClose(); window.location.reload() }} />
               </div>
             )
           })()}

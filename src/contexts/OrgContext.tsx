@@ -109,7 +109,9 @@ export function OrgProvider({ children }: { children: ReactNode }) {
         const { data: mods, error: mErr } =
           await (supabase.schema('menumaker').rpc as any)('user_modules', { p_org_id: orgId })
         if (!cancelled && !mErr && Array.isArray(mods)) {
-          setNavModules(mods as NavModule[])
+          // RPC returns 'code' column; NavModule interface expects 'module_code'
+          const mapped = mods.map((m: any) => ({ ...m, module_code: m.module_code ?? m.code }))
+          setNavModules(mapped as NavModule[])
         }
       }
 

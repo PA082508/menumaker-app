@@ -38,6 +38,7 @@ export const MODULE_ROUTE: Record<string, string> = {
   form_submissions: '/submissions',
   finance:          '/finance',
   settings:         '/settings',
+  messages:         '/messages',
 }
 
 // Fallback emoji per code when the RPC does not supply an icon.
@@ -45,7 +46,7 @@ export const MODULE_ICON_FALLBACK: Record<string, string> = {
   dashboard: '⊞', menu_planner: '📅', recipes: '🍳', kitchen_view: '👨‍🍳',
   delivery: '🚐', purchases: '🛒', kitchen_stock: '🏪', inventory: '📦',
   meal_count: '🍽️', documents: '📁', dispatch: '📨', custom_export: '📤',
-  site_claim: '📋', cacfp_reports: '📊', receipt_review: '🧾',
+  messages: '📨', site_claim: '📋', cacfp_reports: '📊', receipt_review: '🧾',
   kitchen_report: '👨‍🍳', form_submissions: '📨', finance: '💰', settings: '⚙️',
 }
 

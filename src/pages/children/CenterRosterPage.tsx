@@ -79,6 +79,7 @@ function Avatar({ name, size = 40, photo }: { name: string; size?: number; photo
 }
 
 function DetailPopup({ data, onClose, classrooms }: { data: PopupData; onClose: () => void; classrooms: Classroom[] }) {
+  const [mode, setMode] = useState<'view'|'edit'|'transfer'>('view')
   const name = data.kind === 'child' ? fullName(data.child) : staffName(data.staff)
   const photo = data.kind === 'child' ? null : data.staff.photo_url
   return (
@@ -108,10 +109,15 @@ function DetailPopup({ data, onClose, classrooms }: { data: PopupData; onClose: 
               </div>
             )}
           </div>
-          <button onClick={onClose} style={{
-            background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff',
-            width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', fontSize: 18,
-          }}>×</button>
+          <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+            {data.kind === 'child' && (
+              <>
+                <button onClick={() => setMode(m => m==='edit' ? 'view' : 'edit')} style={{ background:'rgba(255,255,255,0.15)', border:'none', color:'#fff', width:30, height:30, borderRadius:'50%', cursor:'pointer', fontSize:15 }} title="Edit">✏️</button>
+                <button onClick={() => setMode(m => m==='transfer' ? 'view' : 'transfer')} style={{ background:'rgba(255,255,255,0.15)', border:'none', color:'#fff', width:30, height:30, borderRadius:'50%', cursor:'pointer', fontSize:15 }} title="Transfer">🔄</button>
+              </>
+            )}
+            <button onClick={onClose} style={{ background:'rgba(255,255,255,0.15)', border:'none', color:'#fff', width:30, height:30, borderRadius:'50%', cursor:'pointer', fontSize:18 }}>×</button>
+          </div>
         </div>
         <div style={{ padding: 24 }}>
           {data.kind === 'child' && (() => {
@@ -149,8 +155,8 @@ function DetailPopup({ data, onClose, classrooms }: { data: PopupData; onClose: 
                     <span style={{ fontSize: 13, color: '#1a2e1a', fontWeight: 500 }}>{value}</span>
                   </div>
                 ))}
-                <TransferChildPanel child={c} classrooms={classrooms} onDone={() => { onClose(); window.location.reload() }} />
-                <EditChildPanel child={c} classrooms={classrooms} onDone={() => { onClose(); window.location.reload() }} />
+                {mode === 'transfer' && <TransferChildPanel child={c} classrooms={classrooms} onDone={() => { onClose(); window.location.reload() }} />}
+                {mode === 'edit' && <EditChildPanel child={c} classrooms={classrooms} onDone={() => { onClose(); window.location.reload() }} />}
               </div>
             )
           })()}

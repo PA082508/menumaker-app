@@ -180,7 +180,7 @@ export default function AppLayout() {
   const allowedPaths = usingPerms ? new Set(permItems.map(i => i.path)) : null
   const basePath = '/' + (location.pathname.split('/')[1] || 'dashboard')
   const cookAllowed = isCookOrTeacher && (basePath === '/meal-count' || (isCook && basePath === '/delivery'))
-  const blocked = usingPerms && basePath !== '/dashboard' && !cookAllowed && KNOWN_MODULE_ROUTES.has(basePath) && !allowedPaths!.has(basePath)
+  const blocked = usingPerms && basePath !== '/dashboard' && basePath !== '/messages' && !cookAllowed && KNOWN_MODULE_ROUTES.has(basePath) && !allowedPaths!.has(basePath)
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#f4f6f4', fontFamily: "'DM Sans', sans-serif" }}>

@@ -89,7 +89,7 @@ function DetailPopup({ data, onClose, classrooms }: { data: PopupData; onClose: 
     }}>
       <div onClick={e => e.stopPropagation()} style={{
         background: '#fff', borderRadius: 18, width: '100%', maxWidth: 380,
-        boxShadow: '0 20px 60px rgba(0,0,0,0.18)', overflow: 'hidden', maxHeight: '90vh', display: 'flex', flexDirection: 'column',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.18)', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden',
         fontFamily: "'DM Sans', sans-serif",
       }}>
         <div style={{ background: '#0f4c35', padding: '24px 24px 20px', display: 'flex', gap: 16, alignItems: 'center' }}>
@@ -113,7 +113,7 @@ function DetailPopup({ data, onClose, classrooms }: { data: PopupData; onClose: 
             width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', fontSize: 18,
           }}>×</button>
         </div>
-        <div style={{ padding: 24, overflowY: 'auto', flex: 1 }}>
+        <div style={{ padding: 24, overflowY: 'auto', flex: '1 1 0', minHeight: 0 }}>
           {data.kind === 'child' && (() => {
             const c = data.child; const at = data.attend
             const frpKey = (c.frp ?? '').trim().toUpperCase().slice(0,1)

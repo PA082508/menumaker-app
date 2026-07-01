@@ -4,6 +4,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import ChildSettingsPage from './ChildSettingsPage'
 import { useOrg } from '@/contexts/OrgContext'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -209,6 +210,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
   const [expanded,   setExpanded]   = useState<Record<string, boolean>>({})
   const [popup,      setPopup]      = useState<PopupData | null>(null)
   const [showAddChild, setShowAddChild] = useState(false)
+  const [childSettingsId, setChildSettingsId] = useState<string|null>(null)
   const [viewMode, setViewMode] = useState<'cards'|'list'>('cards')
   const [listClassFilter, setListClassFilter] = useState('all')
   const [listCols, setListCols] = useState({
@@ -405,7 +407,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                         const ageMs = child.birthday ? Date.now() - new Date(child.birthday).getTime() : 0
                         const ageY = Math.floor(ageMs / (1000*60*60*24*365.25))
                         return (
-                          <tr key={child.id} onClick={() => setPopup({ kind:'child', child, attend: null })}
+                          <tr key={child.id} onClick={() => setChildSettingsId(child.id)}
                             style={{ borderBottom:'1px solid #f0f4f1', cursor:'pointer', background: idx%2===0 ? '#fff' : '#fafbfa' }}
                             onMouseEnter={e => (e.currentTarget.style.background='#f0f7f2')}
                             onMouseLeave={e => (e.currentTarget.style.background=idx%2===0?'#fff':'#fafbfa')}>
@@ -588,6 +590,13 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
       )}
 
       {popup && <DetailPopup data={popup} onClose={() => setPopup(null)} classrooms={classrooms} />}
+      {childSettingsId && (
+        <ChildSettingsPage
+          childId={childSettingsId}
+          classrooms={classrooms}
+          onClose={() => setChildSettingsId(null)}
+        />
+      )}
       {showAddChild && currentCenter && (
         <AddChildModal
           centerId={currentCenter.id}

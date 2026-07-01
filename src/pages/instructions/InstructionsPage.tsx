@@ -116,6 +116,7 @@ function SignModal({ onClose }: { onClose: ()=>void }) {
               <p style={{marginTop:10}}><strong>Art.5 Confidentiality.</strong> All child data is confidential. No disclosure to unauthorized persons.</p>
               <p style={{marginTop:10}}><strong>Art.6 Termination.</strong> Either party may terminate. Employee: written notice. Company: immediately upon violation.</p>
               <p style={{marginTop:10}}><strong>Art.7 Governing Law.</strong> Ohio law. Cuyahoga County courts.</p>
+              <p style={{marginTop:10}}><strong>Art.8 Push Notifications.</strong> Employee consents to receive work-related Push Notifications through the Play Academy app on their personal device. Notifications may include: CACFP meal count alerts, SafePass child handoff events, schedule reminders, and urgent messages from management. Employee may not disable work notifications during scheduled work hours.</p>
             </div>
             <div style={{display:'flex',gap:10,padding:12,background:'#f0f7f4',borderRadius:8,marginBottom:12}}>
               <input type="checkbox" id="ag" checked={agreed} onChange={e=>setAgreed(e.target.checked)} style={{width:18,height:18,accentColor:'#1a5c3f'}}/>

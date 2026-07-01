@@ -449,3 +449,80 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
     </div>
   )
 }
+
+// ─── Transfer Child Panel ──────────────────────────────────────────────────
+
+function TransferChildPanel({ child, classrooms, onDone }: {
+  child: Child
+  classrooms: Classroom[]
+  onDone: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [targetClassId, setTargetClassId] = useState('')
+  const [transferDate, setTransferDate] = useState(new Date().toISOString().slice(0, 10))
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const otherClassrooms = classrooms.filter(c => c.id !== child.classroom_id)
+
+  async function doTransfer() {
+    if (!targetClassId) { setError('Select a classroom'); return }
+    setSaving(true)
+    setError('')
+    try {
+      const { error: err } = await supabase.schema('menumaker')
+        .from('roster')
+        .update({ classroom_id: targetClassId, date_in: transferDate })
+        .eq('id', child.id)
+      if (err) throw err
+      onDone()
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!open) return (
+    <button onClick={() => setOpen(true)} style={{
+      width: '100%', padding: '10px 14px', borderRadius: 10,
+      background: '#f0f7f4', border: '1.5px solid #0f4c35',
+      color: '#0f4c35', fontWeight: 700, fontSize: 13,
+      cursor: 'pointer', fontFamily: 'inherit', marginTop: 4,
+    }}>
+      🔄 Transfer to Another Class
+    </button>
+  )
+
+  return (
+    <div style={{ background: '#f0f7f4', border: '1.5px solid #0f4c35', borderRadius: 10, padding: 14, marginTop: 4 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: '#0f4c35', marginBottom: 10 }}>🔄 Transfer Child</div>
+      <div style={{ marginBottom: 10 }}>
+        <label style={{ fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>New Classroom</label>
+        <select value={targetClassId} onChange={e => setTargetClassId(e.target.value)}
+          style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #c0d8c0', fontSize: 14, fontFamily: 'inherit', background: '#fff' }}>
+          <option value="">Select classroom...</option>
+          {otherClassrooms.map(c => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
+      </div>
+      <div style={{ marginBottom: 12 }}>
+        <label style={{ fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>Transfer Date</label>
+        <input type="date" value={transferDate} onChange={e => setTransferDate(e.target.value)}
+          style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #c0d8c0', fontSize: 14, fontFamily: 'inherit', background: '#fff' }}/>
+      </div>
+      {error && <div style={{ color: '#dc2626', fontSize: 12, marginBottom: 8 }}>{error}</div>}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button onClick={() => setOpen(false)}
+          style={{ flex: 1, padding: '9px', borderRadius: 8, border: '1.5px solid #c0d8c0', background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}>
+          Cancel
+        </button>
+        <button onClick={doTransfer} disabled={saving || !targetClassId}
+          style={{ flex: 2, padding: '9px', borderRadius: 8, background: '#0f4c35', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13, fontFamily: 'inherit', opacity: saving ? 0.6 : 1 }}>
+          {saving ? 'Transferring…' : '✓ Confirm Transfer'}
+        </button>
+      </div>
+    </div>
+  )
+}

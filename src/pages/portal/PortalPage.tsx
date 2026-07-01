@@ -12,6 +12,7 @@ import { useParams, Navigate, useNavigate } from 'react-router-dom'
 import { useOrg } from '@/contexts/OrgContext'
 import { useAuth } from '@/hooks/useAuth'
 import MealCountPage from '@/pages/meal-count/MealCountPage'
+import PortalMessagesPanel from '@/pages/messages/PortalMessagesPanel'
 
 const CENTER_NAMES: Record<string, string> = {
   ridge: 'Wickliffe',
@@ -122,7 +123,12 @@ export default function PortalPage() {
           {portalRole === 'director' ? 'Director' : portalRole === 'cook' ? 'Cook' : 'Teacher'} View
         </span>
       </div>
-      <MealCountPage portalRoles={roles} />
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+        <MealCountPage portalRoles={roles} />
+      </div>
+      {(portalRole === 'teacher' || portalRole === 'cook') && (
+        <PortalMessagesPanel centerCode={centerCode} portalRole={portalRole} />
+      )}
     </div>
   )
 }

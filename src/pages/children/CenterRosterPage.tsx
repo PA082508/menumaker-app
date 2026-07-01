@@ -512,6 +512,133 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
   )
 }
 
+// ─── Edit Child Panel ─────────────────────────────────────────────────────────
+
+function EditChildPanel({ child, classrooms, onDone }: {
+  child: Child; classrooms: Classroom[]; onDone: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [form, setForm] = useState({
+    first_name: child.first_name ?? '',
+    last_name: child.last_name ?? '',
+    birthday: child.birthday ?? '',
+    classroom_id: child.classroom_id ?? '',
+    date_in: (child as any).date_in ?? '',
+    frp: (child as any).frp ?? '',
+    milk_kind: child.milk_kind ?? '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }))
+
+  async function save() {
+    setSaving(true); setError('')
+    try {
+      const { error: err } = await supabase.schema('menumaker').from('roster').update({
+        first_name: form.first_name,
+        last_name: form.last_name,
+        child_name: `${form.last_name} ${form.first_name}`,
+        birthday: form.birthday || null,
+        classroom_id: form.classroom_id || null,
+        date_in: form.date_in || null,
+        frp: form.frp || null,
+        milk_kind: form.milk_kind || null,
+      }).eq('id', child.id)
+      if (err) throw err
+      onDone()
+    } catch (e: any) {
+      setError(e.message)
+    } finally { setSaving(false) }
+  }
+
+  const inp: React.CSSProperties = {
+    width: '100%', padding: '9px 12px', borderRadius: 8,
+    border: '1.5px solid #c0d8c0', fontSize: 14, fontFamily: 'inherit',
+    background: '#fff', boxSizing: 'border-box' as const, outline: 'none'
+  }
+  const lbl: React.CSSProperties = {
+    fontSize: 11, fontWeight: 700, color: '#6b7280',
+    textTransform: 'uppercase' as const, letterSpacing: '0.06em',
+    display: 'block', marginBottom: 4
+  }
+
+  if (!open) return (
+    <button onClick={() => setOpen(true)} style={{
+      width: '100%', padding: '10px 14px', borderRadius: 10, marginTop: 8,
+      background: '#fff', border: '1.5px solid #c0d8c0',
+      color: '#0f4c35', fontWeight: 700, fontSize: 13,
+      cursor: 'pointer', fontFamily: 'inherit',
+    }}>
+      ✏️ Edit Child Data
+    </button>
+  )
+
+  return (
+    <div style={{ background: '#f9fafb', border: '1.5px solid #c0d8c0', borderRadius: 10, padding: 14, marginTop: 8 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: '#0f4c35', marginBottom: 12 }}>✏️ Edit Child Data</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+        <div>
+          <label style={lbl}>First Name</label>
+          <input style={inp} value={form.first_name} onChange={e => set('first_name', e.target.value)}/>
+        </div>
+        <div>
+          <label style={lbl}>Last Name</label>
+          <input style={inp} value={form.last_name} onChange={e => set('last_name', e.target.value)}/>
+        </div>
+      </div>
+      <div style={{ marginBottom: 10 }}>
+        <label style={lbl}>Birthday</label>
+        <input type="date" style={inp} value={form.birthday} onChange={e => set('birthday', e.target.value)}/>
+      </div>
+      <div style={{ marginBottom: 10 }}>
+        <label style={lbl}>Classroom</label>
+        <select style={inp} value={form.classroom_id} onChange={e => set('classroom_id', e.target.value)}>
+          <option value="">— no change —</option>
+          {classrooms.filter(c => !c.name.toLowerCase().includes('staff')).map(c => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
+        <div>
+          <label style={lbl}>Date In</label>
+          <input type="date" style={inp} value={form.date_in} onChange={e => set('date_in', e.target.value)}/>
+        </div>
+        <div>
+          <label style={lbl}>FRP</label>
+          <select style={inp} value={form.frp} onChange={e => set('frp', e.target.value)}>
+            <option value="">—</option>
+            <option value="F">Free</option>
+            <option value="R">Reduced</option>
+            <option value="P">Paid</option>
+          </select>
+        </div>
+        <div>
+          <label style={lbl}>Milk</label>
+          <select style={inp} value={form.milk_kind} onChange={e => set('milk_kind', e.target.value)}>
+            <option value="">—</option>
+            <option value="whole">Whole</option>
+            <option value="1pct">1%</option>
+            <option value="red">Reduced</option>
+            <option value="formula">Formula</option>
+          </select>
+        </div>
+      </div>
+      {error && <div style={{ color: '#dc2626', fontSize: 12, marginBottom: 8 }}>{error}</div>}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button onClick={() => setOpen(false)}
+          style={{ flex: 1, padding: '9px', borderRadius: 8, border: '1.5px solid #c0d8c0', background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}>
+          Cancel
+        </button>
+        <button onClick={save} disabled={saving}
+          style={{ flex: 2, padding: '9px', borderRadius: 8, background: '#0f4c35', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13, fontFamily: 'inherit', opacity: saving ? 0.6 : 1 }}>
+          {saving ? 'Saving…' : '✓ Save Changes'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─── Add Child Modal ──────────────────────────────────────────────────────────
 
 function AddChildModal({ centerId, orgId, classrooms, onDone, onClose }: {

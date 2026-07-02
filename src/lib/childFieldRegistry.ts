@@ -5,56 +5,51 @@
 // [value / inline editor]. Badges, footer counts, per-child export and the
 // completeness % all aggregate from here — no per-tab hardcoding.
 //
-// Family / SafePass are guardian-derived (not flat columns) and Documents is
-// file storage, so those are represented as `kind:'derived'|'files'` sections
-// rather than scalar FieldDefs. Scalar tabs (Profile/Enrollment/Health/CACFP/
-// Billing) are fully described here and map 1:1 to DB columns.
+// Family / SafePass are child-level rules over the guardian set (not flat
+// columns); Documents is file storage. Those three use derived completeness
+// (see familyViolations / safepassViolations) rather than scalar FieldDefs.
 // ============================================================
 
 export type TabKey =
   | 'profile' | 'family' | 'enrollment' | 'health' | 'cacfp' | 'safepass' | 'billing' | 'documents'
 
-export type FieldTable = 'roster' | 'child_medical' | 'derived'
+// 'view' = read-only from v_child_age_profile (age/milk), never edited.
+export type FieldTable = 'roster' | 'child_medical' | 'view'
 export type FieldType = 'text' | 'textarea' | 'date' | 'select' | 'boolean' | 'phone' | 'email'
 
 export interface FieldOption { value: string; label: string }
 
-/** A single editable/displayable field, bound to one DB column. */
 export interface FieldDef {
   key: string                 // stable id, unique across registry
   tab: TabKey
-  section: string             // section header within the tab
+  section: string
   label: string
   table: FieldTable
-  column: string              // DB column on `table` (or synthetic for derived)
+  column: string
   type: FieldType
   required?: boolean          // counts toward completeness when active
-  /** Field is only active (rendered + counted) when this condition holds. */
-  conditionalOn?: { field: string; truthy?: boolean; equals?: unknown }
-  readOnly?: boolean          // imported/computed — show, don't edit
-  options?: FieldOption[]     // for select
-  isDate?: boolean            // date fields also participate in "overdue" checks
-  overdue?: boolean           // a past date in this field is an overdue flag (e.g. frp_expires)
+  conditionalOn?: { field: string; truthy?: boolean; equals?: unknown }  // reads from roster
+  readOnly?: boolean          // imported/computed — show + export, never edit, no ★
+  options?: FieldOption[]
+  overdue?: boolean           // a past date here is an overdue (black-badge) flag
 }
 
-/** Tab-level metadata (order, label, and non-scalar rendering kind). */
 export interface TabDef {
   key: TabKey
   label: string
   icon: string
-  /** 'fields' = render from FieldDefs; 'guardians' = Family list; 'files' = Documents. */
-  kind: 'fields' | 'guardians' | 'files'
+  kind: 'fields' | 'guardians' | 'files'   // guardians = Family/SafePass rules; files = Documents
 }
 
 export const TABS: TabDef[] = [
-  { key: 'profile',    label: 'Profile',    icon: '👤',        kind: 'fields' },
-  { key: 'family',     label: 'Family',     icon: '👨‍👩‍👧',       kind: 'guardians' },
-  { key: 'enrollment', label: 'Enrollment', icon: '📋',        kind: 'fields' },
-  { key: 'health',     label: 'Health',     icon: '🏥',        kind: 'fields' },
-  { key: 'cacfp',      label: 'CACFP',      icon: '🍽️',        kind: 'fields' },
-  { key: 'safepass',   label: 'SafePass',   icon: '🔒',        kind: 'guardians' },
-  { key: 'billing',    label: 'Billing',    icon: '💰',        kind: 'fields' },
-  { key: 'documents',  label: 'Documents',  icon: '📁',        kind: 'files' },
+  { key: 'profile',    label: 'Profile',    icon: '👤',   kind: 'fields' },
+  { key: 'family',     label: 'Family',     icon: '👨‍👩‍👧',  kind: 'guardians' },
+  { key: 'enrollment', label: 'Enrollment', icon: '📋',   kind: 'fields' },
+  { key: 'health',     label: 'Health',     icon: '🏥',   kind: 'fields' },
+  { key: 'cacfp',      label: 'CACFP',      icon: '🍽️',   kind: 'fields' },
+  { key: 'safepass',   label: 'SafePass',   icon: '🔒',   kind: 'guardians' },
+  { key: 'billing',    label: 'Billing',    icon: '💰',   kind: 'fields' },   // placeholder — no fields yet
+  { key: 'documents',  label: 'Documents',  icon: '📁',   kind: 'files' },
 ]
 
 const FRP_OPTIONS: FieldOption[] = [
@@ -64,66 +59,73 @@ const MILK_OPTIONS: FieldOption[] = [
   { value: 'whole', label: 'Whole' }, { value: '1%', label: '1%' },
   { value: 'skim', label: 'Skim' }, { value: 'soy', label: 'Soy (sub)' }, { value: 'none', label: 'None' },
 ]
-
-// ─── The registry ──────────────────────────────────────────────────────────────
-// Family (guardians) and SafePass (pickup rights) are guardian-derived; their
-// "completeness" is computed separately (≥1 guardian / ≥1 pickup-authorized).
-export const FIELDS: FieldDef[] = [
-  // ── Profile (roster) ──
-  { key: 'first_name',   tab: 'profile', section: 'Identity', label: 'First name', table: 'roster', column: 'first_name', type: 'text', required: true },
-  { key: 'last_name',    tab: 'profile', section: 'Identity', label: 'Last name',  table: 'roster', column: 'last_name',  type: 'text', required: true },
-  { key: 'birthday',     tab: 'profile', section: 'Identity', label: 'Birthday',   table: 'roster', column: 'birthday',  type: 'date', required: true, isDate: true },
-  { key: 'classroom_id', tab: 'profile', section: 'Placement', label: 'Classroom', table: 'roster', column: 'classroom_id', type: 'select', required: true },
-  { key: 'date_in',      tab: 'profile', section: 'Placement', label: 'Start date', table: 'roster', column: 'date_in',  type: 'date', required: true, isDate: true },
-  { key: 'date_out',     tab: 'profile', section: 'Placement', label: 'End date',   table: 'roster', column: 'date_out', type: 'date', isDate: true },
-  { key: 'child_address',tab: 'profile', section: 'Contact',   label: 'Home address', table: 'roster', column: 'child_address', type: 'text' },
-
-  // ── Enrollment (roster) — DCY 01234 ──
-  { key: 'frp',                  tab: 'enrollment', section: 'DCY 01234 — Eligibility', label: 'FRP status', table: 'roster', column: 'frp', type: 'select', required: true, options: FRP_OPTIONS },
-  { key: 'frp_expires',          tab: 'enrollment', section: 'DCY 01234 — Eligibility', label: 'FRP expires', table: 'roster', column: 'frp_expires', type: 'date', isDate: true, overdue: true },
-  { key: 'enrollment_reviewed_at', tab: 'enrollment', section: 'DCY 01234 — Review', label: 'Last annual review', table: 'roster', column: 'enrollment_reviewed_at', type: 'date', required: true, isDate: true, overdue: true },
-  { key: 'emergency_transport_auth', tab: 'enrollment', section: 'DCY 01234 — Authorizations', label: 'Emergency transport authorized', table: 'roster', column: 'emergency_transport_auth', type: 'boolean' },
-
-  // ── Health (child_medical) — DCY 01236, gated on has_health_condition ──
-  { key: 'doctor_name',  tab: 'health', section: 'Provider', label: 'Doctor name',  table: 'child_medical', column: 'doctor_name',  type: 'text', required: true },
-  { key: 'doctor_phone', tab: 'health', section: 'Provider', label: 'Doctor phone', table: 'child_medical', column: 'doctor_phone', type: 'phone', required: true },
-  { key: 'allergies',    tab: 'health', section: 'Medical',  label: 'Allergies',    table: 'child_medical', column: 'allergies',    type: 'textarea' },
-  { key: 'medications',  tab: 'health', section: 'Medical',  label: 'Medications',  table: 'child_medical', column: 'medications',  type: 'textarea' },
-  // DCY 01236 — only required when the child has a documented health condition
-  { key: 'health_condition_name', tab: 'health', section: 'DCY 01236 — Health Condition', label: 'Condition name', table: 'child_medical', column: 'health_condition_name', type: 'text', required: true, conditionalOn: { field: 'has_health_condition', truthy: true } },
-  { key: 'condition_symptoms',    tab: 'health', section: 'DCY 01236 — Health Condition', label: 'Symptoms', table: 'child_medical', column: 'condition_symptoms', type: 'textarea', required: true, conditionalOn: { field: 'has_health_condition', truthy: true } },
-  { key: 'care_instructions',     tab: 'health', section: 'DCY 01236 — Health Condition', label: 'Care instructions', table: 'child_medical', column: 'care_instructions', type: 'textarea', required: true, conditionalOn: { field: 'has_health_condition', truthy: true } },
-  { key: 'emergency_action',      tab: 'health', section: 'DCY 01236 — Health Condition', label: 'Emergency action plan', table: 'child_medical', column: 'emergency_action', type: 'textarea', required: true, conditionalOn: { field: 'has_health_condition', truthy: true } },
-  { key: 'foods_to_avoid',        tab: 'health', section: 'DCY 01236 — Restrictions', label: 'Foods to avoid', table: 'child_medical', column: 'foods_to_avoid', type: 'textarea', conditionalOn: { field: 'has_health_condition', truthy: true } },
-  { key: 'activities_to_avoid',   tab: 'health', section: 'DCY 01236 — Restrictions', label: 'Activities to avoid', table: 'child_medical', column: 'activities_to_avoid', type: 'textarea', conditionalOn: { field: 'has_health_condition', truthy: true } },
-
-  // ── CACFP (roster) ──
-  { key: 'frp_cacfp',  tab: 'cacfp', section: 'Meal Eligibility', label: 'FRP status', table: 'roster', column: 'frp', type: 'select', required: true, options: FRP_OPTIONS, readOnly: true },
-  { key: 'age_group_food', tab: 'cacfp', section: 'Meal Pattern', label: 'Age group (food)', table: 'roster', column: 'age_group_food', type: 'text', required: true },
-  { key: 'milk_kind',  tab: 'cacfp', section: 'Meal Pattern', label: 'Milk type', table: 'roster', column: 'milk_kind', type: 'select', required: true, options: MILK_OPTIONS },
+const HHC_OPTIONS: FieldOption[] = [
+  { value: 'true', label: 'Yes' }, { value: 'false', label: 'No' },
 ]
 
-// ─── Derived-tab completeness contributions ────────────────────────────────────
-// Family: ≥1 guardian on file. SafePass: ≥1 pickup-authorized (role-based in v1).
-export const DERIVED_REQUIRED: Record<'family' | 'safepass', { label: string }> = {
-  family:   { label: 'At least one guardian on file' },
-  safepass: { label: 'At least one pickup-authorized contact' },
-}
+// ─── The registry ──────────────────────────────────────────────────────────────
+export const FIELDS: FieldDef[] = [
+  // ── Profile (roster) ──
+  { key: 'first_name',   tab: 'profile', section: 'Identity',  label: 'First name',   table: 'roster', column: 'first_name',    type: 'text',   required: true },
+  { key: 'last_name',    tab: 'profile', section: 'Identity',  label: 'Last name',    table: 'roster', column: 'last_name',     type: 'text',   required: true },
+  { key: 'birthday',     tab: 'profile', section: 'Identity',  label: 'Birthday',     table: 'roster', column: 'birthday',      type: 'date',   required: true },
+  { key: 'classroom_id', tab: 'profile', section: 'Placement', label: 'Classroom',    table: 'roster', column: 'classroom_id',  type: 'select', required: true },
+  { key: 'child_address',tab: 'profile', section: 'Contact',   label: 'Home address', table: 'roster', column: 'child_address', type: 'text',   required: true },
+  { key: 'date_in',      tab: 'profile', section: 'Placement', label: 'Start date',   table: 'roster', column: 'date_in',       type: 'date',   required: true },
+  { key: 'date_out',     tab: 'profile', section: 'Placement', label: 'End date',     table: 'roster', column: 'date_out',      type: 'date' },
+
+  // ── Enrollment (roster) — DCY 01234 ──
+  { key: 'enrollment_reviewed_at',   tab: 'enrollment', section: 'DCY 01234 — Annual Review', label: 'Last annual review', table: 'roster', column: 'enrollment_reviewed_at', type: 'date', required: true, overdue: true },
+  { key: 'emergency_transport_auth', tab: 'enrollment', section: 'DCY 01234 — Authorizations', label: 'Emergency transport authorized', table: 'roster', column: 'emergency_transport_auth', type: 'boolean', required: true },
+  { key: 'development_notes',   tab: 'enrollment', section: 'Notes', label: 'Development notes',   table: 'roster', column: 'development_notes',   type: 'textarea' },
+  { key: 'accommodations',      tab: 'enrollment', section: 'Notes', label: 'Accommodations',     table: 'roster', column: 'accommodations',      type: 'textarea' },
+  { key: 'specialized_services',tab: 'enrollment', section: 'Notes', label: 'Specialized services', table: 'roster', column: 'specialized_services', type: 'textarea' },
+
+  // ── Health (roster gate + child_medical) — DCY 01236 ──
+  { key: 'has_health_condition', tab: 'health', section: 'Screening', label: 'Has a health condition', table: 'roster', column: 'has_health_condition', type: 'boolean', required: true, options: HHC_OPTIONS },
+  { key: 'doctor_name',  tab: 'health', section: 'Provider', label: 'Doctor name',  table: 'child_medical', column: 'doctor_name',  type: 'text' },   // optional in v1 (collected once DCY forms are online)
+  { key: 'doctor_phone', tab: 'health', section: 'Provider', label: 'Doctor phone', table: 'child_medical', column: 'doctor_phone', type: 'phone' },  // optional in v1
+  { key: 'allergies',    tab: 'health', section: 'Medical',  label: 'Allergies',    table: 'child_medical', column: 'allergies',    type: 'textarea' }, // never required: empty = "none"
+  { key: 'medications',  tab: 'health', section: 'Medical',  label: 'Medications',  table: 'child_medical', column: 'medications',  type: 'textarea' }, // never required: empty = "none"
+  { key: 'parent_signed_at', tab: 'health', section: 'Attestation', label: 'Parent signature date', table: 'child_medical', column: 'parent_signed_at', type: 'date', required: true },
+  // DCY 01236 detail — active only when has_health_condition; NOT required
+  { key: 'health_condition_name', tab: 'health', section: 'DCY 01236 — Condition', label: 'Condition name',    table: 'child_medical', column: 'health_condition_name', type: 'text',     conditionalOn: { field: 'has_health_condition', truthy: true } },
+  { key: 'condition_symptoms',    tab: 'health', section: 'DCY 01236 — Condition', label: 'Symptoms',          table: 'child_medical', column: 'condition_symptoms',    type: 'textarea', conditionalOn: { field: 'has_health_condition', truthy: true } },
+  { key: 'care_instructions',     tab: 'health', section: 'DCY 01236 — Condition', label: 'Care instructions', table: 'child_medical', column: 'care_instructions',     type: 'textarea', conditionalOn: { field: 'has_health_condition', truthy: true } },
+  { key: 'emergency_action',      tab: 'health', section: 'DCY 01236 — Condition', label: 'Emergency action',  table: 'child_medical', column: 'emergency_action',      type: 'textarea', conditionalOn: { field: 'has_health_condition', truthy: true } },
+  { key: 'foods_to_avoid',        tab: 'health', section: 'DCY 01236 — Restrictions', label: 'Foods to avoid',      table: 'child_medical', column: 'foods_to_avoid',      type: 'textarea', conditionalOn: { field: 'has_health_condition', truthy: true } },
+  { key: 'activities_to_avoid',   tab: 'health', section: 'DCY 01236 — Restrictions', label: 'Activities to avoid', table: 'child_medical', column: 'activities_to_avoid', type: 'textarea', conditionalOn: { field: 'has_health_condition', truthy: true } },
+  { key: 'physician_signature_date', tab: 'health', section: 'DCY 01236 — Attestation', label: 'Physician signature date', table: 'child_medical', column: 'physician_signature_date', type: 'date', conditionalOn: { field: 'has_health_condition', truthy: true } },
+
+  // ── CACFP (roster editable + v_child_age_profile read-only) ──
+  { key: 'frp',       tab: 'cacfp', section: 'Eligibility', label: 'FRP status',  table: 'roster', column: 'frp',        type: 'select', required: true, options: FRP_OPTIONS },
+  { key: 'frp_expires', tab: 'cacfp', section: 'Eligibility', label: 'FRP expires', table: 'roster', column: 'frp_expires', type: 'date', overdue: true }, // 12-mo IEA validity; overdue = claim risk
+  { key: 'milk_kind', tab: 'cacfp', section: 'Meal Pattern', label: 'Milk type',   table: 'roster', column: 'milk_kind',  type: 'select', required: true, options: MILK_OPTIONS },
+  { key: 'age_group', tab: 'cacfp', section: 'Meal Pattern', label: 'Age group',   table: 'view', column: 'age_group_label', type: 'text', readOnly: true }, // from v_child_age_profile
+  { key: 'milk_oz',   tab: 'cacfp', section: 'Meal Pattern', label: 'Milk (oz)',   table: 'view', column: 'milk_oz',      type: 'text', readOnly: true }, // from v_child_age_profile
+]
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 export const fieldsForTab = (tab: TabKey) => FIELDS.filter(f => f.tab === tab)
 
-/** Read the value backing a field from the two record sources. */
 export type RecordCtx = {
   roster: Record<string, any> | null
   medical: Record<string, any> | null
+  view: Record<string, any> | null   // v_child_age_profile row (read-only)
 }
+
+/** Guardian shape needed for Family/SafePass child-level rules. */
+export type GuardianLite = {
+  first_name?: string | null; last_name?: string | null; mobile_phone?: string | null
+  relationship?: string | null; is_emergency_contact?: boolean | null; can_pickup?: boolean | null
+  role?: string | null
+}
+
 export function fieldValue(f: FieldDef, ctx: RecordCtx): any {
-  const src = f.table === 'child_medical' ? ctx.medical : ctx.roster
+  const src = f.table === 'child_medical' ? ctx.medical : f.table === 'view' ? ctx.view : ctx.roster
   return src ? src[f.column] : undefined
 }
 
-/** Is a conditional field currently active? (conditions read from roster). */
 export function isFieldActive(f: FieldDef, ctx: RecordCtx): boolean {
   const c = f.conditionalOn
   if (!c) return true
@@ -135,33 +137,46 @@ export function isFieldActive(f: FieldDef, ctx: RecordCtx): boolean {
 
 const isEmpty = (v: any) => v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0)
 
-/** Empty required + overdue counts for a tab (used by badges + footer). */
-export function tabCounts(tab: TabKey, ctx: RecordCtx, guardians: { role?: string }[]): { empty: number; overdue: number } {
+// ── Family / SafePass child-level rules ──
+// Family "filled" = (≥1 guardian with first+last+mobile+relationship) AND (≥1 emergency).
+//   Returns 0–2 rule violations (that's what the tab badge shows; per-card ★ are separate).
+export function familyViolations(guardians: GuardianLite[]): number {
+  const complete = guardians.some(g => g.first_name && g.last_name && g.mobile_phone && g.relationship)
+  const emergency = guardians.some(g => !!g.is_emergency_contact)
+  return (complete ? 0 : 1) + (emergency ? 0 : 1)
+}
+// SafePass "filled" = ≥1 pickup-authorized (can_pickup=true). Trusted-persons + per-person
+// method aren't roster-joinable yet (safepass_trusted_persons.child_id is TEXT) → deferred.
+export function safepassViolations(guardians: GuardianLite[]): number {
+  return guardians.some(g => !!g.can_pickup) ? 0 : 1
+}
+
+/** Empty-required + overdue counts for a tab's badge/footer. */
+export function tabCounts(tab: TabKey, ctx: RecordCtx, guardians: GuardianLite[]): { empty: number; overdue: number } {
   const today = new Date().toISOString().slice(0, 10)
   let empty = 0, overdue = 0
   for (const f of fieldsForTab(tab)) {
-    if (!isFieldActive(f, ctx)) continue
+    if (f.readOnly || !isFieldActive(f, ctx)) continue
     const v = fieldValue(f, ctx)
     if (f.required && isEmpty(v)) empty++
     if (f.overdue && v && String(v).slice(0, 10) < today) overdue++
   }
-  // derived-tab requirements
-  if (tab === 'family' && guardians.length === 0) empty++
-  if (tab === 'safepass' && !guardians.some(g => g.role === 'pickup' || g.role === 'parent')) empty++
+  if (tab === 'family') empty += familyViolations(guardians)
+  if (tab === 'safepass') empty += safepassViolations(guardians)
   return { empty, overdue }
 }
 
-/** Overall completeness: filled active-required / all active-required. */
-export function completeness(ctx: RecordCtx, guardians: { role?: string }[]): { pct: number; filled: number; total: number } {
+/** Overall completeness: filled active-required / all active-required (incl. derived rules). */
+export function completeness(ctx: RecordCtx, guardians: GuardianLite[]): { pct: number; filled: number; total: number } {
   let total = 0, filled = 0
   for (const f of FIELDS) {
-    if (!f.required || !isFieldActive(f, ctx)) continue
+    if (!f.required || f.readOnly || !isFieldActive(f, ctx)) continue
     total++
     if (!isEmpty(fieldValue(f, ctx))) filled++
   }
-  // derived requirements
-  total++; if (guardians.length > 0) filled++                                   // family
-  total++; if (guardians.some(g => g.role === 'pickup' || g.role === 'parent')) filled++ // safepass
+  // Family = 2 units (complete-guardian + emergency); SafePass = 1 unit (pickup)
+  total += 2; filled += (2 - familyViolations(guardians))
+  total += 1; filled += (1 - safepassViolations(guardians))
   const pct = total === 0 ? 100 : Math.round((filled / total) * 100)
   return { pct, filled, total }
 }

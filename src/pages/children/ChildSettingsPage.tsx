@@ -4,10 +4,21 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { completeness as regCompleteness, tabCounts as regTabCounts, type TabKey, type RecordCtx } from '@/lib/childFieldRegistry'
+import {
+  completeness as regCompleteness, tabCounts as regTabCounts,
+  fieldsForTab, isFieldActive, fieldValue,
+  type TabKey, type RecordCtx, type FieldDef,
+} from '@/lib/childFieldRegistry'
+import { displayChildName } from '@/lib/childName'
+import ChildExportPanel from './ChildExportPanel'
+import ChildDocumentsTab from './ChildDocumentsTab'
 
-// existing 7-tab order → registry TabKeys (Documents tab is added in B.4)
-const TAB_KEYS: TabKey[] = ['profile','family','enrollment','health','cacfp','safepass','billing']
+// registry helpers don't export isEmpty — mirror it locally for the filled-indicator.
+const isEmptyVal = (v: any) => v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0)
+const todayStr = new Date().toISOString().slice(0, 10)
+
+// tab order → registry TabKeys
+const TAB_KEYS: TabKey[] = ['profile','family','enrollment','health','cacfp','safepass','billing','documents']
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -65,13 +76,6 @@ const section = (title: string) => (
   <div style={{ fontSize: 13, fontWeight: 700, color: '#0f4c35', marginBottom: 12,
     paddingBottom: 6, borderBottom: '1.5px solid #e8f0e8', marginTop: 4 }}>{title}</div>
 )
-const field = (label: string, children: React.ReactNode) => (
-  <div style={{ marginBottom: 12 }}>
-    <label style={lbl}>{label}</label>
-    {children}
-  </div>
-)
-
 // ─── Badge counter ────────────────────────────────────────────────────────────
 
 function Badge({ empty, overdue }: { empty: number; overdue: number }) {
@@ -103,6 +107,7 @@ export default function ChildSettingsPage({
   const [view, setView] = useState<Record<string, any> | null>(null)   // v_child_age_profile (read-only)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [showExport, setShowExport] = useState(false)
 
   useEffect(() => { loadAll() }, [childId])
 
@@ -136,9 +141,8 @@ export default function ChildSettingsPage({
     setView(vw ?? null)
   }
 
-  async function saveChild() {
+  async function doSaveRoster() {
     if (!child) return
-    setSaving(true)
     await supabase.schema('menumaker').from('roster').update({
       first_name: child.first_name, last_name: child.last_name,
       birthday: child.birthday, classroom_id: child.classroom_id,
@@ -149,21 +153,32 @@ export default function ChildSettingsPage({
       specialized_services: child.specialized_services,
       emergency_transport_auth: child.emergency_transport_auth,
       enrollment_reviewed_at: child.enrollment_reviewed_at,
+      // child_name canonical = "Last First" (see docs/platform-standards.md)
       child_name: `${child.last_name ?? ''} ${child.first_name ?? ''}`.trim()
     }).eq('id', childId)
-    setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2000)
   }
 
-  async function saveMedical() {
+  async function doSaveMedical() {
     if (!medical || !child) return
-    setSaving(true)
     const exists = !!(medical as any).id
     if (exists) {
       await supabase.schema('menumaker').from('child_medical').update(medical).eq('child_id', childId)
     } else {
       await supabase.schema('menumaker').from('child_medical').insert({ ...medical, child_id: childId, org_id: child.org_id })
     }
+  }
+
+  // Save exactly the tables the current tab touches (Health mixes roster + child_medical).
+  async function saveCurrent() {
+    const tables = new Set(fieldsForTab(TAB_KEYS[tab]).map(f => f.table))
+    if (tables.size === 0) return   // guardian/placeholder tabs — nothing to persist here
+    setSaving(true)
+    const tasks: Promise<any>[] = []
+    if (tables.has('roster')) tasks.push(doSaveRoster())
+    if (tables.has('child_medical')) tasks.push(doSaveMedical())
+    await Promise.all(tasks)
     setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2000)
+    loadAll()  // refresh view (age/milk) + badges after write
   }
 
   // ─── Completeness counters — driven by childFieldRegistry (B.1) ───────────
@@ -181,14 +196,93 @@ export default function ChildSettingsPage({
   const totalOverdue = badges.reduce((s, b) => s + b.o, 0)
   const completePct = child ? regCompleteness({ roster: child, medical, view }, guardians).pct : 0
 
-  const TABS = ['👤 Profile','👨‍👩‍👧 Family','📋 Enrollment','🏥 Health','🍽️ CACFP','🔒 SafePass','💰 Billing']
+  const TABS = ['👤 Profile','👨‍👩‍👧 Family','📋 Enrollment','🏥 Health','🍽️ CACFP','🔒 SafePass','💰 Billing','📁 Documents']
 
   if (!child) return <div style={{ padding: 24, color: '#888', fontFamily:"'DM Sans',sans-serif" }}>Loading…</div>
 
   const set = (k: keyof Child, v: any) => setChild(p => p ? { ...p, [k]: v } : p)
   const setMed = (k: keyof ChildMedical, v: any) => setMedical(p => p ? { ...p, [k]: v } : p)
 
-  const fullName = `${child.last_name ?? ''} ${child.first_name ?? ''}`.trim() || child.child_name || '—'
+  const fullName = displayChildName(child)
+
+  // ─── Registry-driven field rendering (B.2) ───────────────────────────────
+  // NOTE: these are plain functions, NOT nested <Components>. Calling them as
+  // functions keeps the inputs part of THIS component's tree — declaring a
+  // component inside render would remount on every keystroke and drop focus.
+  const ctx: RecordCtx = { roster: child, medical, view }
+
+  const writeField = (f: FieldDef, val: any) => {
+    if (f.table === 'roster') set(f.column as keyof Child, val)
+    else if (f.table === 'child_medical') setMed(f.column as keyof ChildMedical, val)
+    // 'view' fields are read-only — never written
+  }
+
+  const roVal: React.CSSProperties = {
+    ...inp, background: '#f4f7f4', color: '#4b5563', display: 'flex', alignItems: 'center',
+  }
+
+  const renderEditor = (f: FieldDef) => {
+    const v = fieldValue(f, ctx)
+    if (f.readOnly) return <div style={roVal}>{v ?? '—'}</div>
+    switch (f.type) {
+      case 'textarea':
+        return <textarea style={{ ...inp, minHeight: 64, resize: 'vertical' }} value={v ?? ''} onChange={e => writeField(f, e.target.value)} />
+      case 'date':
+        return <input type="date" style={inp} value={v ?? ''} onChange={e => writeField(f, e.target.value)} />
+      case 'boolean': {
+        const opts = f.options ?? [{ value: 'true', label: 'Yes' }, { value: 'false', label: 'No' }]
+        const cur = v === true ? 'true' : v === false ? 'false' : ''
+        return (
+          <select style={inp} value={cur} onChange={e => writeField(f, e.target.value === '' ? null : e.target.value === 'true')}>
+            <option value="">— Select —</option>
+            {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        )
+      }
+      case 'select': {
+        const opts = f.column === 'classroom_id'
+          ? classrooms.map(c => ({ value: c.id, label: c.name }))
+          : (f.options ?? [])
+        return (
+          <select style={inp} value={v ?? ''} onChange={e => writeField(f, e.target.value)}>
+            <option value="">— Select —</option>
+            {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        )
+      }
+      default: // text | phone | email
+        return <input style={inp} value={v ?? ''} onChange={e => writeField(f, e.target.value)} />
+    }
+  }
+
+  const renderFieldRow = (f: FieldDef) => {
+    const v = fieldValue(f, ctx)
+    const filled = !isEmptyVal(v)
+    const showStar = !!f.required && !filled && !f.readOnly
+    const isOverdue = !!f.overdue && !!v && String(v).slice(0, 10) < todayStr
+    return (
+      <div key={f.key} style={{ marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 5 }}>
+          <span style={{ fontSize: 15, lineHeight: 1, color: filled ? '#16a34a' : '#c0c8c0' }}>{filled ? '☑' : '☐'}</span>
+          <label style={{ ...lbl, margin: 0 }}>{f.label}</label>
+          {showStar && <span style={{ color: '#ef4444', fontSize: 13, fontWeight: 700 }} title="Required">★</span>}
+          {isOverdue && <span style={{ fontSize: 10, background: '#1a2e1a', color: '#fff', borderRadius: 6, padding: '1px 6px', fontWeight: 700 }}>OVERDUE</span>}
+          {f.readOnly && <span style={{ fontSize: 10, color: '#9ca3af' }}>· auto</span>}
+        </div>
+        {renderEditor(f)}
+      </div>
+    )
+  }
+
+  // Render all active fields for a tab, grouped by section (order preserved).
+  const renderFieldsTab = (tabKey: TabKey) => {
+    const fields = fieldsForTab(tabKey).filter(f => isFieldActive(f, ctx))
+    if (fields.length === 0) return <div style={{ color: '#aaa', fontSize: 13 }}>No fields on this tab yet.</div>
+    // Merge by section (first-seen order) so non-consecutive same-section fields share one header.
+    const groups = new Map<string, FieldDef[]>()
+    for (const f of fields) (groups.get(f.section) ?? groups.set(f.section, []).get(f.section)!).push(f)
+    return <div>{[...groups].map(([title, items]) => <div key={title}>{section(title)}{items.map(renderFieldRow)}</div>)}</div>
+  }
 
   return (
     <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2000, padding:20, fontFamily:"'DM Sans',sans-serif" }}>
@@ -214,6 +308,8 @@ export default function ChildSettingsPage({
             </div>
             <div style={{ fontSize:12, color:'rgba(255,255,255,0.8)', marginTop:3 }}>{completePct}%</div>
           </div>
+          <button onClick={() => setShowExport(true)} title="Export / print this child"
+            style={{ background:'rgba(255,255,255,0.15)', border:'none', color:'#fff', height:32, padding:'0 12px', borderRadius:16, cursor:'pointer', fontSize:12, fontWeight:600, marginRight:8 }}>⤓ Export</button>
           <button onClick={onClose} style={{ background:'rgba(255,255,255,0.15)', border:'none', color:'#fff', width:32, height:32, borderRadius:'50%', cursor:'pointer', fontSize:18 }}>×</button>
         </div>
 
@@ -237,26 +333,8 @@ export default function ChildSettingsPage({
         {/* Content */}
         <div style={{ flex:1, overflowY:'auto', padding:20 }}>
 
-          {/* ── TAB 0: Profile ── */}
-          {tab === 0 && (
-            <div>
-              {section('Basic Information')}
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-                {field('First Name', <input style={inp} value={child.first_name??''} onChange={e=>set('first_name',e.target.value)}/>)}
-                {field('Last Name', <input style={inp} value={child.last_name??''} onChange={e=>set('last_name',e.target.value)}/>)}
-                {field('Birthday', <input type="date" style={inp} value={child.birthday??''} onChange={e=>set('birthday',e.target.value)}/>)}
-                {field('Classroom', (
-                  <select style={inp} value={child.classroom_id??''} onChange={e=>set('classroom_id',e.target.value)}>
-                    <option value="">Select…</option>
-                    {classrooms.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                ))}
-                {field('Date In', <input type="date" style={inp} value={child.date_in??''} onChange={e=>set('date_in',e.target.value)}/>)}
-                {field('Date Out', <input type="date" style={inp} value={child.date_out??''} onChange={e=>set('date_out',e.target.value)}/>)}
-              </div>
-              {field('Home Address', <input style={inp} placeholder="Street, City, State ZIP" value={child.child_address??''} onChange={e=>set('child_address',e.target.value)}/>)}
-            </div>
-          )}
+          {/* ── TAB 0: Profile (registry-driven) ── */}
+          {tab === 0 && renderFieldsTab('profile')}
 
           {/* ── TAB 1: Family ── */}
           {tab === 1 && (
@@ -282,97 +360,18 @@ export default function ChildSettingsPage({
             </div>
           )}
 
-          {/* ── TAB 2: Enrollment ── */}
-          {tab === 2 && (
-            <div>
-              {section('DCY 01234 — Enrollment')}
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-                {field('FRP Status', (
-                  <select style={inp} value={child.frp??''} onChange={e=>set('frp',e.target.value)}>
-                    <option value="">— Select —</option>
-                    <option value="F">Free</option>
-                    <option value="R">Reduced</option>
-                    <option value="P">Paid</option>
-                  </select>
-                ))}
-                {field('FRP Expires', <input type="date" style={inp} value={child.frp_expires??''} onChange={e=>set('frp_expires',e.target.value)}/>)}
-                {field('Last Annual Review', <input type="date" style={inp} value={child.enrollment_reviewed_at??''} onChange={e=>set('enrollment_reviewed_at',e.target.value)}/>)}
-                {field('Emergency Transport', (
-                  <select style={inp} value={child.emergency_transport_auth===false?'no':'yes'} onChange={e=>set('emergency_transport_auth',e.target.value==='yes')}>
-                    <option value="yes">✓ Authorized</option>
-                    <option value="no">✗ Not authorized</option>
-                  </select>
-                ))}
-              </div>
-              {field('Development Notes', <textarea style={{...inp, minHeight:80, resize:'vertical'}} value={child.development_notes??''} onChange={e=>set('development_notes',e.target.value)} placeholder="Personal, behavior, patterns, habits…"/>)}
-              {field('Accommodations', <textarea style={{...inp, minHeight:60, resize:'vertical'}} value={child.accommodations??''} onChange={e=>set('accommodations',e.target.value)}/>)}
-              {field('Specialized Services', <input style={inp} value={child.specialized_services??''} onChange={e=>set('specialized_services',e.target.value)} placeholder="Provider name and frequency…"/>)}
-            </div>
-          )}
+          {/* ── TAB 2: Enrollment (registry-driven) ── */}
+          {tab === 2 && renderFieldsTab('enrollment')}
 
-          {/* ── TAB 3: Health ── */}
-          {tab === 3 && (
-            <div>
-              {section('DCY 01236 — Health Care Plan')}
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-                {field('Doctor Name', <input style={inp} value={medical?.doctor_name??''} onChange={e=>setMed('doctor_name',e.target.value)}/>)}
-                {field('Doctor Phone', <input style={inp} value={medical?.doctor_phone??''} onChange={e=>setMed('doctor_phone',e.target.value)}/>)}
-              </div>
-              {field('Chronic Health Condition', <input style={inp} value={medical?.health_condition_name??''} onChange={e=>setMed('health_condition_name',e.target.value)} placeholder="e.g. Asthma, Diabetes, Epilepsy…"/>)}
-              {field('Signs / Symptoms Requiring Action', <textarea style={{...inp,minHeight:70,resize:'vertical'}} value={medical?.condition_symptoms??''} onChange={e=>setMed('condition_symptoms',e.target.value)}/>)}
-              {field('Foods / Activities to Avoid', <textarea style={{...inp,minHeight:60,resize:'vertical'}} value={medical?.foods_to_avoid??''} onChange={e=>setMed('foods_to_avoid',e.target.value)}/>)}
-              {field('Care Instructions', <textarea style={{...inp,minHeight:80,resize:'vertical'}} value={medical?.care_instructions??''} onChange={e=>setMed('care_instructions',e.target.value)}/>)}
-              {field('Emergency Action', (
-                <select style={inp} value={medical?.emergency_action??''} onChange={e=>setMed('emergency_action',e.target.value)}>
-                  <option value="">— Select —</option>
-                  <option value="911">Call 9-1-1</option>
-                  <option value="parent">Call Parent</option>
-                  <option value="both">Both</option>
-                </select>
-              ))}
-              {field('Allergies', <textarea style={{...inp,minHeight:60,resize:'vertical'}} value={medical?.allergies??''} onChange={e=>setMed('allergies',e.target.value)}/>)}
-              {field('Current Medications', <textarea style={{...inp,minHeight:60,resize:'vertical'}} value={medical?.medications??''} onChange={e=>setMed('medications',e.target.value)}/>)}
-              {field('Evacuation Notes', <input style={inp} value={medical?.evacuation_notes??''} onChange={e=>setMed('evacuation_notes',e.target.value)}/>)}
-            </div>
-          )}
+          {/* ── TAB 3: Health (registry-driven; DCY 01236 detail auto-reveals when has_health_condition) ── */}
+          {tab === 3 && renderFieldsTab('health')}
 
-          {/* ── TAB 4: CACFP ── */}
+          {/* ── TAB 4: CACFP (registry-driven) ── */}
           {tab === 4 && (
             <div>
-              {section('CACFP Meal Program')}
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-                {field('FRP Status', (
-                  <select style={inp} value={child.frp??''} onChange={e=>set('frp',e.target.value)}>
-                    <option value="">— Select —</option>
-                    <option value="F">Free</option>
-                    <option value="R">Reduced</option>
-                    <option value="P">Paid</option>
-                  </select>
-                ))}
-                {field('FRP Expires', <input type="date" style={inp} value={child.frp_expires??''} onChange={e=>set('frp_expires',e.target.value)}/>)}
-                {field('Milk Type', (
-                  <select style={inp} value={child.milk_kind??''} onChange={e=>set('milk_kind',e.target.value)}>
-                    <option value="">— Select —</option>
-                    <option value="whole">Whole</option>
-                    <option value="1pct">1%</option>
-                    <option value="red">Reduced fat</option>
-                    <option value="formula">Formula</option>
-                  </select>
-                ))}
-                {field('Age Group', (
-                  <select style={inp} value={child.age_group_food??''} onChange={e=>set('age_group_food',e.target.value)}>
-                    <option value="">— Auto from birthday —</option>
-                    <option value="infant_0_5m">0-5 months</option>
-                    <option value="infant_6_11m">6-11 months</option>
-                    <option value="1y">1 year</option>
-                    <option value="2y">2 years</option>
-                    <option value="3_5">3-5 years</option>
-                    <option value="6_12">6-12 years</option>
-                  </select>
-                ))}
-              </div>
+              {renderFieldsTab('cacfp')}
               <div style={{ background:'#f0f7f4', borderRadius:10, padding:14, fontSize:13, color:'#0f4c35', marginTop:4 }}>
-                <strong>Note:</strong> Age group and milk type are auto-calculated from birthday via v_child_age_profile. Manual override here only when birthday-based calculation is incorrect.
+                <strong>Note:</strong> Age group and milk (oz) are auto-calculated from birthday via v_child_age_profile (read-only). Edit birthday on the Profile tab to change them.
               </div>
             </div>
           )}
@@ -412,6 +411,9 @@ export default function ChildSettingsPage({
               </div>
             </div>
           )}
+
+          {/* ── TAB 7: Documents ── */}
+          {tab === 7 && <ChildDocumentsTab childDbId={child.child_id ?? childId} />}
         </div>
 
         {/* Footer */}
@@ -423,13 +425,27 @@ export default function ChildSettingsPage({
             <button onClick={onClose} style={{ padding:'9px 18px', borderRadius:8, border:'1.5px solid #c0d8c0', background:'#fff', cursor:'pointer', fontFamily:'inherit', fontSize:13 }}>
               Close
             </button>
-            <button onClick={tab===3 ? saveMedical : saveChild} disabled={saving}
-              style={{ padding:'9px 20px', borderRadius:8, background:'#0f4c35', color:'#fff', border:'none', cursor:'pointer', fontWeight:700, fontSize:13, fontFamily:'inherit', opacity:saving?0.6:1 }}>
-              {saving ? 'Saving…' : '✓ Save'}
-            </button>
+            {fieldsForTab(TAB_KEYS[tab]).length > 0 && (
+              <button onClick={saveCurrent} disabled={saving}
+                style={{ padding:'9px 20px', borderRadius:8, background:'#0f4c35', color:'#fff', border:'none', cursor:'pointer', fontWeight:700, fontSize:13, fontFamily:'inherit', opacity:saving?0.6:1 }}>
+                {saving ? 'Saving…' : '✓ Save'}
+              </button>
+            )}
           </div>
         </div>
       </div>
+
+      {showExport && (
+        <ChildExportPanel
+          childName={fullName}
+          child={child}
+          medical={medical}
+          view={view}
+          guardians={guardians}
+          classrooms={classrooms}
+          onClose={() => setShowExport(false)}
+        />
+      )}
     </div>
   )
 }

@@ -127,6 +127,22 @@ export function fieldValue(f: FieldDef, ctx: RecordCtx): any {
   return src ? src[f.column] : undefined
 }
 
+/** Human-readable value for a field — shared by the inline display, CSV export
+ *  and print. Empty → ''. Selects/booleans resolve to their label. */
+export function displayValue(
+  f: FieldDef, ctx: RecordCtx, opts?: { classroomLabel?: (id: string) => string },
+): string {
+  const v = fieldValue(f, ctx)
+  if (v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0)) return ''
+  if (f.type === 'boolean') return v === true ? 'Yes' : v === false ? 'No' : ''
+  if (f.type === 'select') {
+    if (f.column === 'classroom_id' && opts?.classroomLabel) return opts.classroomLabel(String(v)) || String(v)
+    return f.options?.find(o => o.value === String(v))?.label ?? String(v)
+  }
+  if (f.type === 'date') return String(v).slice(0, 10)
+  return String(v)
+}
+
 export function isFieldActive(f: FieldDef, ctx: RecordCtx): boolean {
   const c = f.conditionalOn
   if (!c) return true

@@ -170,6 +170,9 @@ from menumaker.child_guardian;   -- role_emerg == flagged_emerg, flagged_missing
 
 ---
 
+## 7a. Tech-debt (noted, not actioned)
+- **SafePass trusted-persons ↔ roster link:** `safepass_trusted_persons.child_id` is **TEXT** (PRL-NNN, enrollment-portal format), not `roster.child_id` (uuid). Joining trusted persons + their auth method (qr/pin/key_tag) to a roster child requires either a `text→uuid` migration or a `PRL-NNN → roster.id` mapping table. Until then the SafePass tab rule uses `child_guardian.can_pickup` only.
+
 ## 8. Risks / watch-list
 - **DCY gap** (§2) — without the patch/backfill, EmergencyPopup sorting (`emergency_contact_order`) won’t populate for new rows.
 - **`link_roster` name-only match** — enforce per-center; resolve same-name collisions manually.

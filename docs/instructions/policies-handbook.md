@@ -42,9 +42,12 @@ the stipend/enforcement begins only after director countersignature.
 > text (key + version + title + body + two-step `status` draft→announced→active,
 > superseded versions kept). First record: **`safepass_addendum` v1.0** (active),
 > which corresponds to `safepass_agreements.document_version = '1.0'` — the version
-> a parent/teacher signs. Still to wire: SafePass access **requiring** the current
-> active version's signature (re-sign on version bump), and admin UI to author /
-> announce / activate policies.
+> a parent/teacher signs. **Signatures bind to code+version**: `safepass_agreements`
+> now has `policy_code` + a composite FK `(org_id, policy_code, document_version) →
+> policy_documents(org_id, key, version)`, so a signature can only reference a real
+> policy code+version (a version bump forces re-signing). Still to wire: SafePass
+> access **requiring** the current active version's signature, and admin UI to
+> author / announce / activate policies.
 
 ## Feature-activation checklist
 

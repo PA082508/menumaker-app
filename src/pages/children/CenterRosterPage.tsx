@@ -98,7 +98,7 @@ function Avatar({ name, size = 40, photo }: { name: string; size?: number; photo
   )
 }
 
-function DetailPopup({ data, onClose, classrooms }: { data: PopupData; onClose: () => void; classrooms: Classroom[] }) {
+function DetailPopup({ data, onClose, classrooms, onChanged }: { data: PopupData; onClose: () => void; classrooms: Classroom[]; onChanged: () => void }) {
   const [mode, setMode] = useState<'view'|'edit'|'transfer'>('view')
   const name = data.kind === 'child' ? fullName(data.child) : staffName(data.staff)
   const photo = data.kind === 'child' ? null : data.staff.photo_url
@@ -175,8 +175,8 @@ function DetailPopup({ data, onClose, classrooms }: { data: PopupData; onClose: 
                     <span style={{ fontSize: 13, color: '#1a2e1a', fontWeight: 500 }}>{value}</span>
                   </div>
                 ))}
-                {mode === 'transfer' && <TransferChildPanel child={c} classrooms={classrooms} onDone={() => { onClose(); window.location.reload() }} />}
-                {mode === 'edit' && <EditChildPanel child={c} classrooms={classrooms} onDone={() => { onClose(); window.location.reload() }} />}
+                {mode === 'transfer' && <TransferChildPanel child={c} classrooms={classrooms} onDone={() => { onClose(); onChanged() }} />}
+                {mode === 'edit' && <EditChildPanel child={c} classrooms={classrooms} onDone={() => { onClose(); onChanged() }} />}
               </div>
             )
           })()}
@@ -229,6 +229,8 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
   const [expanded,   setExpanded]   = useState<Record<string, boolean>>({})
   const [popup,      setPopup]      = useState<PopupData | null>(null)
   const [showAddChild, setShowAddChild] = useState(false)
+  const [highlightId, setHighlightId] = useState<string|null>(null)  // just-added child → flash + scroll
+  const [toast, setToast] = useState<string|null>(null)
   const [childSettingsId, setChildSettingsId] = useState<string|null>(null)
   const [settingsTab, setSettingsTab] = useState(0)
   const [emergencyChild, setEmergencyChild] = useState<{ id: string; name: string }|null>(null)
@@ -247,37 +249,36 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
   })
   const toggleCol = (k: string) => setListCols(p => ({ ...p, [k]: !(p as any)[k] }))
 
-  useEffect(() => {
+  // Fetch the center roster. soft=true → refetch in place (no loading flash, keep
+  // expanded rooms) so mutations (add/edit/transfer) update the list without a full
+  // page reload (which would reset OrgContext → bounce to the org overview).
+  const loadRoster = async (soft = false) => {
     if (!centerId) return
-    let cancelled = false
-    setLoading(true)
-    setExpanded({})
-    ;(async () => {
-      const [{ data: cls }, { data: kids }, { data: staffData }, { data: sess }] = await Promise.all([
-        supabase.schema('menumaker').from('classrooms')
-          .select('id,name,sort_order').eq('center_id', centerId).eq('is_active', true).order('sort_order'),
-        supabase.schema('menumaker').from('roster')
-          .select('id,first_name,last_name,child_name,age_group_food,frp,date_in,date_out,birthday,milk_kind,classroom_id')
-          .eq('center_id', centerId).eq('is_active', true)
-          .or(`date_out.is.null,date_out.gte.${todayStr}`)
-          .order('last_name', { nullsFirst: false }).order('first_name'),
-        supabase.schema('menumaker').from('staff')
-          .select('id,first_name,last_name,position,class_primary,class_secondary,phone,email,photo_url')
-          .eq('center_id', centerId).eq('is_active', true),
-        supabase.schema('menumaker').from('safepass_sessions')
-          .select('id,child_id,child_name,action_type,status,teacher_confirmed_at,classroom_id')
-          .eq('center_id', centerId).eq('status', 'confirmed')
-          .gte('created_at', startOfTodayISO()),
-      ])
-      if (cancelled) return
-      setClassrooms((cls ?? []) as Classroom[])
-      setChildren((kids ?? []) as Child[])
-      setStaff((staffData ?? []) as StaffRow[])
-      setSessions((sess ?? []) as Session[])
-      setLoading(false)
-    })()
-    return () => { cancelled = true }
-  }, [centerId])
+    if (!soft) { setLoading(true); setExpanded({}) }
+    const [{ data: cls }, { data: kids }, { data: staffData }, { data: sess }] = await Promise.all([
+      supabase.schema('menumaker').from('classrooms')
+        .select('id,name,sort_order').eq('center_id', centerId).eq('is_active', true).order('sort_order'),
+      supabase.schema('menumaker').from('roster')
+        .select('id,first_name,last_name,child_name,age_group_food,frp,date_in,date_out,birthday,milk_kind,classroom_id')
+        .eq('center_id', centerId).eq('is_active', true)
+        .or(`date_out.is.null,date_out.gte.${todayStr}`)
+        .order('last_name', { nullsFirst: false }).order('first_name'),
+      supabase.schema('menumaker').from('staff')
+        .select('id,first_name,last_name,position,class_primary,class_secondary,phone,email,photo_url')
+        .eq('center_id', centerId).eq('is_active', true),
+      supabase.schema('menumaker').from('safepass_sessions')
+        .select('id,child_id,child_name,action_type,status,teacher_confirmed_at,classroom_id')
+        .eq('center_id', centerId).eq('status', 'confirmed')
+        .gte('created_at', startOfTodayISO()),
+    ])
+    setClassrooms((cls ?? []) as Classroom[])
+    setChildren((kids ?? []) as Child[])
+    setStaff((staffData ?? []) as StaffRow[])
+    setSessions((sess ?? []) as Session[])
+    if (!soft) setLoading(false)
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadRoster() }, [centerId])
 
   const attendMap = useMemo<Record<string, AttendState>>(() => {
     const sorted = [...sessions].sort(
@@ -584,11 +585,16 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                             const isPresent  = at?.state === 'present'
                             const isReleased = at?.state === 'released'
                             const frpKey = (child.frp ?? '').trim().toUpperCase().slice(0,1)
+                            const isNew = child.id === highlightId
                             return (
-                              <div key={child.id} style={{
+                              <div key={child.id}
+                                ref={el => { if (el && isNew) el.scrollIntoView({ behavior:'smooth', block:'center' }) }}
+                                style={{
                                   borderRadius: 10,
-                                  border: `1.5px solid ${isPresent ? '#bbf7d0' : isReleased ? '#fde68a' : '#e8e8e8'}`,
-                                  background: isPresent ? '#f0fff4' : isReleased ? '#fffbeb' : '#fff',
+                                  border: `1.5px solid ${isNew ? '#0f4c35' : isPresent ? '#bbf7d0' : isReleased ? '#fde68a' : '#e8e8e8'}`,
+                                  background: isNew ? '#eafff2' : isPresent ? '#f0fff4' : isReleased ? '#fffbeb' : '#fff',
+                                  boxShadow: isNew ? '0 0 0 3px rgba(15,76,53,0.18)' : 'none',
+                                  transition: 'box-shadow 0.3s, background 0.3s',
                                   overflow: 'hidden',
                                 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px' }}>
@@ -648,7 +654,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
         </div>
       )}
 
-      {popup && <DetailPopup data={popup} onClose={() => setPopup(null)} classrooms={classrooms} />}
+      {popup && <DetailPopup data={popup} onClose={() => setPopup(null)} classrooms={classrooms} onChanged={() => loadRoster(true)} />}
       {childSettingsId && (
         <ChildSettingsPage
           childId={childSettingsId}
@@ -670,9 +676,31 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
           centerId={currentCenter.id}
           orgId={org?.id ?? ''}
           classrooms={classrooms}
-          onDone={() => { setShowAddChild(false); window.location.reload() }}
+          onDone={(newChild) => {
+            setShowAddChild(false)
+            loadRoster(true)                       // refetch in place — stay on this center roster
+            const roomId = newChild.classroom_id ?? ''
+            setExpanded(prev => ({ ...prev, [roomId]: true }))   // Cards: open the child's room
+            setHighlightId(newChild.id)                          // flash + scroll the new card
+            setTimeout(() => setHighlightId(id => id === newChild.id ? null : id), 4000)
+            // If the new child won't show under the current search/filter, confirm with a toast.
+            const room = classrooms.find(c => c.id === newChild.classroom_id)
+            const outBySearch = searchActive && !childMatchesSearch(newChild, debSearch)
+            const outByList = viewMode === 'list' && !searchActive && listClassFilter !== 'all' && listClassFilter !== newChild.classroom_id
+            if (outBySearch || outByList) {
+              setToast(`Added to ${room?.name ?? 'classroom'}`)
+              setTimeout(() => setToast(null), 3500)
+            }
+          }}
           onClose={() => setShowAddChild(false)}
         />
+      )}
+      {toast && (
+        <div style={{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', zIndex:3000,
+          background:'#0f4c35', color:'#fff', padding:'10px 18px', borderRadius:10, fontSize:13, fontWeight:600,
+          boxShadow:'0 8px 28px rgba(0,0,0,0.22)', fontFamily:"'DM Sans',sans-serif" }}>
+          ✓ {toast}
+        </div>
       )}
     </div>
   )
@@ -808,7 +836,7 @@ function EditChildPanel({ child, classrooms, onDone }: {
 // ─── Add Child Modal ──────────────────────────────────────────────────────────
 
 function AddChildModal({ centerId, orgId, classrooms, onDone, onClose }: {
-  centerId: string; orgId: string; classrooms: Classroom[]; onDone: () => void; onClose: () => void
+  centerId: string; orgId: string; classrooms: Classroom[]; onDone: (child: Child) => void; onClose: () => void
 }) {
   const [form, setForm] = useState({
     first_name: '', last_name: '', birthday: '', classroom_id: '',
@@ -825,7 +853,7 @@ function AddChildModal({ centerId, orgId, classrooms, onDone, onClose }: {
     setSaving(true); setError('')
     try {
       const child_name = `${form.last_name} ${form.first_name}`
-      const { error: err } = await supabase.schema('menumaker').from('roster').insert({
+      const { data, error: err } = await supabase.schema('menumaker').from('roster').insert({
         org_id: orgId, center_id: centerId,
         classroom_id: form.classroom_id,
         first_name: form.first_name, last_name: form.last_name,
@@ -833,8 +861,10 @@ function AddChildModal({ centerId, orgId, classrooms, onDone, onClose }: {
         date_in: form.date_in, frp: form.frp,
         is_active: true,
       })
+      .select('id,first_name,last_name,child_name,age_group_food,frp,date_in,date_out,birthday,milk_kind,classroom_id')
+      .single()
       if (err) throw err
-      onDone()
+      onDone(data as Child)
     } catch (e: any) {
       setError(e.message)
     } finally { setSaving(false) }

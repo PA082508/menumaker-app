@@ -35,6 +35,26 @@ per-center rows from an **org template**, so Pearl/Alpha/Ridge stay identical
 automatically. (Parity verified clean 2026-07-02; the official form filters by
 `center_id`, so any drift would silently change one center's holiday columns.)
 
+## [HIGH] Deactivate child — END DATE ≠ deactivation (CACFP claim risk)
+
+**Bug-pairing (verified 2026-07-02).** `ChildSettingsPage` END DATE saves
+`roster.date_out` **only** — it never sets `is_active=false`. Filters diverge:
+- Roster / Children views filter `is_active=true` **AND** `date_out null OR ≥ today`
+  → ended child is hidden.
+- **Meal Count** (`MealCountPage`, `MealCountDirectorPage`) and **Reports**
+  (`KitchenPlanningReport`, site claim, etc.) filter **`is_active=true` only** — an
+  ended child (date_out past, still `is_active=true`) **remains countable** →
+  departed children can be claimed. The office works around this by flipping
+  `is_active` via **raw SQL**.
+
+**Full Deactivate task (spec'd earlier) — do this:**
+- **Deactivate button** with a confirmation dialog → sets `is_active=false`
+  (+ `date_out` if not set). Optional reason.
+- **Reactivate** action; an **"Inactive" filter/tab** on the roster to view/restore.
+- Make meal-count + report roster queries **also honor `date_out`** (defense in depth),
+  or standardize a single "active on date D" predicate used everywhere.
+- Instruction in `children.md` (per DoD).
+
 ## [HIGH] Harden safepass_sign before real signature collection
 
 The anon `safepass_sign` RPC currently **trusts the client** — OK for the test phase,

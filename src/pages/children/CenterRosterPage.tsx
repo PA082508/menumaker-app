@@ -531,45 +531,42 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                             const isReleased = at?.state === 'released'
                             const frpKey = (child.frp ?? '').trim().toUpperCase().slice(0,1)
                             return (
-                              <div key={child.id}
-                                onClick={() => setPopup({ kind: 'child', child, attend: at ?? null })}
-                                style={{
-                                  display: 'flex', alignItems: 'center', gap: 10,
-                                  padding: '8px 12px', borderRadius: 10, cursor: 'pointer',
+                              <div key={child.id} style={{
+                                  borderRadius: 10,
                                   border: `1.5px solid ${isPresent ? '#bbf7d0' : isReleased ? '#fde68a' : '#e8e8e8'}`,
                                   background: isPresent ? '#f0fff4' : isReleased ? '#fffbeb' : '#fff',
-                                }}
-                                onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)')}
-                                onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
-                              >
-                                <div style={{ position: 'relative', flexShrink: 0 }}>
-                                  <Avatar name={name} size={36} />
-                                  <div style={{
-                                    position: 'absolute', bottom: 0, right: 0,
-                                    width: 11, height: 11, borderRadius: '50%',
-                                    border: '2px solid #fff',
-                                    background: isPresent ? '#22c55e' : isReleased ? '#f59e0b' : '#d1d5db',
-                                  }} />
-                                </div>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ fontSize: 12, fontWeight: 600, color: '#1a2e1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {name}
+                                  overflow: 'hidden',
+                                }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px' }}>
+                                  <div style={{ position: 'relative', flexShrink: 0 }}>
+                                    <Avatar name={name} size={36} />
+                                    <div style={{
+                                      position: 'absolute', bottom: 0, right: 0,
+                                      width: 11, height: 11, borderRadius: '50%',
+                                      border: '2px solid #fff',
+                                      background: isPresent ? '#22c55e' : isReleased ? '#f59e0b' : '#d1d5db',
+                                    }} />
                                   </div>
-                                  <div style={{ fontSize: 10, color: '#888', marginTop: 1 }}>
-                                    {frpKey && (
-                                      <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: FRP_BG[frpKey] ?? '#f4f4f5', color: FRP_COLOR[frpKey] ?? '#666', marginRight: 4 }}>{frpKey}</span>
-                                    )}
-                                    {isPresent  && <span style={{ color: '#16a34a', fontWeight: 600 }}>in {at?.time}</span>}
-                                    {isReleased && <span style={{ color: '#b45309', fontWeight: 600 }}>out {at?.time}</span>}
-                                    {!at        && <span style={{ color: '#bbb' }}>not arrived</span>}
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: 12, fontWeight: 600, color: '#1a2e1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {name}
+                                    </div>
+                                    <div style={{ fontSize: 10, color: '#888', marginTop: 1 }}>
+                                      {frpKey && (
+                                        <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: FRP_BG[frpKey] ?? '#f4f4f5', color: FRP_COLOR[frpKey] ?? '#666', marginRight: 4 }}>{frpKey}</span>
+                                      )}
+                                      {isPresent  && <span style={{ color: '#16a34a', fontWeight: 600 }}>in {at?.time}</span>}
+                                      {isReleased && <span style={{ color: '#b45309', fontWeight: 600 }}>out {at?.time}</span>}
+                                      {!at        && <span style={{ color: '#bbb' }}>not arrived</span>}
+                                    </div>
                                   </div>
                                 </div>
-                                <div style={{display:'flex',borderTop:'1px solid #f0f0f0'}}>
-                                  <button onClick={e=>{e.stopPropagation();setPopup({kind:'child',child,attend:at??null})}} style={{flex:1,padding:'6px 0',border:'none',borderRight:'1px solid #f0f0f0',background:'transparent',cursor:'pointer',fontSize:11,fontWeight:600,color:'#555',fontFamily:'inherit'}}>
-                                    {'👤 Details'}
+                                <div style={{ display:'flex', borderTop:'1px solid #f0f0f0' }}>
+                                  <button onClick={e=>{e.stopPropagation();setPopup({kind:'child',child,attend:at??null})}} style={{ flex:1, padding:'6px 0', border:'none', borderRight:'1px solid #f0f0f0', background:'transparent', cursor:'pointer', fontSize:11, fontWeight:600, color:'#555', fontFamily:'inherit' }}>
+                                    👤 Details
                                   </button>
-                                  <button onClick={e=>{e.stopPropagation();setChildSettingsId(child.id)}} style={{flex:1,padding:'6px 0',border:'none',background:'transparent',cursor:'pointer',fontSize:11,fontWeight:600,color:'#0f4c35',fontFamily:'inherit'}}>
-                                    {'⚙️ Settings'}
+                                  <button onClick={e=>{e.stopPropagation();setChildSettingsId(child.id)}} style={{ flex:1, padding:'6px 0', border:'none', background:'transparent', cursor:'pointer', fontSize:11, fontWeight:600, color:'#0f4c35', fontFamily:'inherit' }}>
+                                    ⚙️ Settings
                                   </button>
                                 </div>
                               </div>

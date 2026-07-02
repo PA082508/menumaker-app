@@ -21,14 +21,21 @@ export interface NavModule {
 export const MODULE_ROUTE: Record<string, string> = {
   dashboard:        '/dashboard',
   menu_planner:     '/menu',
-  recipes:          '/recipes',        // TODO: confirm module_code
-  kitchen_view:     '/kitchen',        // TODO: confirm module_code
-  delivery:         '/delivery',       // TODO: confirm module_code
-  purchases:        '/purchases',      // TODO: confirm module_code
-  kitchen_stock:    '/kitchen-stock',  // TODO: confirm module_code
-  inventory:        '/inventory',      // TODO: confirm module_code
+  recipes:          '/recipes',
+  kitchen_view:     '/kitchen',
+  delivery:         '/delivery',
+  purchases:        '/purchases',
+  kitchen_stock:    '/kitchen-stock',
+  inventory:        '/inventory',
   meal_count:       '/meal-count',
   documents:        '/documents',
+  // People — these codes exist in menumaker.app_modules and MUST be mapped, else
+  // the pages are silently ungated by the permission system (and staff_time_log
+  // would derive the wrong '/staff-time-log').
+  children:         '/children',
+  staff:            '/staff',
+  staff_time_log:   '/staff/time-log',
+  staff_settings:   '/staff',          // sub-permission — drills into /staff
   dispatch:         '/dispatch',
   custom_export:    '/export',
   site_claim:       '/claim-report',
@@ -48,6 +55,7 @@ export const MODULE_ICON_FALLBACK: Record<string, string> = {
   meal_count: '🍽️', documents: '📁', dispatch: '📨', custom_export: '📤',
   messages: '📨', site_claim: '📋', cacfp_reports: '📊', receipt_review: '🧾',
   kitchen_report: '👨‍🍳', form_submissions: '📨', finance: '💰', settings: '⚙️',
+  children: '👶', staff: '🧑‍🏫', staff_time_log: '⏱️', staff_settings: '🪪',
 }
 
 // Resolve a module_code to a route; unmapped codes derive `/kebab-case`.

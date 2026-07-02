@@ -95,6 +95,7 @@ export const FIELDS: FieldDef[] = [
   { key: 'emergency_action',      tab: 'health', section: 'DCY 01236 — Condition', label: 'Emergency action',  table: 'child_medical', column: 'emergency_action',      type: 'textarea', conditionalOn: { field: 'has_health_condition', truthy: true } },
   { key: 'foods_to_avoid',        tab: 'health', section: 'DCY 01236 — Restrictions', label: 'Foods to avoid',      table: 'child_medical', column: 'foods_to_avoid',      type: 'textarea', conditionalOn: { field: 'has_health_condition', truthy: true } },
   { key: 'activities_to_avoid',   tab: 'health', section: 'DCY 01236 — Restrictions', label: 'Activities to avoid', table: 'child_medical', column: 'activities_to_avoid', type: 'textarea', conditionalOn: { field: 'has_health_condition', truthy: true } },
+  { key: 'evacuation_notes',        tab: 'health', section: 'DCY 01236 — Restrictions', label: 'Evacuation needs / additional info', table: 'child_medical', column: 'evacuation_notes', type: 'textarea', conditionalOn: { field: 'has_health_condition', truthy: true } },
   { key: 'physician_signature_date', tab: 'health', section: 'DCY 01236 — Attestation', label: 'Physician signature date', table: 'child_medical', column: 'physician_signature_date', type: 'date', conditionalOn: { field: 'has_health_condition', truthy: true } },
 
   // ── CACFP (roster editable + v_child_age_profile read-only) ──

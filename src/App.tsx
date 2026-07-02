@@ -38,6 +38,7 @@ import CenterRosterPage from '@/pages/children/CenterRosterPage'
 import StaffPage from '@/pages/staff/StaffPage'
 import InstructionsPage from '@/pages/instructions/InstructionsPage'
 import DocumentHubPage from '@/pages/instructions/DocumentHubPage'
+import PoliciesPage from '@/pages/policies/PoliciesPage'
 import MessagesPage from '@/pages/messages/MessagesPage'
 import BYODDirectorPage from '@/pages/instructions/BYODDirectorPage'
 import StaffSettingsPage from '@/pages/staff/StaffSettingsPage'
@@ -158,6 +159,7 @@ export default function App() {
               <Route path="settings"   element={<SettingsPage />} />
               <Route path="instructions" element={<InstructionsPage />} />
               <Route path="document-hub" element={<DocumentHubPage />} />
+              <Route path="policies" element={<PoliciesPage />} />
               <Route path="messages" element={<MessagesPage />} />
               <Route path="byod-director" element={<BYODDirectorPage />} />
             </Route>

@@ -45,9 +45,29 @@ the stipend/enforcement begins only after director countersignature.
 > a parent/teacher signs. **Signatures bind to code+version**: `safepass_agreements`
 > now has `policy_code` + a composite FK `(org_id, policy_code, document_version) →
 > policy_documents(org_id, key, version)`, so a signature can only reference a real
-> policy code+version (a version bump forces re-signing). Still to wire: SafePass
-> access **requiring** the current active version's signature, and admin UI to
-> author / announce / activate policies.
+> policy code+version (a version bump forces re-signing).
+
+## Signatures & coverage (SafePass parent app)
+
+- **Consent gate.** After phone/OTP sign-in, the parent app loads the **active**
+  `safepass_addendum` version and checks (via `safepass_has_signed`) whether this
+  parent has signed it. **Not signed → the agreement screen is mandatory**; Home is
+  not reachable until they accept. Activating a new version means the old signature
+  no longer matches the active version, so the next open **requires re-signing**.
+- **How it's recorded.** Accepting calls `safepass_sign` (SECURITY DEFINER, anon-
+  callable) which writes a row to `safepass_agreements` bound to the active version
+  (`policy_code`, `document_version`), `signature_method = 'consent'`, `source = 'app'`.
+- **Paper signatures.** `safepass_agreements.source = 'paper'` — the office enters
+  these by hand for families who sign on paper; they count toward coverage the same way.
+- **Coverage report.** The **Policies** screen (Director's App, `/policies`) shows
+  *N of M active families signed the current version*, with an expandable list of
+  non-signers. "Families" = distinct active phones in `safepass_trusted_persons`.
+- **Managing policies.** Directors / office managers **announce → activate →
+  supersede** versions there. Activating a version retires the previously-active one.
+  There is **no in-app text editor**: a version's `body` is **imported from
+  `docs/policies/*.md`** (the file is the source of truth) via *Import body*.
+- **Scope note.** This phase covers the **parent** app only. Teacher-side
+  enforcement is deferred to Staff onboarding (see `BACKLOG.md`).
 
 ## Feature-activation checklist
 

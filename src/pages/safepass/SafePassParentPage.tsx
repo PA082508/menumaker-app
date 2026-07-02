@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
 const ORG_ID = '3a9a290e-7e49-491e-946b-ad86f2399910'
+const DEFAULT_CENTER_ID = '4aed7d5a-00d0-4a4c-ac99-311046ad2027' // Ridge / Wickliffe — fallback when the child's center is unknown
+const POLICY_KEY = 'safepass_addendum'
 const C = {
   bg:'#0a0c12', surface:'#13161f', surface2:'#1c2030', border:'#252a3d',
   text:'#f0f2ff', muted:'#6b7299', green:'#00e896', greenDim:'rgba(0,232,150,0.1)',
@@ -45,6 +47,10 @@ export default function SafePassParentPage() {
   const [confirmedInfo, setConfirmedInfo] = useState<{teacher:string;time:string;action:string}|null>(null)
   const [todaySessions, setTodaySessions] = useState<Session[]>([])
   const [agreed, setAgreed] = useState(false)
+  const [personId, setPersonId] = useState('')          // normalized phone = parent identity
+  const [centerId, setCenterId] = useState(DEFAULT_CENTER_ID)
+  const [activePolicy, setActivePolicy] = useState<{ version: string; title: string; body: string|null }|null>(null)
+  const [signing, setSigning] = useState(false)
   const waitTimer = useRef<ReturnType<typeof setInterval>|null>(null)
 
   const normPhone = (p:string) => '+1' + p.replace(/\D/g,'').slice(-10)
@@ -70,17 +76,57 @@ export default function SafePassParentPage() {
     const ok = (stored && stored === entered && Date.now() < exp) || TEST_PHONES[np] === entered
     if (!ok) { setOtpErr('Incorrect code or code expired.'); setVerifying(false); return }
     sessionStorage.removeItem('sp_otp_'+np)
+    setPersonId(np)
     const { data:persons } = await supabase.schema('menumaker')
-      .from('safepass_trusted_persons').select('child_id,child_name,person_name')
+      .from('safepass_trusted_persons').select('child_id,child_name,person_name,center_id')
       .eq('org_id', ORG_ID).eq('phone', np).eq('is_active', true)
     setPersonName(persons?.[0]?.person_name ?? 'Parent')
+    if (persons?.[0]?.center_id) setCenterId(persons[0].center_id)
     const kids: Child[] = persons?.map((p:any) => ({
       child_id: p.child_id, child_name: p.child_name,
-      classroom_id:'', classroom_name:'Green Room', center_id:''
+      classroom_id:'', classroom_name:'Green Room', center_id:p.center_id||''
     })) ?? []
-    setChildren(kids.length > 0 ? kids : [{child_id:'test-1',child_name:'Test Child',classroom_id:'',classroom_name:'Green Room',center_id:''}])
+    const kidsFinal = kids.length > 0 ? kids : [{child_id:'test-1',child_name:'Test Child',classroom_id:'',classroom_name:'Green Room',center_id:''}]
+    setChildren(kidsFinal)
+
+    // Policy gate: must have signed the CURRENT ACTIVE addendum version to proceed.
+    const { data:pol } = await supabase.schema('menumaker')
+      .from('policy_documents').select('version,title,body')
+      .eq('key', POLICY_KEY).eq('status', 'active')
+      .order('version', { ascending:false }).limit(1)
+    const active = pol?.[0] ?? null
+    setActivePolicy(active)
+    let signed = false
+    if (active) {
+      const { data:has } = await supabase.schema('menumaker')
+        .rpc('safepass_has_signed', { p_org: ORG_ID, p_person_type: 'parent', p_person_id: np, p_key: POLICY_KEY })
+      signed = has === true
+    }
     setVerifying(false)
-    setScreen('agreement')
+    // Signed (or no active policy to enforce) → straight in; otherwise require consent.
+    if (signed || !active) proceedAfterAgreement(kidsFinal)
+    else setScreen('agreement')
+  }
+
+  // Route past the agreement: single child → home, else child picker.
+  function proceedAfterAgreement(kids: Child[]) {
+    if (kids.length === 1) { setSelectedChild(kids[0]); loadSessions(kids[0]); setScreen('home') }
+    else setScreen('child_select')
+  }
+
+  // Record consent to the active addendum version, then continue.
+  async function acceptAgreement() {
+    if (!agreed || signing) return
+    setSigning(true)
+    if (activePolicy) {
+      await supabase.schema('menumaker').rpc('safepass_sign', {
+        p_org: ORG_ID, p_center: centerId, p_person_type: 'parent',
+        p_person_id: personId, p_person_name: personName || 'Parent',
+        p_key: POLICY_KEY, p_signature_method: 'consent', p_device_id: devId(), p_source: 'app',
+      })
+    }
+    setSigning(false)
+    proceedAfterAgreement(children)
   }
 
   async function loadSessions(child: Child) {
@@ -201,22 +247,28 @@ export default function SafePassParentPage() {
 
   if (screen === 'agreement') return (
     <div style={W}>{HDR}<div style={CARD}>
-      <div style={{fontSize:18,fontWeight:800,marginBottom:6,marginTop:12}}>SafePass Agreement</div>
-      <div style={{fontSize:13,color:C.muted,marginBottom:16}}>Please read and accept to continue</div>
+      <div style={{fontSize:18,fontWeight:800,marginBottom:6,marginTop:12}}>{activePolicy?.title ?? 'SafePass Agreement'}</div>
+      <div style={{fontSize:13,color:C.muted,marginBottom:16}}>
+        Please read and accept to continue{activePolicy ? ` · v${activePolicy.version}` : ''}
+      </div>
       <div style={{background:C.surface,borderRadius:12,padding:16,marginBottom:16,maxHeight:320,overflowY:'auto'}}>
-        {RULES.map((rule,i)=>(
-          <div key={i} style={{display:'flex',gap:10,marginBottom:12}}>
-            <div style={{color:C.green,fontWeight:700,fontSize:13,flexShrink:0}}>{i+1}.</div>
-            <div style={{fontSize:13,color:C.text,lineHeight:1.6}}>{rule}</div>
-          </div>
-        ))}
+        {activePolicy?.body && !activePolicy.body.startsWith('[') ? (
+          <div style={{fontSize:13,color:C.text,lineHeight:1.7,whiteSpace:'pre-wrap'}}>{activePolicy.body}</div>
+        ) : (
+          RULES.map((rule,i)=>(
+            <div key={i} style={{display:'flex',gap:10,marginBottom:12}}>
+              <div style={{color:C.green,fontWeight:700,fontSize:13,flexShrink:0}}>{i+1}.</div>
+              <div style={{fontSize:13,color:C.text,lineHeight:1.6}}>{rule}</div>
+            </div>
+          ))
+        )}
       </div>
       <label style={{display:'flex',alignItems:'flex-start',gap:10,marginBottom:16,cursor:'pointer'}}>
         <input type="checkbox" checked={agreed} onChange={e=>setAgreed(e.target.checked)} style={{width:20,height:20,marginTop:2,accentColor:C.green,flexShrink:0}}/>
         <span style={{fontSize:13,color:C.text,lineHeight:1.6}}>I have read and agree to the SafePass agreement.</span>
       </label>
-      <button onClick={()=>agreed&&setScreen(children.length===1?(setSelectedChild(children[0]),loadSessions(children[0]),'home'):'child_select')}
-        disabled={!agreed} style={BTN(C.bg,agreed?C.green:C.border)}>Continue →</button>
+      <button onClick={acceptAgreement}
+        disabled={!agreed||signing} style={BTN(C.bg,agreed&&!signing?C.green:C.border)}>{signing?'Saving…':'Agree & Continue →'}</button>
     </div></div>
   )
 

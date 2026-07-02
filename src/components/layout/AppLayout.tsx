@@ -92,6 +92,7 @@ const SECTIONS: Section[] = [
       { path: '/instructions',  label: 'Instructions',      icon: 'ti-book' },
       { path: '/document-hub',  label: 'Document Hub',       icon: 'ti-books' },
       { path: '/byod-director', label: 'BYOD Signatures',    icon: 'ti-signature' },
+      { path: '/policies',      label: 'Policies',           icon: 'ti-file-certificate' },
     ],
   },
   {

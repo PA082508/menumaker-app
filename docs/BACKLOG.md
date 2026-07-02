@@ -35,6 +35,14 @@ per-center rows from an **org template**, so Pearl/Alpha/Ridge stay identical
 automatically. (Parity verified clean 2026-07-02; the official form filters by
 `center_id`, so any drift would silently change one center's holiday columns.)
 
+## SafePass addendum — teacher-side enforcement (Staff onboarding)
+
+Task F wired the **parent** consent gate (sign the active `safepass_addendum` version
+before Home; re-sign on version bump). **Teachers** must also acknowledge the addendum
+— deferred to the **Staff onboarding** flow: gate the teacher SafePass app on a
+`safepass_agreements` row with `person_type='teacher'` bound to the active version
+(reuse `safepass_has_signed` / `safepass_sign`).
+
 ## Parent-forms packet standard — roll out to existing forms
 
 Apply [`platform-standards.md §5`](./platform-standards.md) (dates / phones /

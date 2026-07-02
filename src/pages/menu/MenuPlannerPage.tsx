@@ -394,10 +394,10 @@ export default function MenuPlannerPage() {
               display: 'flex', flexDirection: 'column', justifyContent: 'center',
               alignItems: 'center', padding: '8px 4px',
               background: colors.bg, borderRadius: 8,
-              border: `1px solid ${colors.border}`,
+              border: `2px solid ${colors.dot}`,
             }}>
-              <div style={{ fontSize: 16 }}>{MEAL_ICONS[mealType]}</div>
-              <div style={{ fontSize: 9, fontWeight: 600, color: colors.label, textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center', marginTop: 2 }}>
+              <div style={{ fontSize: 24, lineHeight: 1 }}>{MEAL_ICONS[mealType]}</div>
+              <div style={{ fontSize: 9, fontWeight: 600, color: colors.label, textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center', marginTop: 4 }}>
                 {mealType}
               </div>
             </div>,
@@ -430,7 +430,7 @@ export default function MenuPlannerPage() {
               return (
                 <div key={`${mealType}-${dayNum}`} style={{
                   background: '#fff', borderRadius: 8,
-                  border: `1px solid ${cellItems.length ? colors.border : '#eee'}`,
+                  border: cellItems.length ? `2px solid ${colors.dot}` : '1.5px solid #e0e0e0',
                   padding: '10px 12px',
                   minHeight: 80,
                 }}>
@@ -441,12 +441,12 @@ export default function MenuPlannerPage() {
                       {cellItems.map((item, idx) => (
                         <div key={item.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 5 }}>
                           <div style={{
-                            width: 5, height: 5, borderRadius: '50%', flexShrink: 0,
+                            width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
                             background: idx === 0 ? colors.dot : '#ddd',
-                            marginTop: 5,
+                            marginTop: 6,
                           }} />
                           <span style={{
-                            fontSize: 11,
+                            fontSize: 13,
                             color: item.recipe_id ? '#0f4c35' : '#333',
                             fontWeight: item.recipe_id ? 600 : 400,
                             lineHeight: 1.35,

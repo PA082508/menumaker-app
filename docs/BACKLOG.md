@@ -26,6 +26,15 @@ new names.
   · School Age → **School-Age 1** (+ School-Age 2) ✓
 - **Alpha** — SA → **SA Room** ✓ · Orange split → **Orange 1 Room / Orange 2 Room** ✓
 
+## Holidays — consider org-scope (or org-template-generated center rows)
+
+The org has a single holiday calendar and a single menu for all centers, but
+`holidays` is **center-scoped** in the DB (one row per center). Parity is currently
+maintained by hand. Consider moving holidays to **org-scope**, or generating the
+per-center rows from an **org template**, so Pearl/Alpha/Ridge stay identical
+automatically. (Parity verified clean 2026-07-02; the official form filters by
+`center_id`, so any drift would silently change one center's holiday columns.)
+
 ## Parent-forms packet standard — roll out to existing forms
 
 Apply [`platform-standards.md §5`](./platform-standards.md) (dates / phones /

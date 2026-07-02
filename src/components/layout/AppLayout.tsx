@@ -66,9 +66,10 @@ const SECTIONS: Section[] = [
   {
     id: 'people', label: 'People', icon: '👥',
     items: [
-      { path: '/children',       label: 'Children',       icon: 'ti-baby-carriage' },
-      { path: '/staff',          label: 'Staff',           icon: 'ti-id-badge' },
-      { path: '/staff/time-log', label: 'Daily Time Log',  icon: 'ti-clock' },
+      { path: '/children',        label: 'Children',        icon: 'ti-baby-carriage' },
+      { path: '/children/import', label: 'Import Children',  icon: 'ti-file-upload' },
+      { path: '/staff',           label: 'Staff',           icon: 'ti-id-badge' },
+      { path: '/staff/time-log',  label: 'Daily Time Log',   icon: 'ti-clock' },
     ],
   },
   {
@@ -88,7 +89,8 @@ const SECTIONS: Section[] = [
       { path: '/submissions', label: 'Form Submissions', icon: 'ti-file-description' },
       { path: '/dispatch',    label: 'Q&A / Instructions', icon: 'ti-message-question' },
       { path: '/messages',    label: 'Messages', icon: 'ti-message' },
-      { path: '/instructions',  label: 'Document Hub',       icon: 'ti-books' },
+      { path: '/instructions',  label: 'Instructions',      icon: 'ti-book' },
+      { path: '/document-hub',  label: 'Document Hub',       icon: 'ti-books' },
       { path: '/byod-director', label: 'BYOD Signatures',    icon: 'ti-signature' },
     ],
   },
@@ -105,6 +107,7 @@ const SECTIONS: Section[] = [
   {
     id: 'resources', label: 'Resources', icon: '🌐',
     items: [
+      { path: '/instructions',              label: 'Instructions',  icon: 'ti-book' },
       { path: 'https://playacademyusa.com', label: 'Website',       icon: 'ti-world' },
       { path: '/children',                  label: 'Parent Portal', icon: 'ti-app-window' },
       { path: 'https://brightwheel.com',    label: 'Brightwheel',   icon: 'ti-link' },
@@ -125,6 +128,7 @@ const NAV_ITEMS: NavItem[] = [
   { path: '/dashboard',         label: 'Dashboard',      icon: '⊞' },
   { path: '/meal-count',        label: 'Meal Count',     icon: '🍽️' },
   { path: '/delivery',          label: 'Delivery',       icon: '🚐', roles: ['director','driver'] },
+  { path: '/instructions',      label: 'Instructions',   icon: '📖' },
 ]
 
 export default function AppLayout() {
@@ -180,8 +184,18 @@ export default function AppLayout() {
   const allowedPaths = usingPerms ? new Set(permItems.map(i => i.path)) : null
   const basePath = '/' + (location.pathname.split('/')[1] || 'dashboard')
   const cookAllowed = isCookOrTeacher && (basePath === '/meal-count' || (isCook && basePath === '/delivery'))
-  const blocked = false // TODO: re-enable after nav permissions are fixed
-  // const blocked = usingPerms && basePath !== '/dashboard' && basePath !== '/messages' && !cookAllowed && KNOWN_MODULE_ROUTES.has(basePath) && !allowedPaths!.has(basePath)
+  // Permission gate (Variant B): block only KNOWN module routes the user's
+  // permission set doesn't include. Dashboard + Messages are always allowed;
+  // cook/teacher meal-count/delivery handled by cookAllowed. When the RPC
+  // returned no modules (usingPerms=false) we fall back to legacy role nav and
+  // never block. Admin/office_manager hold all modules → never blocked.
+  const blocked =
+    usingPerms &&
+    basePath !== '/dashboard' &&
+    basePath !== '/messages' &&
+    !cookAllowed &&
+    KNOWN_MODULE_ROUTES.has(basePath) &&
+    !allowedPaths!.has(basePath)
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#f4f6f4', fontFamily: "'DM Sans', sans-serif" }}>
@@ -231,7 +245,7 @@ export default function AppLayout() {
         <nav style={{ flex: 1, padding: '6px 0', overflowY: 'auto', overflowX: 'visible' }}>
           {isCookOrTeacher ? (
             // Simple nav for cook/teacher
-            NAV_ITEMS.filter(item => item.path === '/meal-count' || (isCook && item.path === '/delivery')).map(item => (
+            NAV_ITEMS.filter(item => item.path === '/meal-count' || item.path === '/instructions' || (isCook && item.path === '/delivery')).map(item => (
               <NavLink key={item.path} to={item.path} style={({ isActive }) => navStyle(isActive, collapsed)}>
                 <span style={{ fontSize: 16, flexShrink: 0 }}>{item.icon}</span>
                 {!collapsed && <span style={{ fontSize: 14 }}>{item.label}</span>}

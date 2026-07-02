@@ -103,6 +103,9 @@ export default function SafePassHelpPage() {
           style={{ padding:'12px 20px', borderRadius:10, background:C.surface2, color:C.muted, border:`1px solid ${C.border}`, cursor:'pointer', fontSize:14, fontFamily:'inherit', marginLeft:8 }}>
           🖨 Print
         </button>
+        <a href="/instructions" style={{ padding:'12px 20px', borderRadius:10, background:C.greenDim, color:C.green, border:`1px solid ${C.border}`, fontSize:14, fontFamily:'inherit', marginLeft:8, textDecoration:'none', fontWeight:600 }}>
+          📖 All Instructions
+        </a>
       </div>
 
       {/* Nav */}

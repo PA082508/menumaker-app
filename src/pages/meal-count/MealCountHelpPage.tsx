@@ -97,6 +97,9 @@ export default function MealCountHelpPage() {
           style={{ padding:'10px 16px', borderRadius:10, background:C.surface, color:C.muted, border:`1px solid ${C.border}`, cursor:'pointer', fontSize:13, fontFamily:'inherit', marginLeft:8 }}>
           🖨 Print
         </button>
+        <a href="/instructions" style={{ padding:'10px 16px', borderRadius:10, background:C.greenLight, color:C.green, border:`1px solid ${C.border}`, fontSize:13, fontFamily:'inherit', marginLeft:8, textDecoration:'none', fontWeight:600 }}>
+          📖 All Instructions
+        </a>
       </div>
 
       {/* Nav */}

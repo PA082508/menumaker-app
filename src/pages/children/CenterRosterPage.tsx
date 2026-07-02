@@ -532,7 +532,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                             const frpKey = (child.frp ?? '').trim().toUpperCase().slice(0,1)
                             return (
                               <div key={child.id}
-                                onClick={() => setChildSettingsId(child.id)}
+                                onClick={() => setPopup({ kind: 'child', child, attend: at ?? null })}
                                 style={{
                                   display: 'flex', alignItems: 'center', gap: 10,
                                   padding: '8px 12px', borderRadius: 10, cursor: 'pointer',
@@ -563,6 +563,14 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                                     {isReleased && <span style={{ color: '#b45309', fontWeight: 600 }}>out {at?.time}</span>}
                                     {!at        && <span style={{ color: '#bbb' }}>not arrived</span>}
                                   </div>
+                                </div>
+                                <div style={{display:'flex',borderTop:'1px solid #f0f0f0'}}>
+                                  <button onClick={e=>{e.stopPropagation();setPopup({kind:'child',child,attend:at??null})}} style={{flex:1,padding:'6px 0',border:'none',borderRight:'1px solid #f0f0f0',background:'transparent',cursor:'pointer',fontSize:11,fontWeight:600,color:'#555',fontFamily:'inherit'}}>
+                                    {'👤 Details'}
+                                  </button>
+                                  <button onClick={e=>{e.stopPropagation();setChildSettingsId(child.id)}} style={{flex:1,padding:'6px 0',border:'none',background:'transparent',cursor:'pointer',fontSize:11,fontWeight:600,color:'#0f4c35',fontFamily:'inherit'}}>
+                                    {'⚙️ Settings'}
+                                  </button>
                                 </div>
                               </div>
                             )

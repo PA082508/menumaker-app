@@ -100,6 +100,13 @@ in [`docs/instructions/`](./instructions/).** The instruction is updated in the
 > A feature with no `docs/instructions/` update is **not done** and should not be
 > merged.
 
+**Shippable = the *committed* tree builds, not just your working tree.** A local
+`tsc`/`build` can pass on files that are only on disk (untracked). Before calling
+work shippable, verify the committed tree in isolation — e.g.
+`git archive HEAD | tar -x -C /tmp/clean && (cd /tmp/clean && ln -s <repo>/node_modules . && tsc --noEmit)` —
+and **push**. "Done" means **committed ✓ · pushed ✓ · deployed ✓** (Vercel Ready),
+not just committed.
+
 ---
 
 ## 5. Parent-forms packet standard

@@ -6,3 +6,12 @@
 # Dependencies & build output (should not be tracked)
 node_modules/
 dist/
+
+# macOS
+.DS_Store
+
+# Import artifacts — data with PII, not code (must not live in git history)
+import/
+
+# Supabase CLI local state
+supabase/.temp/

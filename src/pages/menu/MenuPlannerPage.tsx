@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import { useOrg } from '@/contexts/OrgContext'
 
 interface MenuItem {
   id: string
@@ -63,6 +65,8 @@ const MEAL_ICONS: Record<string, string> = {
 }
 
 export default function MenuPlannerPage() {
+  const navigate = useNavigate()
+  const { currentCenter, centers } = useOrg()
   const [cycle, setCycle]         = useState<Cycle | null>(null)
   const [items, setItems]         = useState<MenuItem[]>([])
   const [loading, setLoading]     = useState(true)
@@ -225,6 +229,15 @@ export default function MenuPlannerPage() {
     !!h && h.type === 'short_day' && !!h.close_time &&
     (SLOT_TIMES[mealType] ?? '99:99') >= h.close_time.slice(0, 5)
 
+  // Official monthly print form — per center, month derived from the selected
+  // week's Monday (falls back to today when no cycle anchor is set).
+  const openOfficialPrint = () => {
+    const slug = currentCenter?.slug || centers[0]?.slug
+    if (!slug) { alert('No center available to print an official menu for.'); return }
+    const d = cellDate(0) ?? new Date()
+    navigate(`/menu/print-official/${slug}/${d.getFullYear()}/${d.getMonth() + 1}`)
+  }
+
   if (loading) return (
     <div style={{ padding: 40, fontFamily: "'DM Sans', sans-serif", color: '#888' }}>
       Loading menu...
@@ -277,6 +290,15 @@ export default function MenuPlannerPage() {
             cursor: 'pointer', fontFamily: 'inherit',
           }}>
             🖨️ Print Week {selectedWeek}
+          </button>
+          <button onClick={openOfficialPrint} title="Official CACFP monthly menu form (per center) — print or save as PDF" style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '8px 16px', borderRadius: 8,
+            border: '1px solid #0f4c35', background: '#fff',
+            color: '#0f4c35', fontSize: 12, fontWeight: 600,
+            cursor: 'pointer', fontFamily: 'inherit',
+          }}>
+            📄 Official Menu (Month)
           </button>
         </div>
       </div>

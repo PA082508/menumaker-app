@@ -7,6 +7,7 @@ import LoginPage from '@/pages/LoginPage'
 import DashboardPage from '@/pages/dashboard/DashboardPage'
 import RecipesPage from '@/pages/recipes/RecipesPage'
 import MenuPlannerPage from '@/pages/menu/MenuPlannerPage'
+import MenuPrintOfficialPage from '@/pages/menu/MenuPrintOfficialPage'
 import KitchenViewPage from '@/pages/kitchen/KitchenViewPage'
 import SettingsPage from '@/pages/settings/SettingsPage'
 import PurchasesPage from '@/pages/purchases/PurchasesPage'
@@ -119,6 +120,7 @@ export default function App() {
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="dashboard"  element={<DashboardPage />} />
               <Route path="menu"       element={<MenuPlannerPage />} />
+              <Route path="menu/print-official/:center/:year/:month" element={<MenuPrintOfficialPage />} />
               <Route path="recipes"    element={<RecipesPage />} />
               <Route path="kitchen"       element={<KitchenViewPage />} />
               <Route path="kitchen-stock" element={<KitchenStockPage />} />

@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Weekly Menu — Print Template v2 (CurrentChildMenu replica)</title>
+<style>
+  @page { size: letter landscape; margin: 0.3in; }
+  *{box-sizing:border-box}
+  body{font-family:Arial,Helvetica,sans-serif;font-size:9.5px;color:#000;margin:0;padding:6px}
+  table.menu{border-collapse:collapse;width:100%;table-layout:fixed}
+  .menu th,.menu td{border:1px solid #000;padding:2px 4px;vertical-align:middle;overflow:hidden}
+  /* колонки: верт.ярлык | компонент | 3 возраста | 5×(день+номер даты) — пропорции промерены по скрину оригинала */
+  col.c-meal{width:2.3%} col.c-comp{width:8.3%}
+  col.c-a1{width:6.0%} col.c-a2{width:6.2%} col.c-a3{width:5.4%}
+  col.c-day{width:12.8%} col.c-num{width:1.5%}
+  .hdr-week{background:#b32f19;color:#fff;font-weight:800;font-size:12px;text-align:center}
+  .hdr-blue{background:#abc3e5;font-weight:700;text-align:center}
+  .hdr-month{background:#abc3e5;color:#e13e22;font-weight:800;font-size:12px;text-align:center}
+  .hdr-green{background:#abc3e5;color:#e13e22;font-weight:800;text-align:left;padding:0 0 0 2px;font-size:9.5px;overflow:visible !important;white-space:nowrap}
+  .pair-l{border-right:none !important}.pair-r{border-left:none !important}
+  .num-red{color:#e13e22;font-weight:800;text-align:left;padding:0 0 0 2px;font-size:9.5px;overflow:visible !important;white-space:nowrap}
+  .vlabel{writing-mode:vertical-rl;transform:rotate(180deg);text-align:center;font-weight:800;font-size:10px;background:#fff;padding:1px 0;white-space:nowrap;overflow:visible !important}
+  .comp{font-weight:400;background:#fff}
+  .age1{background:#d9def2;text-align:center;white-space:nowrap}
+  .age2{background:#f6e0c8;text-align:center;white-space:nowrap}
+  .age3{background:#cfd8ee;text-align:center;white-space:nowrap}
+  .dish{background:#fff;min-height:13px}
+  .meal-top td{border-top:3px solid #000}
+  .footer{margin-top:5px;font-size:8.5px;line-height:1.35}
+  .no-print{margin:10px 0}
+  .week-block{margin-bottom:14px}
+  .wk-footer{margin:5px 0 0;font-size:8.5px;line-height:1.35}
+  @media print{.no-print{display:none}.week-block{page-break-after:always}.week-block:last-child{page-break-after:auto}.footer{display:none}}
+</style>
+</head>
+<body>
+
+<div class="no-print" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+  <button onclick="window.print()">🖨 Print / Save PDF</button>
+  <label>Month <select id="selMonth"></select></label>
+  <label>Year <select id="selYear"></select></label>
+  <label>1-я неделя месяца = Week <select id="selRot"><option>1</option><option>2</option><option>3</option><option selected>4</option></select></label>
+  <span style="font-size:11px;color:#666">месяц разворачивается в 4-6 недельных шаблонов, по странице на неделю</span>
+</div>
+
+<table class="menu" id="weekProto" style="display:none">
+  <colgroup>
+    <col class="c-meal"><col class="c-comp">
+    <col class="c-a1"><col class="c-a2"><col class="c-a3">
+    <col class="c-day"><col class="c-num">
+    <col class="c-day"><col class="c-num">
+    <col class="c-day"><col class="c-num">
+    <col class="c-day"><col class="c-num">
+    <col class="c-day"><col class="c-num">
+  </colgroup>
+
+  <!-- Шапка, строка 1: Week | AGES×3 | Month: | July | Date: | 1 | to | 31 -->
+  <tr>
+    <td class="hdr-blue"></td>
+    <td class="hdr-week">Week <span data-slot="week-n">4</span></td>
+    <td class="hdr-blue">AGES</td><td class="hdr-blue">AGES</td><td class="hdr-blue">AGES</td>
+    <td class="hdr-blue pair-l" style="text-align:right">Month:</td><td class="hdr-blue pair-r"></td>
+    <td class="hdr-month pair-l" data-slot="month-name">July</td><td class="hdr-blue pair-r"></td>
+    <td class="hdr-blue pair-l" style="text-align:right">Date:</td><td class="hdr-green pair-r" data-slot="month-first">1</td>
+    <td class="hdr-blue pair-l" style="text-align:right">to</td><td class="hdr-green pair-r" data-slot="month-last">31</td>
+    <td class="hdr-blue pair-l"></td><td class="hdr-blue pair-r"></td>
+  </tr>
+  <!-- Шапка, строка 2: COMPONENT | возрасты | дни с красными числами -->
+  <tr>
+    <td class="hdr-blue"></td>
+    <td class="hdr-blue">COMPONENT</td>
+    <td class="hdr-blue">1-2</td><td class="hdr-blue">3-5</td><td class="hdr-blue">6-12</td>
+    <td class="hdr-blue pair-l">Monday</td><td class="num-red hdr-blue pair-r" data-slot="date-mon"></td>
+    <td class="hdr-blue pair-l">Tuesday</td><td class="num-red hdr-blue pair-r" data-slot="date-tue"></td>
+    <td class="hdr-blue pair-l">Wednesday</td><td class="num-red hdr-blue pair-r" data-slot="date-wed">1</td>
+    <td class="hdr-blue pair-l">Thursday</td><td class="num-red hdr-blue pair-r" data-slot="date-thu">2</td>
+    <td class="hdr-blue pair-l">Friday</td><td class="num-red hdr-blue pair-r" data-slot="date-fri">3</td>
+  </tr>
+
+  <!-- ===== BREAKFAST (7 строк, вертикальный ярлык) ===== -->
+  <tr class="meal-top">
+    <td class="vlabel" rowspan="7">Breakfast</td>
+    <td class="comp">Milk</td><td class="age1">1/2 cup</td><td class="age2">3/4 cup</td><td class="age3">1 cup</td>
+    <td class="dish" colspan="2" data-slot="breakfast-milk-mon"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td>
+  </tr>
+  <tr><td class="comp">Meat&amp;Alternates</td><td class="age1">1/2 oz eq1,2</td><td class="age2">1/2 oz eq1,2</td><td class="age3">1 oz eq1,2</td>
+    <td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td></tr>
+  <tr><td class="comp">Grain</td><td class="age1">1/2 oz eq2</td><td class="age2">1/2 oz eq2</td><td class="age3">1 oz eq2</td>
+    <td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td></tr>
+  <tr><td class="comp">Vegetable</td><td class="age1">1/4 cup</td><td class="age2">1/2 cup</td><td class="age3">1/2 cup</td>
+    <td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td></tr>
+  <tr><td class="comp">Fruit</td><td class="age1">1/4 cup</td><td class="age2">1/2 cup</td><td class="age3">1/2 cup</td>
+    <td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td></tr>
+  <tr><td class="comp">Extras</td><td class="age1"></td><td class="age2"></td><td class="age3"></td>
+    <td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td></tr>
+  <tr><td class="comp">Notes</td><td class="age1"></td><td class="age2"></td><td class="age3"></td>
+    <td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td></tr>
+
+  <!-- ===== AM SNACK (5 строк) ===== -->
+  <tr class="meal-top">
+    <td class="vlabel" rowspan="5">AM Snack**</td>
+    <td class="comp">Milk</td><td class="age1">1/2 cup</td><td class="age2">1/2 cup</td><td class="age3">1 cup</td>
+    <td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td>
+  </tr>
+  <tr><td class="comp">Meat&amp;Alternates</td><td class="age1">1/2 oz</td><td class="age2">1/2 oz</td><td class="age3">1 oz</td>
+    <td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td></tr>
+  <tr><td class="comp">Grain</td><td class="age1">1/2 oz eq2</td><td class="age2">1/2 oz eq2</td><td class="age3">1 oz eq2</td>
+    <td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td></tr>
+  <tr><td class="comp">Vegetable</td><td class="age1">1/2 cup</td><td class="age2">1/2 cup</td><td class="age3">3/4 cup</td>
+    <td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td></tr>
+  <tr><td class="comp">Fruit</td><td class="age1">1/2 cup</td><td class="age2">1/2 cup</td><td class="age3">3/4 cup</td>
+    <td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td></tr>
+
+  <!-- ===== LUNCH (7 строк) ===== -->
+  <tr class="meal-top">
+    <td class="vlabel" rowspan="7">Lunch</td>
+    <td class="comp">Milk</td><td class="age1">1/2 cup</td><td class="age2">3/4 cup</td><td class="age3">1 cup</td>
+    <td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td>
+  </tr>
+  <tr><td class="comp">Meat&amp;Alternates</td><td class="age1">1 oz</td><td class="age2">1 1/2 oz</td><td class="age3">2 oz</td>
+    <td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td></tr>
+  <tr><td class="comp">Grain</td><td class="age1">1/2 oz eq2</td><td class="age2">1/2 oz eq2</td><td class="age3">1 oz eq2</td>
+    <td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td></tr>
+  <tr><td class="comp">Vegetable</td><td class="age1">1/8 cup</td><td class="age2">1/4 cup</td><td class="age3">1/2 cup</td>
+    <td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td></tr>
+  <tr><td class="comp">Fruit</td><td class="age1">1/8 cup</td><td class="age2">1/4 cup</td><td class="age3">1/4 cup</td>
+    <td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td></tr>
+  <tr><td class="comp">Extras</td><td class="age1"></td><td class="age2"></td><td class="age3"></td>
+    <td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td></tr>
+  <tr><td class="comp">Notes</td><td class="age1"></td><td class="age2"></td><td class="age3"></td>
+    <td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td></tr>
+
+  <!-- ===== SUPPER (7 строк) ===== -->
+  <tr class="meal-top">
+    <td class="vlabel" rowspan="7">Supper</td>
+    <td class="comp">Milk</td><td class="age1">1/2 cup</td><td class="age2">3/4 cup</td><td class="age3">1 cup</td>
+    <td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td>
+  </tr>
+  <tr><td class="comp">Meat&amp;Alternates</td><td class="age1">1 oz</td><td class="age2">1 1/2 oz</td><td class="age3">2 oz</td>
+    <td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td></tr>
+  <tr><td class="comp">Grain</td><td class="age1">1/2 oz eq2</td><td class="age2">1/2 oz eq2</td><td class="age3">1 oz eq2</td>
+    <td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td></tr>
+  <tr><td class="comp">Vegetable</td><td class="age1">1/8 cup</td><td class="age2">1/4 cup</td><td class="age3">1/2 cup</td>
+    <td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td></tr>
+  <tr><td class="comp">Fruit</td><td class="age1">1/8 cup</td><td class="age2">1/4 cup</td><td class="age3">1/4 cup</td>
+    <td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td></tr>
+  <tr><td class="comp">Extras</td><td class="age1"></td><td class="age2"></td><td class="age3"></td>
+    <td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td></tr>
+  <tr><td class="comp">Notes</td><td class="age1"></td><td class="age2"></td><td class="age3"></td>
+    <td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td><td class="dish" colspan="2"></td></tr>
+</table>
+
+<div id="weeksOut"></div>
+
+<div class="footer">
+  This institution is an equal opportunity provider.<br>
+  1 Meat and meat alternates may be used to substitute the entire grains component a maximum of three times per week.<br>
+  2 oz eq = ounce equivalents<br>
+  ** Select 2 of the 5 components for snack.
+</div>
+
+<script>
+const MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
+const selM=document.getElementById('selMonth'),selY=document.getElementById('selYear'),selRot=document.getElementById('selRot');
+MONTHS.forEach((m,i)=>selM.add(new Option(m,i)));
+const nowY=new Date().getFullYear();
+for(let y=nowY-1;y<=nowY+1;y++) selY.add(new Option(y,y));
+selY.value=nowY; selM.value=new Date().getMonth();
+const FOOTER=document.querySelector('.footer').innerHTML;
+function mondayOfWeekWith(d){ const x=new Date(d); x.setDate(x.getDate()-((x.getDay()+6)%7)); return x; }
+function fill(){
+  const y=+selY.value, m=+selM.value, rot0=+selRot.value;
+  const lastDay=new Date(y,m+1,0).getDate();
+  const out=document.getElementById('weeksOut'); out.innerHTML='';
+  let mon=mondayOfWeekWith(new Date(y,m,1));
+  let i=0;
+  while(true){
+    // неделя входит в месяц, если хотя бы один из Пн-Пт лежит в месяце
+    let inMonth=false;
+    for(let k=0;k<5;k++){ const d=new Date(mon); d.setDate(mon.getDate()+k); if(d.getMonth()===m) {inMonth=true;break;} }
+    if(!inMonth) break;
+    const rot=((rot0-1+i)%4)+1; // ротация Week 1-4
+    const blk=document.createElement('div'); blk.className='week-block';
+    const tbl=document.getElementById('weekProto').cloneNode(true);
+    tbl.style.display=''; tbl.removeAttribute('id');
+    tbl.querySelector('[data-slot=week-n]').textContent=rot;
+    tbl.querySelector('[data-slot=month-name]').textContent=MONTHS[m];
+    tbl.querySelector('[data-slot=month-first]').textContent='1';
+    tbl.querySelector('[data-slot=month-last]').textContent=lastDay;
+    ['mon','tue','wed','thu','fri'].forEach((k,kk)=>{
+      const d=new Date(mon); d.setDate(mon.getDate()+kk);
+      tbl.querySelector('[data-slot=date-'+k+']').textContent=d.getDate();
+    });
+    // уникализируем data-slot блюд по неделе: w{i+1}-{...}
+    tbl.querySelectorAll('.dish[data-slot]').forEach(td=>td.setAttribute('data-slot','w'+(i+1)+'-'+td.getAttribute('data-slot')));
+    blk.appendChild(tbl);
+    const f=document.createElement('div'); f.className='wk-footer'; f.innerHTML=FOOTER; blk.appendChild(f);
+    out.appendChild(blk);
+    mon=new Date(mon); mon.setDate(mon.getDate()+7); i++;
+    if(i>6) break;
+  }
+}
+selM.onchange=selY.onchange=selRot.onchange=fill;
+fill();
+</script>
+</body>
+</html>

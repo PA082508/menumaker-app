@@ -21,6 +21,14 @@ the roster:
 - Sorted **alphabetically** (last name, first name) for enrollment contexts.
 - Each row opens that child's **Settings** record.
 
+**Name search (center roster).** The roster toolbar (Cards **and** List) has a
+**Search name…** box: type any part of a name and the list filters instantly
+(client-side, no reload). Matching is case- and accent-insensitive and works in
+either order — *"Kendzierski Colton"*, *"colton"*, and *"kendz"* all find the same
+child. While searching, the **class filter is ignored** (the search spans every
+class in the center) and is dimmed; the **"N listed"** count reflects the matches.
+**Esc** clears the search; **CSV/Print** export the filtered result.
+
 ## Child Settings — tabs, ★ and badges
 
 Open a child to edit their full record. Fields are driven by a central **field

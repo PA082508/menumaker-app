@@ -8,6 +8,7 @@ import ChildSettingsPage from './ChildSettingsPage'
 import EmergencyPopup from './EmergencyPopup'
 import { useOrg } from '@/contexts/OrgContext'
 import { useAuth } from '@/hooks/useAuth'
+import { displayChildName } from '@/lib/childName'
 
 type Classroom = { id: string; name: string; sort_order: number }
 type Child = {
@@ -53,8 +54,25 @@ const fmtDate = (d: string | null) => {
   const [y,m,day] = d.slice(0,10).split('-')
   return `${Number(m)}/${Number(day)}/${y}`
 }
-const fullName = (c: Child) =>
-  [c.first_name, c.last_name].filter(Boolean).join(' ').trim() || c.child_name || '—'
+const fullName = (c: Child) => displayChildName(c)
+
+// Diacritic-insensitive, case-insensitive normalization for name search.
+const normSearch = (s: string) =>
+  s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()
+
+// Substring match against both "Last First" and "First Last" (and stored child_name).
+// "Kendzierski Colton", "colton", "kendz" all match the same child.
+function childMatchesSearch(c: Child, q: string): boolean {
+  if (!q) return true
+  const nq = normSearch(q)
+  const last = c.last_name ?? '', first = c.first_name ?? ''
+  return (
+    normSearch(`${last} ${first}`).includes(nq) ||
+    normSearch(`${first} ${last}`).includes(nq) ||
+    normSearch(c.child_name ?? '').includes(nq)
+  )
+}
+
 const staffName = (s: StaffRow) =>
   [s.first_name, s.last_name].filter(Boolean).join(' ').trim() || '—'
 const avatarColor = (name: string) => {
@@ -216,6 +234,13 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
   const [emergencyChild, setEmergencyChild] = useState<{ id: string; name: string }|null>(null)
   const [viewMode, setViewMode] = useState<'cards'|'list'>('cards')
   const [listClassFilter, setListClassFilter] = useState('all')
+  const [search, setSearch] = useState('')          // raw input (immediate)
+  const [debSearch, setDebSearch] = useState('')     // debounced (~200ms) — drives filtering
+  useEffect(() => {
+    const t = setTimeout(() => setDebSearch(search), 200)
+    return () => clearTimeout(t)
+  }, [search])
+  const searchActive = debSearch.trim().length > 0
   const [listCols, setListCols] = useState({
     classroom: true, birthday: true, age: false,
     frp: true, milk: true, date_in: false
@@ -270,6 +295,9 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
   const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim()
   const presentTotal = Object.values(attendMap).filter(a => a.state === 'present').length
   const listedTotal  = children.length
+  // Search matches across ALL classes of the center (class filter is ignored while searching).
+  const searchMatches = (c: Child) => childMatchesSearch(c, debSearch)
+  const listedShown = searchActive ? children.filter(searchMatches).length : listedTotal
 
   const toggleRoom = (id: string) => setExpanded(p => ({ ...p, [id]: !p[id] }))
 
@@ -287,7 +315,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
           <span>·</span>
           <span style={{ color: '#0f4c35', fontWeight: 600 }}>{presentTotal} present</span>
           <span>·</span>
-          <span>{listedTotal} listed</span>
+          <span>{listedShown} listed{searchActive ? ` (of ${listedTotal})` : ''}</span>
         </div>
       </div>
 
@@ -315,7 +343,23 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
               <button onClick={() => setViewMode('cards')} style={{ padding:'6px 14px', borderRadius:8, border:'1.5px solid #c0d8c0', background: viewMode==='cards' ? '#0f4c35' : '#fff', color: viewMode==='cards' ? '#fff' : '#555', cursor:'pointer', fontFamily:'inherit', fontSize:13, fontWeight:600 }}>⊞ Cards</button>
               <button onClick={() => setViewMode('list')} style={{ padding:'6px 14px', borderRadius:8, border:'1.5px solid #c0d8c0', background: viewMode==='list' ? '#0f4c35' : '#fff', color: viewMode==='list' ? '#fff' : '#555', cursor:'pointer', fontFamily:'inherit', fontSize:13, fontWeight:600 }}>☰ List</button>
             </div>
-            <button onClick={() => setShowAddChild(true)} style={{ padding:'8px 18px', borderRadius:9, background:'#0f4c35', color:'#fff', border:'none', cursor:'pointer', fontWeight:700, fontSize:13, fontFamily:'inherit', display:'flex', alignItems:'center', gap:6 }}>➕ Add Child</button>
+            {/* Name search — shared across Cards & List; searches all classes of the center */}
+            <div style={{ position:'relative', flex:1, maxWidth:320, margin:'0 14px' }}>
+              <span style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', fontSize:13, color:'#8fae9c', pointerEvents:'none' }}>🔍</span>
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Escape') { setSearch(''); setDebSearch('') } }}
+                placeholder="Search name…"
+                aria-label="Search children by name"
+                style={{ width:'100%', padding:'7px 28px 7px 30px', borderRadius:8, border:`1.5px solid ${searchActive ? '#0f4c35' : '#c0d8c0'}`, fontSize:13, fontFamily:'inherit', color:'#0f4c35', outline:'none', boxSizing:'border-box' }}
+              />
+              {search && (
+                <button onClick={() => { setSearch(''); setDebSearch('') }} aria-label="Clear search"
+                  style={{ position:'absolute', right:6, top:'50%', transform:'translateY(-50%)', border:'none', background:'transparent', cursor:'pointer', fontSize:14, color:'#999', lineHeight:1, padding:2 }}>✕</button>
+              )}
+            </div>
+            <button onClick={() => setShowAddChild(true)} style={{ padding:'8px 18px', borderRadius:9, background:'#0f4c35', color:'#fff', border:'none', cursor:'pointer', fontWeight:700, fontSize:13, fontFamily:'inherit', display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>➕ Add Child</button>
           </div>
           {viewMode === 'list' && (() => {
             const COLS = [
@@ -327,7 +371,9 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
               { key:'date_in',   label:'Date In' },
             ]
             const filtered = [...children]
-              .filter(c => listClassFilter === 'all' || c.classroom_id === listClassFilter)
+              // while searching, ignore the class filter (search all classes of the center)
+              .filter(c => searchActive || listClassFilter === 'all' || c.classroom_id === listClassFilter)
+              .filter(c => childMatchesSearch(c, debSearch))
               .sort((a,b) => (a.last_name??'').localeCompare(b.last_name??''))
 
             function exportCSV() {
@@ -356,9 +402,10 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
               <div>
                 {/* Smart toolbar */}
                 <div style={{ padding:'10px 16px', background:'#f8faf8', borderBottom:'1px solid #e8f0e8', display:'flex', flexWrap:'wrap', gap:10, alignItems:'center' }}>
-                  {/* Class filter */}
+                  {/* Class filter — dimmed & ignored while searching (search spans all classes) */}
                   <select value={listClassFilter} onChange={e=>setListClassFilter(e.target.value)}
-                    style={{ padding:'6px 12px', borderRadius:8, border:'1.5px solid #c0d8c0', fontSize:13, fontFamily:'inherit', background:'#fff', color:'#0f4c35', fontWeight:600 }}>
+                    disabled={searchActive} title={searchActive ? 'Ignored while searching — search covers all classes' : undefined}
+                    style={{ padding:'6px 12px', borderRadius:8, border:'1.5px solid #c0d8c0', fontSize:13, fontFamily:'inherit', background:'#fff', color:'#0f4c35', fontWeight:600, opacity: searchActive ? 0.45 : 1, pointerEvents: searchActive ? 'none' : 'auto' }}>
                     <option value="all">All Classes ({children.length})</option>
                     {classrooms.filter(c=>!c.name.toLowerCase().includes('staff')).map(c => (
                       <option key={c.id} value={c.id}>{c.name} ({children.filter(ch=>ch.classroom_id===c.id).length})</option>
@@ -436,14 +483,18 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
             )
           })()}
           {classrooms.map((room, ri) => {
-            const roomChildren = children.filter(c => c.classroom_id === room.id)
+            const roomChildren = children
+              .filter(c => c.classroom_id === room.id)
+              .filter(searchMatches)               // while searching, keep only matches
+            // while searching, hide rooms with no matches and auto-open the ones that have them
+            if (searchActive && roomChildren.length === 0) return null
             const roomStaff    = staff.filter(s =>
               s.class_primary === room.id || norm(s.class_primary ?? '') === norm(room.name)
             )
             const presentHere = roomChildren.filter(c =>
               attendMap[fullName(c).toLowerCase()]?.state === 'present'
             ).length
-            const isOpen = expanded[room.id]
+            const isOpen = searchActive ? true : expanded[room.id]
 
             return (
               <div key={room.id}>

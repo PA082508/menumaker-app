@@ -5,6 +5,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import ChildSettingsPage from './ChildSettingsPage'
+import EmergencyPopup from './EmergencyPopup'
 import { useOrg } from '@/contexts/OrgContext'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -211,6 +212,8 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
   const [popup,      setPopup]      = useState<PopupData | null>(null)
   const [showAddChild, setShowAddChild] = useState(false)
   const [childSettingsId, setChildSettingsId] = useState<string|null>(null)
+  const [settingsTab, setSettingsTab] = useState(0)
+  const [emergencyChild, setEmergencyChild] = useState<{ id: string; name: string }|null>(null)
   const [viewMode, setViewMode] = useState<'cards'|'list'>('cards')
   const [listClassFilter, setListClassFilter] = useState('all')
   const [listCols, setListCols] = useState({
@@ -562,10 +565,10 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                                   </div>
                                 </div>
                                 <div style={{ display:'flex', borderTop:'1px solid #f0f0f0' }}>
-                                  <button onClick={e=>{e.stopPropagation();setPopup({kind:'child',child,attend:at??null})}} style={{ flex:1, padding:'6px 0', border:'none', borderRight:'1px solid #f0f0f0', background:'transparent', cursor:'pointer', fontSize:11, fontWeight:600, color:'#555', fontFamily:'inherit' }}>
-                                    👤 Details
+                                  <button onClick={e=>{e.stopPropagation();setEmergencyChild({id:child.id,name:child.child_name || 'Child'})}} style={{ flex:1, padding:'6px 0', border:'none', borderRight:'1px solid #f0f0f0', background:'transparent', cursor:'pointer', fontSize:11, fontWeight:600, color:'#b91c1c', fontFamily:'inherit' }}>
+                                    🚨 Emergency
                                   </button>
-                                  <button onClick={e=>{e.stopPropagation();setChildSettingsId(child.id)}} style={{ flex:1, padding:'6px 0', border:'none', background:'transparent', cursor:'pointer', fontSize:11, fontWeight:600, color:'#0f4c35', fontFamily:'inherit' }}>
+                                  <button onClick={e=>{e.stopPropagation();setSettingsTab(0);setChildSettingsId(child.id)}} style={{ flex:1, padding:'6px 0', border:'none', background:'transparent', cursor:'pointer', fontSize:11, fontWeight:600, color:'#0f4c35', fontFamily:'inherit' }}>
                                     ⚙️ Settings
                                   </button>
                                 </div>
@@ -599,7 +602,16 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
         <ChildSettingsPage
           childId={childSettingsId}
           classrooms={classrooms}
+          initialTab={settingsTab}
           onClose={() => setChildSettingsId(null)}
+        />
+      )}
+      {emergencyChild && (
+        <EmergencyPopup
+          childId={emergencyChild.id}
+          childName={emergencyChild.name}
+          onClose={() => setEmergencyChild(null)}
+          onAddContact={() => { const id = emergencyChild.id; setEmergencyChild(null); setSettingsTab(1); setChildSettingsId(id) }}
         />
       )}
       {showAddChild && currentCenter && (

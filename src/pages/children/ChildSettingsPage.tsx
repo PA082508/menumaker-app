@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase'
 
 interface Child {
   id: string; org_id: string; center_id: string; classroom_id: string | null
+  child_id: string | null   // FK → menumaker.child.id (bridge to child_guardian)
   first_name: string | null; last_name: string | null; child_name: string | null
   birthday: string | null; date_in: string | null; date_out: string | null
   frp: string | null; frp_expires: string | null; milk_kind: string | null
@@ -24,8 +25,14 @@ interface Guardian {
   email: string | null; mobile_phone: string | null; phone_1: string | null
   phone_2: string | null; address: string | null
   role?: string; relationship?: string; can_pickup?: boolean
-  is_emergency_contact?: boolean; ordinal?: number
+  is_emergency_contact?: boolean; emergency_contact_order?: number; ordinal?: number
 }
+
+// Legacy role encodes pickup right (can_pickup default-true is unreliable in v1).
+const canPickupFromRole = (role?: string) => role === 'pickup' || role === 'parent'
+// relationship stored in mixed case (father/Father, grandma/Grandmother) — tidy on display.
+const capWords = (s?: string | null) =>
+  (s ?? '').split(/\s+/).filter(Boolean).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
 
 interface ChildMedical {
   id?: string; allergies: string | null; medications: string | null
@@ -78,13 +85,14 @@ function Badge({ empty, overdue }: { empty: number; overdue: number }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function ChildSettingsPage({
-  childId, onClose, classrooms
+  childId, onClose, classrooms, initialTab = 0
 }: {
   childId: string
   onClose: () => void
   classrooms: { id: string; name: string }[]
+  initialTab?: number
 }) {
-  const [tab, setTab] = useState(0)
+  const [tab, setTab] = useState(initialTab)
   const [child, setChild] = useState<Child | null>(null)
   const [guardians, setGuardians] = useState<Guardian[]>([])
   const [medical, setMedical] = useState<ChildMedical | null>(null)
@@ -94,15 +102,28 @@ export default function ChildSettingsPage({
   useEffect(() => { loadAll() }, [childId])
 
   async function loadAll() {
-    const [{ data: c }, { data: g }, { data: m }] = await Promise.all([
-      supabase.schema('menumaker').from('roster').select('*').eq('id', childId).single(),
-      supabase.schema('menumaker').from('child_guardian')
-        .select('*, guardian:guardian_id(*)')
-        .eq('child_id', childId).order('ordinal'),
-      supabase.schema('menumaker').from('child_medical').select('*').eq('child_id', childId).maybeSingle(),
-    ])
+    // roster.id (childId) ≠ child.id. Guardians hang off child_guardian.child_id
+    // which FKs to menumaker.child.id — reached via roster.child_id. Load the
+    // roster row first, then fetch guardians by its child_id.
+    const { data: c } = await supabase.schema('menumaker').from('roster').select('*').eq('id', childId).single()
     if (c) setChild(c as Child)
-    if (g) setGuardians(g.map((row: any) => ({ ...row.guardian, role: row.role, relationship: row.relationship, can_pickup: row.can_pickup, is_emergency_contact: row.is_emergency_contact, ordinal: row.ordinal })))
+    const cid = (c as any)?.child_id as string | null
+
+    let guardianRows: any[] = []
+    if (cid) {
+      const { data: g } = await supabase.schema('menumaker').from('child_guardian')
+        .select('*, guardian:guardian_id(*)')
+        .eq('child_id', cid)
+        .order('emergency_contact_order', { ascending: true, nullsFirst: false })
+        .order('ordinal', { ascending: true })
+      guardianRows = g ?? []
+    }
+    setGuardians(guardianRows.map((row: any) => ({
+      ...row.guardian, role: row.role, relationship: row.relationship, can_pickup: row.can_pickup,
+      is_emergency_contact: row.is_emergency_contact, emergency_contact_order: row.emergency_contact_order, ordinal: row.ordinal,
+    })))
+
+    const { data: m } = await supabase.schema('menumaker').from('child_medical').select('*').eq('child_id', childId).maybeSingle()
     setMedical(m as ChildMedical ?? { allergies: null, medications: null, doctor_name: null, doctor_phone: null, health_condition_name: null, condition_symptoms: null, foods_to_avoid: null, activities_to_avoid: null, care_instructions: null, emergency_action: null, evacuation_notes: null, medication_details: null, parent_signed_at: null })
   }
 
@@ -262,9 +283,9 @@ export default function ChildSettingsPage({
               ) : guardians.map((g, i) => (
                 <div key={g.id} style={{ background:'#f8faf8', borderRadius:10, padding:14, marginBottom:10, border:'1.5px solid #e8f0e8' }}>
                   <div style={{ fontWeight:700, fontSize:13, color:'#0f4c35', marginBottom:8 }}>
-                    {g.role ?? `Guardian ${i+1}`} · {g.relationship ?? ''}
-                    {g.can_pickup && <span style={{ marginLeft:8, fontSize:11, background:'#dcfce7', color:'#16a34a', padding:'1px 8px', borderRadius:6 }}>✓ Pickup</span>}
-                    {g.is_emergency_contact && <span style={{ marginLeft:6, fontSize:11, background:'#fef3c7', color:'#d97706', padding:'1px 8px', borderRadius:6 }}>Emergency</span>}
+                    {capWords(g.role) || `Guardian ${i+1}`}{g.relationship ? ` · ${capWords(g.relationship)}` : ''}
+                    {canPickupFromRole(g.role) && <span style={{ marginLeft:8, fontSize:11, background:'#dcfce7', color:'#16a34a', padding:'1px 8px', borderRadius:6 }}>✓ Pickup</span>}
+                    {g.is_emergency_contact && <span style={{ marginLeft:6, fontSize:11, background:'#fef3c7', color:'#d97706', padding:'1px 8px', borderRadius:6 }}>🚨 Emergency</span>}
                   </div>
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, fontSize:13 }}>
                     <div><span style={{ color:'#888', fontSize:11 }}>Name</span><br/>{g.first_name} {g.last_name}</div>

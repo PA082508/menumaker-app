@@ -2,7 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
+import { useAuth } from '@/hooks/useAuth'
 import OfficialMenu, { weekPagesFor, type Lookup, type Holiday } from './OfficialMenu'
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December']
 
 /**
  * Container for the official CACFP monthly menu form
@@ -13,22 +17,31 @@ import OfficialMenu, { weekPagesFor, type Lookup, type Holiday } from './Officia
  * dishes drop straight into the CACFP component rows; WG marks come from
  * recipes.is_whole_grain; holidays are per center_id. Rendering lives in the pure
  * <OfficialMenu> component.
+ *
+ * Publish (step b): saves the resolved data snapshot to published_menus as a new
+ * version (re-publishing the same month never overwrites). Published months are
+ * viewed at /menu/published/:center/:year/:month, re-rendered from the snapshot.
  */
 export default function MenuPrintOfficialPage() {
   const { center: centerSlug, year: yearStr, month: monthStr } = useParams()
-  const { centers, loading: orgLoading } = useOrg()
+  const { centers, org, loading: orgLoading } = useOrg()
+  const { user, roles } = useAuth()
   const year = parseInt(yearStr || '', 10)
   const month = parseInt(monthStr || '', 10) // 1-12
 
   const [loading, setLoading] = useState(true)
+  const [cycleId, setCycleId] = useState<string | null>(null)
   const [cycleStart, setCycleStart] = useState<string | null>(null)
   const [totalWeeks, setTotalWeeks] = useState(4)
   const [lookup, setLookup] = useState<Lookup>({})
   const [holidayByDate, setHolidayByDate] = useState<Record<string, Holiday>>({})
+  const [latestVersion, setLatestVersion] = useState<number | null>(null)
+  const [publishState, setPublishState] = useState<'idle' | 'busy' | string>('idle')
 
   const center = useMemo(
     () => centers.find(c => c.slug === centerSlug) || null,
     [centers, centerSlug])
+  const canPublish = roles.includes('director') || roles.includes('office_manager') || roles.includes('admin')
 
   useEffect(() => {
     if (orgLoading) return
@@ -44,6 +57,7 @@ export default function MenuPrintOfficialPage() {
         .limit(1)
       const cycle = cycles?.[0]
       if (!cycle) { setLoading(false); return }
+      setCycleId(cycle.id)
       setCycleStart(cycle.start_date ?? null)
       if (cycle.total_weeks) setTotalWeeks(cycle.total_weeks)
 
@@ -78,10 +92,40 @@ export default function MenuPrintOfficialPage() {
         hmap[`${h.year}-${h.month}-${h.day}`] = { type: h.type, name: h.name, close_time: h.close_time }
       setHolidayByDate(hmap)
 
+      // Latest published version for this center/month (for the Publish button label).
+      if (year && month) {
+        const { data: pub } = await supabase.schema('menumaker')
+          .from('published_menus')
+          .select('version')
+          .eq('program', 'child').eq('center_id', center.id).eq('year', year).eq('month', month)
+          .order('version', { ascending: false }).limit(1)
+        setLatestVersion(pub?.[0]?.version ?? null)
+      }
+
       setLoading(false)
     }
     load()
-  }, [center, orgLoading])
+  }, [center, orgLoading, year, month])
+
+  const publish = async () => {
+    if (!center || !year || !month) return
+    setPublishState('busy')
+    const snapshot = { centerName: center.name, cycleStart, totalWeeks, lookup, holidayByDate }
+    const nextVersion = (latestVersion ?? 0) + 1
+    const { error } = await supabase.schema('menumaker').from('published_menus').insert({
+      org_id: org?.id ?? undefined,
+      program: 'child',
+      center_id: center.id,
+      cycle_id: cycleId,
+      year, month,
+      version: nextVersion,
+      snapshot,
+      published_by: user?.id ?? null,
+    })
+    if (error) { setPublishState(`Error: ${error.message}`); return }
+    setLatestVersion(nextVersion)
+    setPublishState(`Published v${nextVersion} ✓`)
+  }
 
   if (!year || !month || month < 1 || month > 12)
     return <Msg>Invalid month in URL. Use /menu/print-official/:center/:year/:month.</Msg>
@@ -89,8 +133,7 @@ export default function MenuPrintOfficialPage() {
   if (!center) return <Msg>Center “{centerSlug}” not found or not accessible.</Msg>
 
   const pageCount = weekPagesFor(year, month, cycleStart, totalWeeks).length
-  const monthName = ['January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'][month - 1]
+  const monthName = MONTH_NAMES[month - 1]
 
   return (
     <div>
@@ -100,8 +143,20 @@ export default function MenuPrintOfficialPage() {
         <button onClick={() => window.print()} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #0f4c35', background: '#0f4c35', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
           🖨 Print / Save PDF
         </button>
-        <span style={{ fontSize: 12, color: '#666' }}>
-          {center.name} · {monthName} {year} · {pageCount} week page{pageCount !== 1 ? 's' : ''}
+        {canPublish && (
+          <button onClick={publish} disabled={publishState === 'busy'} title="Save this month as a published version (parents / website)" style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #0f4c35', background: '#fff', color: '#0f4c35', fontSize: 13, fontWeight: 600, cursor: publishState === 'busy' ? 'default' : 'pointer' }}>
+            {publishState === 'busy' ? 'Publishing…' : latestVersion ? `📢 Publish (next v${latestVersion + 1})` : '📢 Publish'}
+          </button>
+        )}
+        {latestVersion && (
+          <Link to={`/menu/published/${center.slug}/${year}/${month}`} style={{ fontSize: 12, color: '#0f4c35', textDecoration: 'none' }}>
+            View published v{latestVersion} →
+          </Link>
+        )}
+        <span style={{ fontSize: 12, color: publishState.startsWith('Error') ? '#b91c1c' : '#666' }}>
+          {publishState !== 'idle' && publishState !== 'busy'
+            ? publishState
+            : `${center.name} · ${monthName} ${year} · ${pageCount} week page${pageCount !== 1 ? 's' : ''}`}
         </span>
       </div>
 

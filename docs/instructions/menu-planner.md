@@ -72,7 +72,18 @@ weekly menu.
 - **Output.** Click **🖨 Print / Save PDF** and choose *Save as PDF* in the print
   dialog. The page is laid out for **US Letter, landscape**, one week per page.
 
-> **Publishing to parents / website (planned).** The saved PDF/HTML copy will be
-> stored in **`published_menus`** (the same home used for the Head Start published
-> artifacts) so a month's menu can be shared with parents or embedded on the site.
-> Today the form is generated on demand and saved via the browser's *Save as PDF*.
+## Publishing a month (parents / website)
+
+Directors and office managers see a **📢 Publish** button on the official form. It
+saves a **snapshot of the month's resolved menu** (the same data the form renders)
+to `published_menus` as a new **version**:
+
+- **Re-publishing the same month never overwrites** — it adds v2, v3, … and keeps
+  every prior version (full history).
+- The published month is viewed at **`/menu/published/:center/:year/:month`**
+  (latest version, or `?version=N` to pin one), re-rendered from the snapshot
+  through the same layout. Because we store the *data*, a later layout tweak
+  automatically improves already-published months too.
+- **Print/PDF** on either the live or published view uses the browser's
+  *Save as PDF* (Letter, landscape, one week per page). A server-materialised PDF
+  file can be added later if a fixed downloadable file is needed.

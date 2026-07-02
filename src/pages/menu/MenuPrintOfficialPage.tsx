@@ -91,11 +91,12 @@ export default function MenuPrintOfficialPage() {
       if (recipeIds.size) {
         const { data: rcs } = await supabase.schema('menumaker')
           .from('recipe_components')
-          .select('recipe_id, quantity, unit, recipes:recipe_id(name), components:component_id(slug,label), age_groups:age_group_id(slug)')
+          .select('recipe_id, quantity, unit, recipes:recipe_id(name, menu_form_primary_component), components:component_id(slug,label), age_groups:age_group_id(slug)')
           .in('recipe_id', [...recipeIds])
         combosMap = buildCombos((rcs || []).map((r: any) => ({
           recipe_id: r.recipe_id, name: r.recipes?.name || '', quantity: r.quantity, unit: r.unit,
           comp_slug: r.components?.slug, comp_label: r.components?.label, age_slug: r.age_groups?.slug,
+          primary_override: r.recipes?.menu_form_primary_component ?? null,
         })))
       }
       setCombos(combosMap)

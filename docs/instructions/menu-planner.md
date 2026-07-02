@@ -66,7 +66,9 @@ weekly menu.
   plan. **Whole-grain** items are flagged **WG**.
 - **Combination dishes.** When a dish's recipe credits 2+ components (Extras never
   count), its name prints **once** in its primary component row (priority: Meat &
-  Alternates → Grain → Vegetable → Fruit → Milk). Each other credited component
+  Alternates → Grain → Vegetable → Fruit → Milk; a recipe may override which
+  component is primary via `recipes.menu_form_primary_component` — e.g. a legume
+  soup forced to Vegetable). Each other credited component
   shows **✅ covered by `<dish>` `N`** — replacing a duplicate of the same dish, or
   sitting alongside a different item already there. `N` is a footnote, numbered per
   weekly page, explained in the page footer as

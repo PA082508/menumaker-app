@@ -81,15 +81,17 @@ const COMPONENT_SLUGS = ['milk', 'meat_alt', 'grain', 'vegetable', 'fruit', 'ext
 // Primary-component priority for a combination dish (Extras excluded entirely).
 const PRIMARY_ORDER = ['meat_alt', 'grain', 'vegetable', 'fruit', 'milk']
 
-/** Build the combos map from recipe_components rows (one per recipe × component × age). */
+/** Build the combos map from recipe_components rows (one per recipe × component × age).
+ *  `primaryOverride` = recipe's menu_form_primary_component (a component slug to force
+ *  as the primary/name row), overriding the default priority when set and credited. */
 export function buildCombos(rows: Array<{
   recipe_id: string; name: string; quantity: string; unit: string
-  comp_slug: string; comp_label: string; age_slug: string
+  comp_slug: string; comp_label: string; age_slug: string; primary_override?: string | null
 }>): Combos {
-  const byRecipe: Record<string, { name: string; comps: Record<string, { label: string; byAge: Record<string, { qty: string; unit: string }> }> }> = {}
+  const byRecipe: Record<string, { name: string; override?: string | null; comps: Record<string, { label: string; byAge: Record<string, { qty: string; unit: string }> }> }> = {}
   for (const r of rows) {
     if (!r.recipe_id || !r.comp_slug || r.comp_slug === 'extra') continue   // Extras never count
-    const rec = (byRecipe[r.recipe_id] ??= { name: r.name, comps: {} })
+    const rec = (byRecipe[r.recipe_id] ??= { name: r.name, override: r.primary_override ?? null, comps: {} })
     const comp = (rec.comps[r.comp_slug] ??= { label: r.comp_label, byAge: {} })
     comp.byAge[r.age_slug] = { qty: r.quantity, unit: r.unit }
   }
@@ -97,8 +99,11 @@ export function buildCombos(rows: Array<{
   for (const [rid, rec] of Object.entries(byRecipe)) {
     const slugs = Object.keys(rec.comps)
     if (slugs.length < 2) continue                                          // needs 2+ non-Extras components
-    const primary = PRIMARY_ORDER.find(s => slugs.includes(s)) ?? slugs[0]
-    const covered = PRIMARY_ORDER.filter(s => s !== primary && slugs.includes(s)).map(s => {
+    const primary = (rec.override && slugs.includes(rec.override))          // per-recipe override wins
+      ? rec.override
+      : (PRIMARY_ORDER.find(s => slugs.includes(s)) ?? slugs[0])
+    const covered = [...PRIMARY_ORDER, ...slugs].filter((s, i, a) => a.indexOf(s) === i)
+      .filter(s => s !== primary && slugs.includes(s)).map(s => {
       const c = rec.comps[s]
       const credit = c.byAge['3_5'] ?? Object.values(c.byAge)[0] ?? { qty: '', unit: '' }
       return { slug: s, label: c.label, qty: credit.qty, unit: credit.unit }

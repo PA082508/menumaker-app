@@ -41,6 +41,16 @@ Documents, …):
 - Conditional fields appear only when relevant (e.g. `evacuation_notes` shows under
   Health when applicable).
 
+## Entering dates
+
+Date fields (Birthday, Date In, …) use your device's **date picker**, so the year
+is always complete. Where a date is ever typed as **text**, the app accepts a
+**2-digit year** and fills the century for you on the way out of the field —
+`7/2/26` becomes `07/02/2026` (years `00–49` → 2000s, `50–99` → 1900s), and `/`,
+`-`, or no separators all work. An impossible date (e.g. `2/29` in a non-leap year)
+is gently highlighted and left for you to fix — your typing is never erased.
+*(Engineering rule: platform-standards §6.)*
+
 ## Emergency
 
 The **Emergency** tab holds the information needed in an incident — emergency

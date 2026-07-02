@@ -135,3 +135,27 @@ when it is created or reworked. Reference implementation (the helpers
 
 > **Rollout to existing packet forms** is a separate task, scheduled **after**
 > D.2 → STABLE-E → F. Tracked in [`BACKLOG.md`](./BACKLOG.md).
+
+---
+
+## 6. Date-input normalization (2-digit year)
+
+**Rule.** Every date field entered as **text** normalizes its value with
+**`normalizeDateInput`** ([`src/lib/dateInput.ts`](../src/lib/dateInput.ts)).
+
+- Accepts a **2-digit year** and expands it; separators `/`, `-`, `.`, or none:
+  `7/2/26`, `07/02/26`, `7-2-26`, `070226`, `7/2/2026` → **`07/02/2026`**.
+- **Century window:** year `00–49` → `20xx`, `50–99` → `19xx`.
+- Apply **on blur** (not per keystroke). On invalid input (`13/45/26`, `2/29/26`),
+  **soft-highlight** the field and **keep the value** — never erase it.
+- The util returns `{ ok, display: 'MM/DD/YYYY', iso: 'YYYY-MM-DD' }`; store `iso`,
+  show `display`. `isoToDisplay(iso)` converts stored values back for editing.
+- **Native `<input type="date">` fields are exempt** — the browser completes the
+  year. Do **not** touch them.
+
+**Inventory (2026-07-02):** the app currently has **no text date fields** — all 28
+date inputs (Add Child, staff, Settings, report filters, etc.) are native
+`type="date"`. The util + tests exist and stand ready; wire it the moment a text
+date field is introduced (in-app or in a GitHub-Pages packet form). Tests:
+[`src/lib/dateInput.test.ts`](../src/lib/dateInput.test.ts) (documented formats +
+century window + edges: `13/45/26` invalid, `2/29/24` valid, `2/29/26` invalid).

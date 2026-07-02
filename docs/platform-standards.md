@@ -99,3 +99,39 @@ in [`docs/instructions/`](./instructions/).** The instruction is updated in the
 
 > A feature with no `docs/instructions/` update is **not done** and should not be
 > merged.
+
+---
+
+## 5. Parent-forms packet standard
+
+Established in **IEA FY 26-27**. **Apply to every form in the parent-forms packet**
+when it is created or reworked. Reference implementation (the helpers
+`fmtPhone` / `kidAge` / `loadProfile` / `saveProfile` / `applyProfile`) lives in
+**`IEA_FY2026-27_full_v1.html`**.
+
+### 5.1 Dates
+- Every date field is `type="date"`.
+- **Signature dates**: default to **today**; set `data-touched` when the user edits
+  one manually.
+- On **`beforeprint`**: untouched signature dates refresh to today; **empty** date
+  fields temporarily switch to `type="text"` so the `mm/dd/yyyy` placeholder does
+  **not** print (switch back after).
+
+### 5.2 Phones
+- `type="tel"` with a `(XXX) XXX-XXXX` mask (`fmtPhone`), `autocomplete="tel"` /
+  `tel-work` as appropriate.
+
+### 5.3 Address / name
+- `autocomplete`: `name`, `address-line1`, `address-level2`, `postal-code`.
+- **County** is a `datalist` (options: Cuyahoga, Lake).
+
+### 5.4 Cross-form autofill
+- `localStorage` key **`pa_packet_profile`** = `{ ts, data: { child1_name,
+  child1_dob, …, parent_name, phone_day, phone_work, street, city_state_zip,
+  county, center_name } }`. **TTL 90 minutes.**
+- Opening a form with a fresh profile shows a **"Fill known fields"** banner
+  (`applyProfile` fills **only empty** fields — never overwrites).
+- Each form writes its own fields back to the same key **on blur** (`saveProfile`).
+
+> **Rollout to existing packet forms** is a separate task, scheduled **after**
+> D.2 → STABLE-E → F. Tracked in [`BACKLOG.md`](./BACKLOG.md).

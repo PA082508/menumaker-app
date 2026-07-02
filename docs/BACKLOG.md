@@ -26,6 +26,14 @@ new names.
   · School Age → **School-Age 1** (+ School-Age 2) ✓
 - **Alpha** — SA → **SA Room** ✓ · Orange split → **Orange 1 Room / Orange 2 Room** ✓
 
+## Parent-forms packet standard — roll out to existing forms
+
+Apply [`platform-standards.md §5`](./platform-standards.md) (dates / phones /
+address / cross-form autofill via `pa_packet_profile`) to every existing form in the
+parent-forms packet. Reference implementation: `IEA_FY2026-27_full_v1.html`
+(`fmtPhone` / `kidAge` / `loadProfile` / `saveProfile` / `applyProfile`).
+**Scheduled after** D.2 → STABLE-E → F.
+
 ## Permission-driven sidebar
 
 Drive the sidebar nav from the user's permission set / modules (rather than the

@@ -17,12 +17,14 @@ policy version**, so SafePass access requires the current signed agreement
 (re-signing when the version changes). Process is documented in
 [policies-handbook.md](./instructions/policies-handbook.md); spec sent earlier.
 
-## Classroom UPDATEs (Nikolay's decisions)
+## Classroom UPDATEs (Nikolay's decisions) — ✅ DONE (verified 2026-07-02)
 
-Apply if not already done:
-- **Pearl** — Red Room → **Pre-K**
-- **Alpha** — Orange room split by name, **7 / 9**
-- **SA → SA Room** (rename)
+Verified already applied in `menumaker.classrooms.name` (and the denormalized
+`meal_week_records.classroom`); **0 stale rows** — July accounting already uses the
+new names.
+- **Pearl** — Red Room → **Pre-K** ✓ · Orange → **Orange 1 Room** (+ Orange 2 Room) ✓
+  · School Age → **School-Age 1** (+ School-Age 2) ✓
+- **Alpha** — SA → **SA Room** ✓ · Orange split → **Orange 1 Room / Orange 2 Room** ✓
 
 ## Permission-driven sidebar
 

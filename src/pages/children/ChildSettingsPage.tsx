@@ -4,6 +4,10 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { completeness as regCompleteness, tabCounts as regTabCounts, type TabKey, type RecordCtx } from '@/lib/childFieldRegistry'
+
+// existing 7-tab order → registry TabKeys (Documents tab is added in B.4)
+const TAB_KEYS: TabKey[] = ['profile','family','enrollment','health','cacfp','safepass','billing']
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -96,6 +100,7 @@ export default function ChildSettingsPage({
   const [child, setChild] = useState<Child | null>(null)
   const [guardians, setGuardians] = useState<Guardian[]>([])
   const [medical, setMedical] = useState<ChildMedical | null>(null)
+  const [view, setView] = useState<Record<string, any> | null>(null)   // v_child_age_profile (read-only)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
@@ -125,6 +130,10 @@ export default function ChildSettingsPage({
 
     const { data: m } = await supabase.schema('menumaker').from('child_medical').select('*').eq('child_id', childId).maybeSingle()
     setMedical(m as ChildMedical ?? { allergies: null, medications: null, doctor_name: null, doctor_phone: null, health_condition_name: null, condition_symptoms: null, foods_to_avoid: null, activities_to_avoid: null, care_instructions: null, emergency_action: null, evacuation_notes: null, medication_details: null, parent_signed_at: null })
+
+    // read-only age/milk profile for CACFP tab + registry export
+    const { data: vw } = await supabase.schema('menumaker').from('v_child_age_profile').select('*').eq('id', childId).maybeSingle()
+    setView(vw ?? null)
   }
 
   async function saveChild() {
@@ -157,45 +166,20 @@ export default function ChildSettingsPage({
     setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2000)
   }
 
-  // ─── Completeness counters ────────────────────────────────────────────────
-
+  // ─── Completeness counters — driven by childFieldRegistry (B.1) ───────────
   function counts() {
     if (!child) return Array(7).fill({ e: 0, o: 0 })
-    const today = new Date().toISOString().slice(0, 10)
-    const e = (v: any) => !v || v === '' ? 1 : 0
-    const expired = (d: string | null) => d && d < today ? 1 : 0
-
-    // Profile
-    const p_e = e(child.first_name) + e(child.last_name) + e(child.birthday) + e(child.classroom_id) + e(child.date_in)
-    // Family
-    const f_e = guardians.length === 0 ? 2 : 0
-    // Enrollment
-    const en_e = e(child.frp) + e(child.enrollment_reviewed_at)
-    const en_o = expired(child.frp_expires) + expired(child.enrollment_reviewed_at)
-    // Health
-    const h_e = !medical ? 2 : e(medical.doctor_name) + e(medical.doctor_phone)
-    // CACFP
-    const c_e = e(child.frp) + e(child.milk_kind)
-    // SafePass
-    const sp_e = guardians.filter(g => g.can_pickup).length === 0 ? 1 : 0
-    // Billing
-    const b_e = 0 // TODO when billing module added
-
-    return [
-      { e: p_e,  o: 0 },
-      { e: f_e,  o: 0 },
-      { e: en_e, o: en_o },
-      { e: h_e,  o: 0 },
-      { e: c_e,  o: 0 },
-      { e: sp_e, o: 0 },
-      { e: b_e,  o: 0 },
-    ]
+    const ctx: RecordCtx = { roster: child, medical, view }
+    return TAB_KEYS.map(k => {
+      const c = regTabCounts(k, ctx, guardians)
+      return { e: c.empty, o: c.overdue }
+    })
   }
 
   const badges = counts()
   const totalEmpty = badges.reduce((s, b) => s + b.e, 0)
   const totalOverdue = badges.reduce((s, b) => s + b.o, 0)
-  const completePct = child ? Math.round((1 - totalEmpty / Math.max(totalEmpty + 15, 15)) * 100) : 0
+  const completePct = child ? regCompleteness({ roster: child, medical, view }, guardians).pct : 0
 
   const TABS = ['👤 Profile','👨‍👩‍👧 Family','📋 Enrollment','🏥 Health','🍽️ CACFP','🔒 SafePass','💰 Billing']
 

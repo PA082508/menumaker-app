@@ -38,10 +38,13 @@ the stipend/enforcement begins only after director countersignature.
   current version?"*, so a new version can require re-signing before the feature
   works again.
 
-> **Planned (task F).** A `policy_documents` store will hold versioned policy text,
-> and the SafePass Agreement will **bind to a policy version** — so SafePass access
-> requires the current signed agreement. Until then, policy versioning is a process
-> convention.
+> **Task F (in progress).** `menumaker.policy_documents` now holds versioned policy
+> text (key + version + title + body + two-step `status` draft→announced→active,
+> superseded versions kept). First record: **`safepass_addendum` v1.0** (active),
+> which corresponds to `safepass_agreements.document_version = '1.0'` — the version
+> a parent/teacher signs. Still to wire: SafePass access **requiring** the current
+> active version's signature (re-sign on version bump), and admin UI to author /
+> announce / activate policies.
 
 ## Feature-activation checklist
 

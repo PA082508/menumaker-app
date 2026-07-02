@@ -16,6 +16,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrg } from "@/contexts/OrgContext";
 import { format, startOfWeek, addDays, isWeekend } from "date-fns";
+import { displayChildName } from "@/lib/childName";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -129,13 +130,10 @@ const colName = (day: DayKey, slot: SlotKey) => `${day}_${SLOT_COL[slot]}`;
 const mondayOf = (d: Date) => startOfWeek(d, { weekStartsOn: 1 });
 const ceilCups = (oz: number) => Math.ceil(oz / 8);
 
-// Display name: "last_name first_name" (e.g. "Rodriguez Juan"). Falls back to
-// the legacy child_name when either part is missing. NOTE: child_name remains
+// Display name: canonical CACFP "Last First" via shared helper. NOTE: child_name remains
 // the identity/join key into meal_week_records — only the label changes.
 const displayName = (c: { last_name?: string | null; first_name?: string | null; child_name: string }) =>
-  (c.last_name?.trim() && c.first_name?.trim())
-    ? `${c.last_name.trim()} ${c.first_name.trim()}`
-    : c.child_name;
+  displayChildName(c);
 
 interface MilkBucket { label: string; oz: number; }
 

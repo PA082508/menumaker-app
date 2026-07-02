@@ -192,7 +192,9 @@ export default function MealCountPage() {
       const { data: kids } = await supabase
         .schema("menumaker").from("roster")
         .select("id,child_name,milk_kind,substitute_milk,substitute_reimbursable,rate_oz,age_group_food,birthday")
-        .eq("classroom_id", selectedClassId).eq("is_active", true).order("age_group_food").order("child_name");
+        .eq("classroom_id", selectedClassId).eq("is_active", true)
+        // CACFP standard: oldest children first → ORDER BY birthday ASC (no-birthday last).
+        .order("birthday", { ascending: true, nullsFirst: false }).order("child_name");
       setRoster((kids ?? []) as Child[]);
 
       const { data: recs } = await supabase

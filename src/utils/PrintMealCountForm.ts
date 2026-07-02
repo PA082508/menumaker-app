@@ -39,9 +39,10 @@ export async function printMealCountForm(params: PrintMealCountParams): Promise<
 
   // ── Fetch roster ────────────────────────────────────────────────────────────
   const { data: rosterRaw } = await supabase.schema("menumaker").from("roster")
-    .select("id,child_name,age_group_food")
+    .select("id,child_name,age_group_food,birthday")
+    // CACFP standard: oldest children first → ORDER BY birthday ASC (no-birthday last).
     .eq("classroom_id", classroomId).eq("is_active", true)
-    .order("child_name");
+    .order("birthday", { ascending: true, nullsFirst: false }).order("child_name");
   const roster = rosterRaw ?? [];
 
   // ── Fetch existing records for this week ────────────────────────────────────

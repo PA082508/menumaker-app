@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
+import { displayChildName } from '@/lib/childName'
 import { useAuth } from '@/hooks/useAuth'
 import CenterRosterPage from './CenterRosterPage'
 
@@ -45,8 +46,7 @@ const fmtDate = (d: string | null) => {
   const [y, m, day] = String(d).slice(0, 10).split('-')
   return m && day ? `${Number(m)}/${Number(day)}/${y}` : String(d)
 }
-const fullName = (c: Child) =>
-  [c.first_name, c.last_name].filter(Boolean).join(' ').trim() || c.child_name || '—'
+const fullName = (c: Child) => displayChildName(c)
 
 // today string yyyy-mm-dd
 const todayStr = new Date().toISOString().slice(0, 10)

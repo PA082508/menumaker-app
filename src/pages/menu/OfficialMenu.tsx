@@ -110,28 +110,26 @@ export interface OfficialMenuProps {
   holidayByDate: Record<string, Holiday>
 }
 
-export default function OfficialMenu({ centerName, year, month, cycleStart, totalWeeks, lookup, holidayByDate }: OfficialMenuProps) {
+export default function OfficialMenu({ year, month, cycleStart, totalWeeks, lookup, holidayByDate }: OfficialMenuProps) {
   const pages = weekPagesFor(year, month, cycleStart, totalWeeks)
   const lastDay = new Date(year, month, 0).getDate()
   const monthName = MONTHS[month - 1]
-  const shortCenter = centerName.replace(/^Play Academy\s+/i, '')
 
   return (
     <div className="menu-official">
       <style>{PRINT_CSS}</style>
       {pages.map((pg, i) => (
         <div className="week-block" key={i}>
-          {/* Addition 1 — green ribbon */}
+          {/* Addition 1 — green ribbon (brand, not the individual center) */}
           <div className="green-ribbon">
-            <span>Center: {shortCenter}</span>
+            <span>Play Academy</span>
             <span>Month: {monthName}</span>
             <span>Date: 1 to {lastDay}</span>
           </div>
           <WeekTable
             monday={pg.monday}
             weekNum={pg.weekNum}
-            monthName={monthName}
-            monthLast={lastDay}
+            reportMonth={month - 1}
             lookup={lookup}
             holidayByDate={holidayByDate}
           />
@@ -146,18 +144,20 @@ export default function OfficialMenu({ centerName, year, month, cycleStart, tota
   )
 }
 
-function WeekTable({ monday, weekNum, monthName, monthLast, lookup, holidayByDate }: {
-  monday: Date; weekNum: number; monthName: string; monthLast: number
+function WeekTable({ monday, weekNum, reportMonth, lookup, holidayByDate }: {
+  monday: Date; weekNum: number; reportMonth: number
   lookup: Lookup; holidayByDate: Record<string, Holiday>
 }) {
   const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
   const days = [0, 1, 2, 3, 4].map(k => {
     const d = new Date(monday); d.setDate(monday.getDate() + k)
-    const h = holidayByDate[dkey(d)]
+    const inMonth = d.getMonth() === reportMonth
+    const h = inMonth ? holidayByDate[dkey(d)] : undefined
     return {
+      inMonth,                       // days of a neighbouring month render fully blank
       num: d.getDate(),
-      // Addition 3 — red month label over the day where the month crosses (date === 1)
-      cross: d.getDate() === 1 ? MONTHS[d.getMonth()] : null,
+      // red month label over the report month's first day (crossover point)
+      cross: inMonth && d.getDate() === 1 ? MONTHS[d.getMonth()] : null,
       holiday: h?.type === 'holiday' ? h : null,
       short: h?.type === 'short_day' ? h : null,
     }
@@ -174,17 +174,15 @@ function WeekTable({ monday, weekNum, monthName, monthLast, lookup, holidayByDat
         {days.flatMap((_, k) => [<col key={`d${k}`} className="c-day" />, <col key={`n${k}`} className="c-num" />])}
       </colgroup>
       <tbody>
-        {/* Header row 1 */}
+        {/* Header row 1 — Week + AGES, then one solid blue band across all day columns
+            (Month/Date live in the green ribbon; the red holiday fill starts below). */}
         <tr>
           <td className="hdr-blue" />
           <td className="hdr-week">Week {weekNum}</td>
           <td className="hdr-blue">AGES</td><td className="hdr-blue">AGES</td><td className="hdr-blue">AGES</td>
-          <td className="hdr-blue pair-l" style={{ textAlign: 'right' }}>Month:</td><td className="hdr-blue pair-r" />
-          <td className="hdr-month pair-l">{monthName}</td><td className="hdr-blue pair-r" />
-          <td className="hdr-blue pair-l" style={{ textAlign: 'right' }}>Date:</td><td className="hdr-green pair-r">1</td>
-          <td className="hdr-blue pair-l" style={{ textAlign: 'right' }}>to</td><td className="hdr-green pair-r">{monthLast}</td>
+          <td className="hdr-blue" colSpan={10} />
         </tr>
-        {/* Header row 2 — day names + red date numbers (+ month-crossover label) */}
+        {/* Header row 2 — day names + date numbers (blank for neighbouring-month days) */}
         <tr>
           <td className="hdr-blue" />
           <td className="hdr-blue">COMPONENT</td>
@@ -195,7 +193,7 @@ function WeekTable({ monday, weekNum, monthName, monthLast, lookup, holidayByDat
               {DAY_NAMES[k]}
               {di.short && <div className="short-note">Short Day{di.short.close_time ? ` · closes ${di.short.close_time.slice(0, 5)}` : ''}</div>}
             </td>,
-            <td key={`n${k}`} className="num-red hdr-blue pair-r">{di.num}</td>,
+            <td key={`n${k}`} className="num-red hdr-blue pair-r">{di.inMonth ? di.num : ''}</td>,
           ])}
         </tr>
 
@@ -208,7 +206,9 @@ function WeekTable({ monday, weekNum, monthName, monthLast, lookup, holidayByDat
             <td className="age2">{row.ages[1]}</td>
             <td className="age3">{row.ages[2]}</td>
             {days.map((di, k) => {
-              // Addition 2 — full-height red holiday column (one merged cell on the first row)
+              // Neighbouring-month day → fully blank white column (no dishes, no dates).
+              if (!di.inMonth) return <td key={k} className="dish" colSpan={2} />
+              // Full-height muted holiday column (one merged cell on the first body row).
               if (di.holiday) {
                 if (ri !== 0) return null
                 return (
@@ -260,7 +260,7 @@ export const PRINT_CSS = `
 .menu-official .age3 { background: #cfd8ee; text-align: center; white-space: nowrap; }
 .menu-official .dish { background: #fff; min-height: 13px; text-align: left; }
 .menu-official .wg { color: #0f7a3d; font-weight: 800; font-size: 7px; margin-left: 2px; }
-.menu-official .holiday-cell { background: #e13e22; color: #fff; text-align: center; vertical-align: middle; }
+.menu-official .holiday-cell { background: #bf6a5a; color: #fff; text-align: center; vertical-align: middle; }
 .menu-official .holiday-text { writing-mode: vertical-rl; transform: rotate(180deg); font-weight: 800; font-size: 11px; letter-spacing: 0.04em; white-space: nowrap; margin: 0 auto; }
 .menu-official .meal-top td { border-top: 3px solid #000; }
 .menu-official .green-ribbon { background: #0f4c35; color: #fff; font-weight: 800; font-size: 11px; display: flex; gap: 28px; justify-content: center; padding: 4px 8px; margin-bottom: 3px; }

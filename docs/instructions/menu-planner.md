@@ -58,17 +58,19 @@ weekly menu.
   selected center (Organization view falls back to the first center).
 - **A month = 4–6 weekly pages.** Weeks are anchored to the cycle *Week 1 Monday*
   and the **Week 1–4 rotation continues across months** (e.g. July may open on
-  Week 4). Days that belong to a neighbouring month still show their own date
-  numbers (e.g. `29 30 | 1 2 3`); the reporting month is named in the header.
+  Week 4). Days that belong to a **neighbouring month are left blank** (no dishes
+  and no date numbers) — only the reporting month's days are filled in.
 - **CACFP layout.** Each meal shows the required components (Milk, Meat &
   Alternates, Grain, Vegetable, Fruit, Extras, Notes) across the three age groups
   (1–2, 3–5, 6–12). Dishes drop into their component rows automatically from the
   plan. **Whole-grain** items are flagged **WG**.
 - **Three report touches:**
-  1. a green ribbon across the top — **Center · Month · Date 1 to `<last>`**;
-  2. a **red month name** printed over the day where the month changes;
-  3. a **full-height red column** reading **HOLIDAY: `<name>`** on any holiday —
-     no dishes are printed for that day.
+  1. a green ribbon across the top — **Play Academy · Month · Date 1 to `<last>`**;
+  2. a **red month name** printed over the reporting month's first day (the
+     month-crossover point);
+  3. a **full-height muted-terracotta column** reading **HOLIDAY: `<name>`** on any
+     holiday — no dishes are printed for that day. The header rows stay blue above
+     it; the holiday fill starts below the header.
 - **Output.** Click **🖨 Print / Save PDF** and choose *Save as PDF* in the print
   dialog. The page is laid out for **US Letter, landscape**, one week per page.
 

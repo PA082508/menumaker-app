@@ -64,10 +64,126 @@ const FLAT_ROWS: FlatRow[] = MEAL_LABELS.flatMap(meal =>
   MEAL_ROWS[meal].map((r, i) => ({ ...r, meal, mealFirst: i === 0, mealSpan: MEAL_ROWS[meal].length })))
 const TOTAL_ROWS = FLAT_ROWS.length
 
-export interface Dish { text: string; wg: boolean }
+export interface Dish { text: string; wg: boolean; recipeId?: string | null }
 // lookup[week][day(1-5)][mealLabel][compSlug] = Dish[]
 export type Lookup = Record<number, Record<number, Record<string, Record<string, Dish[]>>>>
 export interface Holiday { type: string; name: string; close_time: string | null }
+
+// A combination dish: its recipe credits 2+ non-Extras components. Name prints once
+// in the primary component row; each covered component shows "covered by …" + footnote.
+export interface ComboCovered { slug: string; label: string; qty: string; unit: string }
+export interface ComboMeta { name: string; primary: string; covered: ComboCovered[] }
+export type Combos = Record<string, ComboMeta>
+
+// Component slugs in grid order.
+const COMPONENT_SLUGS = ['milk', 'meat_alt', 'grain', 'vegetable', 'fruit', 'extra']
+
+// Primary-component priority for a combination dish (Extras excluded entirely).
+const PRIMARY_ORDER = ['meat_alt', 'grain', 'vegetable', 'fruit', 'milk']
+
+/** Build the combos map from recipe_components rows (one per recipe × component × age). */
+export function buildCombos(rows: Array<{
+  recipe_id: string; name: string; quantity: string; unit: string
+  comp_slug: string; comp_label: string; age_slug: string
+}>): Combos {
+  const byRecipe: Record<string, { name: string; comps: Record<string, { label: string; byAge: Record<string, { qty: string; unit: string }> }> }> = {}
+  for (const r of rows) {
+    if (!r.recipe_id || !r.comp_slug || r.comp_slug === 'extra') continue   // Extras never count
+    const rec = (byRecipe[r.recipe_id] ??= { name: r.name, comps: {} })
+    const comp = (rec.comps[r.comp_slug] ??= { label: r.comp_label, byAge: {} })
+    comp.byAge[r.age_slug] = { qty: r.quantity, unit: r.unit }
+  }
+  const combos: Combos = {}
+  for (const [rid, rec] of Object.entries(byRecipe)) {
+    const slugs = Object.keys(rec.comps)
+    if (slugs.length < 2) continue                                          // needs 2+ non-Extras components
+    const primary = PRIMARY_ORDER.find(s => slugs.includes(s)) ?? slugs[0]
+    const covered = PRIMARY_ORDER.filter(s => s !== primary && slugs.includes(s)).map(s => {
+      const c = rec.comps[s]
+      const credit = c.byAge['3_5'] ?? Object.values(c.byAge)[0] ?? { qty: '', unit: '' }
+      return { slug: s, label: c.label, qty: credit.qty, unit: credit.unit }
+    })
+    combos[rid] = { name: rec.name, primary, covered }
+  }
+  return combos
+}
+
+// One rendered line inside a component cell.
+interface Line { text: string; wg?: boolean; recipeId?: string | null; coveredBy?: boolean; footnote?: number }
+interface ResolvedWeek { cells: Record<string, Line[]>; footnotes: { n: number; text: string }[] }
+const ckey = (day: number, meal: string, comp: string) => `${day}|${meal}|${comp}`
+
+// Apply the combination-dish rules for one weekly page:
+//  • name in the primary component row exactly once,
+//  • each covered component gets "covered by <name> N" (REPLACE the duplicate item
+//    if it's the same recipe, otherwise SUPPLEMENT alongside the existing item),
+//  • footnotes numbered per page, deduped by (component, qty, unit).
+function resolveWeek(weekNum: number, lookup: Lookup, combos: Combos): ResolvedWeek {
+  const week = lookup[weekNum] || {}
+  const cells: Record<string, Line[]> = {}
+  for (let day = 1; day <= 5; day++)
+    for (const meal of MEAL_LABELS)
+      for (const comp of COMPONENT_SLUGS)
+        cells[ckey(day, meal, comp)] = (week[day]?.[meal]?.[comp] ?? []).map(d => ({ text: d.text, wg: d.wg, recipeId: d.recipeId ?? null }))
+
+  const footnotes: { n: number; text: string }[] = []
+  const creditToN = new Map<string, number>()
+  const footnoteFor = (cov: ComboCovered): number => {
+    const unit = cov.unit.replace(/_/g, ' ')
+    const key = `${cov.slug}|${cov.qty}|${unit}`
+    let n = creditToN.get(key)
+    if (!n) {
+      n = footnotes.length + 1
+      creditToN.set(key, n)
+      footnotes.push({ n, text: `${n} ${cov.label}: ${cov.qty} ${unit} per serving (ages 3-5)` })
+    }
+    return n
+  }
+
+  for (let day = 1; day <= 5; day++) {
+    for (const meal of MEAL_LABELS) {
+      // combos present anywhere in this day+meal group
+      const present = new Set<string>()
+      for (const comp of COMPONENT_SLUGS)
+        for (const l of cells[ckey(day, meal, comp)])
+          if (l.recipeId && combos[l.recipeId]) present.add(l.recipeId)
+      const active = [...present].sort((a, b) => combos[a].name.localeCompare(combos[b].name))
+
+      for (const rid of active) {
+        const meta = combos[rid]
+        // dish name: the menu item's own text where present, else the recipe name
+        let nameLine: Line | undefined
+        for (const comp of COMPONENT_SLUGS) {
+          nameLine = cells[ckey(day, meal, comp)].find(l => l.recipeId === rid)
+          if (nameLine) break
+        }
+        const dishName = nameLine?.text || meta.name
+
+        // The name lives ONLY in the primary row: drop the recipe from every other
+        // component (this handles REPLACE dups and off-label placements alike).
+        for (const comp of COMPONENT_SLUGS) {
+          if (comp === meta.primary) continue
+          const k = ckey(day, meal, comp)
+          cells[k] = cells[k].filter(l => l.recipeId !== rid)
+        }
+        // name in primary component, exactly once (SUPPLEMENT keeps it; else inject)
+        const primLines = cells[ckey(day, meal, meta.primary)]
+        if (!primLines.some(l => l.recipeId === rid))
+          primLines.push({ text: dishName, wg: nameLine?.wg ?? false, recipeId: rid })
+
+        // each credited covered component gets "covered by … N" (kept alongside any
+        // other item already there — SUPPLEMENT)
+        for (const cov of meta.covered) {
+          if (cov.slug === meta.primary) continue
+          const n = footnoteFor(cov)
+          cells[ckey(day, meal, cov.slug)].push({ text: `covered by ${dishName}`, coveredBy: true, footnote: n })
+        }
+      }
+    }
+  }
+
+  return { cells, footnotes }
+}
 
 export const dkey = (d: Date) => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`
 export const mondayOfWeekWith = (d: Date) => {
@@ -108,9 +224,10 @@ export interface OfficialMenuProps {
   totalWeeks: number
   lookup: Lookup
   holidayByDate: Record<string, Holiday>
+  combos?: Combos
 }
 
-export default function OfficialMenu({ year, month, cycleStart, totalWeeks, lookup, holidayByDate }: OfficialMenuProps) {
+export default function OfficialMenu({ year, month, cycleStart, totalWeeks, lookup, holidayByDate, combos = {} }: OfficialMenuProps) {
   const pages = weekPagesFor(year, month, cycleStart, totalWeeks)
   const lastDay = new Date(year, month, 0).getDate()
   const monthName = MONTHS[month - 1]
@@ -132,6 +249,7 @@ export default function OfficialMenu({ year, month, cycleStart, totalWeeks, look
             reportMonth={month - 1}
             lookup={lookup}
             holidayByDate={holidayByDate}
+            combos={combos}
           />
           <div className="wk-footer">
             This institution is an equal opportunity provider.<br />
@@ -144,10 +262,11 @@ export default function OfficialMenu({ year, month, cycleStart, totalWeeks, look
   )
 }
 
-function WeekTable({ monday, weekNum, reportMonth, lookup, holidayByDate }: {
+function WeekTable({ monday, weekNum, reportMonth, lookup, holidayByDate, combos }: {
   monday: Date; weekNum: number; reportMonth: number
-  lookup: Lookup; holidayByDate: Record<string, Holiday>
+  lookup: Lookup; holidayByDate: Record<string, Holiday>; combos: Combos
 }) {
+  const resolved = resolveWeek(weekNum, lookup, combos)
   const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
   const days = [0, 1, 2, 3, 4].map(k => {
     const d = new Date(monday); d.setDate(monday.getDate() + k)
@@ -163,10 +282,11 @@ function WeekTable({ monday, weekNum, reportMonth, lookup, holidayByDate }: {
     }
   })
 
-  const cellDishes = (comp: string, meal: MealLabel, dayIdx: number): Dish[] =>
-    comp === '__notes' ? [] : (lookup[weekNum]?.[dayIdx + 1]?.[meal]?.[comp] ?? [])
+  const cellLines = (comp: string, meal: MealLabel, dayIdx: number): Line[] =>
+    comp === '__notes' ? [] : (resolved.cells[ckey(dayIdx + 1, meal, comp)] ?? [])
 
   return (
+    <>
     <table className="menu">
       <colgroup>
         <col className="c-meal" /><col className="c-comp" />
@@ -217,14 +337,15 @@ function WeekTable({ monday, weekNum, reportMonth, lookup, holidayByDate }: {
                   </td>
                 )
               }
-              const dishes = cellDishes(row.comp, row.meal, k)
+              const lines = cellLines(row.comp, row.meal, k)
               return (
                 <td key={k} className="dish" colSpan={2}>
-                  {dishes.map((d, j) => (
+                  {lines.map((ln, j) => (
                     <span key={j}>
                       {j > 0 && <br />}
-                      {d.text}
-                      {d.wg && !/\(wg\)/i.test(d.text) && <sup className="wg">WG</sup>}
+                      {ln.coveredBy
+                        ? <span className="covered-by">✅ {ln.text} <sup className="fn">{ln.footnote}</sup></span>
+                        : <>{ln.text}{ln.wg && !/\(wg\)/i.test(ln.text) && <sup className="wg">WG</sup>}</>}
                     </span>
                   ))}
                 </td>
@@ -234,6 +355,12 @@ function WeekTable({ monday, weekNum, reportMonth, lookup, holidayByDate }: {
         ))}
       </tbody>
     </table>
+    {resolved.footnotes.length > 0 && (
+      <div className="combo-fn">
+        {resolved.footnotes.map(f => <div key={f.n}>{f.text}</div>)}
+      </div>
+    )}
+    </>
   )
 }
 
@@ -260,6 +387,9 @@ export const PRINT_CSS = `
 .menu-official .age3 { background: #cfd8ee; text-align: center; white-space: nowrap; }
 .menu-official .dish { background: #fff; min-height: 13px; text-align: left; }
 .menu-official .wg { color: #0f7a3d; font-weight: 800; font-size: 7px; margin-left: 2px; }
+.menu-official .covered-by { color: #0f7a3d; font-style: italic; }
+.menu-official .covered-by .fn { color: #000; font-style: normal; font-weight: 800; font-size: 7px; margin-left: 1px; }
+.menu-official .combo-fn { margin: 3px 0 0; font-size: 8px; line-height: 1.35; color: #333; }
 .menu-official .holiday-cell { background: #bf6a5a; color: #fff; text-align: center; vertical-align: middle; }
 .menu-official .holiday-text { writing-mode: vertical-rl; transform: rotate(180deg); font-weight: 800; font-size: 11px; letter-spacing: 0.04em; white-space: nowrap; margin: 0 auto; }
 .menu-official .meal-top td { border-top: 3px solid #000; }

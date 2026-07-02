@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
 import { useAuth } from '@/hooks/useAuth'
-import OfficialMenu, { weekPagesFor, type Lookup, type Holiday } from './OfficialMenu'
+import OfficialMenu, { weekPagesFor, buildCombos, type Lookup, type Holiday, type Combos } from './OfficialMenu'
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December']
@@ -34,6 +34,7 @@ export default function MenuPrintOfficialPage() {
   const [cycleStart, setCycleStart] = useState<string | null>(null)
   const [totalWeeks, setTotalWeeks] = useState(4)
   const [lookup, setLookup] = useState<Lookup>({})
+  const [combos, setCombos] = useState<Combos>({})
   const [holidayByDate, setHolidayByDate] = useState<Record<string, Holiday>>({})
   const [latestVersion, setLatestVersion] = useState<number | null>(null)
   const [publishState, setPublishState] = useState<'idle' | 'busy' | string>('idle')
@@ -63,7 +64,7 @@ export default function MenuPrintOfficialPage() {
 
       const { data: items } = await supabase.schema('menumaker')
         .from('menu_items')
-        .select(`week_number, day_of_week, item_text,
+        .select(`week_number, day_of_week, item_text, recipe_id,
                  meal_types:meal_type_id(label),
                  components:component_id(slug),
                  recipes:recipe_id(is_whole_grain)`)
@@ -71,16 +72,33 @@ export default function MenuPrintOfficialPage() {
         .order('sort_order')
 
       const lk: Lookup = {}
+      const recipeIds = new Set<string>()
       for (const it of (items || []) as any[]) {
         const meal = it.meal_types?.label as string | undefined
         const comp = it.components?.slug as string | undefined
         if (!meal || !comp) continue
+        if (it.recipe_id) recipeIds.add(it.recipe_id)
         ;((((lk[it.week_number] ??= {})[it.day_of_week] ??= {})[meal] ??= {})[comp] ??= []).push({
           text: it.item_text || '',
           wg: !!it.recipes?.is_whole_grain,
+          recipeId: it.recipe_id ?? null,
         })
       }
       setLookup(lk)
+
+      // Combination-dish metadata: recipes crediting 2+ non-Extras components.
+      let combosMap: Combos = {}
+      if (recipeIds.size) {
+        const { data: rcs } = await supabase.schema('menumaker')
+          .from('recipe_components')
+          .select('recipe_id, quantity, unit, recipes:recipe_id(name), components:component_id(slug,label), age_groups:age_group_id(slug)')
+          .in('recipe_id', [...recipeIds])
+        combosMap = buildCombos((rcs || []).map((r: any) => ({
+          recipe_id: r.recipe_id, name: r.recipes?.name || '', quantity: r.quantity, unit: r.unit,
+          comp_slug: r.components?.slug, comp_label: r.components?.label, age_slug: r.age_groups?.slug,
+        })))
+      }
+      setCombos(combosMap)
 
       // Holidays for THIS center (small table → fetch all, key by full date).
       const { data: hols } = await supabase.schema('menumaker')
@@ -110,7 +128,7 @@ export default function MenuPrintOfficialPage() {
   const publish = async () => {
     if (!center || !year || !month) return
     setPublishState('busy')
-    const snapshot = { centerName: center.name, cycleStart, totalWeeks, lookup, holidayByDate }
+    const snapshot = { centerName: center.name, cycleStart, totalWeeks, lookup, holidayByDate, combos }
     const nextVersion = (latestVersion ?? 0) + 1
     const { error } = await supabase.schema('menumaker').from('published_menus').insert({
       org_id: org?.id ?? undefined,
@@ -170,6 +188,7 @@ export default function MenuPrintOfficialPage() {
             totalWeeks={totalWeeks}
             lookup={lookup}
             holidayByDate={holidayByDate}
+            combos={combos}
           />}
     </div>
   )

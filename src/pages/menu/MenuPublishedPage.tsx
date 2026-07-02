@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams, useSearchParams, Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
-import OfficialMenu, { type Lookup, type Holiday } from './OfficialMenu'
+import OfficialMenu, { type Lookup, type Holiday, type Combos } from './OfficialMenu'
 
 /**
  * Published view of the official monthly menu (route
@@ -17,6 +17,7 @@ interface Snapshot {
   totalWeeks: number
   lookup: Lookup
   holidayByDate: Record<string, Holiday>
+  combos?: Combos
 }
 
 export default function MenuPublishedPage() {
@@ -89,6 +90,7 @@ export default function MenuPublishedPage() {
         totalWeeks={snapshot.totalWeeks}
         lookup={snapshot.lookup}
         holidayByDate={snapshot.holidayByDate}
+        combos={snapshot.combos ?? {}}
       />
     </div>
   )

@@ -64,6 +64,14 @@ weekly menu.
   Alternates, Grain, Vegetable, Fruit, Extras, Notes) across the three age groups
   (1–2, 3–5, 6–12). Dishes drop into their component rows automatically from the
   plan. **Whole-grain** items are flagged **WG**.
+- **Combination dishes.** When a dish's recipe credits 2+ components (Extras never
+  count), its name prints **once** in its primary component row (priority: Meat &
+  Alternates → Grain → Vegetable → Fruit → Milk). Each other credited component
+  shows **✅ covered by `<dish>` `N`** — replacing a duplicate of the same dish, or
+  sitting alongside a different item already there. `N` is a footnote, numbered per
+  weekly page, explained in the page footer as
+  `N <Component>: <qty> <unit> per serving (ages 3-5)` (the 3-5 credit from the
+  recipe). Footnotes are deduped per page by component + credit.
 - **Three report touches:**
   1. a green ribbon across the top — **Play Academy · Month · Date 1 to `<last>`**;
   2. a **red month name** printed over the reporting month's first day (the

@@ -35,6 +35,16 @@ per-center rows from an **org template**, so Pearl/Alpha/Ridge stay identical
 automatically. (Parity verified clean 2026-07-02; the official form filters by
 `center_id`, so any drift would silently change one center's holiday columns.)
 
+## [HIGH] Harden safepass_sign before real signature collection
+
+The anon `safepass_sign` RPC currently **trusts the client** — OK for the test phase,
+**not** for legally-significant signatures. Before collecting real signatures:
+- **Server-side verified-phone check** — move OTP to a DB-backed session
+  (`safepass_sms_otp`), not `sessionStorage`; `safepass_sign` should only accept a
+  person whose phone was verified server-side in the current session.
+- **Rate-limit** the RPC (per phone / per device / per IP).
+- Consider binding the signature to the verified session id + captured IP.
+
 ## SafePass addendum — teacher-side enforcement (Staff onboarding)
 
 Task F wired the **parent** consent gate (sign the active `safepass_addendum` version

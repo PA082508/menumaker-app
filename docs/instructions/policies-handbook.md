@@ -61,7 +61,9 @@ the stipend/enforcement begins only after director countersignature.
   these by hand for families who sign on paper; they count toward coverage the same way.
 - **Coverage report.** The **Policies** screen (Director's App, `/policies`) shows
   *N of M active families signed the current version*, with an expandable list of
-  non-signers. "Families" = distinct active phones in `safepass_trusted_persons`.
+  non-signers. **"Families" = distinct active phones in `safepass_trusted_persons`** —
+  this is a **proxy** (one phone ≈ one family) and will change once a normalized
+  `families` relation exists; the coverage denominator should move to that then.
 - **Managing policies.** Directors / office managers **announce → activate →
   supersede** versions there. Activating a version retires the previously-active one.
   There is **no in-app text editor**: a version's `body` is **imported from

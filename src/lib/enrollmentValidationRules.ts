@@ -96,40 +96,64 @@ function validateCacfp(fd: any, signatureDate?: string | null): ValidationResult
 }
 
 // ─── IEA — Income Eligibility (submission_type = 'iea') ──────────────────────
-// Rules (spec §1): Part 1 required; valid 7-digit case number (Part 2) ⇒ Part 3
-// not required; Part 3 filled ⇒ SSN last-4 required unless "no SSN"; income
-// frequencies valid. The concrete form_data key names for IEA v2 are not yet
-// confirmed on this side — this validator recognises the documented keys and
-// degrades to 'unknown' (rules pending) when the shape isn't present, rather
-// than emitting wrong 🔴s. Fill in the exact keys once IEA v2's form_data
-// shape is provided (same as CACFP was derived from its form).
+// form_data shape (IEA form v3, type='iea_fy2026_27'):
+//   children:[{name,age,dob,foster,case_no}] (≤4), benefit:{snap,owf},
+//   household:[{name,zero,income:{earn|welf|pens|other:{amt,freq_mult}}}],
+//   adult:{print_name,date,ssn_last4,no_ssn,day_phone,work_phone,street,
+//          city_state_zip,county}, ethnicity, race, helper, sponsor.
+// Branching (spec §1): a child with a valid 7-digit case_no AND (benefit.snap
+// or benefit.owf) ⇒ categorical eligibility, household/income NOT required.
+// Otherwise income path: household required, and adult SSN last-4 required
+// unless "no SSN". Drawn signature not required (paper flow).
 function validateIea(fd: any): ValidationResult {
   const errors: string[] = [], warnings: string[] = [], missing: string[] = []
 
-  // Heuristic: only run IEA rules if the payload carries a recognisable IEA
-  // marker. Otherwise report 'unknown' so the row is still listed, unvalidated.
-  const looksLikeIea = fd && (fd.part1 || fd.case_number || fd.household || fd.income)
-  if (!looksLikeIea) {
-    return { status: 'unknown', errors, warnings, missing: ['IEA validation rules pending form schema'] }
-  }
+  const children = Array.isArray(fd?.children) ? fd.children : []
+  const namedChildren = children.filter((c: any) => !blank(c?.name))
+  if (namedChildren.length === 0) missing.push('At least one child (Part 1)')
 
-  const caseNumber = fd.case_number ?? fd.part2?.case_number
-  const hasValidCase = validCaseNumber(caseNumber)
-
-  // Part 3 (income) required only when there is no valid assistance case number.
-  if (!hasValidCase) {
-    const part3 = fd.part3 ?? fd.income
-    if (blank(part3) || (Array.isArray(part3) && part3.length === 0)) {
-      missing.push('Household income (Part 3) — no valid case number provided')
-    } else {
-      const noSsn = fd.no_ssn === true || fd.part4?.no_ssn === true
-      const ssnLast4 = fd.ssn_last4 ?? fd.part4?.ssn_last4
-      if (!noSsn && blank(ssnLast4)) missing.push('Adult signer SSN last 4 (or check "no SSN")')
-      else if (!noSsn && !/^\d{4}$/.test(String(ssnLast4))) warnings.push('SSN last-4 must be 4 digits')
+  // Malformed case numbers are a warning regardless of path.
+  children.forEach((c: any, i: number) => {
+    if (!blank(c?.case_no) && !validCaseNumber(c.case_no)) {
+      warnings.push(`Case number for child ${i + 1} must be 7 digits`)
     }
-  } else if (!validCaseNumber(caseNumber)) {
-    warnings.push('Case number must be 7 digits')
+  })
+
+  const benefit = fd?.benefit ?? {}
+  const hasBenefitFlag = benefit.snap === true || benefit.owf === true
+  const anyValidCase = children.some((c: any) => validCaseNumber(c?.case_no))
+  const categorical = anyValidCase && hasBenefitFlag
+
+  if (!categorical) {
+    // Income path (Part 3): at least one named household member with income.
+    const household = Array.isArray(fd?.household) ? fd.household : []
+    const filled = household.filter((h: any) => !blank(h?.name))
+    if (filled.length === 0) {
+      missing.push('Household members & income (Part 3) — no categorical eligibility')
+    } else {
+      // Adult SSN last-4 required unless "no SSN" is checked.
+      const adult = fd?.adult ?? {}
+      if (adult.no_ssn !== true) {
+        if (blank(adult.ssn_last4)) missing.push('Adult signer SSN last 4 (or check "no SSN")')
+        else if (!/^\d{4}$/.test(String(adult.ssn_last4).trim())) warnings.push('SSN last 4 must be 4 digits')
+      }
+      // Income amounts/frequencies must be well-formed for non-zero members.
+      household.forEach((h: any, i: number) => {
+        if (h?.zero === true || blank(h?.name)) return
+        const inc = h?.income ?? {}
+        Object.entries(inc).forEach(([kind, val]: [string, any]) => {
+          if (val && !blank(val.amt)) {
+            if (!/^\d+(\.\d+)?$/.test(String(val.amt))) warnings.push(`Income amount (${kind}) for member ${i + 1} looks invalid`)
+            if (blank(val.freq_mult)) warnings.push(`Income frequency (${kind}) for member ${i + 1} is missing`)
+          }
+        })
+      })
+    }
   }
+
+  // Light contact format check.
+  const phone = fd?.adult?.day_phone
+  if (!blank(phone) && !validPhone(phone)) warnings.push('Adult daytime phone format looks invalid')
 
   return { status: statusFrom({ errors, warnings, missing }), errors, warnings, missing }
 }
@@ -140,6 +164,7 @@ type Validator = (fd: any, signatureDate?: string | null) => ValidationResult
 const VALIDATORS: Record<string, Validator> = {
   cacfp_enrollment: validateCacfp,
   iea: (fd) => validateIea(fd),
+  iea_fy2026_27: (fd) => validateIea(fd),  // form_data.type; submission_type is 'iea'
   // dcy_01234: pending its field registry — see childFieldRegistry 'enrollment' tab.
 }
 

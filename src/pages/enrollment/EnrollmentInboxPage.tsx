@@ -13,6 +13,7 @@ import {
   validateSubmission, submissionTypeLabel,
   type ValidationResult, type ValStatus,
 } from '@/lib/enrollmentValidationRules'
+import EnrollmentReviewModal from './EnrollmentReviewModal'
 
 const STAFF_ROLES = ['director', 'office_manager', 'admin']
 
@@ -76,6 +77,8 @@ export default function EnrollmentInboxPage() {
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [reviewing, setReviewing] = useState<Submission | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
 
   const isStaff = useMemo(
     () => (roles ?? []).some(r => STAFF_ROLES.includes(r)),
@@ -104,7 +107,7 @@ export default function EnrollmentInboxPage() {
       setLoading(false)
     })()
     return () => { cancelled = true }
-  }, [orgLoading, org?.id, currentCenter?.id, isStaff])
+  }, [orgLoading, org?.id, currentCenter?.id, isStaff, reloadKey])
 
   // Live validation per row (Phase 1 computes client-side; no trigger yet).
   const graded = useMemo(
@@ -186,6 +189,15 @@ export default function EnrollmentInboxPage() {
                 </div>
                 <SourceTag source={row.source} />
                 <StatusBadge v={v} />
+                <button
+                  onClick={e => { e.stopPropagation(); setReviewing(row) }}
+                  style={{
+                    padding: '6px 14px', borderRadius: 8, border: 'none', background: '#0f4c35',
+                    color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                  }}
+                >
+                  Review
+                </button>
                 {details.length > 0 && (
                   <span style={{ color: '#9ca3af', fontSize: 12, width: 14, textAlign: 'center' }}>{open ? '▾' : '▸'}</span>
                 )}
@@ -204,7 +216,7 @@ export default function EnrollmentInboxPage() {
                     ))}
                   </ul>
                   <div style={{ marginTop: 12, fontSize: 12, color: '#9ca3af', fontStyle: 'italic' }}>
-                    Review &amp; Approve (diff-view) coming next — this slice is read-only.
+                    Open <strong>Review</strong> to see the full submission side-by-side with the current record.
                   </div>
                 </div>
               )}
@@ -212,6 +224,14 @@ export default function EnrollmentInboxPage() {
           )
         })}
       </div>
+
+      {reviewing && (
+        <EnrollmentReviewModal
+          submission={reviewing}
+          onClose={() => setReviewing(null)}
+          onSaved={() => { setReviewing(null); setReloadKey(k => k + 1) }}
+        />
+      )}
     </div>
   )
 }

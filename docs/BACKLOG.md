@@ -2,6 +2,49 @@
 
 Tracked, not-yet-started work. Owner: Nikolay. Newest context at top of each item.
 
+## Publish v2 — post-publication actions
+
+**Scheduled after** current priorities (Deactivate → migration → Фаза 1). OK to land as
+small commits opportunistically. **Channel principle (locked in the Approval Loop spec —
+apply to ALL future notifications):** primary channel is **SafePass push + on-page
+delivery log**; **email is a manual button only**, for families without the app; **no
+automatic email blasts, ever.**
+
+Current wiring (verified 2026-07-03): Publish lives on
+[`MenuPrintOfficialPage`](./../src/pages/menu/MenuPrintOfficialPage.tsx) — button `📢 Publish
+(next v{n})` at `:166`, gated `canPublish = director || office_manager || admin` (`:45`) +
+RLS (`director/office_manager`). It inserts a new **version** row into
+`menumaker.published_menus` (never overwrites). Read-only parent view already exists:
+route `menu/published/:center/:year/:month` → `MenuPublishedPage` (public RLS read).
+`send-push` edge function (`supabase/functions/send-push/index.ts`) is the only push
+sender; payload `{ org_id, center_id, role, user_ids, title, body, url, tag, urgent }`;
+today only `MessagesPage` calls it (raw fetch — **no shared `sendPush` helper yet**).
+
+1. **SafePass push to parents on Publish** — send `«July menu published»` + deep-link to the
+   published page (via `send-push`). Record a **delivery log**. (Build a reusable client
+   helper instead of copying MessagesPage's raw fetch.)
+2. **`/menu/current` route** — ✅ **DONE in-app (2026-07-03)** as a **redirect resolver**
+   ([`MenuCurrentPage.tsx`](./../src/pages/menu/MenuCurrentPage.tsx), route `menu/current`
+   in App.tsx): resolves center (`currentCenter` → first accessible fallback) + current
+   calendar month, redirects to `menu/published/:center/:year/:month` (which already picks
+   the latest version). **Remaining:** the route still sits under `ProtectedRoute`, so
+   playacademyusa.com can't yet embed it anon — public/website exposure (an unauthenticated
+   published route + the public read RLS is already in place) is the open sub-task here.
+3. **PDF packet → Document Hub on Publish** — auto-file the print-ready PDF set into the
+   Document Hub / `center-docs` storage so stands can be printed without manual generation.
+   (Menus currently print client-side via `OfficialMenu` + `window.print()` — no server PDF
+   yet; this needs headless/SSR render of `OfficialMenu`.)
+4. **No email on Publish** — decision (Nikolay): SafePass is the single channel; email stays
+   manual/point-based only. Nothing to build; guardrail for reviewers.
+5. **Nav discoverability** — ✅ **DONE (2026-07-03):**
+   - MenuPlanner Publish button was hidden behind `📄 Official Menu (Month)` → renamed to
+     **`📢 Publish / Official Menu`** with a clearer tooltip, so director/office_manager
+     (who already have `canPublish`) can find it. (`MenuPlannerPage.tsx`.)
+   - Added a **"Current Menu"** sidebar item under Planning → `/menu/current`
+     (`AppLayout.tsx`). Shares Menu Planner's `menu_planner` module gating (basePath
+     `/menu`), so whoever sees the planner sees it. cook/teacher use the flat `NAV_ITEMS`
+     and don't see it — fine.
+
 ## Instructions — Stage 2: short feature videos
 
 Add short per-feature walkthrough videos to the Instructions page. The renderer

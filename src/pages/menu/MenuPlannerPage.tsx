@@ -291,14 +291,14 @@ export default function MenuPlannerPage() {
           }}>
             🖨️ Print Week {selectedWeek}
           </button>
-          <button onClick={openOfficialPrint} title="Official CACFP monthly menu form (per center) — print or save as PDF" style={{
+          <button onClick={openOfficialPrint} title="Official CACFP monthly menu — review, Publish (creates a new version parents can see), print or save as PDF" style={{
             display: 'flex', alignItems: 'center', gap: 6,
             padding: '8px 16px', borderRadius: 8,
             border: '1px solid #0f4c35', background: '#fff',
             color: '#0f4c35', fontSize: 12, fontWeight: 600,
             cursor: 'pointer', fontFamily: 'inherit',
           }}>
-            📄 Official Menu (Month)
+            📢 Publish / Official Menu
           </button>
         </div>
       </div>

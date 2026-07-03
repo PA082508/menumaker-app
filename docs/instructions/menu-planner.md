@@ -48,9 +48,9 @@ plan menus around them.
 
 ## Official Print (monthly CACFP menu form)
 
-The **📄 Official Menu (Month)** button (next to *Print Week*) opens the official,
+The **📢 Publish / Official Menu** button (next to *Print Week*) opens the official,
 parent- and report-ready menu form for a whole month, styled as the standard CACFP
-weekly menu.
+weekly menu — this is also where you **Publish** it (see below).
 
 - **Route:** `/menu/print-official/:center/:year/:month`.
 - **Per center.** The form prints for one center — holidays and short days are taken
@@ -86,9 +86,9 @@ weekly menu.
 
 ## Publishing a month (parents / website)
 
-Directors and office managers see a **📢 Publish** button on the official form. It
-saves a **snapshot of the month's resolved menu** (the same data the form renders)
-to `published_menus` as a new **version**:
+Directors, office managers, and admins see a **📢 Publish** button on the official
+form. It saves a **snapshot of the month's resolved menu** (the same data the form
+renders) to `published_menus` as a new **version**:
 
 - **Re-publishing the same month never overwrites** — it adds v2, v3, … and keeps
   every prior version (full history).
@@ -99,3 +99,11 @@ to `published_menus` as a new **version**:
 - **Print/PDF** on either the live or published view uses the browser's
   *Save as PDF* (Letter, landscape, one week per page). A server-materialised PDF
   file can be added later if a fixed downloadable file is needed.
+
+### Current Menu (permanent link)
+
+**Planning → Current Menu** (`/menu/current`) always jumps to the **latest published
+version of the current month** for your active center — a stable link you can hand to
+the website or parent app without knowing the month/version. If the current month
+hasn't been published yet, it shows a short notice with a link to the live form to
+publish it.

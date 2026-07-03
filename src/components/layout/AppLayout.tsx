@@ -57,6 +57,7 @@ const SECTIONS: Section[] = [
     id: 'planning', label: 'Planning', icon: '📅',
     items: [
       { path: '/menu',          label: 'Menu Planner',  icon: 'ti-calendar-month' },
+      { path: '/menu/current',  label: 'Current Menu',  icon: 'ti-calendar-check' },
       { path: '/recipes',       label: 'Recipes',       icon: 'ti-meat' },
       { path: '/purchases',     label: 'Purchases',     icon: 'ti-shopping-cart' },
       { path: '/kitchen-stock', label: 'Kitchen Stock', icon: 'ti-building-store' },

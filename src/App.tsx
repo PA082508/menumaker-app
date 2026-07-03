@@ -47,6 +47,7 @@ import DailyTimeLogPage from '@/pages/staff/DailyTimeLogPage'
 import ChildrenImportPage from '@/pages/children/ChildrenImportPage'
 import ChildrenExportPage from '@/pages/children/ChildrenExportPage'
 import PortalPage from '@/pages/portal/PortalPage'
+import EnrollmentInboxPage from '@/pages/enrollment/EnrollmentInboxPage'
 
 // Lazy placeholders for other pages
 const PlaceholderPage = ({ title }: { title: string }) => (
@@ -150,6 +151,7 @@ export default function App() {
               <Route path="kitchen-report"      element={<KitchenPlanningReport />} />
               <Route path="receipt-review"     element={<ReceiptReviewPage />} />
               <Route path="children"           element={<ChildrenPage />} />
+              <Route path="enrollment-inbox"   element={<EnrollmentInboxPage />} />
               <Route path="center/:centerId"   element={<CenterRosterPage />} />
               <Route path="staff"              element={<StaffPage />} />
               <Route path="staff/:staffId/settings" element={<StaffSettingsPage />} />

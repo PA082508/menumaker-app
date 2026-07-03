@@ -68,6 +68,7 @@ const SECTIONS: Section[] = [
     id: 'people', label: 'People', icon: '👥',
     items: [
       { path: '/children',        label: 'Children',        icon: 'ti-baby-carriage' },
+      { path: '/enrollment-inbox', label: 'Enrollment Inbox', icon: 'ti-inbox' },
       { path: '/children/import', label: 'Import Children',  icon: 'ti-file-upload' },
       { path: '/staff',           label: 'Staff',           icon: 'ti-id-badge' },
       { path: '/staff/time-log',  label: 'Daily Time Log',   icon: 'ti-clock' },

@@ -51,6 +51,25 @@ is always complete. Where a date is ever typed as **text**, the app accepts a
 is gently highlighted and left for you to fix — your typing is never erased.
 *(Engineering rule: platform-standards §6.)*
 
+## Deactivating & reactivating a child
+
+When a child leaves, **deactivate** them so they stop being counted in **meal count
+and every report** — do this instead of just typing an End date.
+
+- Open the child → the **Deactivate** button (bottom-left of the record). Confirm;
+  you may add an optional **reason** (withdrew, moved, aged out…). This sets the
+  child inactive and, if it isn't already filled, stamps **End date = today**.
+- A deactivated child disappears from the normal (Active) roster and from meal
+  count / reports immediately. The record shows a red **INACTIVE** badge.
+- To find or restore them, switch the roster toolbar to the **Inactive** tab. Each
+  card has **↩ Reactivate** (or open the child and press **Reactivate**), which
+  clears the End date and makes them countable again.
+
+> **Why this matters (CACFP):** meal count and claim reports include every child
+> that is *active*. An End date alone does **not** remove a departed child from the
+> count — only Deactivate does. Leaving a departed child active risks claiming
+> meals for a child who is gone.
+
 ## Emergency
 
 The **Emergency** tab holds the information needed in an incident — emergency

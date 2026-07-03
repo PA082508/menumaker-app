@@ -235,6 +235,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
   const [settingsTab, setSettingsTab] = useState(0)
   const [emergencyChild, setEmergencyChild] = useState<{ id: string; name: string }|null>(null)
   const [viewMode, setViewMode] = useState<'cards'|'list'>('cards')
+  const [rosterStatus, setRosterStatus] = useState<'active'|'inactive'>('active')
   const [listClassFilter, setListClassFilter] = useState('all')
   const [search, setSearch] = useState('')          // raw input (immediate)
   const [debSearch, setDebSearch] = useState('')     // debounced (~200ms) — drives filtering
@@ -255,14 +256,18 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
   const loadRoster = async (soft = false) => {
     if (!centerId) return
     if (!soft) { setLoading(true); setExpanded({}) }
+    // Active tab: is_active AND not departed before today. Inactive tab:
+    // deactivated / departed children (is_active=false) — the restore view.
+    let rosterQ = supabase.schema('menumaker').from('roster')
+      .select('id,first_name,last_name,child_name,age_group_food,frp,date_in,date_out,birthday,milk_kind,classroom_id,is_active')
+      .eq('center_id', centerId)
+    rosterQ = rosterStatus === 'inactive'
+      ? rosterQ.eq('is_active', false)
+      : rosterQ.eq('is_active', true).or(`date_out.is.null,date_out.gte.${todayStr}`)
     const [{ data: cls }, { data: kids }, { data: staffData }, { data: sess }] = await Promise.all([
       supabase.schema('menumaker').from('classrooms')
         .select('id,name,sort_order').eq('center_id', centerId).eq('is_active', true).order('sort_order'),
-      supabase.schema('menumaker').from('roster')
-        .select('id,first_name,last_name,child_name,age_group_food,frp,date_in,date_out,birthday,milk_kind,classroom_id')
-        .eq('center_id', centerId).eq('is_active', true)
-        .or(`date_out.is.null,date_out.gte.${todayStr}`)
-        .order('last_name', { nullsFirst: false }).order('first_name'),
+      rosterQ.order('last_name', { nullsFirst: false }).order('first_name'),
       supabase.schema('menumaker').from('staff')
         .select('id,first_name,last_name,position,class_primary,class_secondary,phone,email,photo_url')
         .eq('center_id', centerId).eq('is_active', true),
@@ -277,8 +282,17 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
     setSessions((sess ?? []) as Session[])
     if (!soft) setLoading(false)
   }
+  // Restore a deactivated child. Clears date_out so the active-roster filter shows
+  // them again, and wipes the deactivation audit stamp.
+  const reactivateChild = async (id: string) => {
+    await supabase.schema('menumaker').from('roster')
+      .update({ is_active: true, date_out: null, deactivated_at: null, deactivation_reason: null })
+      .eq('id', id)
+    loadRoster(true)
+  }
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { loadRoster() }, [centerId])
+  useEffect(() => { loadRoster() }, [centerId, rosterStatus])
 
   const attendMap = useMemo<Record<string, AttendState>>(() => {
     const sorted = [...sessions].sort(
@@ -340,9 +354,12 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
 
           {/* Toolbar */}
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 20px', borderBottom:'1px solid #f0f4f1' }}>
-            <div style={{ display:'flex', gap:6 }}>
+            <div style={{ display:'flex', gap:6, alignItems:'center' }}>
               <button onClick={() => setViewMode('cards')} style={{ padding:'6px 14px', borderRadius:8, border:'1.5px solid #c0d8c0', background: viewMode==='cards' ? '#0f4c35' : '#fff', color: viewMode==='cards' ? '#fff' : '#555', cursor:'pointer', fontFamily:'inherit', fontSize:13, fontWeight:600 }}>⊞ Cards</button>
               <button onClick={() => setViewMode('list')} style={{ padding:'6px 14px', borderRadius:8, border:'1.5px solid #c0d8c0', background: viewMode==='list' ? '#0f4c35' : '#fff', color: viewMode==='list' ? '#fff' : '#555', cursor:'pointer', fontFamily:'inherit', fontSize:13, fontWeight:600 }}>☰ List</button>
+              <span style={{ width:1, height:22, background:'#dbe6db', margin:'0 4px' }} />
+              <button onClick={() => setRosterStatus('active')} style={{ padding:'6px 12px', borderRadius:8, border:'1.5px solid #c0d8c0', background: rosterStatus==='active' ? '#0f4c35' : '#fff', color: rosterStatus==='active' ? '#fff' : '#555', cursor:'pointer', fontFamily:'inherit', fontSize:13, fontWeight:600 }}>Active</button>
+              <button onClick={() => setRosterStatus('inactive')} title="Deactivated / departed children — reopen to Reactivate" style={{ padding:'6px 12px', borderRadius:8, border:`1.5px solid ${rosterStatus==='inactive' ? '#dc2626' : '#c0d8c0'}`, background: rosterStatus==='inactive' ? '#dc2626' : '#fff', color: rosterStatus==='inactive' ? '#fff' : '#555', cursor:'pointer', fontFamily:'inherit', fontSize:13, fontWeight:600 }}>Inactive</button>
             </div>
             {/* Name search — shared across Cards & List; searches all classes of the center */}
             <div style={{ position:'relative', flex:1, maxWidth:320, margin:'0 14px' }}>
@@ -622,9 +639,15 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                                   </div>
                                 </div>
                                 <div style={{ display:'flex', borderTop:'1px solid #f0f0f0' }}>
-                                  <button onClick={e=>{e.stopPropagation();setEmergencyChild({id:child.id,name:child.child_name || 'Child'})}} style={{ flex:1, padding:'6px 0', border:'none', borderRight:'1px solid #f0f0f0', background:'transparent', cursor:'pointer', fontSize:11, fontWeight:600, color:'#b91c1c', fontFamily:'inherit' }}>
-                                    🚨 Emergency
-                                  </button>
+                                  {rosterStatus === 'inactive' ? (
+                                    <button onClick={e=>{e.stopPropagation();reactivateChild(child.id)}} style={{ flex:1, padding:'6px 0', border:'none', borderRight:'1px solid #f0f0f0', background:'transparent', cursor:'pointer', fontSize:11, fontWeight:700, color:'#16a34a', fontFamily:'inherit' }}>
+                                      ↩ Reactivate
+                                    </button>
+                                  ) : (
+                                    <button onClick={e=>{e.stopPropagation();setEmergencyChild({id:child.id,name:child.child_name || 'Child'})}} style={{ flex:1, padding:'6px 0', border:'none', borderRight:'1px solid #f0f0f0', background:'transparent', cursor:'pointer', fontSize:11, fontWeight:600, color:'#b91c1c', fontFamily:'inherit' }}>
+                                      🚨 Emergency
+                                    </button>
+                                  )}
                                   <button onClick={e=>{e.stopPropagation();setSettingsTab(0);setChildSettingsId(child.id)}} style={{ flex:1, padding:'6px 0', border:'none', background:'transparent', cursor:'pointer', fontSize:11, fontWeight:600, color:'#0f4c35', fontFamily:'inherit' }}>
                                     ⚙️ Settings
                                   </button>
@@ -660,7 +683,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
           childId={childSettingsId}
           classrooms={classrooms}
           initialTab={settingsTab}
-          onClose={() => setChildSettingsId(null)}
+          onClose={() => { setChildSettingsId(null); loadRoster(true) }}
         />
       )}
       {emergencyChild && (

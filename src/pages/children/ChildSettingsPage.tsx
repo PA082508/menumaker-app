@@ -108,6 +108,9 @@ export default function ChildSettingsPage({
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [showExport, setShowExport] = useState(false)
+  const [confirmDeact, setConfirmDeact] = useState(false)   // deactivate confirm overlay
+  const [deactReason, setDeactReason] = useState('')
+  const [deactBusy, setDeactBusy] = useState(false)
 
   useEffect(() => { loadAll() }, [childId])
 
@@ -156,6 +159,33 @@ export default function ChildSettingsPage({
       // child_name canonical = "Last First" (see docs/platform-standards.md)
       child_name: `${child.last_name ?? ''} ${child.first_name ?? ''}`.trim()
     }).eq('id', childId)
+  }
+
+  // Deactivate: stop the child being countable (meal count / reports filter
+  // is_active=true). Also stamps date_out (if unset) so date_out-honoring queries
+  // agree, plus an audit trail. Reactivate reverses it and clears date_out so the
+  // active-roster filter shows the child again.
+  async function doDeactivate() {
+    if (!child) return
+    setDeactBusy(true)
+    const patch: Record<string, any> = {
+      is_active: false,
+      deactivated_at: new Date().toISOString(),
+      deactivation_reason: deactReason.trim() || null,
+    }
+    if (!child.date_out) patch.date_out = todayStr
+    await supabase.schema('menumaker').from('roster').update(patch).eq('id', childId)
+    setChild(p => p ? { ...p, ...patch } as Child : p)
+    setDeactBusy(false); setConfirmDeact(false); setDeactReason('')
+  }
+
+  async function doReactivate() {
+    if (!child) return
+    setDeactBusy(true)
+    const patch = { is_active: true, date_out: null, deactivated_at: null, deactivation_reason: null }
+    await supabase.schema('menumaker').from('roster').update(patch).eq('id', childId)
+    setChild(p => p ? { ...p, ...patch } as Child : p)
+    setDeactBusy(false)
   }
 
   async function doSaveMedical() {
@@ -294,7 +324,10 @@ export default function ChildSettingsPage({
             {(child.first_name?.[0]??'')}{(child.last_name?.[0]??'')}
           </div>
           <div style={{ flex:1 }}>
-            <div style={{ color:'#fff', fontWeight:700, fontSize:17 }}>{fullName}</div>
+            <div style={{ color:'#fff', fontWeight:700, fontSize:17, display:'flex', alignItems:'center', gap:8 }}>
+              {fullName}
+              {!child.is_active && <span style={{ fontSize:10, fontWeight:800, letterSpacing:'0.06em', background:'#dc2626', color:'#fff', padding:'2px 8px', borderRadius:6 }}>INACTIVE</span>}
+            </div>
             <div style={{ color:'rgba(255,255,255,0.6)', fontSize:12, marginTop:2 }}>
               {classrooms.find(c=>c.id===child.classroom_id)?.name ?? '—'}
               {child.birthday ? ` · b. ${new Date(child.birthday).toLocaleDateString('en-US')}` : ''}
@@ -418,8 +451,21 @@ export default function ChildSettingsPage({
 
         {/* Footer */}
         <div style={{ padding:'12px 20px', borderTop:'1.5px solid #e8f0e8', display:'flex', justifyContent:'space-between', alignItems:'center', background:'#f8faf8', flexShrink:0 }}>
-          <div style={{ fontSize:12, color:saved?'#16a34a':'#888' }}>
-            {saved ? '✓ Saved' : `${totalEmpty} fields empty · ${totalOverdue} overdue`}
+          <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+            <div style={{ fontSize:12, color:saved?'#16a34a':'#888' }}>
+              {saved ? '✓ Saved' : `${totalEmpty} fields empty · ${totalOverdue} overdue`}
+            </div>
+            {child.is_active ? (
+              <button onClick={() => setConfirmDeact(true)}
+                style={{ padding:'7px 14px', borderRadius:8, border:'1.5px solid #fecaca', background:'#fff', color:'#dc2626', cursor:'pointer', fontFamily:'inherit', fontSize:12, fontWeight:600 }}>
+                Deactivate
+              </button>
+            ) : (
+              <button onClick={doReactivate} disabled={deactBusy}
+                style={{ padding:'7px 14px', borderRadius:8, border:'1.5px solid #86efac', background:'#f0fdf4', color:'#16a34a', cursor:'pointer', fontFamily:'inherit', fontSize:12, fontWeight:700, opacity:deactBusy?0.6:1 }}>
+                {deactBusy ? '…' : '↩ Reactivate'}
+              </button>
+            )}
           </div>
           <div style={{ display:'flex', gap:8 }}>
             <button onClick={onClose} style={{ padding:'9px 18px', borderRadius:8, border:'1.5px solid #c0d8c0', background:'#fff', cursor:'pointer', fontFamily:'inherit', fontSize:13 }}>
@@ -434,6 +480,30 @@ export default function ChildSettingsPage({
           </div>
         </div>
       </div>
+
+      {confirmDeact && (
+        <div onClick={() => !deactBusy && setConfirmDeact(false)}
+          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2100, padding:20 }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:'#fff', borderRadius:14, width:'100%', maxWidth:420, padding:22, boxShadow:'0 24px 80px rgba(0,0,0,0.3)' }}>
+            <div style={{ fontSize:16, fontWeight:700, color:'#dc2626', marginBottom:8 }}>Deactivate {fullName}?</div>
+            <div style={{ fontSize:13, color:'#4b5563', lineHeight:1.5, marginBottom:14 }}>
+              The child stops being countable in meal count and reports.
+              {!child.date_out && <> End date will be set to <strong>today</strong>.</>} You can Reactivate later.
+            </div>
+            <label style={{ ...lbl }}>Reason (optional)</label>
+            <textarea value={deactReason} onChange={e=>setDeactReason(e.target.value)} placeholder="e.g. withdrew, moved, aged out"
+              style={{ ...inp, minHeight:56, resize:'vertical', marginBottom:16 }} />
+            <div style={{ display:'flex', justifyContent:'flex-end', gap:8 }}>
+              <button onClick={() => setConfirmDeact(false)} disabled={deactBusy}
+                style={{ padding:'9px 16px', borderRadius:8, border:'1.5px solid #c0d8c0', background:'#fff', cursor:'pointer', fontFamily:'inherit', fontSize:13 }}>Cancel</button>
+              <button onClick={doDeactivate} disabled={deactBusy}
+                style={{ padding:'9px 18px', borderRadius:8, background:'#dc2626', color:'#fff', border:'none', cursor:'pointer', fontWeight:700, fontSize:13, fontFamily:'inherit', opacity:deactBusy?0.6:1 }}>
+                {deactBusy ? 'Deactivating…' : 'Deactivate'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showExport && (
         <ChildExportPanel

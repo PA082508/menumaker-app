@@ -1,0 +1,196 @@
+// ============================================================
+// enrollmentApprove.ts — Approve/Reject writes for the Director's Inbox
+// (Phase 1 slice C). Approve v1 is ROSTER-ONLY (confirmed): guardians /
+// child_guardian / income_eligibility are Phase 2/4.
+//
+// CACFP → roster: child_name split (last word = last_name, rest = first_name),
+//   roster.child_name written canonical "Last First"; birthday, child_address
+//   ("street, city ZIP"), optional director-entered date_in.
+// IEA → roster: FRP from the Sponsor Section checkboxes (center certification,
+//   authoritative); helper.verdict only as a flagged fallback. frp_expires from
+//   sponsor.expiration. Applied to every children[] entry matched in the roster.
+//
+// Every write returns an `undo` closure that fully reverts it (deletes the
+// inserted row / restores prior column values) and returns the submission to
+// pending — powering the "Approved · Undo" 10s toast.
+// ============================================================
+
+import { supabase } from './supabase'
+
+const S = () => supabase.schema('menumaker')
+const blank = (v: any) => v === null || v === undefined || (typeof v === 'string' && v.trim() === '')
+const nowIso = () => new Date().toISOString()
+
+export const normName = (s: any): string =>
+  String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()
+
+// ─── name split (confirmed: "First Last" → last word = last_name) ────────────
+export function splitChildName(full: any): { first: string; last: string; rosterChildName: string } {
+  const parts = String(full ?? '').trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return { first: '', last: '', rosterChildName: '' }
+  if (parts.length === 1) return { first: parts[0], last: '', rosterChildName: parts[0] }
+  const last = parts[parts.length - 1]
+  const first = parts.slice(0, -1).join(' ')
+  return { first, last, rosterChildName: `${last} ${first}` }  // canonical roster order
+}
+
+export type RosterPatch = Record<string, any>
+
+// Build the roster patch for a CACFP submission. `dateIn` is the director's
+// optional Date In from the review panel.
+export function buildCacfpPatch(fd: any, dateIn?: string | null): RosterPatch {
+  const { first, last, rosterChildName } = splitChildName(fd?.child_name)
+  const m = fd?.mailing ?? {}
+  const addr = [m.street, [m.city, m.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ')
+  const patch: RosterPatch = { child_name: rosterChildName }
+  if (first) patch.first_name = first
+  if (last) patch.last_name = last
+  if (!blank(fd?.birthdate)) patch.birthday = String(fd.birthdate).slice(0, 10)
+  if (addr) patch.child_address = addr
+  if (!blank(dateIn)) patch.date_in = String(dateIn).slice(0, 10)
+  return patch
+}
+
+// FRP determination for an IEA submission.
+export function buildIeaFrp(fd: any): { frp: string | null; source: 'sponsor' | 'helper' | null; frp_expires: string | null } {
+  const sp = fd?.sponsor ?? {}
+  let frp: string | null = null
+  let source: 'sponsor' | 'helper' | null = null
+  if (sp.free) { frp = 'F'; source = 'sponsor' }
+  else if (sp.reduced) { frp = 'R'; source = 'sponsor' }
+  else if (sp.paid) { frp = 'P'; source = 'sponsor' }
+  else {
+    const v = String(fd?.helper?.verdict ?? '').toLowerCase()
+    const map: Record<string, string> = { free: 'F', reduced: 'R', paid: 'P' }
+    if (map[v]) { frp = map[v]; source = 'helper' }
+  }
+  const frp_expires = !blank(sp.expiration) ? String(sp.expiration).slice(0, 10) : null
+  return { frp, source, frp_expires }
+}
+
+// ─── duplicate / child matching ──────────────────────────────────────────────
+export type RosterLite = { id: string; first_name: string | null; last_name: string | null; child_name: string | null; birthday: string | null }
+
+export async function loadCenterRoster(centerId: string): Promise<RosterLite[]> {
+  const { data } = await S().from('roster')
+    .select('id,first_name,last_name,child_name,birthday')
+    .eq('center_id', centerId).eq('is_active', true)
+  return (data ?? []) as RosterLite[]
+}
+
+/** Match a {name, dob} against roster candidates: name (either order / stored
+ *  child_name) equal after NFD normalization, AND DOB equal when both present. */
+export function matchRoster(candidates: RosterLite[], name: any, dob?: any): RosterLite[] {
+  const target = normName(name)
+  if (!target) return []
+  const d = dob ? String(dob).slice(0, 10) : ''
+  return candidates.filter(c => {
+    const a = normName(`${c.first_name ?? ''} ${c.last_name ?? ''}`)
+    const b = normName(`${c.last_name ?? ''} ${c.first_name ?? ''}`)
+    const cn = normName(c.child_name ?? '')
+    const nameMatch = a === target || b === target || cn === target
+    if (!nameMatch) return false
+    const cd = c.birthday ? String(c.birthday).slice(0, 10) : ''
+    return d && cd ? d === cd : true
+  })
+}
+
+// ─── shared submission-status writes ─────────────────────────────────────────
+export interface ApproveResult { message: string; undo: () => Promise<void> }
+
+async function markApproved(subId: string, childId: string | null, reviewerId: string, paperSigned: boolean) {
+  await S().from('enrollment_submissions').update({
+    status: 'approved', child_id: childId, reviewed_by: reviewerId, reviewed_at: nowIso(),
+    ...(paperSigned ? { paper_signed_at: nowIso(), paper_signed_by: reviewerId } : {}),
+  }).eq('id', subId)
+}
+
+async function restorePending(subId: string, childId: string | null) {
+  await S().from('enrollment_submissions').update({
+    status: 'pending', child_id: childId, reviewed_by: null, reviewed_at: null,
+    paper_signed_at: null, paper_signed_by: null,
+  }).eq('id', subId)
+}
+
+// ─── CACFP: insert a new roster child ────────────────────────────────────────
+export async function approveCacfpInsert(
+  sub: { id: string; org_id: string; center_id: string; child_id: string | null },
+  patch: RosterPatch, reviewerId: string, paperSigned: boolean,
+): Promise<ApproveResult> {
+  const { data, error } = await S().from('roster')
+    .insert({ org_id: sub.org_id, center_id: sub.center_id, is_active: true, ...patch })
+    .select('id').single()
+  if (error) throw error
+  const rosterId = (data as any).id as string
+  await markApproved(sub.id, rosterId, reviewerId, paperSigned)
+  return {
+    message: `Approved — ${patch.child_name} added to roster`,
+    undo: async () => {
+      await S().from('roster').delete().eq('id', rosterId)
+      await restorePending(sub.id, sub.child_id)
+    },
+  }
+}
+
+// ─── CACFP / matched: update an existing roster child ────────────────────────
+export async function approveCacfpUpdate(
+  sub: { id: string; child_id: string | null }, rosterId: string,
+  patch: RosterPatch, reviewerId: string, paperSigned: boolean,
+): Promise<ApproveResult> {
+  const cols = Object.keys(patch)
+  const { data: prev } = await S().from('roster').select(['id', ...cols].join(',')).eq('id', rosterId).single()
+  const { error } = await S().from('roster').update(patch).eq('id', rosterId)
+  if (error) throw error
+  await markApproved(sub.id, rosterId, reviewerId, paperSigned)
+  return {
+    message: `Approved — updated ${patch.child_name ?? 'child'}`,
+    undo: async () => {
+      const revert: RosterPatch = {}
+      for (const c of cols) revert[c] = (prev as any)?.[c] ?? null
+      await S().from('roster').update(revert).eq('id', rosterId)
+      await restorePending(sub.id, sub.child_id)
+    },
+  }
+}
+
+// ─── IEA: apply FRP to every matched child ───────────────────────────────────
+export async function approveIea(
+  sub: { id: string; child_id: string | null },
+  frpUpdate: { frp: string; frp_expires: string | null },
+  matchedIds: string[], reviewerId: string, paperSigned: boolean,
+): Promise<ApproveResult> {
+  if (matchedIds.length === 0) throw new Error('No matched roster children to apply eligibility to')
+  const { data: prevRows } = await S().from('roster').select('id,frp,frp_expires').in('id', matchedIds)
+  const prev = new Map((prevRows ?? []).map((r: any) => [r.id, { frp: r.frp, frp_expires: r.frp_expires }]))
+  const { error } = await S().from('roster').update(frpUpdate).in('id', matchedIds)
+  if (error) throw error
+  await markApproved(sub.id, null, reviewerId, paperSigned)
+  return {
+    message: `Approved — FRP ${frpUpdate.frp} applied to ${matchedIds.length} child${matchedIds.length > 1 ? 'ren' : ''}`,
+    undo: async () => {
+      for (const id of matchedIds) {
+        const p = prev.get(id) ?? { frp: null, frp_expires: null }
+        await S().from('roster').update(p).eq('id', id)
+      }
+      await restorePending(sub.id, sub.child_id)
+    },
+  }
+}
+
+// ─── Reject ──────────────────────────────────────────────────────────────────
+export async function rejectSubmission(
+  sub: { id: string; child_id: string | null }, reason: string, reviewerId: string,
+): Promise<ApproveResult> {
+  const { error } = await S().from('enrollment_submissions')
+    .update({ status: 'rejected', reject_reason: reason, reviewed_by: reviewerId, reviewed_at: nowIso() })
+    .eq('id', sub.id)
+  if (error) throw error
+  return {
+    message: 'Rejected',
+    undo: async () => {
+      await S().from('enrollment_submissions')
+        .update({ status: 'pending', reject_reason: null, reviewed_by: null, reviewed_at: null })
+        .eq('id', sub.id)
+    },
+  }
+}

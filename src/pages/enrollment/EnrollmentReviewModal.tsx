@@ -9,6 +9,11 @@ import { supabase } from '@/lib/supabase'
 import { type RecordCtx } from '@/lib/childFieldRegistry'
 import { buildDiff, getPath, setPath, type DiffRow } from '@/lib/enrollmentFieldMap'
 import { validateSubmission, submissionTypeLabel, type ValStatus } from '@/lib/enrollmentValidationRules'
+import {
+  buildCacfpPatch, buildIeaFrp, loadCenterRoster, matchRoster,
+  approveCacfpInsert, approveCacfpUpdate, approveIea, rejectSubmission,
+  type RosterLite, type ApproveResult,
+} from '@/lib/enrollmentApprove'
 
 type Submission = {
   id: string; org_id: string; center_id: string; child_id: string | null
@@ -27,14 +32,30 @@ const BADGE: Record<ValStatus, { dot: string; label: string; fg: string }> = {
 }
 
 export default function EnrollmentReviewModal({
-  submission, onClose, onSaved,
-}: { submission: Submission; onClose: () => void; onSaved: () => void }) {
+  submission, reviewerId, onClose, onSaved, onDone,
+}: {
+  submission: Submission
+  reviewerId: string
+  onClose: () => void
+  onSaved: () => void
+  onDone: (result: ApproveResult) => void
+}) {
   const [fd, setFd] = useState<any>(submission.form_data ?? {})
   const [ctx, setCtx] = useState<RecordCtx | null>(null)
   const [ctxLoading, setCtxLoading] = useState(true)
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+
+  const isCacfp = submission.submission_type === 'cacfp_enrollment'
+  const isIea = submission.submission_type === 'iea'
+  const [dateIn, setDateIn] = useState('')
+  const [paperSigned, setPaperSigned] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [candidates, setCandidates] = useState<RosterLite[]>([])
+  const [chosenMatch, setChosenMatch] = useState<string | 'new' | null>(null)
+  const [rejecting, setRejecting] = useState(false)
+  const [rejectReason, setRejectReason] = useState('')
 
   // Resolve the existing child (matched by child_id column, or a uuid inside
   // form_data). New applicants have neither → right column stays empty.
@@ -68,6 +89,74 @@ export default function EnrollmentReviewModal({
     [submission.submission_type, fd, submission.signature_date],
   )
   const badge = BADGE[v.status]
+
+  // Load center roster for duplicate / child matching (new CACFP applicant, or IEA).
+  useEffect(() => {
+    const need = isIea || (isCacfp && !resolvedChildId)
+    if (!need) return
+    let cancelled = false
+    ;(async () => {
+      const list = await loadCenterRoster(submission.center_id)
+      if (!cancelled) setCandidates(list)
+    })()
+    return () => { cancelled = true }
+  }, [submission.center_id, resolvedChildId, isCacfp, isIea])
+
+  // CACFP new-applicant duplicate matches (name + DOB).
+  const cacfpMatches = useMemo(
+    () => (isCacfp && !resolvedChildId ? matchRoster(candidates, fd?.child_name, fd?.birthdate) : []),
+    [isCacfp, resolvedChildId, candidates, fd?.child_name, fd?.birthdate],
+  )
+
+  // IEA: FRP determination + per-child roster matches.
+  const frpInfo = useMemo(() => (isIea ? buildIeaFrp(fd) : null), [isIea, fd])
+  const ieaChildren = useMemo<{ name: string; matches: RosterLite[] }[]>(() => {
+    if (!isIea) return []
+    const kids = Array.isArray(fd?.children) ? fd.children : []
+    return kids.filter((c: any) => c?.name).map((c: any) => ({
+      name: String(c.name), matches: matchRoster(candidates, c.name, c.dob),
+    }))
+  }, [isIea, fd, candidates])
+  const ieaMatchedIds = useMemo(
+    () => Array.from(new Set(ieaChildren.flatMap(c => c.matches.slice(0, 1).map(m => m.id)))),
+    [ieaChildren],
+  )
+
+  // Approve gating: 🔴 blocks; unresolved CACFP duplicate blocks.
+  const dupUnresolved = isCacfp && !resolvedChildId && cacfpMatches.length > 0 && !chosenMatch
+  const approveBlocked = v.status === 'errors' || dupUnresolved || busy
+    || (isIea && (!frpInfo?.frp || ieaMatchedIds.length === 0))
+
+  async function doApprove() {
+    if (v.status === 'errors') return
+    if (v.status === 'warnings' && !window.confirm('This submission has warnings. Approve anyway?')) return
+    setBusy(true); setErr(null)
+    try {
+      let result: ApproveResult
+      if (isCacfp) {
+        const patch = buildCacfpPatch(fd, dateIn)
+        const target = resolvedChildId ?? (chosenMatch && chosenMatch !== 'new' ? chosenMatch : null)
+        result = target
+          ? await approveCacfpUpdate(submission, target, patch, reviewerId, paperSigned)
+          : await approveCacfpInsert(submission, patch, reviewerId, paperSigned)
+      } else if (isIea) {
+        if (!frpInfo?.frp) throw new Error('No FRP determination on the form (Sponsor section empty)')
+        if (ieaMatchedIds.length === 0) throw new Error('No roster children matched — add them via CACFP enrollment first')
+        result = await approveIea(submission, { frp: frpInfo.frp, frp_expires: frpInfo.frp_expires }, ieaMatchedIds, reviewerId, paperSigned)
+      } else {
+        throw new Error('This submission type cannot be approved yet')
+      }
+      onDone(result)
+    } catch (e: any) { setErr(e?.message ?? String(e)); setBusy(false) }
+  }
+
+  async function doReject() {
+    if (!rejectReason.trim()) return
+    setBusy(true); setErr(null)
+    try {
+      onDone(await rejectSubmission(submission, rejectReason.trim(), reviewerId))
+    } catch (e: any) { setErr(e?.message ?? String(e)); setBusy(false) }
+  }
 
   const sections = useMemo(() => {
     const order: string[] = []
@@ -178,16 +267,94 @@ export default function EnrollmentReviewModal({
           ))}
         </div>
 
+        {/* approve action panel */}
+        <div style={{ padding: '12px 22px', borderTop: '1px solid #f3f4f6', background: '#fafafa', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {isCacfp && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, color: '#374151' }}>
+              <span style={{ width: 130, color: '#6b7280' }}>Date In (start date)</span>
+              <input type="date" value={dateIn} onChange={e => setDateIn(e.target.value)}
+                style={{ padding: '4px 8px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13, fontFamily: 'inherit' }} />
+              <span style={{ color: '#9ca3af', fontSize: 11 }}>optional — director sets the enrollment start</span>
+            </label>
+          )}
+
+          {isCacfp && !resolvedChildId && cacfpMatches.length > 0 && (
+            <div style={{ fontSize: 12.5 }}>
+              <div style={{ color: '#92400e', fontWeight: 600, marginBottom: 4 }}>
+                ⚠︎ Possible existing {cacfpMatches.length === 1 ? 'match' : 'matches'} — choose one:
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {cacfpMatches.map(m => (
+                  <label key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                    <input type="radio" name="dupmatch" checked={chosenMatch === m.id} onChange={() => setChosenMatch(m.id)} />
+                    Update <strong>{m.child_name || `${m.last_name ?? ''} ${m.first_name ?? ''}`}</strong>
+                    {m.birthday ? <span style={{ color: '#9ca3af' }}>· {String(m.birthday).slice(0, 10)}</span> : null}
+                  </label>
+                ))}
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                  <input type="radio" name="dupmatch" checked={chosenMatch === 'new'} onChange={() => setChosenMatch('new')} />
+                  Create a new child
+                </label>
+              </div>
+            </div>
+          )}
+
+          {isIea && (
+            <div style={{ fontSize: 12.5, color: '#374151' }}>
+              {frpInfo?.frp ? (
+                <>
+                  <div>FRP determination: <strong>{frpInfo.frp}</strong>{frpInfo.frp_expires ? ` · expires ${frpInfo.frp_expires}` : ''}
+                    {frpInfo.source === 'helper' && <span style={{ color: '#92400e' }}> (⚠︎ from calculator fallback — Sponsor section empty)</span>}
+                  </div>
+                  <div style={{ color: ieaMatchedIds.length ? '#0f4c35' : '#991b1b', marginTop: 2 }}>
+                    Applies to {ieaMatchedIds.length} matched child{ieaMatchedIds.length === 1 ? '' : 'ren'}
+                    {ieaChildren.some(c => c.matches.length === 0) &&
+                      ` · skipped (no roster match): ${ieaChildren.filter(c => !c.matches.length).map(c => c.name).join(', ')}`}
+                  </div>
+                </>
+              ) : (
+                <div style={{ color: '#991b1b' }}>No FRP determination on the form (Sponsor section empty) — cannot approve.</div>
+              )}
+            </div>
+          )}
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#374151' }}>
+            <input type="checkbox" checked={paperSigned} onChange={e => setPaperSigned(e.target.checked)} />
+            Paper form signed &amp; filed
+          </label>
+
+          {rejecting && (
+            <textarea value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="Reason for rejection (sent context for follow-up)…"
+              style={{ padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', minHeight: 56, resize: 'vertical' }} />
+          )}
+        </div>
+
         {/* footer */}
-        <div style={{ padding: '12px 22px', borderTop: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ padding: '12px 22px', borderTop: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 8 }}>
           {err && <span style={{ color: '#991b1b', fontSize: 12.5, flex: 1 }}>{err}</span>}
-          {!err && <span style={{ flex: 1, fontSize: 12, color: '#9ca3af', fontStyle: 'italic' }}>Approve / Reject coming next — edits save to the submission only.</span>}
-          <button onClick={onClose} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Close</button>
+          {!err && <span style={{ flex: 1, fontSize: 11.5, color: '#9ca3af' }}>
+            {v.status === 'errors' ? 'Resolve required fields before approving.' : dupUnresolved ? 'Choose a duplicate resolution above.' : 'Nothing is written to the roster until you Approve.'}
+          </span>}
+          <button onClick={onClose} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Close</button>
           <button onClick={save} disabled={!dirty || saving} style={{
-            padding: '8px 18px', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 700,
-            background: dirty && !saving ? '#0f4c35' : '#d1d5db', color: '#fff',
+            padding: '8px 14px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, fontWeight: 600,
+            background: '#fff', color: dirty && !saving ? '#0f4c35' : '#d1d5db',
             cursor: dirty && !saving ? 'pointer' : 'default',
           }}>{saving ? 'Saving…' : 'Save edits'}</button>
+          {rejecting ? (
+            <button onClick={doReject} disabled={!rejectReason.trim() || busy} style={{
+              padding: '8px 16px', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 700,
+              background: rejectReason.trim() && !busy ? '#991b1b' : '#d1d5db', color: '#fff',
+              cursor: rejectReason.trim() && !busy ? 'pointer' : 'default',
+            }}>Confirm reject</button>
+          ) : (
+            <button onClick={() => setRejecting(true)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #fecaca', background: '#fff', color: '#991b1b', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Reject</button>
+          )}
+          <button onClick={doApprove} disabled={approveBlocked} style={{
+            padding: '8px 20px', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 700,
+            background: approveBlocked ? '#d1d5db' : '#0f4c35', color: '#fff',
+            cursor: approveBlocked ? 'default' : 'pointer',
+          }}>{busy ? 'Working…' : 'Approve'}</button>
         </div>
       </div>
     </div>

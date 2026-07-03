@@ -71,7 +71,7 @@ function SourceTag({ source }: { source: string }) {
 
 export default function EnrollmentInboxPage() {
   const { org, currentCenter, centers, loading: orgLoading } = useOrg()
-  const { roles } = useAuth()
+  const { roles, user } = useAuth()
 
   const [rows, setRows] = useState<Submission[]>([])
   const [loading, setLoading] = useState(true)
@@ -79,6 +79,7 @@ export default function EnrollmentInboxPage() {
   const [expanded, setExpanded] = useState<string | null>(null)
   const [reviewing, setReviewing] = useState<Submission | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
+  const [toast, setToast] = useState<{ msg: string; undo: () => Promise<void> } | null>(null)
 
   const isStaff = useMemo(
     () => (roles ?? []).some(r => STAFF_ROLES.includes(r)),
@@ -108,6 +109,19 @@ export default function EnrollmentInboxPage() {
     })()
     return () => { cancelled = true }
   }, [orgLoading, org?.id, currentCenter?.id, isStaff, reloadKey])
+
+  // "Approved · Undo" toast auto-dismisses after 10s.
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(null), 10000)
+    return () => clearTimeout(t)
+  }, [toast])
+
+  async function handleUndo() {
+    const u = toast?.undo
+    setToast(null)
+    if (u) { await u(); setReloadKey(k => k + 1) }
+  }
 
   // Live validation per row (Phase 1 computes client-side; no trigger yet).
   const graded = useMemo(
@@ -228,9 +242,30 @@ export default function EnrollmentInboxPage() {
       {reviewing && (
         <EnrollmentReviewModal
           submission={reviewing}
+          reviewerId={user?.id ?? ''}
           onClose={() => setReviewing(null)}
           onSaved={() => { setReviewing(null); setReloadKey(k => k + 1) }}
+          onDone={(result) => {
+            setReviewing(null)
+            setReloadKey(k => k + 1)
+            setToast({ msg: result.message, undo: result.undo })
+          }}
         />
+      )}
+
+      {toast && (
+        <div style={{
+          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+          background: '#111827', color: '#fff', padding: '12px 16px 12px 18px', borderRadius: 12,
+          display: 'flex', alignItems: 'center', gap: 16, fontSize: 13.5, fontFamily: "'DM Sans', sans-serif",
+          boxShadow: '0 10px 30px rgba(0,0,0,0.25)', zIndex: 1100,
+        }}>
+          <span>{toast.msg}</span>
+          <button onClick={handleUndo} style={{
+            background: 'transparent', border: 'none', color: '#7ee8b0', fontWeight: 700,
+            fontSize: 13.5, cursor: 'pointer', padding: 0,
+          }}>Undo</button>
+        </div>
       )}
     </div>
   )

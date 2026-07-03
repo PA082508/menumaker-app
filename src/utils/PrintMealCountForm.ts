@@ -2,6 +2,7 @@
 // Generates and opens a printable CACFP weekly meal count attendance form.
 
 import { supabase } from "@/lib/supabase";
+import { notDepartedBefore } from "@/lib/childActive";
 import { format, addDays } from "date-fns";
 
 export interface PrintMealCountParams {
@@ -42,6 +43,8 @@ export async function printMealCountForm(params: PrintMealCountParams): Promise<
     .select("id,child_name,age_group_food,birthday")
     // CACFP standard: oldest children first → ORDER BY birthday ASC (no-birthday last).
     .eq("classroom_id", classroomId).eq("is_active", true)
+    // Defense in depth: drop children who departed before this week (date_out < Monday).
+    .or(notDepartedBefore(mondayDate))
     .order("birthday", { ascending: true, nullsFirst: false }).order("child_name");
   const roster = rosterRaw ?? [];
 

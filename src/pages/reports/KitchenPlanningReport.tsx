@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
+import { notDepartedBefore } from "@/lib/childActive";
 import { useOrg } from "@/contexts/OrgContext";
 import { format, addDays, startOfWeek } from "date-fns";
 const SK          = ["b","as","l","ps","su","es"];
@@ -65,9 +66,14 @@ export default function KitchenPlanningReport() {
 
   useEffect(()=>{
     if (!centerId) return;
+    // Defense in depth: don't include children who departed before the report
+    // period starts (date_out < period start), even if is_active wasn't flipped.
+    const periodStart = viewMode==="week"
+      ? format(weekStart,"yyyy-MM-dd")
+      : format(monOf(new Date(year,month-1,1)),"yyyy-MM-dd");
     Promise.all([
       supabase.schema("menumaker").from("classrooms").select("id,name,sort_order").eq("is_active",true).eq("center_id",centerId).order("sort_order"),
-      supabase.schema("menumaker").from("roster").select("id,child_name,classroom_id,milk_kind,age_group_food,birthday,rate_oz").eq("is_active",true),
+      supabase.schema("menumaker").from("roster").select("id,child_name,classroom_id,milk_kind,age_group_food,birthday,rate_oz").eq("is_active",true).or(notDepartedBefore(periodStart)),
       supabase.schema("menumaker").from("milk_rates").select("age_group,milk_type,rate_oz").order("sort_order"),
       supabase.schema("menumaker").from("meal_count_settings").select("active_slots,milk_slots").eq("center_id",centerId).single(),
     ]).then(([{data:c},{data:r},{data:mr},{data:s}])=>{
@@ -76,7 +82,7 @@ export default function KitchenPlanningReport() {
       if(mr) setMilkRates(mr as MR[]);
       if(s)  setCfg(s as Cfg);
     });
-  },[centerId]);
+  },[centerId, viewMode, weekStart, year, month]);
 
   const loadRecords = useCallback(async()=>{
     if (!centerId) return;

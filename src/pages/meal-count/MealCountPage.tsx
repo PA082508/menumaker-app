@@ -274,7 +274,16 @@ export default function MealCountPage({ portalRoles }: { portalRoles?: string[] 
         .order("birthday", { ascending: true, nullsFirst: false })
         .order("last_name")
         .order("first_name");
-      setRoster((kids ?? []) as Child[]);
+      // v_meal_grid doesn't expose date_out, so filter departed children (date_out
+      // < this week's Monday) via a companion query — defense in depth against a
+      // stale is_active row being claimed. A mid-week leaver (date_out >= Monday)
+      // stays for their valid days. See src/lib/childActive.ts.
+      const { data: departed } = await supabase
+        .schema("menumaker").from("roster")
+        .select("id").eq("classroom_id", selectedClassId)
+        .not("date_out", "is", null).lt("date_out", mon);
+      const goneIds = new Set((departed ?? []).map((r: any) => r.id));
+      setRoster(((kids ?? []) as Child[]).filter((k) => !goneIds.has((k as any).roster_id)));
 
       const { data: recs } = await supabase
         .schema("menumaker").from("meal_week_records")

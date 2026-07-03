@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabase";
+import { notDepartedBefore } from "@/lib/childActive";
 import { useAuth } from "@/hooks/useAuth";
 import { format, startOfWeek, addDays, isWeekend } from "date-fns";
 
@@ -193,6 +194,10 @@ export default function MealCountPage() {
         .schema("menumaker").from("roster")
         .select("id,child_name,milk_kind,substitute_milk,substitute_reimbursable,rate_oz,age_group_food,birthday")
         .eq("classroom_id", selectedClassId).eq("is_active", true)
+        // Defense in depth: exclude children who departed before this week (date_out
+        // < Monday) even if is_active wasn't flipped — a mid-week leaver stays for
+        // their valid days. See src/lib/childActive.ts.
+        .or(notDepartedBefore(mon))
         // CACFP standard: oldest children first → ORDER BY birthday ASC (no-birthday last).
         .order("birthday", { ascending: true, nullsFirst: false }).order("child_name");
       setRoster((kids ?? []) as Child[]);

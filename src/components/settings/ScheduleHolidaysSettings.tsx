@@ -309,8 +309,12 @@ function MealScheduleSection() {
       )}
 
       {/* ── Per-classroom table ── */}
-      {classrooms.length === 0
-        ? <div style={{ color: '#aaa', fontSize: 13 }}>No active classrooms for this center.</div>
+      {!centerId
+        ? <div style={{ color: '#888', fontSize: 13, padding: '10px 2px' }}>
+            Select a center above to edit meal times. Meal schedules are set per classroom, so they belong to a specific center.
+          </div>
+        : classrooms.length === 0
+        ? <div style={{ color: '#aaa', fontSize: 13 }}>No active classrooms for {short(centers.find(c => c.id === centerId)?.name ?? 'this center')}.</div>
         : (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>

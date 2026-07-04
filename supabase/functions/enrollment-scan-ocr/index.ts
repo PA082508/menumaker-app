@@ -9,20 +9,18 @@
 //      list of dotted paths the handwriting made uncertain;
 //   3. returns a ready-to-submit form_data (scan_ref + _ocr embedded).
 //
-// The app then calls menumaker.submit_enrollment_form(..., source='paper_entry',
-// p_form_data=<this form_data>). Nothing here writes to the DB — approval stays a
-// director action in the Inbox.
+// The app then calls menumaker.submit_enrollment_form(..., source='paper_entry').
+// Nothing here writes to the DB — approval stays a director action in the Inbox.
+// 'other' = upload only, no OCR.
 //
-// Secrets required (Supabase → Project → Edge Functions → Secrets):
-//   ANTHROPIC_API_KEY   — Claude API key (vision)
-//   (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are injected by the runtime)
-// Optional: OCR_MODEL (default 'claude-sonnet-5').
+// Secret required: ANTHROPIC_API_KEY (Claude vision). SUPABASE_URL /
+// SUPABASE_SERVICE_ROLE_KEY are injected by the runtime. Optional: OCR_MODEL
+// (default 'claude-sonnet-5').
 //
-// Deploy:  supabase functions deploy enrollment-scan-ocr --project-ref trrmyqfpxntmgxnqkikp
+// NOTE: Claude may return a non-text (e.g. thinking) content block first, so we
+// concatenate ALL type==='text' blocks rather than reading content[0].
 //
-// 'other' = no template → upload only, no OCR (scan attached, fields entered/
-// matched by hand in the Inbox). The channel is extensible: add a schema below
-// for any new document type (voucher printouts, etc.).
+// Deploy: supabase functions deploy enrollment-scan-ocr --project-ref trrmyqfpxntmgxnqkikp
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -41,28 +39,20 @@ const cors = {
 // Per-form-type extraction schema. Keys MUST match the online packet form_data so
 // the Inbox diff/validation read them directly (see enrollmentValidationRules.ts).
 const SCHEMAS: Record<string, string> = {
-  cacfp_enrollment: `Return JSON with this exact shape (omit a field you cannot read):
-{
-  "child_name": "First Last",
-  "birthdate": "YYYY-MM-DD",
-  "day_phone": "digits",
-  "mailing": { "street": "", "city": "", "zip": "" },
-  "schedule": { "Mon": {"in_care": true, "arr1": "8:00 AM", "dep1": "5:00 PM",
-     "meals": {"breakfast": true, "am_snack": false, "lunch": true, "pm_snack": false, "supper": false}},
-     "Tue": {...}, "Wed": {...}, "Thu": {...}, "Fri": {...} },
-  "signature_date": "YYYY-MM-DD"
-}`,
-  iea: `Return JSON with this exact shape (Income Eligibility Application; omit unreadable fields):
-{
-  "children": [ {"name": "", "dob": "YYYY-MM-DD", "case_no": "7 digits or empty"} ],
-  "benefit": { "snap": false, "owf": false },
-  "household": [ {"name": "", "zero": false, "income": {"earn": {"amt": "", "freq_mult": "monthly"}}} ],
-  "adult": { "print_name": "", "ssn_last4": "", "no_ssn": false, "day_phone": "",
-             "street": "", "city_state_zip": "", "county": "" },
-  "signature_date": "YYYY-MM-DD"
-}`,
-  dcy_01234: `Return JSON best-effort for a DCY 01234 form:
-{ "child_name": "First Last", "birthdate": "YYYY-MM-DD", "signature_date": "YYYY-MM-DD" }`,
+  cacfp_enrollment: `Fields to extract (JSON keys):
+- child_name (string "First Last")
+- birthdate ("YYYY-MM-DD")
+- day_phone (digits)
+- mailing: object {street, city, zip}
+- schedule: object keyed by weekday ("Mon","Tue","Wed","Thu","Fri","Sat","Sun"); include ONLY days marked in care; each value is {in_care:true, arr1, dep1, meals:{breakfast,am_snack,lunch,pm_snack,supper} as booleans}
+- signature_date ("YYYY-MM-DD")`,
+  iea: `Fields to extract (JSON keys):
+- children: array of {name, dob "YYYY-MM-DD", case_no "7 digits or empty"}
+- benefit: {snap:boolean, owf:boolean}
+- household: array of {name, zero:boolean, income:{earn:{amt, freq_mult}}}
+- adult: {print_name, ssn_last4, no_ssn:boolean, day_phone, street, city_state_zip, county}
+- signature_date ("YYYY-MM-DD")`,
+  dcy_01234: `Fields to extract: child_name, birthdate ("YYYY-MM-DD"), signature_date ("YYYY-MM-DD").`,
 }
 
 function json(body: unknown, status = 200) {
@@ -71,11 +61,23 @@ function json(body: unknown, status = 200) {
   })
 }
 
-// Strip a data-URL prefix and return { base64, mediaType }.
 function parseImage(image: string): { base64: string; mediaType: string } {
   const m = image.match(/^data:(image\/[a-zA-Z+]+);base64,(.*)$/)
   if (m) return { mediaType: m[1], base64: m[2] }
   return { mediaType: 'image/jpeg', base64: image }
+}
+
+// Robustly pull a JSON object out of the model's text (handles ```json fences and
+// leading/trailing prose).
+function extractJson(text: string): any {
+  let t = (text ?? '').trim()
+  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/)
+  if (fence) t = fence[1].trim()
+  if (!t.startsWith('{')) {
+    const s = t.indexOf('{'), e = t.lastIndexOf('}')
+    if (s >= 0 && e > s) t = t.slice(s, e + 1)
+  }
+  try { return JSON.parse(t) } catch { return null }
 }
 
 async function runOcr(base64: string, mediaType: string, submissionType: string) {
@@ -84,10 +86,11 @@ async function runOcr(base64: string, mediaType: string, submissionType: string)
 
   const prompt =
     `You are reading a photographed, hand-completed childcare enrollment form. ` +
-    `Transcribe the printed/handwritten values. ${schema}\n\n` +
-    `Also return "lowConfidence": an array of dotted field paths (e.g. "child_name", ` +
-    `"mailing.zip", "children.0.case_no") where the handwriting was unclear or you guessed. ` +
-    `Respond with ONLY a JSON object: {"form_data": <the shape above>, "lowConfidence": [...]}.`
+    `Transcribe the printed/handwritten values.\n${schema}\n\n` +
+    `Return ONLY a JSON object (no markdown, no prose) of exactly this form:\n` +
+    `{"form_data": { ...the fields above, omit any you cannot read... }, "lowConfidence": ["dotted.path", ...]}\n` +
+    `lowConfidence lists field paths (e.g. "child_name","mailing.zip","children.0.case_no") ` +
+    `where the handwriting was unclear or you guessed.`
 
   const resp = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -110,14 +113,13 @@ async function runOcr(base64: string, mediaType: string, submissionType: string)
   })
   if (!resp.ok) throw new Error(`Anthropic ${resp.status}: ${await resp.text()}`)
   const data = await resp.json()
-  const text: string = data?.content?.[0]?.text ?? '{}'
-  const jsonText = text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)
-  let parsed: any = {}
-  try { parsed = JSON.parse(jsonText) } catch { parsed = {} }
-  return {
-    form_data: parsed.form_data ?? {},
-    lowConfidence: Array.isArray(parsed.lowConfidence) ? parsed.lowConfidence.map(String) : [],
-  }
+  // Claude may emit a non-text block first — take ALL text blocks.
+  const blocks = Array.isArray(data?.content) ? data.content : []
+  const text: string = blocks.filter((b: any) => b?.type === 'text').map((b: any) => b.text).join('\n').trim()
+  const parsed = extractJson(text) ?? {}
+  const form_data = parsed.form_data ?? ((parsed.child_name || parsed.children || parsed.mailing) ? parsed : {})
+  const lowConfidence = Array.isArray(parsed.lowConfidence) ? parsed.lowConfidence.map(String) : []
+  return { form_data, lowConfidence }
 }
 
 Deno.serve(async (req) => {

@@ -1,16 +1,19 @@
 # Phase 1.5 — Photo intake of paper enrollment forms
 
-**Status (2026-07-04): DEPLOYED except the OCR secret.**
+**Status (2026-07-04): LIVE — OCR smoke PASSED.**
 - ✅ `enrollment-scans` bucket — applied (migration `enrollment_scans_bucket`).
-- ✅ `enrollment-scan-ocr` edge function — deployed to menumaker (v1, ACTIVE).
+- ✅ `enrollment-scan-ocr` edge function — deployed to menumaker (**v4**, ACTIVE).
+- ✅ `ANTHROPIC_API_KEY` secret — set (Claude vision via `claude-sonnet-5`).
 - ✅ Mobile module — PR **#1** on `PA082508/cacfp-receipt` (merging publishes to Pages).
-- ⛔ `ANTHROPIC_API_KEY` secret — **NOT set** (the key never came through). Until it
-  is, OCR returns empty fields; the upload + submission path (incl. type "Other")
-  works. Set it with the command in step 1 below — no redeploy needed afterward.
 
-Plumbing smoke passed: edge fn (auth → upload → bucket) + `submit_enrollment_form`
-created a real `paper_entry` pending row with `object_exists=1`, then the test row
-was removed. Full OCR smoke (fields + confidence in Review) is pending the key.
+Full OCR smoke passed end to end: a synthetic hand-filled CACFP form → edge fn
+(upload + OCR) extracted child_name / mailing / Mon–Fri schedule, flagged the
+uncertain fields (`birthdate, day_phone, mailing.zip, signature_date`) — including
+two genuine misreads it correctly caught — then `submit_enrollment_form` created a
+`paper_entry` pending row viewable in Review with the scan + 🔍 verify tags.
+
+Fix found during the smoke: Claude may return a non-text (thinking) content block
+first, so the function concatenates all `type==='text'` blocks (not `content[0]`).
 
 ## What this delivers
 
@@ -57,15 +60,15 @@ No schema/RPC change was needed — the scan + OCR metadata ride inside `form_da
 
 ## Deploy checklist
 
-1. ⛔ **Secret (remaining)** — set the Claude key on menumaker:
-   `supabase secrets set ANTHROPIC_API_KEY=… --project-ref trrmyqfpxntmgxnqkikp`
-   (optional: `OCR_MODEL`, default `claude-sonnet-5`). No redeploy needed after.
+1. ✅ **Secret** — `ANTHROPIC_API_KEY` set on menumaker (optional `OCR_MODEL`,
+   default `claude-sonnet-5`). No redeploy needed when rotating it.
 2. ✅ **Bucket** — applied (`enrollment_scans_bucket` migration).
-3. ✅ **Edge function** — deployed (`enrollment-scan-ocr`, v1 ACTIVE).
-4. 🔵 **Mobile module** — PR **#1** on `PA082508/cacfp-receipt`. **Merge to publish**
-   to GitHub Pages (config is pre-filled: menumaker public anon key + the 3 center IDs).
-5. ⛔ **OCR smoke (after step 1 + merge)** — scan one CACFP form → confirm it appears
-   in the Inbox with 📎, the scan renders in Review, and any unclear field shows
-   🔍 verify. (Plumbing already smoked via the "Other" path.)
+3. ✅ **Edge function** — deployed (`enrollment-scan-ocr`, v4 ACTIVE).
+4. 🔵 **Mobile module (remaining)** — PR **#1** on `PA082508/cacfp-receipt`. **Merge to
+   publish** to GitHub Pages (config is pre-filled: menumaker public anon key + the 3
+   center IDs).
+5. ✅ **OCR smoke** — passed via a synthetic hand-filled form (see status above). The
+   real-form acceptance test (handwriting + duplicate-match on a minimal-data child)
+   runs from the phone after step 4 merges.
 
 Only after this smoke passes on prod may Phase 1.5 be described as live (fair-advertising rule, spec §3).

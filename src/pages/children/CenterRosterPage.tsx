@@ -233,6 +233,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
   const [toast, setToast] = useState<string|null>(null)
   const [childSettingsId, setChildSettingsId] = useState<string|null>(null)
   const [settingsTab, setSettingsTab] = useState(0)
+  const [focusField, setFocusField] = useState<string|null>(null)
   const [emergencyChild, setEmergencyChild] = useState<{ id: string; name: string }|null>(null)
   const [viewMode, setViewMode] = useState<'cards'|'list'>('cards')
   const [rosterStatus, setRosterStatus] = useState<'active'|'inactive'>('active')
@@ -475,7 +476,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                         const ageMs = child.birthday ? Date.now() - new Date(child.birthday).getTime() : 0
                         const ageY = Math.floor(ageMs / (1000*60*60*24*365.25))
                         return (
-                          <tr key={child.id} onClick={() => setChildSettingsId(child.id)}
+                          <tr key={child.id} onClick={() => { setFocusField(null); setChildSettingsId(child.id) }}
                             style={{ borderBottom:'1px solid #f0f4f1', cursor:'pointer', background: idx%2===0 ? '#fff' : '#fafbfa' }}
                             onMouseEnter={e => (e.currentTarget.style.background='#f0f7f2')}
                             onMouseLeave={e => (e.currentTarget.style.background=idx%2===0?'#fff':'#fafbfa')}>
@@ -644,11 +645,16 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                                       ↩ Reactivate
                                     </button>
                                   ) : (
+                                    <>
                                     <button onClick={e=>{e.stopPropagation();setEmergencyChild({id:child.id,name:child.child_name || 'Child'})}} style={{ flex:1, padding:'6px 0', border:'none', borderRight:'1px solid #f0f0f0', background:'transparent', cursor:'pointer', fontSize:11, fontWeight:600, color:'#b91c1c', fontFamily:'inherit' }}>
                                       🚨 Emergency
                                     </button>
+                                    <button onClick={e=>{e.stopPropagation();setSettingsTab(0);setFocusField('date_out');setChildSettingsId(child.id)}} title="Set end date / deactivate" style={{ flex:1, padding:'6px 0', border:'none', borderRight:'1px solid #f0f0f0', background:'transparent', cursor:'pointer', fontSize:11, fontWeight:600, color:'#b45309', fontFamily:'inherit' }}>
+                                      ⏻ Deactivate
+                                    </button>
+                                    </>
                                   )}
-                                  <button onClick={e=>{e.stopPropagation();setSettingsTab(0);setChildSettingsId(child.id)}} style={{ flex:1, padding:'6px 0', border:'none', background:'transparent', cursor:'pointer', fontSize:11, fontWeight:600, color:'#0f4c35', fontFamily:'inherit' }}>
+                                  <button onClick={e=>{e.stopPropagation();setSettingsTab(0);setFocusField(null);setChildSettingsId(child.id)}} style={{ flex:1, padding:'6px 0', border:'none', background:'transparent', cursor:'pointer', fontSize:11, fontWeight:600, color:'#0f4c35', fontFamily:'inherit' }}>
                                     ⚙️ Settings
                                   </button>
                                 </div>
@@ -683,7 +689,8 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
           childId={childSettingsId}
           classrooms={classrooms}
           initialTab={settingsTab}
-          onClose={() => { setChildSettingsId(null); loadRoster(true) }}
+          focusField={focusField ?? undefined}
+          onClose={() => { setChildSettingsId(null); setFocusField(null); loadRoster(true) }}
         />
       )}
       {emergencyChild && (
@@ -691,7 +698,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
           childId={emergencyChild.id}
           childName={emergencyChild.name}
           onClose={() => setEmergencyChild(null)}
-          onAddContact={() => { const id = emergencyChild.id; setEmergencyChild(null); setSettingsTab(1); setChildSettingsId(id) }}
+          onAddContact={() => { const id = emergencyChild.id; setEmergencyChild(null); setSettingsTab(1); setFocusField(null); setChildSettingsId(id) }}
         />
       )}
       {showAddChild && currentCenter && (

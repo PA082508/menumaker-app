@@ -93,14 +93,16 @@ function Badge({ empty, overdue }: { empty: number; overdue: number }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function ChildSettingsPage({
-  childId, onClose, classrooms, initialTab = 0
+  childId, onClose, classrooms, initialTab = 0, focusField
 }: {
   childId: string
   onClose: () => void
   classrooms: { id: string; name: string }[]
   initialTab?: number
+  focusField?: string   // registry field key to scroll to + highlight on open (e.g. 'date_out')
 }) {
   const [tab, setTab] = useState(initialTab)
+  const [highlightKey, setHighlightKey] = useState<string | null>(null)
   const [child, setChild] = useState<Child | null>(null)
   const [guardians, setGuardians] = useState<Guardian[]>([])
   const [medical, setMedical] = useState<ChildMedical | null>(null)
@@ -113,6 +115,18 @@ export default function ChildSettingsPage({
   const [deactBusy, setDeactBusy] = useState(false)
 
   useEffect(() => { loadAll() }, [childId])
+
+  // Scroll to + highlight a specific field when opened with focusField
+  // (e.g. the Deactivate shortcut jumps to END DATE on the Profile tab).
+  useEffect(() => {
+    if (!focusField || !child) return
+    const t = setTimeout(() => {
+      document.getElementById(`field-${focusField}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      setHighlightKey(focusField)
+      setTimeout(() => setHighlightKey(k => (k === focusField ? null : k)), 2600)
+    }, 120)
+    return () => clearTimeout(t)
+  }, [focusField, child])
 
   async function loadAll() {
     // roster.id (childId) ≠ child.id. Guardians hang off child_guardian.child_id
@@ -290,8 +304,12 @@ export default function ChildSettingsPage({
     const filled = !isEmptyVal(v)
     const showStar = !!f.required && !filled && !f.readOnly
     const isOverdue = !!f.overdue && !!v && String(v).slice(0, 10) < todayStr
+    const highlighted = highlightKey === f.key
     return (
-      <div key={f.key} style={{ marginBottom: 14 }}>
+      <div key={f.key} id={`field-${f.key}`} style={{
+        marginBottom: 14,
+        ...(highlighted ? { background: '#fef9c3', borderRadius: 8, padding: 8, boxShadow: '0 0 0 2px #fde047', transition: 'background 0.3s' } : {}),
+      }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 5 }}>
           <span style={{ fontSize: 15, lineHeight: 1, color: filled ? '#16a34a' : '#c0c8c0' }}>{filled ? '☑' : '☐'}</span>
           <label style={{ ...lbl, margin: 0 }}>{f.label}</label>

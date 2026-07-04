@@ -72,7 +72,7 @@ export const FIELDS: FieldDef[] = [
   { key: 'classroom_id', tab: 'profile', section: 'Placement', label: 'Classroom',    table: 'roster', column: 'classroom_id',  type: 'select', required: true },
   { key: 'child_address',tab: 'profile', section: 'Contact',   label: 'Home address', table: 'roster', column: 'child_address', type: 'text',   required: true },
   { key: 'date_in',      tab: 'profile', section: 'Placement', label: 'Start date',   table: 'roster', column: 'date_in',       type: 'date',   required: true },
-  { key: 'date_out',     tab: 'profile', section: 'Placement', label: 'End date',     table: 'roster', column: 'date_out',      type: 'date' },
+  { key: 'date_out',     tab: 'profile', section: 'Placement', label: 'End date (Deactivate)', table: 'roster', column: 'date_out',      type: 'date' },
 
   // ── Enrollment (roster) — DCY 01234 ──
   { key: 'enrollment_reviewed_at',   tab: 'enrollment', section: 'DCY 01234 — Annual Review', label: 'Last annual review', table: 'roster', column: 'enrollment_reviewed_at', type: 'date', required: true, overdue: true },

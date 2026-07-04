@@ -183,7 +183,7 @@ export default function EnrollmentReviewModal({
       .filter(c => String(c.from) !== String(c.to))
     const log = Array.isArray(fd._edit_log) ? fd._edit_log : []
     const nextFd = changes.length
-      ? { ...fd, _edit_log: [...log, { at: new Date().toISOString(), changes }] }
+      ? { ...fd, _edit_log: [...log, { at: new Date().toISOString(), by: reviewerId, changes }] }
       : fd
     const { error } = await supabase.schema('menumaker').from('enrollment_submissions')
       .update({ form_data: nextFd }).eq('id', submission.id)
@@ -244,18 +244,27 @@ export default function EnrollmentReviewModal({
                 <div key={r.key} style={{
                   display: 'grid', gridTemplateColumns: '150px 1fr 1fr', gap: 10, alignItems: 'center',
                   padding: '6px 8px', borderRadius: 8,
-                  background: r.changed ? '#fffbeb' : 'transparent',
+                  background: r.missing ? '#fef2f2' : r.changed ? '#fffbeb' : 'transparent',
+                  boxShadow: r.missing ? 'inset 3px 0 0 #ef4444' : undefined,
                 }}>
-                  <div style={{ fontSize: 12.5, color: '#6b7280' }}>{r.label}</div>
+                  <div style={{ fontSize: 12.5, color: r.missing ? '#991b1b' : '#6b7280' }}>
+                    {r.label}{r.required && <span title="Required" style={{ color: '#ef4444', fontWeight: 700 }}> ★</span>}
+                  </div>
                   <div style={{ fontSize: 13 }}>
                     {r.editPath ? (
                       <input
                         value={getPath(fd, r.editPath) ?? ''}
                         onChange={e => editField(r.editPath!, e.target.value)}
-                        style={{ width: '100%', padding: '4px 8px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13, fontFamily: 'inherit' }}
+                        placeholder={r.missing ? 'required — fill in' : ''}
+                        style={{
+                          width: '100%', padding: '4px 8px', borderRadius: 6, fontSize: 13, fontFamily: 'inherit',
+                          border: `1px solid ${r.missing ? '#fca5a5' : '#e5e7eb'}`,
+                        }}
                       />
                     ) : (
-                      <span style={{ color: r.formValue ? '#111827' : '#d1d5db' }}>{r.formValue || '—'}</span>
+                      <span style={{ color: r.formValue ? '#111827' : r.missing ? '#ef4444' : '#d1d5db' }}>
+                        {r.formValue || (r.missing ? 'required — edit on original form' : '—')}
+                      </span>
                     )}
                   </div>
                   <div style={{ fontSize: 13, color: r.currentValue ? '#111827' : '#d1d5db' }}>
@@ -341,6 +350,10 @@ export default function EnrollmentReviewModal({
             background: '#fff', color: dirty && !saving ? '#0f4c35' : '#d1d5db',
             cursor: dirty && !saving ? 'pointer' : 'default',
           }}>{saving ? 'Saving…' : 'Save edits'}</button>
+          <button disabled title="Phase 3 — sends the parent a pre-filled link to complete their own submission"
+            style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#d1d5db', fontSize: 13, fontWeight: 600, cursor: 'not-allowed' }}>
+            Request completion
+          </button>
           {rejecting ? (
             <button onClick={doReject} disabled={!rejectReason.trim() || busy} style={{
               padding: '8px 16px', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 700,

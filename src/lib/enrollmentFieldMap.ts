@@ -22,6 +22,8 @@ export interface DiffRow {
   formValue: string
   currentValue: string
   changed: boolean
+  required?: boolean     // required by this form type
+  missing?: boolean      // required AND empty → highlight + editable
   editPath?: string      // dot-path into form_data, if editable
   registryKey?: string   // childFieldRegistry target (current col + Approve)
 }
@@ -53,13 +55,15 @@ const currentOf = (registryKey: string | undefined, ctx: RecordCtx | null): stri
 }
 
 const row = (
-  r: Omit<DiffRow, 'changed' | 'currentValue'> & { currentValue?: string; ctx: RecordCtx | null },
+  r: Omit<DiffRow, 'changed' | 'currentValue' | 'missing'> & { currentValue?: string; ctx: RecordCtx | null },
 ): DiffRow => {
   const currentValue = r.currentValue ?? currentOf(r.registryKey, r.ctx)
   return {
     key: r.key, section: r.section, label: r.label,
     formValue: r.formValue, currentValue,
     changed: !!currentValue && norm(currentValue) !== norm(r.formValue),
+    required: r.required,
+    missing: !!r.required && norm(r.formValue) === '',
     editPath: r.editPath, registryKey: r.registryKey,
   }
 }
@@ -84,23 +88,23 @@ function cacfpDiff(fd: any, ctx: RecordCtx | null): DiffRow[] {
   const currentName = ctx?.roster ? displayChildName(ctx.roster as any) : ''
   const m = fd?.mailing ?? {}
   return [
-    row({ key: 'child_name', section: 'Identity', label: 'Child name',
+    row({ key: 'child_name', section: 'Identity', label: 'Child name', required: true,
       formValue: str(fd?.child_name), currentValue: currentName, ctx, editPath: 'child_name' }),
-    row({ key: 'birthdate', section: 'Identity', label: 'Date of birth',
+    row({ key: 'birthdate', section: 'Identity', label: 'Date of birth', required: true,
       formValue: str(fd?.birthdate).slice(0, 10), ctx, registryKey: 'birthday', editPath: 'birthdate' }),
-    row({ key: 'street', section: 'Address', label: 'Street',
+    row({ key: 'street', section: 'Address', label: 'Street', required: true,
       formValue: str(m.street), ctx, registryKey: 'child_address', editPath: 'mailing.street' }),
-    row({ key: 'city', section: 'Address', label: 'City',
+    row({ key: 'city', section: 'Address', label: 'City', required: true,
       formValue: str(m.city), ctx, editPath: 'mailing.city' }),
-    row({ key: 'zip', section: 'Address', label: 'ZIP',
+    row({ key: 'zip', section: 'Address', label: 'ZIP', required: true,
       formValue: str(m.zip), ctx, editPath: 'mailing.zip' }),
-    row({ key: 'day_phone', section: 'Contact', label: 'Daytime phone',
+    row({ key: 'day_phone', section: 'Contact', label: 'Daytime phone', required: true,
       formValue: str(fd?.day_phone), ctx, editPath: 'day_phone' }),
     row({ key: 'parent_email', section: 'Contact', label: 'Parent email',
       formValue: str(fd?.parent_email), ctx, editPath: 'parent_email' }),
-    row({ key: 'schedule', section: 'Schedule', label: 'Care & meals',
+    row({ key: 'schedule', section: 'Schedule', label: 'Care & meals', required: true,
       formValue: summarizeSchedule(fd?.schedule), ctx }),
-    row({ key: 'sig_date', section: 'Signature', label: 'Signature date',
+    row({ key: 'sig_date', section: 'Signature', label: 'Signature date', required: true,
       formValue: str(fd?.signature_date).slice(0, 10), ctx, editPath: 'signature_date' }),
   ]
 }
@@ -120,9 +124,11 @@ function ieaDiff(fd: any, ctx: RecordCtx | null): DiffRow[] {
   rows.push(row({ key: 'benefit', section: 'Eligibility', label: 'Assistance program',
     formValue: [b.snap ? 'SNAP' : '', b.owf ? 'OWF' : ''].filter(Boolean).join(', ') || '—', ctx }))
 
-  const verdict = str(fd?.sponsor?.verdict).toLowerCase()
-  rows.push(row({ key: 'frp', section: 'Eligibility', label: 'FRP determination',
-    formValue: IEA_VERDICT_FRP[verdict] ?? str(fd?.sponsor?.verdict), ctx, registryKey: 'frp' }))
+  // FRP from the Sponsor Section checkboxes (authoritative); helper.verdict fallback.
+  const sponsorFrp = fd?.sponsor?.free ? 'Free' : fd?.sponsor?.reduced ? 'Reduced' : fd?.sponsor?.paid ? 'Paid' : ''
+  const verdict = str(fd?.helper?.verdict).toLowerCase()
+  rows.push(row({ key: 'frp', section: 'Eligibility', label: 'FRP determination', required: true,
+    formValue: sponsorFrp || (IEA_VERDICT_FRP[verdict] ?? ''), ctx, registryKey: 'frp' }))
   rows.push(row({ key: 'frp_expires', section: 'Eligibility', label: 'FRP expires',
     formValue: str(fd?.sponsor?.expiration).slice(0, 10), ctx, registryKey: 'frp_expires' }))
 

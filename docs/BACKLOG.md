@@ -2,6 +2,10 @@
 
 Tracked, not-yet-started work. Owner: Nikolay. Newest context at top of each item.
 
+> **Enrollment source of truth:** [`docs/specs/Enrollment_Approval_Loop_Spec.md`](specs/Enrollment_Approval_Loop_Spec.md)
+> (v2, approved 2026-07-03 — includes the SafePass-channel decision). Imported into the
+> repo 2026-07-04 so the spec is version-controlled here, not only in `~/Downloads`.
+
 ## Publish v2 — post-publication actions
 
 **Scheduled after** current priorities (Deactivate → migration → Фаза 1). OK to land as

@@ -51,13 +51,14 @@
   <script>
     // ── CONFIG 1 — menumaker project (public anon key) ───────────────────────
     const MENUMAKER_URL = 'https://trrmyqfpxntmgxnqkikp.supabase.co'
-    const MENUMAKER_ANON_KEY = 'PASTE_MENUMAKER_ANON_KEY'   // = web app VITE_SUPABASE_ANON_KEY
+    // Public legacy anon key (same as the web app's VITE_SUPABASE_ANON_KEY). Safe to ship.
+    const MENUMAKER_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRycm15cWZweG50bWd4bnFraWtwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1OTczMzMsImV4cCI6MjA5NjE3MzMzM30.b2zlijzzwPPgZqTFNrOvhgNWZpBSxmQQioErMpoX_Ko'
 
-    // ── CONFIG 2 — the three centers (fill real IDs from menumaker.centers) ──
+    // ── CONFIG 2 — the three centers (real IDs from menumaker.centers) ───────
     const CENTERS = [
-      { label: 'Ridge (Wickliffe)',        orgId: 'ORG_UUID', centerId: 'RIDGE_CENTER_UUID' },
-      { label: 'Alpha (Highland Heights)', orgId: 'ORG_UUID', centerId: 'ALPHA_CENTER_UUID' },
-      { label: 'Pearl (Parma Heights)',    orgId: 'ORG_UUID', centerId: 'PEARL_CENTER_UUID' },
+      { label: 'Ridge (Wickliffe)',        orgId: '3a9a290e-7e49-491e-946b-ad86f2399910', centerId: '4aed7d5a-00d0-4a4c-ac99-311046ad2027' },
+      { label: 'Alpha (Highland Heights)', orgId: '3a9a290e-7e49-491e-946b-ad86f2399910', centerId: '099c404b-e6d3-4543-9d9a-1fb11a2ee62d' },
+      { label: 'Pearl (Parma Heights)',    orgId: '3a9a290e-7e49-491e-946b-ad86f2399910', centerId: '881ef4ce-1a27-4d3b-aa60-59d2a307bf2b' },
     ]
 
     const TYPES = [

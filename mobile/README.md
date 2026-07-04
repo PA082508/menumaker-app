@@ -1,9 +1,16 @@
 # Phase 1.5 — Photo intake of paper enrollment forms
 
-**Status: PREPARATION / staged. Nothing here is deployed.** Deploy is a separate,
-explicit step to run only after Nikolay's "deploy ok" (and once he provides
-`ANTHROPIC_API_KEY`). Slice E and Block 2 stay ahead in the execution queue; these
-artifacts are a parallel заготовка.
+**Status (2026-07-04): DEPLOYED except the OCR secret.**
+- ✅ `enrollment-scans` bucket — applied (migration `enrollment_scans_bucket`).
+- ✅ `enrollment-scan-ocr` edge function — deployed to menumaker (v1, ACTIVE).
+- ✅ Mobile module — PR **#1** on `PA082508/cacfp-receipt` (merging publishes to Pages).
+- ⛔ `ANTHROPIC_API_KEY` secret — **NOT set** (the key never came through). Until it
+  is, OCR returns empty fields; the upload + submission path (incl. type "Other")
+  works. Set it with the command in step 1 below — no redeploy needed afterward.
+
+Plumbing smoke passed: edge fn (auth → upload → bucket) + `submit_enrollment_form`
+created a real `paper_entry` pending row with `object_exists=1`, then the test row
+was removed. Full OCR smoke (fields + confidence in Review) is pending the key.
 
 ## What this delivers
 
@@ -48,20 +55,17 @@ low-confidence fields tagged **🔍 verify** — driven by the `form_data.scan_r
 ```
 No schema/RPC change was needed — the scan + OCR metadata ride inside `form_data`.
 
-## Deploy checklist — RUN ONLY AFTER "deploy ok" (separate step)
+## Deploy checklist
 
-1. **Secret** — set the Claude key (from Nikolay) on menumaker:
+1. ⛔ **Secret (remaining)** — set the Claude key on menumaker:
    `supabase secrets set ANTHROPIC_API_KEY=… --project-ref trrmyqfpxntmgxnqkikp`
-   (optional: `OCR_MODEL`, default `claude-sonnet-5`).
-2. **Bucket** — apply `20260704_enrollment_scans_bucket.sql` (SQL editor or
-   `supabase db push`).
-3. **Edge function** —
-   `supabase functions deploy enrollment-scan-ocr --project-ref trrmyqfpxntmgxnqkikp`
-4. **Mobile module** — copy `scan-child-form.html` into the `cacfp-receipt` repo,
-   fill the two CONFIG blocks (menumaker anon key = web `VITE_SUPABASE_ANON_KEY`;
-   real `org_id` + `center_id` per center from `menumaker.centers`), link it as a
-   second action ("Scan child form") next to the receipt uploader, publish to Pages.
-5. **Smoke** — scan one CACFP form → confirm it appears in the Inbox with 📎, the
-   scan renders in Review, and any unclear field shows 🔍 verify.
+   (optional: `OCR_MODEL`, default `claude-sonnet-5`). No redeploy needed after.
+2. ✅ **Bucket** — applied (`enrollment_scans_bucket` migration).
+3. ✅ **Edge function** — deployed (`enrollment-scan-ocr`, v1 ACTIVE).
+4. 🔵 **Mobile module** — PR **#1** on `PA082508/cacfp-receipt`. **Merge to publish**
+   to GitHub Pages (config is pre-filled: menumaker public anon key + the 3 center IDs).
+5. ⛔ **OCR smoke (after step 1 + merge)** — scan one CACFP form → confirm it appears
+   in the Inbox with 📎, the scan renders in Review, and any unclear field shows
+   🔍 verify. (Plumbing already smoked via the "Other" path.)
 
 Only after this smoke passes on prod may Phase 1.5 be described as live (fair-advertising rule, spec §3).

@@ -9,6 +9,7 @@ import EmergencyPopup from './EmergencyPopup'
 import { useOrg } from '@/contexts/OrgContext'
 import { useAuth } from '@/hooks/useAuth'
 import { displayChildName } from '@/lib/childName'
+import { isActiveOn } from '@/lib/childActive'
 
 type Classroom = { id: string; name: string; sort_order: number }
 type Child = {
@@ -16,6 +17,7 @@ type Child = {
   child_name: string | null; age_group_food: string | null; frp: string | null
   date_in: string | null; date_out: string | null; birthday: string | null
   milk_kind: string | null; classroom_id: string | null
+  is_active?: boolean | null
 }
 type StaffRow = {
   id: string; first_name: string | null; last_name: string | null
@@ -222,7 +224,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
   const center = centers.find(c => c.id === centerId)
 
   const [classrooms, setClassrooms] = useState<Classroom[]>([])
-  const [children,   setChildren]   = useState<Child[]>([])
+  const [allChildren, setAllChildren] = useState<Child[]>([])  // active + inactive (search spans both)
   const [staff,      setStaff]      = useState<StaffRow[]>([])
   const [sessions,   setSessions]   = useState<Session[]>([])
   const [loading,    setLoading]    = useState(false)
@@ -235,8 +237,8 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
   const [settingsTab, setSettingsTab] = useState(0)
   const [focusField, setFocusField] = useState<string|null>(null)
   const [emergencyChild, setEmergencyChild] = useState<{ id: string; name: string }|null>(null)
+  const [reactivateTarget, setReactivateTarget] = useState<Child|null>(null)
   const [viewMode, setViewMode] = useState<'cards'|'list'>('cards')
-  const [rosterStatus, setRosterStatus] = useState<'active'|'inactive'>('active')
   const [listClassFilter, setListClassFilter] = useState('all')
   const [search, setSearch] = useState('')          // raw input (immediate)
   const [debSearch, setDebSearch] = useState('')     // debounced (~200ms) — drives filtering
@@ -257,18 +259,16 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
   const loadRoster = async (soft = false) => {
     if (!centerId) return
     if (!soft) { setLoading(true); setExpanded({}) }
-    // Active tab: is_active AND not departed before today. Inactive tab:
-    // deactivated / departed children (is_active=false) — the restore view.
-    let rosterQ = supabase.schema('menumaker').from('roster')
-      .select('id,first_name,last_name,child_name,age_group_food,frp,date_in,date_out,birthday,milk_kind,classroom_id,is_active')
-      .eq('center_id', centerId)
-    rosterQ = rosterStatus === 'inactive'
-      ? rosterQ.eq('is_active', false)
-      : rosterQ.eq('is_active', true).or(`date_out.is.null,date_out.gte.${todayStr}`)
+    // Load the WHOLE roster (active + inactive) in one pass so name search can span
+    // both — the normal grouped/list view filters down to active children client-side
+    // (isActiveOn), while inactive rows surface, dimmed, only inside search results.
     const [{ data: cls }, { data: kids }, { data: staffData }, { data: sess }] = await Promise.all([
       supabase.schema('menumaker').from('classrooms')
         .select('id,name,sort_order').eq('center_id', centerId).eq('is_active', true).order('sort_order'),
-      rosterQ.order('last_name', { nullsFirst: false }).order('first_name'),
+      supabase.schema('menumaker').from('roster')
+        .select('id,first_name,last_name,child_name,age_group_food,frp,date_in,date_out,birthday,milk_kind,classroom_id,is_active')
+        .eq('center_id', centerId)
+        .order('last_name', { nullsFirst: false }).order('first_name'),
       supabase.schema('menumaker').from('staff')
         .select('id,first_name,last_name,position,class_primary,class_secondary,phone,email,photo_url')
         .eq('center_id', centerId).eq('is_active', true),
@@ -278,22 +278,14 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
         .gte('created_at', startOfTodayISO()),
     ])
     setClassrooms((cls ?? []) as Classroom[])
-    setChildren((kids ?? []) as Child[])
+    setAllChildren((kids ?? []) as Child[])
     setStaff((staffData ?? []) as StaffRow[])
     setSessions((sess ?? []) as Session[])
     if (!soft) setLoading(false)
   }
-  // Restore a deactivated child. Clears date_out so the active-roster filter shows
-  // them again, and wipes the deactivation audit stamp.
-  const reactivateChild = async (id: string) => {
-    await supabase.schema('menumaker').from('roster')
-      .update({ is_active: true, date_out: null, deactivated_at: null, deactivation_reason: null })
-      .eq('id', id)
-    loadRoster(true)
-  }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { loadRoster() }, [centerId, rosterStatus])
+  useEffect(() => { loadRoster() }, [centerId])
 
   const attendMap = useMemo<Record<string, AttendState>>(() => {
     const sorted = [...sessions].sort(
@@ -308,12 +300,21 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
     return m
   }, [sessions])
 
+  // Active children (shown normally); inactive rows surface only inside search results.
+  const activeChildren = useMemo(
+    () => allChildren.filter(c => isActiveOn(c, todayStr)),
+    [allChildren],
+  )
+  const isChildActive = (c: Child) => isActiveOn(c, todayStr)
+  // Base set the view renders: search spans active + inactive, otherwise active only.
+  const displayChildren = searchActive ? allChildren : activeChildren
+
   const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim()
   const presentTotal = Object.values(attendMap).filter(a => a.state === 'present').length
-  const listedTotal  = children.length
+  const listedTotal  = activeChildren.length
   // Search matches across ALL classes of the center (class filter is ignored while searching).
   const searchMatches = (c: Child) => childMatchesSearch(c, debSearch)
-  const listedShown = searchActive ? children.filter(searchMatches).length : listedTotal
+  const listedShown = searchActive ? displayChildren.filter(searchMatches).length : listedTotal
 
   const toggleRoom = (id: string) => setExpanded(p => ({ ...p, [id]: !p[id] }))
 
@@ -354,31 +355,32 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
           </div>
 
           {/* Toolbar */}
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 20px', borderBottom:'1px solid #f0f4f1' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:12, padding:'8px 20px', borderBottom:'1px solid #f0f4f1' }}>
+            {/* View mode */}
             <div style={{ display:'flex', gap:6, alignItems:'center' }}>
               <button onClick={() => setViewMode('cards')} style={{ padding:'6px 14px', borderRadius:8, border:'1.5px solid #c0d8c0', background: viewMode==='cards' ? '#0f4c35' : '#fff', color: viewMode==='cards' ? '#fff' : '#555', cursor:'pointer', fontFamily:'inherit', fontSize:13, fontWeight:600 }}>⊞ Cards</button>
               <button onClick={() => setViewMode('list')} style={{ padding:'6px 14px', borderRadius:8, border:'1.5px solid #c0d8c0', background: viewMode==='list' ? '#0f4c35' : '#fff', color: viewMode==='list' ? '#fff' : '#555', cursor:'pointer', fontFamily:'inherit', fontSize:13, fontWeight:600 }}>☰ List</button>
-              <span style={{ width:1, height:22, background:'#dbe6db', margin:'0 4px' }} />
-              <button onClick={() => setRosterStatus('active')} style={{ padding:'6px 12px', borderRadius:8, border:'1.5px solid #c0d8c0', background: rosterStatus==='active' ? '#0f4c35' : '#fff', color: rosterStatus==='active' ? '#fff' : '#555', cursor:'pointer', fontFamily:'inherit', fontSize:13, fontWeight:600 }}>Active</button>
-              <button onClick={() => setRosterStatus('inactive')} title="Deactivated / departed children — reopen to Reactivate" style={{ padding:'6px 12px', borderRadius:8, border:`1.5px solid ${rosterStatus==='inactive' ? '#dc2626' : '#c0d8c0'}`, background: rosterStatus==='inactive' ? '#dc2626' : '#fff', color: rosterStatus==='inactive' ? '#fff' : '#555', cursor:'pointer', fontFamily:'inherit', fontSize:13, fontWeight:600 }}>Inactive</button>
             </div>
-            {/* Name search — shared across Cards & List; searches all classes of the center */}
-            <div style={{ position:'relative', flex:1, maxWidth:320, margin:'0 14px' }}>
-              <span style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', fontSize:13, color:'#8fae9c', pointerEvents:'none' }}>🔍</span>
-              <input
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Escape') { setSearch(''); setDebSearch('') } }}
-                placeholder="Search name…"
-                aria-label="Search children by name"
-                style={{ width:'100%', padding:'7px 28px 7px 30px', borderRadius:8, border:`1.5px solid ${searchActive ? '#0f4c35' : '#c0d8c0'}`, fontSize:13, fontFamily:'inherit', color:'#0f4c35', outline:'none', boxSizing:'border-box' }}
-              />
-              {search && (
-                <button onClick={() => { setSearch(''); setDebSearch('') }} aria-label="Clear search"
-                  style={{ position:'absolute', right:6, top:'50%', transform:'translateY(-50%)', border:'none', background:'transparent', cursor:'pointer', fontSize:14, color:'#999', lineHeight:1, padding:2 }}>✕</button>
-              )}
+            {/* Search + Add Child — one group on the right. Search always spans active &
+                inactive; inactive matches show dimmed with an Inactive badge. */}
+            <div style={{ display:'flex', gap:10, alignItems:'center', flexShrink:0 }}>
+              <div style={{ position:'relative', width:280, maxWidth:'40vw' }}>
+                <span style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', fontSize:13, color:'#8fae9c', pointerEvents:'none' }}>🔍</span>
+                <input
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Escape') { setSearch(''); setDebSearch('') } }}
+                  placeholder="Search active & inactive children…"
+                  aria-label="Search active and inactive children by name"
+                  style={{ width:'100%', padding:'7px 28px 7px 30px', borderRadius:8, border:`1.5px solid ${searchActive ? '#0f4c35' : '#c0d8c0'}`, fontSize:13, fontFamily:'inherit', color:'#0f4c35', outline:'none', boxSizing:'border-box' }}
+                />
+                {search && (
+                  <button onClick={() => { setSearch(''); setDebSearch('') }} aria-label="Clear search"
+                    style={{ position:'absolute', right:6, top:'50%', transform:'translateY(-50%)', border:'none', background:'transparent', cursor:'pointer', fontSize:14, color:'#999', lineHeight:1, padding:2 }}>✕</button>
+                )}
+              </div>
+              <button onClick={() => setShowAddChild(true)} style={{ padding:'8px 18px', borderRadius:9, background:'#0f4c35', color:'#fff', border:'none', cursor:'pointer', fontWeight:700, fontSize:13, fontFamily:'inherit', display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>➕ Add Child</button>
             </div>
-            <button onClick={() => setShowAddChild(true)} style={{ padding:'8px 18px', borderRadius:9, background:'#0f4c35', color:'#fff', border:'none', cursor:'pointer', fontWeight:700, fontSize:13, fontFamily:'inherit', display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>➕ Add Child</button>
           </div>
           {viewMode === 'list' && (() => {
             const COLS = [
@@ -389,7 +391,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
               { key:'milk',      label:'Milk' },
               { key:'date_in',   label:'Date In' },
             ]
-            const filtered = [...children]
+            const filtered = [...displayChildren]
               // while searching, ignore the class filter (search all classes of the center)
               .filter(c => searchActive || listClassFilter === 'all' || c.classroom_id === listClassFilter)
               .filter(c => childMatchesSearch(c, debSearch))
@@ -425,9 +427,9 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                   <select value={listClassFilter} onChange={e=>setListClassFilter(e.target.value)}
                     disabled={searchActive} title={searchActive ? 'Ignored while searching — search covers all classes' : undefined}
                     style={{ padding:'6px 12px', borderRadius:8, border:'1.5px solid #c0d8c0', fontSize:13, fontFamily:'inherit', background:'#fff', color:'#0f4c35', fontWeight:600, opacity: searchActive ? 0.45 : 1, pointerEvents: searchActive ? 'none' : 'auto' }}>
-                    <option value="all">All Classes ({children.length})</option>
+                    <option value="all">All Classes ({activeChildren.length})</option>
                     {classrooms.filter(c=>!c.name.toLowerCase().includes('staff')).map(c => (
-                      <option key={c.id} value={c.id}>{c.name} ({children.filter(ch=>ch.classroom_id===c.id).length})</option>
+                      <option key={c.id} value={c.id}>{c.name} ({activeChildren.filter(ch=>ch.classroom_id===c.id).length})</option>
                     ))}
                   </select>
                   {/* Column toggles */}
@@ -475,13 +477,17 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                         const frpBg = frpLabel==='F'?'#dcfce7':frpLabel==='R'?'#fef3c7':frpLabel==='P'?'#f3f4f6':'#fff'
                         const ageMs = child.birthday ? Date.now() - new Date(child.birthday).getTime() : 0
                         const ageY = Math.floor(ageMs / (1000*60*60*24*365.25))
+                        const rowActive = isChildActive(child)
                         return (
                           <tr key={child.id} onClick={() => { setFocusField(null); setChildSettingsId(child.id) }}
-                            style={{ borderBottom:'1px solid #f0f4f1', cursor:'pointer', background: idx%2===0 ? '#fff' : '#fafbfa' }}
+                            style={{ borderBottom:'1px solid #f0f4f1', cursor:'pointer', background: idx%2===0 ? '#fff' : '#fafbfa', opacity: rowActive ? 1 : 0.55 }}
                             onMouseEnter={e => (e.currentTarget.style.background='#f0f7f2')}
                             onMouseLeave={e => (e.currentTarget.style.background=idx%2===0?'#fff':'#fafbfa')}>
                             <td style={{ padding:'7px 12px', color:'#aaa', fontSize:12 }}>{idx+1}</td>
-                            <td style={{ padding:'7px 12px', fontWeight:600, color:'#1a2e1a' }}>{child.last_name ?? '—'}</td>
+                            <td style={{ padding:'7px 12px', fontWeight:600, color:'#1a2e1a' }}>
+                              {child.last_name ?? '—'}
+                              {!rowActive && <span style={{ marginLeft:6, fontSize:9, fontWeight:700, color:'#b91c1c', background:'#fee2e2', padding:'1px 6px', borderRadius:5, textTransform:'uppercase', letterSpacing:'0.04em' }}>Inactive</span>}
+                            </td>
                             <td style={{ padding:'7px 12px', color:'#1a2e1a' }}>{child.first_name ?? '—'}</td>
                             {listCols.classroom && <td style={{ padding:'7px 12px', color:'#555' }}>{room?.name ?? '—'}</td>}
                             {listCols.birthday && <td style={{ padding:'7px 12px', color:'#555', whiteSpace:'nowrap' }}>{child.birthday ? new Date(child.birthday).toLocaleDateString('en-US') : '—'}</td>}
@@ -502,7 +508,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
             )
           })()}
           {classrooms.map((room, ri) => {
-            const roomChildren = children
+            const roomChildren = displayChildren
               .filter(c => c.classroom_id === room.id)
               .filter(searchMatches)               // while searching, keep only matches
             // while searching, hide rooms with no matches and auto-open the ones that have them
@@ -604,14 +610,16 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                             const isReleased = at?.state === 'released'
                             const frpKey = (child.frp ?? '').trim().toUpperCase().slice(0,1)
                             const isNew = child.id === highlightId
+                            const childActive = isChildActive(child)
                             return (
                               <div key={child.id}
                                 ref={el => { if (el && isNew) el.scrollIntoView({ behavior:'smooth', block:'center' }) }}
                                 style={{
                                   borderRadius: 10,
-                                  border: `1.5px solid ${isNew ? '#0f4c35' : isPresent ? '#bbf7d0' : isReleased ? '#fde68a' : '#e8e8e8'}`,
-                                  background: isNew ? '#eafff2' : isPresent ? '#f0fff4' : isReleased ? '#fffbeb' : '#fff',
+                                  border: `1.5px solid ${isNew ? '#0f4c35' : !childActive ? '#e0d0d0' : isPresent ? '#bbf7d0' : isReleased ? '#fde68a' : '#e8e8e8'}`,
+                                  background: isNew ? '#eafff2' : !childActive ? '#faf7f7' : isPresent ? '#f0fff4' : isReleased ? '#fffbeb' : '#fff',
                                   boxShadow: isNew ? '0 0 0 3px rgba(15,76,53,0.18)' : 'none',
+                                  opacity: childActive || isNew ? 1 : 0.62,
                                   transition: 'box-shadow 0.3s, background 0.3s',
                                   overflow: 'hidden',
                                 }}>
@@ -626,8 +634,9 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                                     }} />
                                   </div>
                                   <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontSize: 12, fontWeight: 600, color: '#1a2e1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                      {name}
+                                    <div style={{ fontSize: 12, fontWeight: 600, color: '#1a2e1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display:'flex', alignItems:'center', gap:5 }}>
+                                      <span style={{ overflow:'hidden', textOverflow:'ellipsis' }}>{name}</span>
+                                      {!childActive && <span style={{ flexShrink:0, fontSize:8, fontWeight:700, color:'#b91c1c', background:'#fee2e2', padding:'1px 5px', borderRadius:4, textTransform:'uppercase', letterSpacing:'0.04em' }}>Inactive</span>}
                                     </div>
                                     <div style={{ fontSize: 10, color: '#888', marginTop: 1 }}>
                                       {frpKey && (
@@ -640,19 +649,22 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                                   </div>
                                 </div>
                                 <div style={{ display:'flex', borderTop:'1px solid #f0f0f0' }}>
-                                  {rosterStatus === 'inactive' ? (
-                                    <button onClick={e=>{e.stopPropagation();reactivateChild(child.id)}} style={{ flex:1, padding:'6px 0', border:'none', borderRight:'1px solid #f0f0f0', background:'transparent', cursor:'pointer', fontSize:11, fontWeight:700, color:'#16a34a', fontFamily:'inherit' }}>
-                                      ↩ Reactivate
-                                    </button>
+                                  {searchActive ? (
+                                    // Search results carry the deliberate status action: active → Deactivate,
+                                    // inactive → Reactivate. (Normal cards stay Emergency + Settings only.)
+                                    childActive ? (
+                                      <button onClick={e=>{e.stopPropagation();setSettingsTab(0);setFocusField('date_out');setChildSettingsId(child.id)}} title="Set end date / deactivate" style={{ flex:1, padding:'6px 0', border:'none', borderRight:'1px solid #f0f0f0', background:'transparent', cursor:'pointer', fontSize:11, fontWeight:600, color:'#b45309', fontFamily:'inherit' }}>
+                                        ⏻ Deactivate
+                                      </button>
+                                    ) : (
+                                      <button onClick={e=>{e.stopPropagation();setReactivateTarget(child)}} title="Reactivate with a new start date" style={{ flex:1, padding:'6px 0', border:'none', borderRight:'1px solid #f0f0f0', background:'transparent', cursor:'pointer', fontSize:11, fontWeight:700, color:'#16a34a', fontFamily:'inherit' }}>
+                                        ↩ Reactivate
+                                      </button>
+                                    )
                                   ) : (
-                                    <>
                                     <button onClick={e=>{e.stopPropagation();setEmergencyChild({id:child.id,name:child.child_name || 'Child'})}} style={{ flex:1, padding:'6px 0', border:'none', borderRight:'1px solid #f0f0f0', background:'transparent', cursor:'pointer', fontSize:11, fontWeight:600, color:'#b91c1c', fontFamily:'inherit' }}>
                                       🚨 Emergency
                                     </button>
-                                    <button onClick={e=>{e.stopPropagation();setSettingsTab(0);setFocusField('date_out');setChildSettingsId(child.id)}} title="Set end date / deactivate" style={{ flex:1, padding:'6px 0', border:'none', borderRight:'1px solid #f0f0f0', background:'transparent', cursor:'pointer', fontSize:11, fontWeight:600, color:'#b45309', fontFamily:'inherit' }}>
-                                      ⏻ Deactivate
-                                    </button>
-                                    </>
                                   )}
                                   <button onClick={e=>{e.stopPropagation();setSettingsTab(0);setFocusField(null);setChildSettingsId(child.id)}} style={{ flex:1, padding:'6px 0', border:'none', background:'transparent', cursor:'pointer', fontSize:11, fontWeight:600, color:'#0f4c35', fontFamily:'inherit' }}>
                                     ⚙️ Settings
@@ -699,6 +711,13 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
           childName={emergencyChild.name}
           onClose={() => setEmergencyChild(null)}
           onAddContact={() => { const id = emergencyChild.id; setEmergencyChild(null); setSettingsTab(1); setFocusField(null); setChildSettingsId(id) }}
+        />
+      )}
+      {reactivateTarget && (
+        <ReactivateModal
+          child={reactivateTarget}
+          onClose={() => setReactivateTarget(null)}
+          onDone={() => { setReactivateTarget(null); loadRoster(true) }}
         />
       )}
       {showAddChild && currentCenter && (
@@ -959,6 +978,78 @@ function AddChildModal({ centerId, orgId, classrooms, onDone, onClose }: {
             <button onClick={onClose} style={{ flex:1, padding:'11px', borderRadius:9, border:'1.5px solid #c0d8c0', background:'#fff', cursor:'pointer', fontFamily:'inherit', fontSize:14 }}>Cancel</button>
             <button onClick={save} disabled={saving} style={{ flex:2, padding:'11px', borderRadius:9, background:'#0f4c35', color:'#fff', border:'none', cursor:'pointer', fontWeight:700, fontSize:14, fontFamily:'inherit', opacity:saving?0.6:1 }}>
               {saving ? 'Saving…' : '✓ Add Child'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Reactivate Modal ─────────────────────────────────────────────────────────
+// Restores a deactivated / departed child on a NEW start date. Rule (Nikolay):
+// the new start must fall AFTER the recorded end date; on confirm we clear date_out,
+// set is_active=true and date_in=new start — same roster row, no duplicate.
+
+function ReactivateModal({ child, onClose, onDone }: {
+  child: Child; onClose: () => void; onDone: () => void
+}) {
+  const endDate = child.date_out ? child.date_out.slice(0, 10) : ''
+  const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10))
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const name = displayChildName(child)
+  const tooEarly = !!endDate && startDate <= endDate
+
+  async function confirm() {
+    setError('')
+    if (!startDate) { setError('Pick a start date'); return }
+    if (tooEarly) { setError(`Start date must be after the end date (${fmtDate(endDate)}).`); return }
+    setSaving(true)
+    try {
+      const { error: err } = await supabase.schema('menumaker').from('roster')
+        .update({ is_active: true, date_out: null, date_in: startDate, deactivated_at: null, deactivation_reason: null })
+        .eq('id', child.id)
+      if (err) throw err
+      onDone()
+    } catch (e: any) { setError(e.message); setSaving(false) }
+  }
+
+  const inp: React.CSSProperties = {
+    width: '100%', padding: '10px 12px', borderRadius: 8,
+    border: '1.5px solid #c0d8c0', fontSize: 14, fontFamily: 'inherit',
+    background: '#fff', boxSizing: 'border-box', outline: 'none',
+  }
+  const lbl: React.CSSProperties = {
+    fontSize: 11, fontWeight: 700, color: '#6b7280',
+    textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 4,
+  }
+
+  return (
+    <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2000, padding:20 }}>
+      <div onClick={e=>e.stopPropagation()} style={{ background:'#fff', borderRadius:16, width:'100%', maxWidth:400, boxShadow:'0 20px 60px rgba(0,0,0,0.2)', fontFamily:"'DM Sans',sans-serif", overflow:'hidden' }}>
+        <div style={{ background:'#0f4c35', padding:'20px 24px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <div style={{ color:'#fff', fontWeight:700, fontSize:17 }}>↩ Reactivate {name}</div>
+          <button onClick={onClose} style={{ background:'rgba(255,255,255,0.15)', border:'none', color:'#fff', width:30, height:30, borderRadius:'50%', cursor:'pointer', fontSize:18 }}>×</button>
+        </div>
+        <div style={{ padding:24, display:'flex', flexDirection:'column', gap:14 }}>
+          <div style={{ fontSize:13, color:'#555', lineHeight:1.5 }}>
+            This child left{endDate ? <> on <strong>{fmtDate(endDate)}</strong></> : ''}. Pick the
+            new <strong>start date</strong> — it becomes their Date In and clears the end date so
+            they count again.
+          </div>
+          <div>
+            <label style={lbl}>New start date *</label>
+            <input type="date" style={{ ...inp, border:`1.5px solid ${tooEarly ? '#dc2626' : '#c0d8c0'}` }}
+              value={startDate} min={endDate || undefined}
+              onChange={e=>setStartDate(e.target.value)} />
+            {tooEarly && <div style={{ color:'#dc2626', fontSize:12, marginTop:6 }}>Must be after the end date ({fmtDate(endDate)}).</div>}
+          </div>
+          {error && <div style={{ color:'#dc2626', fontSize:13 }}>{error}</div>}
+          <div style={{ display:'flex', gap:10, marginTop:4 }}>
+            <button onClick={onClose} style={{ flex:1, padding:'11px', borderRadius:9, border:'1.5px solid #c0d8c0', background:'#fff', cursor:'pointer', fontFamily:'inherit', fontSize:14 }}>Cancel</button>
+            <button onClick={confirm} disabled={saving || tooEarly} style={{ flex:2, padding:'11px', borderRadius:9, background:'#16a34a', color:'#fff', border:'none', cursor: (saving||tooEarly)?'not-allowed':'pointer', fontWeight:700, fontSize:14, fontFamily:'inherit', opacity:(saving||tooEarly)?0.6:1 }}>
+              {saving ? 'Reactivating…' : '↩ Reactivate'}
             </button>
           </div>
         </div>

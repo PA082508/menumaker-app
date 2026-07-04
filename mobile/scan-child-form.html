@@ -1,0 +1,155 @@
+<!doctype html>
+<!--
+  Scan child form — Phase 1.5 photo intake (hand-off module for the cacfp-receipt
+  mobile app, github.com/PA082508/cacfp-receipt).
+
+  Standalone page: the office photographs a signed paper enrollment form, this
+  sends it to the menumaker `enrollment-scan-ocr` edge function (upload + OCR),
+  shows what was read, and submits a pending enrollment_submission via
+  submit_enrollment_form(source='paper_entry'). It then appears in the director's
+  Enrollment Inbox with the scan attached (📎) and low-confidence fields flagged.
+
+  BEFORE USE — fill the three CONFIG blocks below:
+    1. MENUMAKER_URL / MENUMAKER_ANON_KEY  (same public anon key the web app uses;
+       VITE_SUPABASE_ANON_KEY in menumaker-app/.env)
+    2. CENTERS — real org_id + center_id for each of the 3 centers (from
+       menumaker.centers). The director picks theirs.
+  Also deploy the bucket + edge function + secret (see mobile/README.md).
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Scan child form</title>
+  <style>
+    :root { --green:#0f4c35; --ink:#1a2e1a; }
+    * { box-sizing: border-box; font-family: -apple-system, "DM Sans", system-ui, sans-serif; }
+    body { margin:0; background:#f4f6f4; color:var(--ink); }
+    header { background:var(--green); color:#fff; padding:16px 18px; font-size:20px; font-weight:700; }
+    main { padding:18px; max-width:520px; margin:0 auto; }
+    label { display:block; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#6b7280; margin:14px 0 6px; }
+    select, button { width:100%; padding:13px 14px; border-radius:10px; font-size:16px; border:1.5px solid #c0d8c0; background:#fff; }
+    button.primary { background:var(--green); color:#fff; border:none; font-weight:700; margin-top:16px; }
+    button:disabled { opacity:.5; }
+    .types { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .types button { font-size:14px; font-weight:600; }
+    .types button.sel { background:var(--green); color:#fff; border-color:var(--green); }
+    .capture { margin-top:14px; border:2px dashed #c0d8c0; border-radius:12px; padding:22px; text-align:center; background:#fff; }
+    .capture img { max-width:100%; border-radius:10px; }
+    .note { font-size:13px; color:#6b7280; margin-top:10px; }
+    .ok { background:#f0fff4; border:1px solid #bbf7d0; border-radius:12px; padding:16px; margin-top:14px; }
+    .warn { color:#92400e; }
+    pre { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:12px; font-size:12px; overflow:auto; }
+    input[type=file] { display:none; }
+  </style>
+</head>
+<body>
+  <header>📄 Scan child form</header>
+  <main id="app"></main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script>
+    // ── CONFIG 1 — menumaker project (public anon key) ───────────────────────
+    const MENUMAKER_URL = 'https://trrmyqfpxntmgxnqkikp.supabase.co'
+    const MENUMAKER_ANON_KEY = 'PASTE_MENUMAKER_ANON_KEY'   // = web app VITE_SUPABASE_ANON_KEY
+
+    // ── CONFIG 2 — the three centers (fill real IDs from menumaker.centers) ──
+    const CENTERS = [
+      { label: 'Ridge (Wickliffe)',        orgId: 'ORG_UUID', centerId: 'RIDGE_CENTER_UUID' },
+      { label: 'Alpha (Highland Heights)', orgId: 'ORG_UUID', centerId: 'ALPHA_CENTER_UUID' },
+      { label: 'Pearl (Parma Heights)',    orgId: 'ORG_UUID', centerId: 'PEARL_CENTER_UUID' },
+    ]
+
+    const TYPES = [
+      { code: 'cacfp_enrollment', label: 'CACFP Enrollment' },
+      { code: 'iea',              label: 'Income Eligibility' },
+      { code: 'dcy_01234',        label: 'DCY 01234' },
+      { code: 'other',            label: 'Other (scan only)' },
+    ]
+
+    const sb = supabase.createClient(MENUMAKER_URL, MENUMAKER_ANON_KEY)
+    const app = document.getElementById('app')
+    const state = { center: CENTERS[0], type: 'cacfp_enrollment', imageData: null, busy: false, result: null }
+
+    function render() {
+      const c = state.center
+      app.innerHTML = `
+        <label>Center</label>
+        <select id="center">${CENTERS.map((x,i)=>`<option value="${i}" ${x===c?'selected':''}>${x.label}</option>`).join('')}</select>
+
+        <label>Form type</label>
+        <div class="types">
+          ${TYPES.map(t=>`<button data-type="${t.code}" class="${state.type===t.code?'sel':''}">${t.label}</button>`).join('')}
+        </div>
+
+        <label>Photo of the signed form</label>
+        <div class="capture" id="capture">
+          ${state.imageData ? `<img src="${state.imageData}" alt="scan preview" />` : '📷 Tap to take a photo'}
+        </div>
+        <input type="file" id="file" accept="image/*" capture="environment" />
+
+        <button class="primary" id="submit" ${(!state.imageData||state.busy)?'disabled':''}>
+          ${state.busy ? 'Reading & submitting…' : (state.type==='other' ? 'Attach scan to Inbox' : 'Read form & submit')}
+        </button>
+        <div class="note">${state.type==='other'
+          ? 'No OCR — the scan is attached; complete the fields in the director Inbox.'
+          : 'OCR reads the fields; anything unclear is flagged “verify” for the director.'}</div>
+        ${state.result ? renderResult(state.result) : ''}
+      `
+      app.querySelector('#center').onchange = e => { state.center = CENTERS[+e.target.value]; render() }
+      app.querySelectorAll('[data-type]').forEach(b => b.onclick = () => { state.type = b.dataset.type; render() })
+      app.querySelector('#capture').onclick = () => app.querySelector('#file').click()
+      app.querySelector('#file').onchange = onFile
+      app.querySelector('#submit').onclick = onSubmit
+    }
+
+    function renderResult(r) {
+      if (r.error) return `<div class="ok warn">⚠︎ ${r.error}</div>`
+      const lc = (r.lowConfidence||[]).length
+      return `<div class="ok">
+        ✅ Submitted to the Enrollment Inbox.
+        ${lc ? `<div class="warn">🔍 ${lc} field(s) flagged “verify” for the director.</div>` : ''}
+        <button class="primary" onclick="location.reload()">Scan another</button>
+      </div>`
+    }
+
+    function onFile(e) {
+      const f = e.target.files[0]; if (!f) return
+      const reader = new FileReader()
+      reader.onload = () => { state.imageData = reader.result; render() }
+      reader.readAsDataURL(f)
+    }
+
+    async function onSubmit() {
+      state.busy = true; state.result = null; render()
+      try {
+        // 1) upload + OCR via the edge function
+        const res = await fetch(`${MENUMAKER_URL}/functions/v1/enrollment-scan-ocr`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${MENUMAKER_ANON_KEY}` },
+          body: JSON.stringify({ image: state.imageData, submissionType: state.type, centerId: state.center.centerId }),
+        })
+        const out = await res.json()
+        if (!res.ok) throw new Error(out.error || `OCR failed (${res.status})`)
+
+        // 2) create the pending submission (nothing hits the roster until Approve)
+        const { error } = await sb.schema('menumaker').rpc('submit_enrollment_form', {
+          p_org: state.center.orgId,
+          p_center: state.center.centerId,
+          p_submission_type: state.type,
+          p_form_data: out.form_data,
+          p_source: 'paper_entry',
+        })
+        if (error) throw error
+        state.result = { lowConfidence: out.lowConfidence }
+      } catch (e) {
+        state.result = { error: e.message || String(e) }
+      } finally {
+        state.busy = false; render()
+      }
+    }
+
+    render()
+  </script>
+</body>
+</html>

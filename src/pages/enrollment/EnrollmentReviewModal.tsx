@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase'
 import { type RecordCtx } from '@/lib/childFieldRegistry'
 import { buildDiff, getPath, setPath, type DiffRow } from '@/lib/enrollmentFieldMap'
 import { validateSubmission, submissionTypeLabel, type ValStatus } from '@/lib/enrollmentValidationRules'
+import { resolveScanUrl, lowConfidenceSet, ocrMeta, hasScan } from '@/lib/enrollmentScan'
 import {
   buildCacfpPatch, buildIeaFrp, loadCenterRoster, matchRoster,
   approveCacfpInsert, approveCacfpUpdate, approveIea, rejectSubmission,
@@ -82,6 +83,20 @@ export default function EnrollmentReviewModal({
     })()
     return () => { cancelled = true }
   }, [resolvedChildId])
+
+  // Phase 1.5 — photographed paper form. Resolve the scan for side-by-side review,
+  // and collect the OCR low-confidence field set so those rows read "verify".
+  const [scanUrl, setScanUrl] = useState<string | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const url = hasScan(fd) ? await resolveScanUrl(fd.scan_ref) : null
+      if (!cancelled) setScanUrl(url)
+    })()
+    return () => { cancelled = true }
+  }, [fd?.scan_ref])
+  const lowConf = useMemo(() => lowConfidenceSet(fd), [fd])
+  const scanDocType = ocrMeta(fd).docType
 
   const rows = useMemo(() => buildDiff(submission.submission_type, fd, ctx), [submission.submission_type, fd, ctx])
   const v = useMemo(
@@ -202,7 +217,7 @@ export default function EnrollmentReviewModal({
       fontFamily: "'DM Sans', sans-serif",
     }}>
       <div onClick={e => e.stopPropagation()} style={{
-        background: '#fff', borderRadius: 16, width: '100%', maxWidth: 720,
+        background: '#fff', borderRadius: 16, width: '100%', maxWidth: scanUrl ? 980 : 720,
         maxHeight: '90vh', display: 'flex', flexDirection: 'column',
         boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
       }}>
@@ -218,8 +233,25 @@ export default function EnrollmentReviewModal({
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#fff', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>×</button>
         </div>
 
-        {/* body */}
-        <div style={{ padding: '16px 22px', overflowY: 'auto', flex: 1 }}>
+        {/* body — scan (Phase 1.5) alongside the diff */}
+        <div style={{ display: 'flex', overflow: 'hidden', flex: 1 }}>
+          {scanUrl && (
+            <div style={{ width: 300, flexShrink: 0, borderRight: '1px solid #f3f4f6', background: '#0b1f17', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.1)', color: '#e5e7eb', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                <span>📷 Scanned form{scanDocType ? ` · ${scanDocType}` : ''}</span>
+                <a href={scanUrl} target="_blank" rel="noreferrer" style={{ color: '#7ee8b0', fontSize: 11, fontWeight: 600, textDecoration: 'none' }}>Open ↗</a>
+              </div>
+              <div style={{ flex: 1, overflow: 'auto', padding: 8 }}>
+                <img src={scanUrl} alt="Scanned enrollment form" style={{ width: '100%', borderRadius: 8, display: 'block' }} />
+              </div>
+              {lowConf.size > 0 && (
+                <div style={{ padding: '8px 12px', borderTop: '1px solid rgba(255,255,255,0.1)', color: '#fcd34d', fontSize: 11 }}>
+                  🔍 {lowConf.size} field{lowConf.size === 1 ? '' : 's'} marked <strong>verify</strong> — check against the scan.
+                </div>
+              )}
+            </div>
+          )}
+          <div style={{ padding: '16px 22px', overflowY: 'auto', flex: 1 }}>
           {(v.missing.length > 0 || v.warnings.length > 0) && (
             <div style={{ marginBottom: 14, padding: '10px 14px', background: v.status === 'errors' ? '#fef2f2' : '#fffbeb', borderRadius: 10, fontSize: 12.5 }}>
               {[...v.missing.map(m => ({ t: m, c: '#991b1b', s: '✕' })), ...v.warnings.map(w => ({ t: w, c: '#92400e', s: '⚠︎' }))].map((d, i) => (
@@ -240,15 +272,19 @@ export default function EnrollmentReviewModal({
           {sections.map(({ section, rows }) => (
             <div key={section} style={{ marginBottom: 12 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#0f4c35', margin: '8px 0 4px' }}>{section}</div>
-              {rows.map(r => (
+              {rows.map(r => {
+                // OCR flagged this field low-confidence → "verify" against the scan.
+                const verify = !r.missing && (lowConf.has(r.key) || (!!r.editPath && lowConf.has(r.editPath)))
+                return (
                 <div key={r.key} style={{
                   display: 'grid', gridTemplateColumns: '150px 1fr 1fr', gap: 10, alignItems: 'center',
                   padding: '6px 8px', borderRadius: 8,
-                  background: r.missing ? '#fef2f2' : r.changed ? '#fffbeb' : 'transparent',
-                  boxShadow: r.missing ? 'inset 3px 0 0 #ef4444' : undefined,
+                  background: r.missing ? '#fef2f2' : verify ? '#fff7ed' : r.changed ? '#fffbeb' : 'transparent',
+                  boxShadow: r.missing ? 'inset 3px 0 0 #ef4444' : verify ? 'inset 3px 0 0 #f59e0b' : undefined,
                 }}>
-                  <div style={{ fontSize: 12.5, color: r.missing ? '#991b1b' : '#6b7280' }}>
-                    {r.label}{r.required && <span title="Required" style={{ color: '#ef4444', fontWeight: 700 }}> ★</span>}
+                  <div style={{ fontSize: 12.5, color: r.missing ? '#991b1b' : '#6b7280', display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                    <span>{r.label}{r.required && <span title="Required" style={{ color: '#ef4444', fontWeight: 700 }}> ★</span>}</span>
+                    {verify && <span title="OCR was unsure — check this value against the scan" style={{ fontSize: 9, fontWeight: 700, color: '#92400e', background: '#fef3c7', padding: '1px 5px', borderRadius: 4, textTransform: 'uppercase', letterSpacing: '0.04em' }}>🔍 verify</span>}
                   </div>
                   <div style={{ fontSize: 13 }}>
                     {r.editPath ? (
@@ -271,9 +307,10 @@ export default function EnrollmentReviewModal({
                     {r.currentValue || (resolvedChildId ? '—' : 'new')}
                   </div>
                 </div>
-              ))}
+              )})}
             </div>
           ))}
+          </div>
         </div>
 
         {/* approve action panel */}

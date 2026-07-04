@@ -53,6 +53,29 @@ Approve is the single "send to the database" action. **Version 1 writes to the r
 - Approve is blocked on 🔴; 🟡 asks for a confirmation.
 - Tick **Paper form signed & filed** to record that the wet-signed paper form is on file.
 
+## Scanned paper forms (photo intake)
+
+Families who fill the packet **on paper** don't have to be re-typed. The office
+photographs the signed form in the director mobile app ("Scan child form"); OCR
+reads the fields and the form lands in this same Inbox as a **📷 Paper** submission
+with a **📎 Scan** chip.
+
+In **Review**, a scanned submission shows the **photo of the form on the left**, next
+to the fields on the right — so you can check every value against the original:
+
+- Fields the OCR was **unsure about** are tinted amber and tagged **🔍 verify**.
+  Read them off the scan and correct them in place before approving. (Confident
+  fields are not tagged.)
+- The panel footer counts how many fields need a look.
+- **Open ↗** shows the full-resolution scan in a new tab.
+- A form scanned as **"other"** (a voucher printout, a document with no packet
+  template) has no OCR — it's just the image attached to the child.
+
+Everything else is identical to an online submission: same validation badge, same
+diff, same duplicate detector, same Approve/Reject. This is exactly how the 3–4
+children added by hand (with only a few fields) get completed — their paper form
+arrives here and the duplicate detector offers **"update the existing child."**
+
 ## Reject
 
 Click **Reject**, enter a reason, and confirm. The reason is kept for follow-up. The submission leaves the pending list.

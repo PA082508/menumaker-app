@@ -126,6 +126,24 @@ const SECTIONS: Section[] = [
   },
 ]
 
+// ── director desktop: curated section set ─────────────────────
+// The director works inside the existing MenuMaker app. Their sidebar is limited
+// to the sections they own — Children / Staff / Menu (planner + published) /
+// Enrollment Inbox / Documents — with no Budget and no org admin. Admin and
+// office_manager keep the full sidebar (this filter never touches them).
+const DIRECTOR_SECTION_IDS = new Set(['dashboard', 'planning', 'people', 'documents'])
+const DIRECTOR_PATHS = new Set([
+  '/children', '/enrollment-inbox', '/staff',   // People
+  '/menu', '/menu/current',                     // Menu: planner + published
+  '/documents', '/instructions',                // Documents
+])
+function directorSections(secs: Section[]): Section[] {
+  return secs
+    .filter(s => DIRECTOR_SECTION_IDS.has(s.id))
+    .map(s => (s.items ? { ...s, items: s.items.filter(it => DIRECTOR_PATHS.has(it.path)) } : s))
+    .filter(s => s.noFlyout || (s.items != null && s.items.length > 0))
+}
+
 // ── legacy flat nav (used for cook/teacher fallback) ──────────
 const NAV_ITEMS: NavItem[] = [
   { path: '/dashboard',         label: 'Dashboard',      icon: '⊞' },
@@ -177,6 +195,11 @@ export default function AppLayout() {
   const handleSignOut = async () => { await signOut(); navigate('/login') }
 
   const hasCACFP = modules.includes('cacfp')
+
+  // Director desktop: a director sees only their curated sections; every other
+  // role keeps the full sidebar unchanged.
+  const directorMode = role === 'director'
+  const sections = directorMode ? directorSections(SECTIONS) : SECTIONS
 
   // block check (kept from original)
   const usingPerms = Array.isArray(navModules) && navModules.length > 0
@@ -255,7 +278,7 @@ export default function AppLayout() {
               </NavLink>
             ))
           ) : (
-            SECTIONS.map((sec, si) => {
+            sections.map((sec, si) => {
               const isDivided = si > 0 && (
                 (sec.id === 'reports') ||
                 (sec.id === 'settings')
@@ -351,7 +374,7 @@ export default function AppLayout() {
         </div>
 
         {/* Flyout panels */}
-        {SECTIONS.filter(s => !s.noFlyout && s.items).map(sec => (
+        {sections.filter(s => !s.noFlyout && s.items).map(sec => (
           <div
             key={sec.id}
             onMouseEnter={cancelHide}

@@ -201,6 +201,12 @@ export default function EnrollmentInboxPage() {
                     {!currentCenter?.id && <><span>·</span><span>{centerName(row.center_id)}</span></>}
                   </div>
                 </div>
+                {row.form_data?.scan_ref && (
+                  <span title="A scanned form is attached" style={{
+                    fontSize: 11, fontWeight: 600, color: '#0f4c35', background: '#f0fff4',
+                    padding: '2px 8px', borderRadius: 6,
+                  }}>📎 Scan</span>
+                )}
                 <SourceTag source={row.source} />
                 <StatusBadge v={v} />
                 <button

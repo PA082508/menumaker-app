@@ -5,6 +5,7 @@ import { useOrg } from '@/contexts/OrgContext'
 import { format } from 'date-fns'
 import ActionItemsWidget from '@/components/dashboard/ActionItemsWidget'
 import OrganizationDashboard from './OrganizationDashboard'
+import DirectorHome from './DirectorHome'
 
 interface DashboardStats {
   totalRecipes: number
@@ -56,7 +57,11 @@ const MEAL_COLORS: Record<string, { bg: string; border: string; label: string; d
 // keeps CenterDashboard's hooks from running in org view.
 export default function DashboardPage() {
   const { viewMode } = useOrg()
+  const { role } = useAuth()
   if (viewMode === 'org') return <OrganizationDashboard />
+  // Directors land on their role home (tiles for their sections); admins/office
+  // managers keep the full center dashboard.
+  if (role === 'director') return <DirectorHome />
   return <CenterDashboard />
 }
 

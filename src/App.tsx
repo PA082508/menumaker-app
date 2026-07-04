@@ -48,6 +48,7 @@ import ChildrenImportPage from '@/pages/children/ChildrenImportPage'
 import ChildrenExportPage from '@/pages/children/ChildrenExportPage'
 import PortalPage from '@/pages/portal/PortalPage'
 import EnrollmentInboxPage from '@/pages/enrollment/EnrollmentInboxPage'
+import DirectorHome from '@/pages/dashboard/DirectorHome'
 
 // Lazy placeholders for other pages
 const PlaceholderPage = ({ title }: { title: string }) => (
@@ -124,6 +125,7 @@ export default function App() {
             >
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="dashboard"  element={<DashboardPage />} />
+              <Route path="director-home" element={<DirectorHome />} />
               <Route path="menu"       element={<MenuPlannerPage />} />
               <Route path="menu/print-official/:center/:year/:month" element={<MenuPrintOfficialPage />} />
               <Route path="menu/published/:center/:year/:month" element={<MenuPublishedPage />} />

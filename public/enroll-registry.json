@@ -39,6 +39,8 @@
   },
   "allowedParentOrigins": [
     "https://playacademyusa.com",
-    "https://www.playacademyusa.com"
+    "https://www.playacademyusa.com",
+    "https://menumaker-app.vercel.app",
+    "http://localhost:5173"
   ]
 }

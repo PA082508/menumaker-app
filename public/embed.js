@@ -112,7 +112,15 @@
 
     // Config for the embed-mode write path (all from the single registry source).
     var sb = registry.supabase || null;
-    var centerCfg = (registry.centers && center && registry.centers[center]) || null;
+    var centersMap = registry.centers || {};
+    // Resolve center by slug (pearl) OR by center_id (uuid) — the in-app host
+    // passes a uuid, external snippets pass a slug.
+    var centerCfg = (center && centersMap[center]) || null;
+    if (!centerCfg && center) {
+      for (var ck in centersMap) {
+        if (centersMap[ck] && centersMap[ck].center_id === center) { centerCfg = centersMap[ck]; break; }
+      }
+    }
     var submissionType = form.submissionType || 'cacfp_enrollment';
 
     function genNonce() { return 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2); }
@@ -150,6 +158,8 @@
           if (!res.ok) return postToForm('error', { nonce: nonce, message: 'save failed (' + res.status + ')' });
           var id; try { id = JSON.parse(res.text); } catch (e) { id = res.text; }
           postToForm('saved', { nonce: nonce, ok: true, id: id });
+          // Notify the host page (in-app host listens to refresh its Inbox list).
+          try { window.dispatchEvent(new CustomEvent('pa-embed:saved', { detail: { id: id, center: center } })); } catch (e) {}
           // Re-inject: reset the form for the next submission.
           postToForm('inject', { nonce: genNonce(), center: center, prefill: null, reset: true });
         })

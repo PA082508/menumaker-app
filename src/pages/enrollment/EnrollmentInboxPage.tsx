@@ -14,6 +14,7 @@ import {
   type ValidationResult, type ValStatus,
 } from '@/lib/enrollmentValidationRules'
 import EnrollmentReviewModal from './EnrollmentReviewModal'
+import EmbedEnrollHost from './EmbedEnrollHost'
 
 const STAFF_ROLES = ['director', 'office_manager', 'admin']
 
@@ -79,7 +80,10 @@ export default function EnrollmentInboxPage() {
   const [expanded, setExpanded] = useState<string | null>(null)
   const [reviewing, setReviewing] = useState<Submission | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
-  const [toast, setToast] = useState<{ msg: string; undo: () => Promise<void> } | null>(null)
+  const [toast, setToast] = useState<{ msg: string; undo?: () => Promise<void> } | null>(null)
+  const [showNew, setShowNew] = useState(false)
+  // Center for the in-app embedded form: active center, else pick one (org view).
+  const [newCenter, setNewCenter] = useState('')
 
   const isStaff = useMemo(
     () => (roles ?? []).some(r => STAFF_ROLES.includes(r)),
@@ -145,9 +149,19 @@ export default function EnrollmentInboxPage() {
 
   return (
     <div style={{ padding: '28px 32px', fontFamily: "'DM Sans', sans-serif", maxWidth: 980 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 4 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: '#0f4c35', margin: 0 }}>Enrollment Inbox</h1>
-        <span style={{ fontSize: 13, color: '#6b7280' }}>{scopeLabel}</span>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+          <h1 style={{ fontSize: 24, fontWeight: 700, color: '#0f4c35', margin: 0 }}>Enrollment Inbox</h1>
+          <span style={{ fontSize: 13, color: '#6b7280' }}>{scopeLabel}</span>
+        </div>
+        <button
+          onClick={() => { setNewCenter(currentCenter?.id ?? ''); setShowNew(true) }}
+          style={{
+            padding: '8px 16px', borderRadius: 9, border: 'none', background: '#0f4c35',
+            color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+          }}>
+          ＋ New enrollment
+        </button>
       </div>
       <div style={{ fontSize: 13, color: '#888', marginBottom: 20 }}>
         Pending enrollment packet submissions awaiting director review.
@@ -259,6 +273,42 @@ export default function EnrollmentInboxPage() {
         />
       )}
 
+      {showNew && (
+        <div onClick={() => setShowNew(false)} style={{
+          position: 'fixed', inset: 0, background: 'rgba(10,30,20,0.45)', zIndex: 1090,
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 24, overflow: 'auto',
+        }}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background: '#fff', borderRadius: 16, width: 'min(720px, 100%)', padding: 20,
+            boxShadow: '0 20px 60px rgba(0,0,0,0.25)', fontFamily: "'DM Sans', sans-serif",
+          }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: '#0f4c35' }}>New enrollment</div>
+                <div style={{ fontSize: 12, color: '#6b7280' }}>Fill the form; it files into this Inbox for review.</div>
+              </div>
+              <button onClick={() => setShowNew(false)} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Close</button>
+            </div>
+            {!newCenter ? (
+              <div style={{ padding: '8px 0 6px' }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Choose a center</label>
+                <select value={newCenter} onChange={e => setNewCenter(e.target.value)}
+                  style={{ padding: '8px 10px', border: '1.5px solid #e5e7eb', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }}>
+                  <option value="">Select…</option>
+                  {(centers ?? []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+            ) : (
+              <EmbedEnrollHost
+                center={newCenter}
+                form="enroll"
+                onSaved={() => { setReloadKey(k => k + 1); setToast({ msg: 'Enrollment submitted — filed to the Inbox.' }) }}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
       {toast && (
         <div style={{
           position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
@@ -267,10 +317,12 @@ export default function EnrollmentInboxPage() {
           boxShadow: '0 10px 30px rgba(0,0,0,0.25)', zIndex: 1100,
         }}>
           <span>{toast.msg}</span>
-          <button onClick={handleUndo} style={{
-            background: 'transparent', border: 'none', color: '#7ee8b0', fontWeight: 700,
-            fontSize: 13.5, cursor: 'pointer', padding: 0,
-          }}>Undo</button>
+          {toast.undo && (
+            <button onClick={handleUndo} style={{
+              background: 'transparent', border: 'none', color: '#7ee8b0', fontWeight: 700,
+              fontSize: 13.5, cursor: 'pointer', padding: 0,
+            }}>Undo</button>
+          )}
         </div>
       )}
     </div>

@@ -85,12 +85,16 @@
     try { formOrigin = new URL(formUrl).origin; }
     catch (e) { return showFallback(form.fallbackUrl); }
 
-    // Build the iframe src: pass version, host origin and center as query params
-    // so the form (phase 2) can validate the host and scope itself.
+    // Build the iframe src. The form shim reads these: embed=1 (embed mode →
+    // hide toolbar, no own writes), v (version), host (parent origin to validate
+    // + target), center (scope), registry (so the shim can read
+    // allowedParentOrigins from the same single source).
     var src = formUrl
       + (formUrl.indexOf('?') === -1 ? '?' : '&')
-      + 'v=' + encodeURIComponent(version)
+      + 'embed=1'
+      + '&v=' + encodeURIComponent(version)
       + '&host=' + encodeURIComponent(location.origin)
+      + '&registry=' + encodeURIComponent(registryUrl)
       + (center ? '&center=' + encodeURIComponent(center) : '');
 
     container.innerHTML = '';

@@ -1,13 +1,21 @@
 {
   "schema": 1,
-  "_note": "Version registry for the embed loader (public/embed.js). The form itself lives on GitHub Pages (pa082508.github.io); embed.js pins the iframe to versions[<current|data-version>]. REPLACE the placeholder URLs below with the real published GitHub Pages paths (repo/path TBD by Nikolay). Bumping `current` moves unpinned embeds; data-version pins survive it.",
+  "_note": "Version registry for the embed loader (public/embed.js). Forms live in the ROOT GitHub Pages repo pa082508.github.io under forms/1-data-sources/. embed.js pins the iframe to versions[<current|data-version>]. Bumping `current` moves unpinned embeds; data-version pins survive it. The URLs below resolve once the architect PUBLISHES the shim-enabled versions (v7 enrollment / v5 IEA); until then they 404 → loader degrades to a fallback link (expected).",
   "forms": {
     "enroll": {
-      "current": "v1",
+      "current": "v7",
       "versions": {
-        "v1": "https://pa082508.github.io/PLACEHOLDER-forms-repo/enroll/v1/index.html"
+        "v7": "https://pa082508.github.io/forms/1-data-sources/CACFP_Enrollment_v7.html"
       },
-      "fallbackUrl": "https://pa082508.github.io/PLACEHOLDER-forms-repo/enroll/v1/index.html"
+      "fallbackUrl": "https://pa082508.github.io/forms/1-data-sources/CACFP_Enrollment_v7.html"
+    },
+    "iea": {
+      "current": "v5",
+      "versions": {
+        "v5": "https://pa082508.github.io/forms/1-data-sources/IEA_v5.html"
+      },
+      "fallbackUrl": "https://pa082508.github.io/forms/1-data-sources/IEA_v5.html",
+      "_todo": "confirm exact IEA v5 filename with the architect"
     }
   },
   "allowedParentOrigins": [

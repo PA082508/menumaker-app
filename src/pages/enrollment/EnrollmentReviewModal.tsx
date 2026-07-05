@@ -145,6 +145,9 @@ export default function EnrollmentReviewModal({
   async function doApprove() {
     if (v.status === 'errors') return
     if (v.status === 'warnings' && !window.confirm('This submission has warnings. Approve anyway?')) return
+    // Anti-misclick: if the reviewer never edited the diff, confirm the roster
+    // write first. Editing (dirty) already signals a deliberate review.
+    if (!dirty && !window.confirm(`Approve ${childName}? This creates or updates the roster.`)) return
     setBusy(true); setErr(null)
     try {
       let result: ApproveResult
@@ -398,13 +401,16 @@ export default function EnrollmentReviewModal({
               cursor: rejectReason.trim() && !busy ? 'pointer' : 'default',
             }}>Confirm reject</button>
           ) : (
-            <button onClick={() => setRejecting(true)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #fecaca', background: '#fff', color: '#991b1b', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Reject</button>
+            // Solid red — an equal-weight destructive action opposite green Approve.
+            <button onClick={() => setRejecting(true)} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#991b1b', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>✕ Reject</button>
           )}
+          {/* Deliberate gap so Approve is never mistaken for / adjacent to Reject. */}
+          <div style={{ width: 22 }} />
           <button onClick={doApprove} disabled={approveBlocked} style={{
             padding: '8px 20px', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 700,
             background: approveBlocked ? '#d1d5db' : '#0f4c35', color: '#fff',
             cursor: approveBlocked ? 'default' : 'pointer',
-          }}>{busy ? 'Working…' : 'Approve'}</button>
+          }}>{busy ? 'Working…' : '✓ Approve'}</button>
         </div>
       </div>
     </div>

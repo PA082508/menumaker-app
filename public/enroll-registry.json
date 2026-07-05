@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "_note": "Version registry for the embed loader (public/embed.js). The form itself lives on GitHub Pages (pa082508.github.io); embed.js pins the iframe to versions[<current|data-version>]. REPLACE the placeholder URLs below with the real published GitHub Pages paths (repo/path TBD by Nikolay). Bumping `current` moves unpinned embeds; data-version pins survive it.",
+  "forms": {
+    "enroll": {
+      "current": "v1",
+      "versions": {
+        "v1": "https://pa082508.github.io/PLACEHOLDER-forms-repo/enroll/v1/index.html"
+      },
+      "fallbackUrl": "https://pa082508.github.io/PLACEHOLDER-forms-repo/enroll/v1/index.html"
+    }
+  },
+  "allowedParentOrigins": [
+    "https://playacademyusa.com",
+    "https://www.playacademyusa.com"
+  ]
+}

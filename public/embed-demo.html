@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Play Academy — embed loader demo</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; color: #1a2e1a; }
+    h1 { font-size: 20px; } code { background: #f0f4f1; padding: 1px 5px; border-radius: 4px; }
+    .frame { margin-top: 20px; padding: 16px; border: 1px dashed #c0d8c0; border-radius: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Embed loader demo (Variant A skeleton)</h1>
+  <p>
+    This page pretends to be a host site (e.g. playacademyusa.com). The loader below
+    reads <code>/enroll-registry.json</code>, resolves the pinned version and injects
+    the form iframe from GitHub Pages. While the form URL is a placeholder it will
+    time out and show the <strong>degradation fallback link</strong> — that is the
+    skeleton working as intended.
+  </p>
+
+  <div class="frame">
+    <div id="pa-enroll"></div>
+    <!-- The real host snippet: -->
+    <script src="/embed.js" data-target="#pa-enroll" data-form="enroll" data-center="pearl" async></script>
+    <noscript><a href="/embed-fallback">Open the enrollment form ↗</a></noscript>
+  </div>
+</body>
+</html>

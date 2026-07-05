@@ -1,21 +1,40 @@
 {
   "schema": 1,
-  "_note": "Version registry for the embed loader (public/embed.js). Forms live in the ROOT GitHub Pages repo pa082508.github.io under forms/1-data-sources/. embed.js pins the iframe to versions[<current|data-version>]. Bumping `current` moves unpinned embeds; data-version pins survive it. The URLs below resolve once the architect PUBLISHES the shim-enabled versions (v7 enrollment / v5 IEA); until then they 404 → loader degrades to a fallback link (expected).",
+  "_note": "Version registry + config for the embed loader (public/embed.js). Forms live in the ROOT GitHub Pages repo pa082508.github.io under forms/1-data-sources/. embed.js pins the iframe to versions[<current|data-version>]; resolves the center slug via `centers`; and (in embed mode) writes the submission via `supabase` anon RPC submit_enrollment_form (p_source=embed). anon key is public (same as the SPA bundle).",
+  "supabase": {
+    "url": "https://trrmyqfpxntmgxnqkikp.supabase.co",
+    "anonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRycm15cWZweG50bWd4bnFraWtwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1OTczMzMsImV4cCI6MjA5NjE3MzMzM30.b2zlijzzwPPgZqTFNrOvhgNWZpBSxmQQioErMpoX_Ko"
+  },
   "forms": {
     "enroll": {
       "current": "v7",
       "versions": {
         "v7": "https://pa082508.github.io/forms/1-data-sources/CACFP_Enrollment_v7.html"
       },
-      "fallbackUrl": "https://pa082508.github.io/forms/1-data-sources/CACFP_Enrollment_v7.html"
+      "fallbackUrl": "https://pa082508.github.io/forms/1-data-sources/CACFP_Enrollment_v7.html",
+      "submissionType": "cacfp_enrollment"
     },
     "iea": {
       "current": "v5",
       "versions": {
-        "v5": "https://pa082508.github.io/forms/1-data-sources/IEA_v5.html"
+        "v5": "https://pa082508.github.io/forms/1-data-sources/IEA_FY2026-27_v5.html"
       },
-      "fallbackUrl": "https://pa082508.github.io/forms/1-data-sources/IEA_v5.html",
-      "_todo": "confirm exact IEA v5 filename with the architect"
+      "fallbackUrl": "https://pa082508.github.io/forms/1-data-sources/IEA_FY2026-27_v5.html",
+      "submissionType": "iea"
+    }
+  },
+  "centers": {
+    "pearl": {
+      "org_id": "3a9a290e-7e49-491e-946b-ad86f2399910",
+      "center_id": "881ef4ce-1a27-4d3b-aa60-59d2a307bf2b"
+    },
+    "alpha": {
+      "org_id": "3a9a290e-7e49-491e-946b-ad86f2399910",
+      "center_id": "099c404b-e6d3-4543-9d9a-1fb11a2ee62d"
+    },
+    "ridge": {
+      "org_id": "3a9a290e-7e49-491e-946b-ad86f2399910",
+      "center_id": "4aed7d5a-00d0-4a4c-ac99-311046ad2027"
     }
   },
   "allowedParentOrigins": [

@@ -22,8 +22,9 @@
 
   <div class="frame">
     <div id="pa-enroll"></div>
-    <!-- The real host snippet: -->
-    <script src="/embed.js" data-target="#pa-enroll" data-form="enroll" data-center="pearl" async></script>
+    <!-- The real host snippet. data-prefill is optional (→ inject on ready). -->
+    <script src="/embed.js" data-target="#pa-enroll" data-form="enroll" data-center="pearl"
+            data-prefill='{"child_first_name":"Demo"}' async></script>
     <noscript><a href="/embed-fallback">Open the enrollment form ↗</a></noscript>
   </div>
 </body>

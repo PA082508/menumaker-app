@@ -36,15 +36,27 @@
 - **Degradation** — no JS → `<noscript>` link; registry/iframe failure or a load
   timeout (9s) → a plain fallback link instead of a blank frame.
 
-## postMessage protocol (namespaced `pa-embed`, marker `__paEmbed:true`)
+## postMessage protocol (namespaced `pa-embed`, v1, marker `__paEmbed:true`)
 
-- form → loader: `{type:'ready'}`, `{type:'resize', height}` (more in phase 2).
-- loader → form: `{type:'host', host, center, version}` (sent once, on `ready`).
+Envelope on every message: `{__paEmbed:true, ns:'pa-embed', v:1, type, ...}`. Receivers
+drop anything failing the envelope or the origin/source check.
 
-## TODO before go-live (Step 2 = form content)
+- form → loader: `{type:'ready', formType, version}`, `{type:'resize', height}`,
+  `{type:'save', formType, formData, signatures, signatureDate, nonce}`.
+- loader → form: `{type:'host', host, center, version}` (on `ready`),
+  `{type:'inject', center, prefill, reset, nonce}` (initial prefill + reset after save),
+  `{type:'saved', ok:true, id, nonce}` / `{type:'error', message, nonce}`.
 
-- **Set the real GitHub Pages URL** in `enroll-registry.json` (currently
-  `PLACEHOLDER-forms-repo` — repo/path TBD by Nikolay).
-- Build the form on GitHub Pages: implement the `ready`/`resize` handshake, validate
-  `host` against `allowedParentOrigins`, and submit via the `submit_enrollment_form`
-  RPC (anon). Then wire `submitted`/`navigate` messages in the loader.
+## Step 2 — DONE (loader side, 2026-07-05)
+
+- Registry pinned to the published forms: `CACFP_Enrollment_v7.html`,
+  `IEA_FY2026-27_v5.html` (folder `forms/1-data-sources/`). Registry also carries
+  `supabase{url,anonKey}` (public anon key) and a `centers` slug→`{org_id,center_id}` map.
+- Loader implements `save` → anon RPC `submit_enrollment_form(..., p_source='embed')`
+  → `saved`/`error`, plus `inject` (initial prefill via `data-prefill`, and re-inject
+  reset after each save). DB migration `20260705c` extended the source CHECK + RPC guard
+  to allow `'embed'`.
+- **Verified:** the anon write path (exact `handleSave` call) creates a
+  `enrollment_submissions` row with `source='embed'` (smoke row created + deleted).
+- **Eyeball pending:** the full in-browser handshake (ready→resize→inject→save→saved)
+  against the real v7 form — open `/embed-demo.html`.

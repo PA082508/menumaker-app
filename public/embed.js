@@ -49,6 +49,8 @@
   var pinnedVersion = d.version || '';            // optional host pin
   var center = d.center || '';
   var registryUrl = d.registry || (appOrigin + '/enroll-registry.json');
+  var prefill = null;                              // optional data-prefill='{...}' → inject
+  try { if (d.prefill) prefill = JSON.parse(d.prefill); } catch (e) { prefill = null; }
 
   // Resolve the mount container: data-target selector, else insert after the script.
   function resolveContainer() {
@@ -108,6 +110,52 @@
     iframe.style.cssText = 'width:100%;border:0;display:block;min-height:520px;background:transparent';
     container.appendChild(iframe);
 
+    // Config for the embed-mode write path (all from the single registry source).
+    var sb = registry.supabase || null;
+    var centerCfg = (registry.centers && center && registry.centers[center]) || null;
+    var submissionType = form.submissionType || 'cacfp_enrollment';
+
+    function genNonce() { return 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2); }
+    // All outbound messages carry the pa-embed v1 envelope and target formOrigin only.
+    function postToForm(type, extra) {
+      var m = { __paEmbed: true, ns: NS, v: 1, type: type };
+      if (extra) for (var k in extra) if (Object.prototype.hasOwnProperty.call(extra, k)) m[k] = extra[k];
+      iframe.contentWindow.postMessage(m, formOrigin);
+    }
+
+    // save (embed mode): the form does NOT write; it hands us form_data and we
+    // persist via the anon RPC submit_enrollment_form (p_source='embed').
+    function handleSave(msg) {
+      var nonce = msg.nonce;
+      if (!sb || !sb.url || !sb.anonKey) return postToForm('error', { nonce: nonce, message: 'embed backend not configured' });
+      if (!centerCfg) return postToForm('error', { nonce: nonce, message: 'unknown center "' + center + '"' });
+      var body = {
+        p_org: centerCfg.org_id, p_center: centerCfg.center_id,
+        p_submission_type: msg.formType || submissionType,
+        p_form_data: msg.formData || {},
+        p_signatures: msg.signatures || {},
+        p_signature_date: msg.signatureDate || null,
+        p_source: 'embed'
+      };
+      fetch(sb.url + '/rest/v1/rpc/submit_enrollment_form', {
+        method: 'POST', credentials: 'omit',
+        headers: {
+          'apikey': sb.anonKey, 'Authorization': 'Bearer ' + sb.anonKey,
+          'Content-Type': 'application/json', 'Content-Profile': 'menumaker', 'Accept': 'application/json'
+        },
+        body: JSON.stringify(body)
+      })
+        .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, status: r.status, text: t }; }); })
+        .then(function (res) {
+          if (!res.ok) return postToForm('error', { nonce: nonce, message: 'save failed (' + res.status + ')' });
+          var id; try { id = JSON.parse(res.text); } catch (e) { id = res.text; }
+          postToForm('saved', { nonce: nonce, ok: true, id: id });
+          // Re-inject: reset the form for the next submission.
+          postToForm('inject', { nonce: genNonce(), center: center, prefill: null, reset: true });
+        })
+        .catch(function () { postToForm('error', { nonce: nonce, message: 'network error' }); });
+    }
+
     var ready = false;
     var timer = setTimeout(function () {
       if (!ready) showFallback(formUrl, 'Open the enrollment form ↗');
@@ -115,27 +163,29 @@
     iframe.onerror = function () { clearTimeout(timer); showFallback(formUrl); };
 
     // Origin-checked message bridge. Accept ONLY our iframe's window AND the
-    // form's exact origin. Everything else is ignored.
+    // form's exact origin AND the pa-embed v1 envelope. Everything else ignored.
     function onMessage(ev) {
       if (ev.source !== iframe.contentWindow) return;
       if (ev.origin !== formOrigin) return;
       var msg = ev.data;
-      if (!msg || msg[MARK] !== true || msg.ns !== NS) return;
+      if (!msg || msg[MARK] !== true || msg.ns !== NS || msg.v !== 1) return;
       switch (msg.type) {
         case 'ready':
           ready = true; clearTimeout(timer);
-          // Hand the form its host context, targeted to the form's origin only.
-          iframe.contentWindow.postMessage(
-            { __paEmbed: true, ns: NS, type: 'host', host: location.origin, center: center, version: version },
-            formOrigin
-          );
+          // Hand the form its host context (targeted to formOrigin only).
+          postToForm('host', { host: location.origin, center: center, version: version });
+          // Optional initial prefill / configuration.
+          if (prefill) postToForm('inject', { nonce: genNonce(), center: center, prefill: prefill, reset: false });
           break;
         case 'resize':
           if (typeof msg.height === 'number' && msg.height > 0) {
             iframe.style.height = Math.ceil(msg.height) + 'px';
           }
           break;
-        // 'submitted' etc. handled in phase 2.
+        case 'save':
+          handleSave(msg);
+          break;
+        // unknown types are ignored (forward-compat)
       }
     }
     window.addEventListener('message', onMessage, false);

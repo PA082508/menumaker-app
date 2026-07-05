@@ -1230,8 +1230,9 @@ type ClassroomCapacity = {
   room_sqft: number
 }
 
-// DCY license totals live at the center level (max under-3, max 3+).
-type CenterLic = { id: string; name: string; license_under3_max: number | null; license_3plus_max: number | null }
+// DCY license totals live at the center level: max children under 2½ years
+// (boundary = 30 months by birthday) and the center's total capacity.
+type CenterLic = { id: string; name: string; license_under2_5_max: number | null; license_total_max: number | null }
 
 // Ohio children-per-teacher max for an age group (undefined for unset/legacy groups).
 const ohioMaxFor = (age: string): number | undefined => OHIO_RATIOS[age]?.max
@@ -1271,7 +1272,7 @@ function CapacitySettings() {
     if (!org?.id) return
     reloadRooms(org.id)
     supabase.schema('menumaker').from('centers')
-      .select('id,name,license_under3_max,license_3plus_max').eq('org_id', org.id).order('name')
+      .select('id,name,license_under2_5_max,license_total_max').eq('org_id', org.id).order('name')
       .then(({ data }) => { if (data) setCenterRows(data as CenterLic[]) })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [org?.id])
@@ -1297,13 +1298,13 @@ function CapacitySettings() {
     setTimeout(() => setSaved(null), 2000)
   }
 
-  function updLic(id: string, field: 'license_under3_max' | 'license_3plus_max', val: number | null) {
+  function updLic(id: string, field: 'license_under2_5_max' | 'license_total_max', val: number | null) {
     setCenterRows(prev => prev.map(c => c.id === id ? { ...c, [field]: val } : c))
   }
   async function saveLicense(c: CenterLic) {
     setSavingLic(true)
     await supabase.schema('menumaker').from('centers')
-      .update({ license_under3_max: c.license_under3_max, license_3plus_max: c.license_3plus_max })
+      .update({ license_under2_5_max: c.license_under2_5_max, license_total_max: c.license_total_max })
       .eq('id', c.id)
     setSavingLic(false); setSavedLic(true); setTimeout(() => setSavedLic(false), 2000)
   }
@@ -1414,19 +1415,19 @@ function CapacitySettings() {
               License totals (DCY) — {c.name.replace('Play Academy ', '')}
             </div>
             <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>
-              DCY caps the whole center: max children under 3, and max children 3 and up. Center limits — not per room.
+              From the DCY license: max children <strong>under 2½ years</strong> (boundary 30 months by birthday) and the center's <strong>total capacity</strong>. Center limits — not per room.
             </div>
             <div style={{ display: 'flex', gap: 20, alignItems: 'flex-end', flexWrap: 'wrap' as const }}>
               <div>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Max under 3</label>
-                <input type="number" min={0} value={c.license_under3_max ?? ''} placeholder="—"
-                  onChange={e => updLic(c.id, 'license_under3_max', e.target.value === '' ? null : (parseInt(e.target.value) || 0))}
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Total under 2½ yr</label>
+                <input type="number" min={0} value={c.license_under2_5_max ?? ''} placeholder="—"
+                  onChange={e => updLic(c.id, 'license_under2_5_max', e.target.value === '' ? null : (parseInt(e.target.value) || 0))}
                   style={{ ...inp, width: 90 }} />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Max 3 and up</label>
-                <input type="number" min={0} value={c.license_3plus_max ?? ''} placeholder="—"
-                  onChange={e => updLic(c.id, 'license_3plus_max', e.target.value === '' ? null : (parseInt(e.target.value) || 0))}
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Total capacity</label>
+                <input type="number" min={0} value={c.license_total_max ?? ''} placeholder="—"
+                  onChange={e => updLic(c.id, 'license_total_max', e.target.value === '' ? null : (parseInt(e.target.value) || 0))}
                   style={{ ...inp, width: 90 }} />
               </div>
               <button onClick={() => saveLicense(c)} disabled={savingLic}

@@ -132,3 +132,19 @@ parent-forms packet. Reference implementation: `IEA_FY2026-27_full_v1.html`
 
 Drive the sidebar nav from the user's permission set / modules (rather than the
 static SECTIONS list), so each role sees exactly the nav it's entitled to.
+
+## Roster ↔ center license reconciliation (economics-engine input)
+
+Reconcile the live roster against each center's DCY license (2026-07-05, Capacity
+& Ratio rework). For a center, count active roster children **under 3** vs **3+**
+(by `birthday` on a given date) and compare to `centers.license_under3_max` /
+`license_3plus_max`. Surface an indicator (headroom / at-cap / over). The unused
+headroom = licence reserve = potential revenue → feeds the economics engine.
+
+Also: **license-field overlap to reconcile.** `centers` now has FOUR license-ish
+ints: legacy `license_capacity` (total) + `license_capacity_under2` (under-2,
+edited in Center Info) AND new `license_under3_max` / `license_3plus_max` (DCY
+under-3 / 3+, edited in Capacity & Ratio). Different thresholds (under-2 vs
+under-3) — decide the single source of truth and retire/migrate the rest.
+Per-room `capacity_ohio` is kept in the DB but hidden in the UI (per-room numbers
+are inspection facts on a date, not limits).

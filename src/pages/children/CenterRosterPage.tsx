@@ -11,7 +11,27 @@ import { useAuth } from '@/hooks/useAuth'
 import { displayChildName } from '@/lib/childName'
 import { isActiveOn } from '@/lib/childActive'
 
-type Classroom = { id: string; name: string; sort_order: number }
+type Classroom = { id: string; name: string; sort_order: number; capacity_internal: number | null }
+
+// Roster class-summary columns — ONE source of truth so the header, each class
+// row and the TOTAL line always line up: class · capacity · fill% · listed ·
+// today · teachers. Compact: fixed numeric columns hug the class name; teachers
+// takes the remainder.
+const SUMMARY_COLS = 'minmax(150px,210px) 84px 76px 72px 72px minmax(110px,1fr)'
+
+// Fill% colour thresholds (percent of capacity used). ≥green → green,
+// ≥yellow → amber, otherwise red. Tune here.
+const FILL_THRESHOLDS = { green: 90, yellow: 70 }
+function fillStyle(pct: number | null): { bg: string; fg: string } {
+  if (pct === null)                  return { bg: 'transparent', fg: '#c4c4c4' }
+  if (pct >= FILL_THRESHOLDS.green)  return { bg: '#dcfce7', fg: '#15803d' }
+  if (pct >= FILL_THRESHOLDS.yellow) return { bg: '#fef9c3', fg: '#a16207' }
+  return { bg: '#fee2e2', fg: '#b91c1c' }
+}
+// LISTED/Capacity → whole-percent, or null when capacity is unset (→ shows "—").
+function fillPct(listed: number, capacity: number | null): number | null {
+  return capacity && capacity > 0 ? Math.round((listed / capacity) * 100) : null
+}
 type Child = {
   id: string; first_name: string | null; last_name: string | null
   child_name: string | null; age_group_food: string | null; frp: string | null
@@ -264,7 +284,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
     // (isActiveOn), while inactive rows surface, dimmed, only inside search results.
     const [{ data: cls }, { data: kids }, { data: staffData }, { data: sess }] = await Promise.all([
       supabase.schema('menumaker').from('classrooms')
-        .select('id,name,sort_order').eq('center_id', centerId).eq('is_active', true).order('sort_order'),
+        .select('id,name,sort_order,capacity_internal').eq('center_id', centerId).eq('is_active', true).order('sort_order'),
       supabase.schema('menumaker').from('roster')
         .select('id,first_name,last_name,child_name,age_group_food,frp,date_in,date_out,birthday,milk_kind,classroom_id,is_active')
         .eq('center_id', centerId)
@@ -312,6 +332,11 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
   const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim()
   const presentTotal = Object.values(attendMap).filter(a => a.state === 'present').length
   const listedTotal  = activeChildren.length
+  // Center totals for the TOTAL row: sum of per-class capacity + overall fill%.
+  const totalCapacity = classrooms.reduce(
+    (s, r) => s + (r.capacity_internal && r.capacity_internal > 0 ? r.capacity_internal : 0), 0,
+  )
+  const overallFill = fillPct(listedTotal, totalCapacity)
   // Search matches across ALL classes of the center (class filter is ignored while searching).
   const searchMatches = (c: Child) => childMatchesSearch(c, debSearch)
   const listedShown = searchActive ? displayChildren.filter(searchMatches).length : listedTotal
@@ -340,16 +365,17 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
         <div style={{ color: '#aaa', fontSize: 13 }}>Loading…</div>
       ) : (
         <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e0e8e0', overflow: 'hidden' }}>
-          {/* Table header */}
+          {/* Table header — columns must match SUMMARY_COLS (class · capacity ·
+              fill% · listed · today · teachers). Numeric columns centered. */}
           <div style={{
-            display: 'grid', gridTemplateColumns: '1fr 80px 80px 1fr',
+            display: 'grid', gridTemplateColumns: SUMMARY_COLS,
             padding: '8px 20px', background: '#f0f4f1', borderBottom: '1px solid #e0e8e0',
           }}>
-            {['CLASSROOM', 'LISTED', 'TODAY', 'TEACHERS'].map((h, i) => (
+            {['CLASSROOM', 'CAPACITY', 'FILL %', 'LISTED', 'TODAY', 'TEACHERS'].map((h, i) => (
               <div key={h} style={{
                 fontSize: 10, fontWeight: 700, color: '#0f4c35',
                 textTransform: 'uppercase', letterSpacing: '0.05em',
-                textAlign: i === 1 || i === 2 ? 'center' : 'left',
+                textAlign: i >= 1 && i <= 4 ? 'center' : 'left',
               }}>{h}</div>
             ))}
           </div>
@@ -527,7 +553,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                 <div
                   onClick={() => toggleRoom(room.id)}
                   style={{
-                    display: 'grid', gridTemplateColumns: '1fr 80px 80px 1fr',
+                    display: 'grid', gridTemplateColumns: SUMMARY_COLS, alignItems: 'center',
                     padding: '10px 20px', cursor: 'pointer',
                     background: ri % 2 === 0 ? '#fff' : '#fafbfa',
                     borderBottom: isOpen ? 'none' : '1px solid #f0f4f1',
@@ -536,23 +562,48 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                   onMouseEnter={e => (e.currentTarget.style.background = '#f0f7f2')}
                   onMouseLeave={e => (e.currentTarget.style.background = ri % 2 === 0 ? '#fff' : '#fafbfa')}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: 14, color: '#1a2e1a' }}>
-                    <span style={{
-                      fontSize: 10, color: '#0f4c35',
-                      transform: isOpen ? 'rotate(90deg)' : 'rotate(0)',
-                      display: 'inline-block', transition: 'transform 0.2s',
-                    }}>▶</span>
-                    {room.name}
-                  </div>
-                  <div style={{ textAlign: 'center', fontSize: 14, fontWeight: 600, color: '#1a2e1a' }}>
-                    {roomChildren.length}
-                  </div>
-                  <div style={{ textAlign: 'center', fontSize: 14, fontWeight: presentHere > 0 ? 600 : 400, color: presentHere > 0 ? '#0f4c35' : '#bbb' }}>
-                    {presentHere > 0 ? presentHere : '—'}
-                  </div>
-                  <div style={{ fontSize: 12, color: '#555', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {roomStaff.map(s => s.first_name).filter(Boolean).join(', ') || '—'}
-                  </div>
+                  {(() => {
+                    const cap  = room.capacity_internal
+                    const pct  = fillPct(roomChildren.length, cap)
+                    const fs   = fillStyle(pct)
+                    return (
+                      <>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: 14, color: '#1a2e1a' }}>
+                          <span style={{
+                            fontSize: 10, color: '#0f4c35',
+                            transform: isOpen ? 'rotate(90deg)' : 'rotate(0)',
+                            display: 'inline-block', transition: 'transform 0.2s',
+                          }}>▶</span>
+                          {room.name}
+                        </div>
+                        {/* Capacity */}
+                        <div style={{ textAlign: 'center', fontSize: 14, fontWeight: 500, color: cap && cap > 0 ? '#1a2e1a' : '#c4c4c4' }}>
+                          {cap && cap > 0 ? cap : '—'}
+                        </div>
+                        {/* Fill % */}
+                        <div style={{ textAlign: 'center' }}>
+                          <span style={{
+                            display: 'inline-block', minWidth: 42, padding: '2px 6px', borderRadius: 6,
+                            fontSize: 12, fontWeight: 700, background: fs.bg, color: fs.fg,
+                          }}>
+                            {pct === null ? '—' : `${pct}%`}
+                          </span>
+                        </div>
+                        {/* Listed */}
+                        <div style={{ textAlign: 'center', fontSize: 14, fontWeight: 600, color: '#1a2e1a' }}>
+                          {roomChildren.length}
+                        </div>
+                        {/* Today */}
+                        <div style={{ textAlign: 'center', fontSize: 14, fontWeight: presentHere > 0 ? 600 : 400, color: presentHere > 0 ? '#0f4c35' : '#bbb' }}>
+                          {presentHere > 0 ? presentHere : '—'}
+                        </div>
+                        {/* Teachers */}
+                        <div style={{ fontSize: 12, color: '#555', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {roomStaff.map(s => s.first_name).filter(Boolean).join(', ') || '—'}
+                        </div>
+                      </>
+                    )
+                  })()}
                 </div>
 
                 {/* Expanded panel */}
@@ -682,12 +733,28 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
             )
           })}
 
-          {/* Total footer */}
+          {/* Total footer — same columns as SUMMARY_COLS. */}
           <div style={{
-            display: 'grid', gridTemplateColumns: '1fr 80px 80px 1fr',
+            display: 'grid', gridTemplateColumns: SUMMARY_COLS, alignItems: 'center',
             padding: '10px 20px', background: '#e8f0e8', borderTop: '1px solid #d0dcd0',
           }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: '#0f4c35', textTransform: 'uppercase' }}>Total</div>
+            <div style={{ textAlign: 'center', fontSize: 14, fontWeight: 700, color: totalCapacity > 0 ? '#0f4c35' : '#c4c4c4' }}>
+              {totalCapacity > 0 ? totalCapacity : '—'}
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              {(() => {
+                const fs = fillStyle(overallFill)
+                return (
+                  <span style={{
+                    display: 'inline-block', minWidth: 42, padding: '2px 6px', borderRadius: 6,
+                    fontSize: 12, fontWeight: 700, background: fs.bg, color: fs.fg,
+                  }}>
+                    {overallFill === null ? '—' : `${overallFill}%`}
+                  </span>
+                )
+              })()}
+            </div>
             <div style={{ textAlign: 'center', fontSize: 14, fontWeight: 700, color: '#0f4c35' }}>{listedTotal}</div>
             <div style={{ textAlign: 'center', fontSize: 14, fontWeight: 700, color: '#0f4c35' }}>{presentTotal || '—'}</div>
             <div />

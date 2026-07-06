@@ -306,7 +306,8 @@ export default function EnrollmentInboxPage() {
           display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 24, overflow: 'auto',
         }}>
           <div onClick={e => e.stopPropagation()} style={{
-            background: '#fff', borderRadius: 16, width: 'min(720px, 100%)', padding: 20,
+            // Wide enough for the paper-replica form (scaled-to-fit by the loader).
+            background: '#fff', borderRadius: 16, width: newCenter ? 'min(1000px, 100%)' : 'min(560px, 100%)', padding: 20,
             boxShadow: '0 20px 60px rgba(0,0,0,0.25)', fontFamily: "'DM Sans', sans-serif",
           }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
@@ -330,6 +331,7 @@ export default function EnrollmentInboxPage() {
                 center={newCenter}
                 form="enroll"
                 onSaved={() => { setReloadKey(k => k + 1); setToast({ msg: 'Enrollment submitted — filed to the Inbox.' }) }}
+                onClose={() => { setShowNew(false); setNewCenter('') }}
               />
             )}
           </div>

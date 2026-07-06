@@ -7,11 +7,12 @@
   },
   "forms": {
     "enroll": {
-      "current": "v7",
+      "current": "v8",
       "versions": {
-        "v7": "https://pa082508.github.io/forms/1-data-sources/CACFP_Enrollment_v7.html"
+        "v7": "https://pa082508.github.io/forms/1-data-sources/CACFP_Enrollment_v7.html",
+        "v8": "https://pa082508.github.io/forms/1-data-sources/CACFP_Enrollment_v8.html"
       },
-      "fallbackUrl": "https://pa082508.github.io/forms/1-data-sources/CACFP_Enrollment_v7.html",
+      "fallbackUrl": "https://pa082508.github.io/forms/1-data-sources/CACFP_Enrollment_v8.html",
       "submissionType": "cacfp_enrollment"
     },
     "iea": {

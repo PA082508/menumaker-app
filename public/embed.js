@@ -87,9 +87,20 @@
     try { formOrigin = new URL(formUrl).origin; }
     catch (e) { return showFallback(form.fallbackUrl); }
 
+    // Resolve the center SLUG the form's <select> understands (pearl/alpha/ridge),
+    // even when the in-app host passed a center_id uuid. A <select> silently drops
+    // an unknown value → without this the form's CENTER NAME never fills.
+    var centersMap = registry.centers || {};
+    var centerSlug = center;
+    if (center && !centersMap[center]) {
+      for (var sk in centersMap) {
+        if (centersMap[sk] && centersMap[sk].center_id === center) { centerSlug = sk; break; }
+      }
+    }
+
     // Build the iframe src. The form shim reads these: embed=1 (embed mode →
     // hide toolbar, no own writes), v (version), host (parent origin to validate
-    // + target), center (scope), registry (so the shim can read
+    // + target), center (slug scope), registry (so the shim can read
     // allowedParentOrigins from the same single source).
     var src = formUrl
       + (formUrl.indexOf('?') === -1 ? '?' : '&')
@@ -97,7 +108,7 @@
       + '&v=' + encodeURIComponent(version)
       + '&host=' + encodeURIComponent(location.origin)
       + '&registry=' + encodeURIComponent(registryUrl)
-      + (center ? '&center=' + encodeURIComponent(center) : '');
+      + (centerSlug ? '&center=' + encodeURIComponent(centerSlug) : '');
 
     container.innerHTML = '';
     var iframe = document.createElement('iframe');
@@ -107,12 +118,30 @@
     // Least privilege: scripts + forms; same-origin so the form keeps its own
     // origin (needed to call its backend). NOT allow-top-navigation.
     iframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-same-origin allow-popups');
-    iframe.style.cssText = 'width:100%;border:0;display:block;min-height:520px;background:transparent';
+    iframe.style.cssText = 'border:0;display:block;background:transparent';
     container.appendChild(iframe);
+
+    // The forms are fixed-width paper replicas (enrollment ≈ 1275px). Render at
+    // natural width and scale to fit the container, so the whole form is visible
+    // with no right-side clipping and no horizontal scroll. FORM_W is overridable
+    // via data-formwidth; contentH tracks the form's reported height.
+    var FORM_W = parseInt(d.formwidth, 10) || 1275;
+    var contentH = 560;
+    function fit() {
+      var cw = container.clientWidth || FORM_W;
+      var scale = Math.min(1, cw / FORM_W);
+      iframe.style.width = FORM_W + 'px';
+      iframe.style.height = contentH + 'px';
+      iframe.style.transformOrigin = 'top left';
+      iframe.style.transform = 'scale(' + scale + ')';
+      container.style.height = Math.ceil(contentH * scale) + 'px';
+      container.style.overflowX = 'hidden';
+    }
+    fit();
+    window.addEventListener('resize', fit);
 
     // Config for the embed-mode write path (all from the single registry source).
     var sb = registry.supabase || null;
-    var centersMap = registry.centers || {};
     // Resolve center by slug (pearl) OR by center_id (uuid) — the in-app host
     // passes a uuid, external snippets pass a slug.
     var centerCfg = (center && centersMap[center]) || null;
@@ -128,15 +157,20 @@
     function postToForm(type, extra) {
       var m = { __paEmbed: true, ns: NS, v: 1, type: type };
       if (extra) for (var k in extra) if (Object.prototype.hasOwnProperty.call(extra, k)) m[k] = extra[k];
-      iframe.contentWindow.postMessage(m, formOrigin);
+      if (iframe.contentWindow) iframe.contentWindow.postMessage(m, formOrigin);
+    }
+    // Notify the host modal so its footer can show saving / saved / error.
+    function hostEvent(name, detail) {
+      try { window.dispatchEvent(new CustomEvent(name, { detail: detail || {} })); } catch (e) {}
     }
 
     // save (embed mode): the form does NOT write; it hands us form_data and we
     // persist via the anon RPC submit_enrollment_form (p_source='embed').
     function handleSave(msg) {
       var nonce = msg.nonce;
-      if (!sb || !sb.url || !sb.anonKey) return postToForm('error', { nonce: nonce, message: 'embed backend not configured' });
-      if (!centerCfg) return postToForm('error', { nonce: nonce, message: 'unknown center "' + center + '"' });
+      function fail(message) { hostEvent('pa-embed:error', { message: message }); return postToForm('error', { nonce: nonce, message: message }); }
+      if (!sb || !sb.url || !sb.anonKey) return fail('embed backend not configured');
+      if (!centerCfg) return fail('unknown center "' + center + '"');
       var body = {
         p_org: centerCfg.org_id, p_center: centerCfg.center_id,
         p_submission_type: msg.formType || submissionType,
@@ -155,15 +189,15 @@
       })
         .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, status: r.status, text: t }; }); })
         .then(function (res) {
-          if (!res.ok) return postToForm('error', { nonce: nonce, message: 'save failed (' + res.status + ')' });
+          if (!res.ok) return fail('save failed (' + res.status + ')');
           var id; try { id = JSON.parse(res.text); } catch (e) { id = res.text; }
           postToForm('saved', { nonce: nonce, ok: true, id: id });
-          // Notify the host page (in-app host listens to refresh its Inbox list).
-          try { window.dispatchEvent(new CustomEvent('pa-embed:saved', { detail: { id: id, center: center } })); } catch (e) {}
-          // Re-inject: reset the form for the next submission.
-          postToForm('inject', { nonce: genNonce(), center: center, prefill: null, reset: true });
+          // Notify the host page (footer shows "saved"; Inbox refreshes its list).
+          hostEvent('pa-embed:saved', { id: id, center: center });
+          // Re-inject: reset the form for the next submission (keep the center).
+          postToForm('inject', { nonce: genNonce(), center: centerSlug, prefill: null, reset: true });
         })
-        .catch(function () { postToForm('error', { nonce: nonce, message: 'network error' }); });
+        .catch(function () { fail('network error'); });
     }
 
     var ready = false;
@@ -183,22 +217,36 @@
         case 'ready':
           ready = true; clearTimeout(timer);
           // Hand the form its host context (targeted to formOrigin only).
-          postToForm('host', { host: location.origin, center: center, version: version });
+          postToForm('host', { host: location.origin, center: centerSlug, version: version });
           // Optional initial prefill / configuration.
-          if (prefill) postToForm('inject', { nonce: genNonce(), center: center, prefill: prefill, reset: false });
+          if (prefill) postToForm('inject', { nonce: genNonce(), center: centerSlug, prefill: prefill, reset: false });
           break;
         case 'resize':
           if (typeof msg.height === 'number' && msg.height > 0) {
-            iframe.style.height = Math.ceil(msg.height) + 'px';
+            contentH = Math.ceil(msg.height);
+            fit();
           }
           break;
         case 'save':
           handleSave(msg);
           break;
+        case 'saveerror':
+          // Form-side validation failed on a host-driven submit.
+          hostEvent('pa-embed:error', { message: msg.message || 'Please complete the form' });
+          break;
         // unknown types are ignored (forward-compat)
       }
     }
     window.addEventListener('message', onMessage, false);
+
+    // Host-driven submit: the modal footer dispatches pa-embed:submit (scoped to
+    // this mount via detail.target) → tell the form to run its own save_(), since
+    // its toolbar/submit button is hidden in embed mode.
+    window.addEventListener('pa-embed:submit', function (ev) {
+      if (ev && ev.detail && ev.detail.target && ev.detail.target !== container.id) return;
+      if (!iframe.contentWindow) return;
+      postToForm('submit', { nonce: genNonce() });
+    }, false);
   }
 
   // Fetch the registry, then boot. Any failure → graceful fallback link.

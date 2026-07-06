@@ -63,3 +63,34 @@ export function lowConfidenceSet(formData: any): Set<string> {
 }
 
 export const ocrMeta = (formData: any): OcrMeta => (formData?._ocr ?? {}) as OcrMeta
+
+/** True when a prior OCR attempt errored after retries (Path B) and the card is
+ *  awaiting a re-run. Distinct from engine==='none' (an intentional 'other' scan). */
+export const ocrFailed = (formData: any): boolean => {
+  const m = ocrMeta(formData)
+  return m.engine === 'failed' || (m as any)?.failed === true
+}
+
+export interface ReRunResult {
+  submissionType: string
+  ocrFailed: boolean
+  lowConfidence: string[]
+}
+
+/** Re-run OCR on an already-stored scan via the edge function's scan_ref mode
+ *  (no re-upload). The function classifies (cacfp_enrollment | iea | license |
+ *  other) and re-extracts; we persist the fresh submission_type + form_data so
+ *  the Inbox card updates in place. Backs the "Re-run OCR" button. */
+export async function reRunOcr(submission: { id: string; form_data: any }): Promise<ReRunResult> {
+  const ref = submission.form_data?.scan_ref
+  if (!ref) throw new Error('No scan is attached to this submission.')
+  const { data, error } = await supabase.functions.invoke('enrollment-scan-ocr', { body: { scan_ref: ref } })
+  if (error) throw error
+  if (!data || data.error) throw new Error(data?.error || 'OCR re-run failed.')
+  const nextType = data.submissionType ?? ocrMeta(submission.form_data).docType ?? 'other'
+  const { error: upErr } = await supabase.schema('menumaker').from('enrollment_submissions')
+    .update({ submission_type: nextType, form_data: data.form_data ?? {} })
+    .eq('id', submission.id)
+  if (upErr) throw upErr
+  return { submissionType: nextType, ocrFailed: !!data.ocrFailed, lowConfidence: data.lowConfidence ?? [] }
+}

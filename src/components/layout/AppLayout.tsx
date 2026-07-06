@@ -128,19 +128,38 @@ const SECTIONS: Section[] = [
 
 // ── director desktop: curated section set ─────────────────────
 // The director works inside the existing MenuMaker app. Their sidebar is limited
-// to the sections they own — Children / Staff / Menu (planner + published) /
-// Enrollment Inbox / Documents — with no Budget and no org admin. Admin and
-// office_manager keep the full sidebar (this filter never touches them).
-const DIRECTOR_SECTION_IDS = new Set(['dashboard', 'planning', 'people', 'documents'])
+// to what they own: Director Home · Meal Count · Menu (VIEW ONLY — Current Menu +
+// official print, NO planner) · Children · Enrollment Inbox · Staff · Documents.
+// Budget / Reports / Policies / Settings are hidden. Admin and office_manager
+// keep the full sidebar (this filter never touches them).
+//
+// Menu is view-only by design: the planner (/menu) is omitted here, blocked for
+// directors at the route level (see MenuPlannerPage), AND enforced in the DB —
+// RLS strips 'director' from the menu_cycles/menu_items/holidays write policies,
+// so a director cannot fire a planner mutation even outside the UI.
+const DIRECTOR_SECTION_IDS = new Set(['dashboard', 'operations', 'planning', 'people', 'documents'])
 const DIRECTOR_PATHS = new Set([
-  '/children', '/enrollment-inbox', '/staff',   // People
-  '/menu', '/menu/current',                     // Menu: planner + published
-  '/documents', '/instructions',                // Documents
+  '/meal-count',                                     // Operations → Meal Count (director view)
+  '/menu/current',                                   // Planning → Current Menu ONLY (no /menu planner)
+  '/children', '/enrollment-inbox', '/staff',        // People
+  '/documents', '/instructions', '/document-hub',    // Documents
 ])
+// Relabel single-purpose sections so the director's flyouts read clearly and the
+// dashboard reads as their home.
+const DIRECTOR_SECTION_LABELS: Record<string, string> = {
+  dashboard:  'Director Home',
+  operations: 'Meal Count',
+  planning:   'Menu',
+}
 function directorSections(secs: Section[]): Section[] {
   return secs
     .filter(s => DIRECTOR_SECTION_IDS.has(s.id))
-    .map(s => (s.items ? { ...s, items: s.items.filter(it => DIRECTOR_PATHS.has(it.path)) } : s))
+    .map(s => {
+      const label = DIRECTOR_SECTION_LABELS[s.id] ?? s.label
+      return s.items
+        ? { ...s, label, items: s.items.filter(it => DIRECTOR_PATHS.has(it.path)) }
+        : { ...s, label }
+    })
     .filter(s => s.noFlyout || (s.items != null && s.items.length > 0))
 }
 

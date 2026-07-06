@@ -94,6 +94,15 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+// Menu is view-only for directors: the planner (/menu) redirects them to Current
+// Menu. This is the client half of the enforcement — the DB (RLS) is the real
+// gate, rejecting any planner write from a director regardless of the UI.
+function RequireMenuEditor({ children }: { children: React.ReactNode }) {
+  const { role } = useAuth()
+  if (role === 'director') return <Navigate to="/menu/current" replace />
+  return <>{children}</>
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -126,7 +135,7 @@ export default function App() {
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="dashboard"  element={<DashboardPage />} />
               <Route path="director-home" element={<DirectorHome />} />
-              <Route path="menu"       element={<MenuPlannerPage />} />
+              <Route path="menu"       element={<RequireMenuEditor><MenuPlannerPage /></RequireMenuEditor>} />
               <Route path="menu/print-official/:center/:year/:month" element={<MenuPrintOfficialPage />} />
               <Route path="menu/published/:center/:year/:month" element={<MenuPublishedPage />} />
               <Route path="menu/current" element={<MenuCurrentPage />} />

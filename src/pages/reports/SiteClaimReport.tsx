@@ -101,15 +101,18 @@ export default function SiteClaimReport() {
       mondays.push(format(d,"yyyy-MM-dd")); d=new Date(d.getTime()+7*86400000);
     }
     const {data:clsRaw}=await supabase.schema("menumaker").from("classrooms")
-      .select("id,name,sort_order").eq("is_active",true).eq("center_id",centerId).order("sort_order");
+      .select("id,name,sort_order,is_roster").eq("is_active",true).eq("center_id",centerId).order("sort_order");
     const {data:allRecs}=await supabase.schema("menumaker").from("meal_week_records")
       .select("*").eq("center_id",centerId).in("monday_date",mondays);
     const approved=(allRecs||[]).filter(r=>r.status==="director_approved");
-    const wTotal=new Set((allRecs||[]).map(r=>`${r.classroom_id}_${r.monday_date}`)).size;
-    const wApproved=new Set(approved.map(r=>`${r.classroom_id}_${r.monday_date}`)).size;
+    // Non-roster pseudo-classes (e.g. Staff, is_roster=false) are excluded from the
+    // approval-progress denominator and the per-class claim breakdown.
+    const rosterClassIds=new Set((clsRaw||[]).filter(c=>c.is_roster!==false).map(c=>c.id));
+    const wTotal=new Set((allRecs||[]).filter(r=>rosterClassIds.has(r.classroom_id)).map(r=>`${r.classroom_id}_${r.monday_date}`)).size;
+    const wApproved=new Set(approved.filter(r=>rosterClassIds.has(r.classroom_id)).map(r=>`${r.classroom_id}_${r.monday_date}`)).size;
     const clsMap:Record<string,ClassBreakdown>={};
     for(const cls of clsRaw||[]){
-      if(cls.name.toLowerCase().includes("staff")) continue;
+      if(cls.is_roster===false) continue;
       clsMap[cls.id]={id:cls.id,name:cls.name,days_of_op:0,slots:{b:0,as:0,l:0,ps:0,su:0,es:0},ada:0,total:0};
     }
     const clsDays:Record<string,Set<string>>={};

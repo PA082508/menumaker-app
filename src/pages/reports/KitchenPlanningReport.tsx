@@ -43,7 +43,7 @@ const isInfant = (ag:string) => ag.startsWith("infant");
 const monOf    = (d:Date)    => startOfWeek(d,{weekStartsOn:1});
 const ozToGal  = (oz:number) => (oz/OZ_PER_GAL).toFixed(2);
 
-interface Cls { id:string; name:string; sort_order:number; }
+interface Cls { id:string; name:string; sort_order:number; is_roster?:boolean|null; }
 interface Kid { id:string; child_name:string; classroom_id:string; milk_kind:string; age_group_food:string; birthday:string|null; rate_oz:number; }
 interface MR  { age_group:string; milk_type:string; rate_oz:number; }
 interface Cfg { active_slots:string[]; milk_slots:string[]; }
@@ -72,7 +72,7 @@ export default function KitchenPlanningReport() {
       ? format(weekStart,"yyyy-MM-dd")
       : format(monOf(new Date(year,month-1,1)),"yyyy-MM-dd");
     Promise.all([
-      supabase.schema("menumaker").from("classrooms").select("id,name,sort_order").eq("is_active",true).eq("center_id",centerId).order("sort_order"),
+      supabase.schema("menumaker").from("classrooms").select("id,name,sort_order,is_roster").eq("is_active",true).eq("center_id",centerId).order("sort_order"),
       supabase.schema("menumaker").from("roster").select("id,child_name,classroom_id,milk_kind,age_group_food,birthday,rate_oz").eq("is_active",true).or(notDepartedBefore(periodStart)),
       supabase.schema("menumaker").from("milk_rates").select("age_group,milk_type,rate_oz").order("sort_order"),
       supabase.schema("menumaker").from("meal_count_settings").select("active_slots,milk_slots").eq("center_id",centerId).single(),
@@ -105,7 +105,9 @@ export default function KitchenPlanningReport() {
 
   const activeSlots: string[] = cfg?.active_slots?.map(s=>SLOT_MAP[s]||s) || ["b","as","l","su"];
   const milkSlots:   string[] = cfg?.milk_slots?.map(s=>SLOT_MAP[s]||s)   || ["b","l","su"];
-  const nonStaff = classes.filter(c=>!c.name.toLowerCase().includes("staff"));
+  // Non-roster pseudo-classes (e.g. Staff, is_roster=false) are excluded from
+  // Claimed Meals + Milk Orders. (Actual Dishes intentionally still lists Staff.)
+  const nonStaff = classes.filter(c=>c.is_roster!==false);
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
   function dateOf(rec:any, dk:string):string {
@@ -204,7 +206,9 @@ export default function KitchenPlanningReport() {
     }
     const result: Record<string,Record<string,{redOz:number;pct1Oz:number}>> = {};
     for(const sk of milkSlots) { result[sk]={}; for(const dk of DK) result[sk][dk]={redOz:0,pct1Oz:0}; }
+    const nonStaffIds = new Set(nonStaff.map(c=>c.id));
     for(const rec of records) {
+      if(!nonStaffIds.has(rec.classroom_id)) continue;   // skip Staff pseudo-class milk
       for(const dk of DK) {
         if(!inScope(dateOf(rec,dk))) continue;
         for(const sk of milkSlots) {

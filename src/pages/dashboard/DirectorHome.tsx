@@ -2,8 +2,8 @@
 //
 // The director works inside the existing MenuMaker app (no separate portal). This
 // is the start page for the director role: big tiles for exactly the sections a
-// director owns — Children, Staff, Menu (planner + published), Enrollment Inbox,
-// Documents — with a live pending counter on the Inbox. Everything else (Budget,
+// director owns — Children, Staff, Menu (view-only current menu), Enrollment
+// Inbox, Documents — with a live pending counter on the Inbox. Everything else (Budget,
 // org admin) is hidden here and in the permission-driven sidebar.
 
 import { useEffect, useState } from 'react'
@@ -47,8 +47,9 @@ export default function DirectorHome() {
     { to: '/children',         label: 'Children',        desc: 'Roster, enrollment records, add & reactivate', icon: 'ti-baby-carriage', accent: '#0f4c35', bg: '#f0fff4' },
     { to: '/enrollment-inbox', label: 'Enrollment Inbox', desc: 'Review & approve incoming enrollment forms',   icon: 'ti-inbox',         accent: '#1e40af', bg: '#eff6ff', badge: pending ?? undefined },
     { to: '/staff',            label: 'Staff',           desc: 'Teachers & staff records',                     icon: 'ti-id-badge',      accent: '#6b21a8', bg: '#faf5ff' },
-    { to: '/menu',             label: 'Menu Planner',    desc: 'Plan the rotating menu cycle',                 icon: 'ti-calendar-month', accent: '#92400e', bg: '#fffbeb' },
-    { to: '/menu/current',     label: 'Published Menu',  desc: "This week's published menu",                   icon: 'ti-calendar-check', accent: '#166534', bg: '#f0fdf4' },
+    // Menu is view-only for directors (planner belongs to the central kitchen);
+    // link straight to the current published menu — no planner tile.
+    { to: '/menu/current',     label: 'Current Menu',    desc: "This week's published menu — view & print",    icon: 'ti-calendar-check', accent: '#166534', bg: '#f0fdf4' },
     { to: '/documents',        label: 'Documents',       desc: 'Upload & track required documents',            icon: 'ti-folder',        accent: '#334155', bg: '#f8fafc' },
   ]
 

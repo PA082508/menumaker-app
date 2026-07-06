@@ -11,7 +11,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { displayChildName } from '@/lib/childName'
 import { isActiveOn } from '@/lib/childActive'
 
-type Classroom = { id: string; name: string; sort_order: number; capacity_internal: number | null }
+type Classroom = { id: string; name: string; sort_order: number; capacity_internal: number | null; is_roster?: boolean | null }
 
 // Roster class-summary columns — ONE source of truth so the header, each class
 // row and the TOTAL line always line up: class · capacity · fill% · listed ·
@@ -284,7 +284,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
     // (isActiveOn), while inactive rows surface, dimmed, only inside search results.
     const [{ data: cls }, { data: kids }, { data: staffData }, { data: sess }] = await Promise.all([
       supabase.schema('menumaker').from('classrooms')
-        .select('id,name,sort_order,capacity_internal').eq('center_id', centerId).eq('is_active', true).order('sort_order'),
+        .select('id,name,sort_order,capacity_internal,is_roster').eq('center_id', centerId).eq('is_active', true).order('sort_order'),
       supabase.schema('menumaker').from('roster')
         .select('id,first_name,last_name,child_name,age_group_food,frp,date_in,date_out,birthday,milk_kind,classroom_id,is_active')
         .eq('center_id', centerId)
@@ -297,8 +297,14 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
         .eq('center_id', centerId).eq('status', 'confirmed')
         .gte('created_at', startOfTodayISO()),
     ])
-    setClassrooms((cls ?? []) as Classroom[])
-    setAllChildren((kids ?? []) as Child[])
+    // Non-roster pseudo-classes (e.g. Staff, is_roster=false) are excluded from
+    // the child roster: their class rows drop out of the summary/TOTAL/Fill%, and
+    // their records (roster is fetched by center_id, so filter by classroom_id)
+    // drop out of listed/active counts. Records themselves are left untouched.
+    const allCls = (cls ?? []) as Classroom[]
+    const staffClassIds = new Set(allCls.filter(c => c.is_roster === false).map(c => c.id))
+    setClassrooms(allCls.filter(c => c.is_roster !== false))
+    setAllChildren(((kids ?? []) as Child[]).filter(k => !staffClassIds.has(k.classroom_id ?? '')))
     setStaff((staffData ?? []) as StaffRow[])
     setSessions((sess ?? []) as Session[])
     if (!soft) setLoading(false)

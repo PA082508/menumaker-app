@@ -71,7 +71,7 @@ export default function FiveDayReconciliation() {
     setLoading(true);
 
     const {data:clsRaw} = await supabase.schema("menumaker").from("classrooms")
-      .select("id,name,sort_order").eq("is_active",true)
+      .select("id,name,sort_order,is_roster").eq("is_active",true)
       .eq("center_id",centerId).order("sort_order");
 
     const {data:settings} = await supabase.schema("menumaker").from("meal_count_settings")
@@ -96,7 +96,7 @@ export default function FiveDayReconciliation() {
 
     const clsMap:Record<string,ClassRecon> = {};
     for(const cls of clsRaw||[]) {
-      if(cls.name.toLowerCase().includes("staff")) continue;
+      if(cls.is_roster===false) continue;   // exclude non-roster pseudo-classes (Staff)
       clsMap[cls.id] = {classroom_id:cls.id,classroom_name:cls.name,days:[],activeSlots};
     }
 

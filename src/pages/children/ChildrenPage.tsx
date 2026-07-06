@@ -98,7 +98,9 @@ export default function ChildrenPage() {
       // classrooms for all 3 centers
       const { data: cls } = await supabase.schema('menumaker').from('classrooms')
         .select('id,name,sort_order,center_id')
-        .in('center_id', centerIds).eq('is_active', true).order('sort_order')
+        // Exclude non-roster pseudo-classes (e.g. Staff) — all counts here key off
+        // classroom membership, so dropping the class drops its records too.
+        .in('center_id', centerIds).eq('is_active', true).eq('is_roster', true).order('sort_order')
 
       // roster — active + date range
       const { data: kids } = await supabase.schema('menumaker').from('roster')

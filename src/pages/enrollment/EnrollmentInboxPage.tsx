@@ -84,6 +84,11 @@ export default function EnrollmentInboxPage() {
   const [showNew, setShowNew] = useState(false)
   // Center for the in-app embedded form: active center, else pick one (org view).
   const [newCenter, setNewCenter] = useState('')
+  // Enrollment-enabled center_ids, from the embed registry's `centers` map. Null
+  // until loaded — the "＋ New enrollment" picker offers only these (intersection),
+  // so Kitchen / future non-enrollment centers never appear. Adding a center to
+  // the registry surfaces it here automatically — no hardcoded list.
+  const [enrollCenterIds, setEnrollCenterIds] = useState<Set<string> | null>(null)
 
   const isStaff = useMemo(
     () => (roles ?? []).some(r => STAFF_ROLES.includes(r)),
@@ -93,6 +98,28 @@ export default function EnrollmentInboxPage() {
     const map = new Map((centers ?? []).map(c => [c.id, c.name]))
     return (id: string) => map.get(id) ?? '—'
   }, [centers])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const r = await fetch('/enroll-registry.json', { cache: 'no-cache' })
+        if (!r.ok) return
+        const reg = await r.json()
+        const ids = Object.values(reg?.centers ?? {})
+          .map((c: any) => c?.center_id)
+          .filter(Boolean) as string[]
+        if (!cancelled) setEnrollCenterIds(new Set(ids))
+      } catch { /* registry unreachable → picker stays empty, no leak */ }
+    })()
+    return () => { cancelled = true }
+  }, [])
+
+  // Picker options: app centers ∩ registry enrollment centers (by center_id).
+  const enrollmentCenters = useMemo(
+    () => (centers ?? []).filter(c => enrollCenterIds?.has(c.id)),
+    [centers, enrollCenterIds],
+  )
 
   useEffect(() => {
     if (orgLoading || !org?.id || !isStaff) return
@@ -295,7 +322,7 @@ export default function EnrollmentInboxPage() {
                 <select value={newCenter} onChange={e => setNewCenter(e.target.value)}
                   style={{ padding: '8px 10px', border: '1.5px solid #e5e7eb', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }}>
                   <option value="">Select…</option>
-                  {(centers ?? []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {enrollmentCenters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
             ) : (

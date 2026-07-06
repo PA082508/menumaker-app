@@ -1,9 +1,16 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
+import { QRCodeCanvas } from 'qrcode.react'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
+import { PARENT_FORMS_URL } from '@/config/showcaseLinks'
 
 const DOCS = [
+  // ── Enrollment ────────────────────────────────────────────────────────────
+  // Permanent public link + client-side QR (no external API). URL is centralized
+  // in config/showcaseLinks.ts so a move off GitHub Pages is a one-line change.
+  { id:'parent-forms', title:'Parent Forms', description:'CACFP enrollment & income-eligibility forms for families. Share the link or QR — opens on any device.', audience:'Parent', category:'Enrollment', parentForms:true, driveUrl:PARENT_FORMS_URL },
+
   // ── BYOD ─────────────────────────────────────────────────────────────────
   { id:'byod-agreement', title:'BYOD Device Use Agreement', description:'Sign online — saved securely. Director countersigns digitally.', audience:'Staff', category:'BYOD', canSign:true, highlight:true },
   { id:'byod-policy', title:'BYOD Policy HR-BYOD-001', description:'Voluntary participation, $20/month stipend, privacy protections.', audience:'Staff', category:'BYOD', driveUrl:'https://drive.google.com/file/d/1BsJks_GR4oGKtccX6jZX58oOnj2QCZQW/view?usp=sharing' },
@@ -170,12 +177,66 @@ function SignModal({ onClose }: { onClose: ()=>void }) {
   )
 }
 
+// Client-side QR (qrcode.react → <canvas>, no external API). The canvas is
+// rendered at high resolution and displayed scaled down, so Download PNG / Print
+// stay crisp. Used by the "Parent Forms" card.
+function ParentFormsQR({ url, onClose }: { url: string; onClose: ()=>void }) {
+  const boxRef = useRef<HTMLDivElement>(null)
+
+  const getCanvas = () => boxRef.current?.querySelector('canvas') as HTMLCanvasElement | null
+
+  function downloadPng() {
+    const c = getCanvas(); if (!c) return
+    const a = document.createElement('a')
+    a.href = c.toDataURL('image/png')
+    a.download = 'parent-forms-qr.png'
+    a.click()
+  }
+
+  function print() {
+    const c = getCanvas(); if (!c) return
+    const dataUrl = c.toDataURL('image/png')
+    const w = window.open('', '_blank', 'width=480,height=640')
+    if (!w) return
+    w.document.write(
+      `<html><head><title>Parent Forms — QR</title></head>` +
+      `<body style="margin:0;font-family:sans-serif;text-align:center;padding:40px">` +
+      `<h2 style="color:#0a3320;margin:0 0 6px">Parent Forms</h2>` +
+      `<p style="color:#6b7280;font-size:13px;margin:0 0 20px">Scan to open on any device</p>` +
+      `<img src="${dataUrl}" style="width:300px;height:300px" onload="window.focus();window.print();window.close()"/>` +
+      `<p style="color:#374151;font-size:12px;margin-top:16px;word-break:break-all">${url}</p>` +
+      `</body></html>`
+    )
+    w.document.close()
+  }
+
+  const btn: React.CSSProperties = { flex:1, padding:'9px 12px', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'inherit', border:'none' }
+
+  return (
+    <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+      <div onClick={(e:any)=>e.stopPropagation()} style={{background:'#fff',borderRadius:16,padding:32,maxWidth:320,width:'100%',textAlign:'center',boxShadow:'0 24px 80px rgba(0,0,0,0.25)'}}>
+        <div style={{fontSize:14,fontWeight:600,color:'#0a3320',marginBottom:4}}>Parent Forms</div>
+        <div style={{fontSize:12,color:'#6b7280',marginBottom:18}}>Scan to open on any device</div>
+        <div ref={boxRef} style={{display:'inline-block',padding:10,borderRadius:8,border:'1px solid #e5e7eb',background:'#fff'}}>
+          <QRCodeCanvas value={url} size={512} level="M" marginSize={2} style={{width:200,height:200}} />
+        </div>
+        <div style={{display:'flex',gap:8,marginTop:18}}>
+          <button onClick={downloadPng} style={{...btn,background:'#0f4c35',color:'#fff'}}>↓ Download PNG</button>
+          <button onClick={print} style={{...btn,background:'#f0f7f4',color:'#1a5c3f',border:'1px solid #d1fae5'}}>🖨 Print</button>
+        </div>
+        <button onClick={onClose} style={{marginTop:12,padding:'8px 24px',borderRadius:8,background:'#f3f4f6',color:'#374151',border:'none',cursor:'pointer',fontSize:13,fontFamily:'inherit'}}>Close</button>
+      </div>
+    </div>
+  )
+}
+
 export default function DocumentHubPage() {
   const { org } = useOrg()
   const [cat, setCat] = useState('all')
   const [aud, setAud] = useState('all')
   const [signOpen, setSignOpen] = useState(false)
   const [qrDoc, setQrDoc] = useState<any>(null)
+  const [parentQrOpen, setParentQrOpen] = useState(false)
   const [count, setCount] = useState<number|null>(null)
 
   useEffect(()=>{
@@ -252,7 +313,12 @@ export default function DocumentHubPage() {
                 <div style={{fontSize:12,color:'#6b7280',lineHeight:1.5}}>{doc.description}</div>
               </div>
               <div style={{marginTop:'auto'}}>
-                {(doc as any).canSign ? (
+                {(doc as any).parentForms ? (
+                  <div style={{display:'flex',gap:8}}>
+                    <a href={PARENT_FORMS_URL} target="_blank" rel="noreferrer" style={{flex:1,padding:'8px 12px',borderRadius:8,fontSize:13,fontWeight:500,background:'#0f4c35',color:'#fff',textDecoration:'none',textAlign:'center' as const,fontFamily:'inherit'}}>Open ↗</a>
+                    <button onClick={()=>setParentQrOpen(true)} style={{padding:'8px 14px',borderRadius:8,fontSize:13,background:'#f0f7f4',color:'#1a5c3f',border:'1px solid #d1fae5',cursor:'pointer',fontFamily:'inherit'}}>QR</button>
+                  </div>
+                ) : (doc as any).canSign ? (
                   <div style={{display:'flex',gap:8}}>
                     <button onClick={()=>setSignOpen(true)} style={{flex:1,padding:'8px 12px',borderRadius:8,fontSize:13,fontWeight:600,background:'#1a5c3f',color:'#fff',border:'none',cursor:'pointer',fontFamily:'inherit'}}>✍️ Sign Online</button>
                     {(doc as any).driveUrl && <button onClick={()=>setQrDoc(doc)} style={{padding:'8px 14px',borderRadius:8,fontSize:13,background:'#f0f7f4',color:'#1a5c3f',border:'1px solid #d1fae5',cursor:'pointer',fontFamily:'inherit'}}>QR</button>}
@@ -271,6 +337,7 @@ export default function DocumentHubPage() {
         })}
       </div>
       {signOpen && <SignModal onClose={()=>setSignOpen(false)}/>}
+      {parentQrOpen && <ParentFormsQR url={PARENT_FORMS_URL} onClose={()=>setParentQrOpen(false)}/>}
       {qrDoc && (
         <div onClick={()=>setQrDoc(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
           <div onClick={(e:any)=>e.stopPropagation()} style={{background:'#fff',borderRadius:16,padding:32,maxWidth:300,width:'100%',textAlign:'center',boxShadow:'0 24px 80px rgba(0,0,0,0.25)'}}>

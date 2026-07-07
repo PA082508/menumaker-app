@@ -17,7 +17,9 @@ import EnrollmentReviewModal from './EnrollmentReviewModal'
 import EmbedEnrollHost from './EmbedEnrollHost'
 import { ocrFailed as isOcrFailed, reRunOcr } from '@/lib/enrollmentScan'
 
-const STAFF_ROLES = ['director', 'office_manager', 'admin']
+// Backup approvers: when the director is absent, office managers, admins and the
+// owner can also review/approve enrollment submissions.
+const STAFF_ROLES = ['director', 'office_manager', 'admin', 'owner']
 
 type Submission = {
   id: string
@@ -187,7 +189,7 @@ export default function EnrollmentInboxPage() {
     return (
       <div style={{ padding: 40, fontFamily: "'DM Sans', sans-serif", color: '#6b7280' }}>
         <div style={{ fontSize: 20, fontWeight: 700, color: '#0f4c35', marginBottom: 8 }}>Enrollment Inbox</div>
-        Only directors and office managers can review enrollment submissions.
+        Only directors, office managers, admins and the owner can review enrollment submissions.
       </div>
     )
   }

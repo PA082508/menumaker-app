@@ -3,6 +3,7 @@ import { User, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 
 type UserRole =
+  | 'owner'
   | 'admin'
   | 'director'
   | 'cook'
@@ -38,6 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Privilege ranking — most privileged first. When a user holds several roles
   // we surface the most privileged one (NOT the first alphabetically).
   const ROLE_RANK: Record<string, number> = {
+    owner:          -1,
     admin:           0,
     office_manager:  1,
     director:        2,

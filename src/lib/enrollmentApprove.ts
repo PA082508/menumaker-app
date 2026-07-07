@@ -69,29 +69,62 @@ export function buildIeaFrp(fd: any): { frp: string | null; source: 'sponsor' | 
 }
 
 // ─── duplicate / child matching ──────────────────────────────────────────────
-export type RosterLite = { id: string; first_name: string | null; last_name: string | null; child_name: string | null; birthday: string | null }
+export type RosterLite = { id: string; first_name: string | null; last_name: string | null; child_name: string | null; birthday: string | null; is_active: boolean }
 
+// Gate detector (enrollment dup prevention): load the WHOLE center roster,
+// including inactive/departed children, so matchRoster can surface a returning
+// child at review time and the reviewer reactivates instead of creating a
+// duplicate skeleton. Active first so exact live matches sort ahead of inactive.
 export async function loadCenterRoster(centerId: string): Promise<RosterLite[]> {
   const { data } = await S().from('roster')
-    .select('id,first_name,last_name,child_name,birthday')
-    .eq('center_id', centerId).eq('is_active', true)
+    .select('id,first_name,last_name,child_name,birthday,is_active')
+    .eq('center_id', centerId)
+    .order('is_active', { ascending: false })
   return (data ?? []) as RosterLite[]
 }
 
-/** Match a {name, dob} against roster candidates: name (either order / stored
- *  child_name) equal after NFD normalization, AND DOB equal when both present. */
+// Bounded Levenshtein for soft name matching (import typos / spelling variants
+// like Talylah↔Talulah).
+function lev(a: string, b: string): number {
+  const m = a.length, n = b.length
+  if (!m) return n
+  if (!n) return m
+  let prev = Array.from({ length: n + 1 }, (_, j) => j)
+  for (let i = 1; i <= m; i++) {
+    const cur = [i]
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
+    }
+    prev = cur
+  }
+  return prev[n]
+}
+
+/** Match a {name, dob} against roster candidates. A candidate matches on an
+ *  EXACT normalized-name hit (either order / stored child_name), or — to catch
+ *  import typos and returning children — a SOFT name hit (small edit distance)
+ *  corroborated by an equal DOB. A conflicting DOB always rules a candidate out.
+ *  Candidates may be inactive (loadCenterRoster no longer filters); the caller
+ *  reactivates a chosen inactive match rather than inserting a duplicate. */
 export function matchRoster(candidates: RosterLite[], name: any, dob?: any): RosterLite[] {
   const target = normName(name)
   if (!target) return []
   const d = dob ? String(dob).slice(0, 10) : ''
   return candidates.filter(c => {
-    const a = normName(`${c.first_name ?? ''} ${c.last_name ?? ''}`)
-    const b = normName(`${c.last_name ?? ''} ${c.first_name ?? ''}`)
-    const cn = normName(c.child_name ?? '')
-    const nameMatch = a === target || b === target || cn === target
-    if (!nameMatch) return false
+    const forms = [
+      normName(`${c.first_name ?? ''} ${c.last_name ?? ''}`),
+      normName(`${c.last_name ?? ''} ${c.first_name ?? ''}`),
+      normName(c.child_name ?? ''),
+    ].filter(Boolean)
     const cd = c.birthday ? String(c.birthday).slice(0, 10) : ''
-    return d && cd ? d === cd : true
+    if (d && cd && d !== cd) return false            // conflicting DOB → different child
+    if (forms.some(f => f === target)) return true   // exact name (DOB equal or unknown)
+    // Soft (fuzzy) name — only when DOB corroborates, to avoid false positives.
+    if (d && cd && d === cd) {
+      const tol = target.length <= 6 ? 1 : 2
+      return forms.some(f => lev(f, target) <= tol)
+    }
+    return false
   })
 }
 
@@ -136,14 +169,18 @@ export async function approveCacfpInsert(
 export async function approveCacfpUpdate(
   sub: { id: string; child_id: string | null }, rosterId: string,
   patch: RosterPatch, reviewerId: string, paperSigned: boolean,
+  reactivate = false,
 ): Promise<ApproveResult> {
-  const cols = Object.keys(patch)
+  // Reactivating a departed match: flip is_active back on in the same write, and
+  // capture it in `cols` so undo restores the prior (inactive) state.
+  const effPatch: RosterPatch = reactivate ? { ...patch, is_active: true } : patch
+  const cols = Object.keys(effPatch)
   const { data: prev } = await S().from('roster').select(['id', ...cols].join(',')).eq('id', rosterId).single()
-  const { error } = await S().from('roster').update(patch).eq('id', rosterId)
+  const { error } = await S().from('roster').update(effPatch).eq('id', rosterId)
   if (error) throw error
   await markApproved(sub.id, rosterId, reviewerId, paperSigned)
   return {
-    message: `Approved — updated ${patch.child_name ?? 'child'}`,
+    message: `Approved — ${reactivate ? 'reactivated' : 'updated'} ${patch.child_name ?? 'child'}`,
     undo: async () => {
       const revert: RosterPatch = {}
       for (const c of cols) revert[c] = (prev as any)?.[c] ?? null

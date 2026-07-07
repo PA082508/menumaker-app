@@ -45,6 +45,7 @@ interface Classroom {
   name: string;
   sort_order: number;
   center_id?: string;
+  is_roster?: boolean;
 }
 
 interface MealCountSettings {
@@ -202,14 +203,20 @@ export default function MealCountPage({ portalRoles }: { portalRoles?: string[] 
     (async () => {
       const { data: cls } = await supabase
         .schema("menumaker").from("classrooms")
-        .select("id,class_key,name,sort_order,center_id")
+        .select("id,class_key,name,sort_order,center_id,is_roster")
         .eq("is_active", true)
         .eq("center_id", centerId)
         .order("sort_order");
-      if (cls?.length) {
-        setClassrooms(cls as Classroom[]);
-        setSelectedClassId(cls[0].id);
-        setSelectedClassName(cls[0].name);
+      // Exclude staff pseudo-classes (is_roster=false): adults mis-filed as
+      // children must never appear in the child meal grid or flow into claim
+      // records. Same is_roster!==false pattern as SiteClaimReport /
+      // KitchenPlanningReport / CenterRosterPage (commit d728e26). Staff kitchen
+      // consumption is shown separately in KitchenPlanningReport "Actual Dishes".
+      const rosterCls = ((cls ?? []) as Classroom[]).filter((c) => c.is_roster !== false);
+      if (rosterCls.length) {
+        setClassrooms(rosterCls);
+        setSelectedClassId(rosterCls[0].id);
+        setSelectedClassName(rosterCls[0].name);
       } else {
         setClassrooms([]);
         setSelectedClassId("");

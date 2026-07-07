@@ -155,13 +155,15 @@ export default function MealCountPage() {
     (async () => {
       const { data: cls, error: clsErr } = await supabase
         .schema("menumaker").from("classrooms")
-        .select("id,class_key,name,sort_order")
+        .select("id,class_key,name,sort_order,is_roster")
         .eq("is_active", true).order("sort_order");
       console.log("classrooms:", cls, "error:", clsErr);
-      if (cls?.length) {
-        setClassrooms(cls);
-        setSelectedClassId(cls[0].id);
-        setSelectedClassName(cls[0].name);
+      // Exclude staff pseudo-classes (is_roster=false) — see MealCountPage.
+      const rosterCls = (cls ?? []).filter((c: any) => c.is_roster !== false);
+      if (rosterCls.length) {
+        setClassrooms(rosterCls);
+        setSelectedClassId(rosterCls[0].id);
+        setSelectedClassName(rosterCls[0].name);
       }
 
       const { data: cfg } = await supabase

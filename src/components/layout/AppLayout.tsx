@@ -78,6 +78,7 @@ const SECTIONS: Section[] = [
     id: 'reports', label: 'Reports', icon: '📋',
     items: [
       { path: '/claim-report',          label: 'Site Claim',         icon: 'ti-file-invoice' },
+      { path: '/eligibility-reconciliation', label: 'Eligibility Recon', icon: 'ti-checklist' },
       { path: '/reports',               label: 'Meal Count Summary', icon: 'ti-chart-bar' },
       { path: '/staff/time-log',        label: 'Time Log Summary',   icon: 'ti-clock' },
       { path: '/submissions',           label: 'Income Eligibility', icon: 'ti-forms' },

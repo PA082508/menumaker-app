@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { format } from "date-fns";
 import { useOrg } from "@/contexts/OrgContext";
+import { parseIeaFiscalYear } from "@/lib/enrollmentApprove";
 const SLOT_KEYS   = ["b","as","l","ps","su","es"];
 const SLOT_NAMES  = ["breakfast","am_snack","lunch","pm_snack","supper","evening_snack"];
 const DAY_KEYS    = ["mon","tue","wed","thu","fri"];
@@ -63,6 +64,39 @@ export default function SiteClaimReport() {
   const [saving,  setSaving]  = useState(false);
   const [closing, setClosing] = useState(false);
   const [msg,     setMsg]     = useState<string|null>(null);
+  // F/R children lacking a current-cycle IEA determination — surfaced as a 🟡
+  // banner so undocumented eligibility is visible before the claim is assembled.
+  const [undocFR, setUndocFR] = useState<number|null>(null);
+
+  useEffect(()=>{
+    if(!centerId){ setUndocFR(null); return; }
+    let cancelled=false;
+    (async()=>{
+      let fy:string|null=null;
+      try{
+        const r=await fetch("/enroll-registry.json",{cache:"no-cache"});
+        const j=await r.json(); const iea=j?.forms?.iea;
+        fy=parseIeaFiscalYear(iea?.versions?.[iea?.current]??iea?.fallbackUrl);
+      }catch{ fy=null; }
+      if(cancelled) return;
+      if(!fy){ setUndocFR(null); return; }
+      const today=format(new Date(),"yyyy-MM-dd");
+      const [{data:roster},{data:cls},{data:ie}]=await Promise.all([
+        supabase.schema("menumaker").from("roster")
+          .select("id,frp,classroom_id,date_out").eq("center_id",centerId).eq("is_active",true).in("frp",["F","R"]),
+        supabase.schema("menumaker").from("classrooms").select("id,is_roster").eq("center_id",centerId),
+        supabase.schema("menumaker").from("income_eligibility").select("roster_id").eq("center_id",centerId).eq("fiscal_year",fy),
+      ]);
+      const staff=new Set((cls||[]).filter((c:any)=>c.is_roster===false).map((c:any)=>c.id));
+      const onFile=new Set((ie||[]).map((r:any)=>r.roster_id));
+      const n=(roster||[]).filter((r:any)=>
+        !staff.has(r.classroom_id) &&
+        !(r.date_out && String(r.date_out).slice(0,10)<today) &&
+        !onFile.has(r.id)).length;
+      if(!cancelled) setUndocFR(n);
+    })();
+    return ()=>{cancelled=true;};
+  },[centerId]);
 
   // Load rates once
   useEffect(()=>{
@@ -335,6 +369,13 @@ export default function SiteClaimReport() {
           <DR2 code="C3" label="Average Daily Attendance" value={data.ada} auto/>
           <DR2 code="C4" label="Number of Shifts" value={isClosed?data.number_of_shifts:
             <input value={data.number_of_shifts} type="number" onChange={e=>setData(d=>d?{...d,number_of_shifts:+e.target.value}:d)} style={INP}/>}/>
+          {!!undocFR && (
+            <div style={{background:"#fff3cd",border:"1px solid #ffc107",borderRadius:6,padding:".5rem .75rem",
+              fontSize:".8rem",color:"#856404",margin:".25rem 0 .75rem"}}>
+              🟡 {undocFR} Free/Reduced child{undocFR===1?"":"ren"} without a current IEA on file.{" "}
+              <a href="/eligibility-reconciliation" style={{color:"#856404",fontWeight:600}}>Review eligibility reconciliation →</a>
+            </div>
+          )}
           <Sec title="Number of enrolled participants in each reimbursement category"/><H2 label="Quantity"/>
           {([["C5","Free Category","free_category"],["C6","Reduced Category","reduced_category"],["C7","Paid Category","paid_category"]] as [string,string,string][]).map(([c,l,k])=>(
             <DR2 key={c} code={c} label={l} value={isClosed?(data as any)[k]:

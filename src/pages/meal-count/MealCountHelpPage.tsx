@@ -1,6 +1,6 @@
 // MealCountHelpPage.tsx — route /meal-count/help
 import { useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 
 const C = {
   bg:'#f9fafb', surface:'#ffffff', border:'#e5e7eb',
@@ -47,6 +47,13 @@ const RULES = [
 
 export default function MealCountHelpPage() {
   const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const location = useLocation()
+  // history.back() no-ops when Help was opened via a deep link / refresh / new tab
+  // (no in-app history entry). location.key === 'default' flags that first entry;
+  // fall back to the Meal Count page instead of a dead button.
+  const goBack = () =>
+    location.key !== 'default' ? navigate(-1) : navigate('/meal-count')
   const role = searchParams.get('role') // 'teacher' | 'cook' | 'director' | null
 
   // Tabs visible per role (null = show all)
@@ -89,7 +96,7 @@ export default function MealCountHelpPage() {
           <div style={{ fontWeight:800, fontSize:18, color:C.text }}>Meal Count — Help Guide</div>
           <div style={{ fontSize:13, color:C.muted }}>Play Academy · CACFP meal recording instructions</div>
         </div>
-        <button onClick={() => window.history.back()}
+        <button onClick={goBack}
           style={{ marginLeft:'auto', padding:'10px 20px', borderRadius:10, background:C.green, color:'#fff', border:'none', cursor:'pointer', fontSize:14, fontFamily:'inherit', fontWeight:700 }}>
           ← Back
         </button>

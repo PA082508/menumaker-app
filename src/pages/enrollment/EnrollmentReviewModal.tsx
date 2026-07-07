@@ -98,10 +98,28 @@ export default function EnrollmentReviewModal({
   const lowConf = useMemo(() => lowConfidenceSet(fd), [fd])
   const scanDocType = ocrMeta(fd).docType
 
+  // Center's active Meal Slots — drives the 🟡 "meal not served here" / CACFP-cap
+  // warnings. null until loaded (or on error) → validation fails open (skips the
+  // slot check), never a false warning.
+  const [activeMealSlots, setActiveMealSlots] = useState<string[] | null>(null)
+  useEffect(() => {
+    if (!isCacfp) { setActiveMealSlots(null); return }
+    let cancelled = false
+    ;(async () => {
+      const { data } = await supabase.schema('menumaker')
+        .from('meal_count_settings')
+        .select('active_slots')
+        .eq('center_id', submission.center_id)
+        .maybeSingle()
+      if (!cancelled) setActiveMealSlots(Array.isArray(data?.active_slots) ? data.active_slots : null)
+    })()
+    return () => { cancelled = true }
+  }, [isCacfp, submission.center_id])
+
   const rows = useMemo(() => buildDiff(submission.submission_type, fd, ctx), [submission.submission_type, fd, ctx])
   const v = useMemo(
-    () => validateSubmission(submission.submission_type, fd, { signatureDate: submission.signature_date }),
-    [submission.submission_type, fd, submission.signature_date],
+    () => validateSubmission(submission.submission_type, fd, { signatureDate: submission.signature_date, activeMealSlots }),
+    [submission.submission_type, fd, submission.signature_date, activeMealSlots],
   )
   const badge = BADGE[v.status]
 
@@ -154,8 +172,10 @@ export default function EnrollmentReviewModal({
       if (isCacfp) {
         const patch = buildCacfpPatch(fd, dateIn)
         const target = resolvedChildId ?? (chosenMatch && chosenMatch !== 'new' ? chosenMatch : null)
+        // Reactivate when the chosen match is a departed (inactive) child.
+        const reactivate = !!target && candidates.find(c => c.id === target)?.is_active === false
         result = target
-          ? await approveCacfpUpdate(submission, target, patch, reviewerId, paperSigned)
+          ? await approveCacfpUpdate(submission, target, patch, reviewerId, paperSigned, reactivate)
           : await approveCacfpInsert(submission, patch, reviewerId, paperSigned)
       } else if (isIea) {
         if (!frpInfo?.frp) throw new Error('No FRP determination on the form (Sponsor section empty)')
@@ -336,8 +356,9 @@ export default function EnrollmentReviewModal({
                 {cacfpMatches.map(m => (
                   <label key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                     <input type="radio" name="dupmatch" checked={chosenMatch === m.id} onChange={() => setChosenMatch(m.id)} />
-                    Update <strong>{m.child_name || `${m.last_name ?? ''} ${m.first_name ?? ''}`}</strong>
+                    {m.is_active === false ? 'Reactivate' : 'Update'} <strong>{m.child_name || `${m.last_name ?? ''} ${m.first_name ?? ''}`}</strong>
                     {m.birthday ? <span style={{ color: '#9ca3af' }}>· {String(m.birthday).slice(0, 10)}</span> : null}
+                    {m.is_active === false ? <span style={{ color: '#b45309', fontWeight: 600 }}>· inactive</span> : null}
                   </label>
                 ))}
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
@@ -382,7 +403,9 @@ export default function EnrollmentReviewModal({
         <div style={{ padding: '12px 22px', borderTop: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 8 }}>
           {err && <span style={{ color: '#991b1b', fontSize: 12.5, flex: 1 }}>{err}</span>}
           {!err && <span style={{ flex: 1, fontSize: 11.5, color: '#9ca3af' }}>
-            {v.status === 'errors' ? 'Resolve required fields before approving.' : dupUnresolved ? 'Choose a duplicate resolution above.' : 'Nothing is written to the roster until you Approve.'}
+            {rejecting
+              ? 'Rejecting doesn’t require valid fields — just add a reason and confirm.'
+              : v.status === 'errors' ? 'Resolve required fields before approving.' : dupUnresolved ? 'Choose a duplicate resolution above.' : 'Nothing is written to the roster until you Approve.'}
           </span>}
           <button onClick={onClose} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Close</button>
           <button onClick={save} disabled={!dirty || saving} style={{

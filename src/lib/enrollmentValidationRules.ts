@@ -55,11 +55,50 @@ const statusFrom = (r: Omit<ValidationResult, 'status'>): ValStatus =>
     : r.warnings.length > 0 ? 'warnings'
     : 'ready'
 
+// ─── CACFP meal slots ────────────────────────────────────────────────────────
+// The packet form stores the weekly grid as schedule[day].meals[code], where
+// code ∈ b/as/l/ps/su/es. Canonical keys match menumaker.meal_count_settings
+// .active_slots (what the center is approved to serve — see get_center_meal_slots).
+const MEAL_CODE_TO_SLOT: Record<string, string> = {
+  b: 'breakfast', as: 'am_snack', l: 'lunch', ps: 'pm_snack', su: 'supper', es: 'evening_snack',
+  // The scan / paper path may already carry canonical keys — accept them verbatim.
+  breakfast: 'breakfast', am_snack: 'am_snack', lunch: 'lunch',
+  pm_snack: 'pm_snack', supper: 'supper', evening_snack: 'evening_snack',
+}
+const SLOT_LABEL: Record<string, string> = {
+  breakfast: 'Breakfast', am_snack: 'AM Snack', lunch: 'Lunch',
+  pm_snack: 'PM Snack', supper: 'Supper', evening_snack: 'Evening Snack',
+}
+const SLOT_IS_SNACK = (slot: string): boolean =>
+  slot === 'am_snack' || slot === 'pm_snack' || slot === 'evening_snack'
+const MAX_MEALS_PER_DAY = 3   // CACFP daily cap
+const MAX_SNACKS_PER_DAY = 2
+
+// Per scheduled day, the canonical slot keys the parent checked (order preserved,
+// unknown codes dropped).
+function checkedSlotsByDay(schedule: any): string[][] {
+  if (!schedule || typeof schedule !== 'object') return []
+  return Object.values(schedule).map((d: any) => {
+    const meals = d?.meals && typeof d.meals === 'object' ? d.meals : {}
+    const out: string[] = []
+    for (const [code, on] of Object.entries(meals)) {
+      if (!on) continue
+      const slot = MEAL_CODE_TO_SLOT[code]
+      if (slot) out.push(slot)
+    }
+    return out
+  })
+}
+
 // ─── CACFP Enrollment (submission_type = 'cacfp_enrollment') ─────────────────
 // form_data shape (packet form): { child_name, birthdate, day_phone,
 //   mailing:{street,city,zip}, schedule:{Mon..Fri:{in_care,arr1,dep1,arr2,dep2,
 //   meals:{...}}}, schedule_varies, parent_birthdate, parent_email, expires_on }
-function validateCacfp(fd: any, signatureDate?: string | null): ValidationResult {
+function validateCacfp(
+  fd: any,
+  signatureDate?: string | null,
+  activeMealSlots?: string[] | null,
+): ValidationResult {
   const errors: string[] = [], warnings: string[] = [], missing: string[] = []
 
   if (blank(fd?.child_name)) missing.push('Child name')
@@ -76,6 +115,37 @@ function validateCacfp(fd: any, signatureDate?: string | null): ValidationResult
     (d: any) => d?.in_care && dayHasHours(d) && dayHasMeal(d),
   )
   if (!anyValidDay) missing.push('At least one day with care hours and a meal')
+
+  // Meal Slots (advisory 🟡, never blocks Approve — closes the paper/scan path
+  // that the form's slot gating covers online).
+  const byDay = checkedSlotsByDay(schedule)
+  const allChecked = new Set(byDay.flat())
+
+  // A meal was checked that this center doesn't serve. Only when the center's
+  // active slots were resolved — null means the lookup failed → fail open (skip).
+  if (Array.isArray(activeMealSlots)) {
+    const active = new Set(activeMealSlots)
+    const offSlot = [...allChecked].filter(s => !active.has(s))
+    if (offSlot.length) {
+      const labels = offSlot.map(s => SLOT_LABEL[s] ?? s)
+      warnings.push(`Meal(s) checked that this center doesn't serve: ${labels.join(', ')}`)
+    }
+  }
+
+  // CACFP daily cap of 3 meals + 2 snacks. Count only meals the center actually
+  // serves when known (a parent can over-check the printed grid); the cap itself
+  // is a universal CACFP rule. Per-day, since the cap is a daily limit.
+  const overCap = byDay.some(daySlots => {
+    const eligible = Array.isArray(activeMealSlots)
+      ? daySlots.filter(s => activeMealSlots.includes(s))
+      : daySlots
+    let meals = 0, snacks = 0
+    new Set(eligible).forEach(s => (SLOT_IS_SNACK(s) ? snacks++ : meals++))
+    return meals > MAX_MEALS_PER_DAY || snacks > MAX_SNACKS_PER_DAY
+  })
+  if (overCap) {
+    warnings.push(`Exceeds CACFP daily maximum (${MAX_MEALS_PER_DAY} meals + ${MAX_SNACKS_PER_DAY} snacks) on at least one day`)
+  }
 
   if (blank(fd?.day_phone)) missing.push('Daytime phone')
   else if (!validPhone(fd.day_phone)) warnings.push('Daytime phone format looks invalid')
@@ -159,7 +229,7 @@ function validateIea(fd: any): ValidationResult {
 }
 
 // ─── Registry of validators by submission_type ──────────────────────────────
-type Validator = (fd: any, signatureDate?: string | null) => ValidationResult
+type Validator = (fd: any, signatureDate?: string | null, activeMealSlots?: string[] | null) => ValidationResult
 
 const VALIDATORS: Record<string, Validator> = {
   cacfp_enrollment: validateCacfp,
@@ -179,7 +249,7 @@ export const submissionTypeLabel = (t: string): string =>
 export function validateSubmission(
   submissionType: string,
   formData: any,
-  opts?: { signatureDate?: string | null },
+  opts?: { signatureDate?: string | null; activeMealSlots?: string[] | null },
 ): ValidationResult {
   const v = VALIDATORS[submissionType]
   if (!v) {
@@ -188,5 +258,5 @@ export function validateSubmission(
       missing: [`No validation rules for "${submissionTypeLabel(submissionType)}" yet`],
     }
   }
-  return v(formData, opts?.signatureDate)
+  return v(formData, opts?.signatureDate, opts?.activeMealSlots ?? null)
 }

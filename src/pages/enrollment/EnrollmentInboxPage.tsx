@@ -15,6 +15,7 @@ import {
 } from '@/lib/enrollmentValidationRules'
 import EnrollmentReviewModal from './EnrollmentReviewModal'
 import EmbedEnrollHost from './EmbedEnrollHost'
+import { ocrFailed as isOcrFailed, reRunOcr } from '@/lib/enrollmentScan'
 
 const STAFF_ROLES = ['director', 'office_manager', 'admin']
 
@@ -81,6 +82,7 @@ export default function EnrollmentInboxPage() {
   const [reviewing, setReviewing] = useState<Submission | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
   const [toast, setToast] = useState<{ msg: string; undo?: () => Promise<void> } | null>(null)
+  const [rerunning, setRerunning] = useState<string | null>(null)
   const [showNew, setShowNew] = useState(false)
   // Center for the in-app embedded form: active center, else pick one (org view).
   const [newCenter, setNewCenter] = useState('')
@@ -152,6 +154,24 @@ export default function EnrollmentInboxPage() {
     const u = toast?.undo
     setToast(null)
     if (u) { await u(); setReloadKey(k => k + 1) }
+  }
+
+  async function handleReRun(row: Submission) {
+    if (rerunning) return
+    setRerunning(row.id)
+    try {
+      const r = await reRunOcr(row)
+      setToast({
+        msg: r.ocrFailed
+          ? 'Re-run OCR failed again — the scan may be unreadable. Try re-shooting.'
+          : `Re-run OCR: recognized as ${submissionTypeLabel(r.submissionType)}.`,
+      })
+      setReloadKey(k => k + 1)
+    } catch (e: any) {
+      setToast({ msg: `Re-run OCR error: ${e?.message ?? e}` })
+    } finally {
+      setRerunning(null)
+    }
   }
 
   // Live validation per row (Phase 1 computes client-side; no trigger yet).
@@ -247,6 +267,27 @@ export default function EnrollmentInboxPage() {
                     fontSize: 11, fontWeight: 600, color: '#0f4c35', background: '#f0fff4',
                     padding: '2px 8px', borderRadius: 6,
                   }}>📎 Scan</span>
+                )}
+                {isOcrFailed(row.form_data) && (
+                  <span title="OCR could not read this scan — re-run or re-shoot" style={{
+                    fontSize: 11, fontWeight: 700, color: '#991b1b', background: '#fef2f2',
+                    padding: '2px 8px', borderRadius: 6,
+                  }}>⚠️ OCR failed</span>
+                )}
+                {row.form_data?.scan_ref && (
+                  <button
+                    onClick={e => { e.stopPropagation(); handleReRun(row) }}
+                    disabled={rerunning === row.id}
+                    title="Re-run OCR on the stored scan"
+                    style={{
+                      padding: '6px 12px', borderRadius: 8, border: '1px solid #e5e7eb',
+                      background: rerunning === row.id ? '#f3f4f6' : '#fff', color: '#374151',
+                      fontSize: 12, fontWeight: 600, cursor: rerunning === row.id ? 'default' : 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {rerunning === row.id ? '↻ Running…' : '↻ Re-run OCR'}
+                  </button>
                 )}
                 <SourceTag source={row.source} />
                 <StatusBadge v={v} />

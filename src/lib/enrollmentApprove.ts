@@ -232,6 +232,54 @@ export interface IeaDetermination {
 
 const IE_SNAP = 'id,eligibility,frp_expires,eligibility_source,determined_by,determined_by_name,determined_at,determination_log'
 
+// Write/append ONE child's F/R/P determination to the authoritative
+// income_eligibility fiscal-year record (select-then-update/insert; there is no
+// unique key), with who/when + an append-only determination_log entry. Returns
+// an undo that reverts exactly this write. Shared by the IEA approve flow
+// (Layer 1) and profile late-corrections (Layer 2). `ieSource` is the row's
+// `source` column ('iea_review' | 'profile_edit'); eligibility_source is how the
+// value was set ('ocr_sponsor' | 'ocr_helper' | 'manual').
+export interface DeterminationInput {
+  roster_id: string; org_id: string; center_id: string
+  frp: string; frp_expires: string | null; fiscal_year: string
+  eligibility_source: string; determined_by: string; determined_by_name: string
+  ieSource?: string; at?: string
+}
+
+export async function recordDetermination(p: DeterminationInput): Promise<() => Promise<void>> {
+  const at = p.at ?? nowIso()
+  const entry = (from: any) => ({ at, by: p.determined_by, by_name: p.determined_by_name, from: from ?? null, to: p.frp, source: p.eligibility_source })
+  const { data: existing } = await S().from('income_eligibility').select(IE_SNAP)
+    .eq('roster_id', p.roster_id).eq('fiscal_year', p.fiscal_year)
+    .order('updated_at', { ascending: false }).limit(1).maybeSingle()
+  if (existing?.id) {
+    const prev: any = { ...existing }
+    const log = Array.isArray(existing.determination_log) ? existing.determination_log : []
+    const { error } = await S().from('income_eligibility').update({
+      eligibility: p.frp, frp_expires: p.frp_expires, eligibility_source: p.eligibility_source,
+      determined_by: p.determined_by, determined_by_name: p.determined_by_name, determined_at: at,
+      determination_log: [...log, entry(existing.eligibility)], updated_at: at,
+    }).eq('id', existing.id)
+    if (error) throw error
+    return async () => {
+      await S().from('income_eligibility').update({
+        eligibility: prev.eligibility, frp_expires: prev.frp_expires, eligibility_source: prev.eligibility_source,
+        determined_by: prev.determined_by, determined_by_name: prev.determined_by_name,
+        determined_at: prev.determined_at, determination_log: prev.determination_log,
+      }).eq('id', prev.id)
+    }
+  }
+  const { data: ins, error } = await S().from('income_eligibility').insert({
+    org_id: p.org_id, center_id: p.center_id, roster_id: p.roster_id, fiscal_year: p.fiscal_year,
+    eligibility: p.frp, frp_expires: p.frp_expires, eligibility_source: p.eligibility_source,
+    determined_by: p.determined_by, determined_by_name: p.determined_by_name, determined_at: at,
+    determination_log: [entry(null)], source: p.ieSource ?? 'iea_review',
+  }).select('id').single()
+  if (error) throw error
+  const newId = (ins as any).id as string
+  return async () => { await S().from('income_eligibility').delete().eq('id', newId) }
+}
+
 export async function approveIea(
   sub: { id: string; child_id: string | null; org_id: string; center_id: string },
   det: IeaDetermination,
@@ -249,41 +297,16 @@ export async function approveIea(
 
   // 2) income_eligibility — the authoritative FY determination record, one per
   // child for det.fiscal_year (NEW row; prior-cycle FYs are left untouched as
-  // history). There is no unique key, so select-then-update/insert.
+  // history), via the shared recordDetermination helper.
   const ieUndo: Array<() => Promise<void>> = []
-  const logEntry = (from: any) => ({ at, by: reviewerId, by_name: det.determined_by_name, from: from ?? null, to: det.frp, source: det.eligibility_source })
   try {
     for (const rid of matchedIds) {
-      const { data: existing } = await S().from('income_eligibility').select(IE_SNAP)
-        .eq('roster_id', rid).eq('fiscal_year', det.fiscal_year)
-        .order('updated_at', { ascending: false }).limit(1).maybeSingle()
-      if (existing?.id) {
-        const prev: any = { ...existing }
-        const log = Array.isArray(existing.determination_log) ? existing.determination_log : []
-        const { error } = await S().from('income_eligibility').update({
-          eligibility: det.frp, frp_expires: det.frp_expires, eligibility_source: det.eligibility_source,
-          determined_by: reviewerId, determined_by_name: det.determined_by_name, determined_at: at,
-          determination_log: [...log, logEntry(existing.eligibility)], updated_at: at,
-        }).eq('id', existing.id)
-        if (error) throw error
-        ieUndo.push(async () => {
-          await S().from('income_eligibility').update({
-            eligibility: prev.eligibility, frp_expires: prev.frp_expires, eligibility_source: prev.eligibility_source,
-            determined_by: prev.determined_by, determined_by_name: prev.determined_by_name,
-            determined_at: prev.determined_at, determination_log: prev.determination_log,
-          }).eq('id', prev.id)
-        })
-      } else {
-        const { data: ins, error } = await S().from('income_eligibility').insert({
-          org_id: sub.org_id, center_id: sub.center_id, roster_id: rid, fiscal_year: det.fiscal_year,
-          eligibility: det.frp, frp_expires: det.frp_expires, eligibility_source: det.eligibility_source,
-          determined_by: reviewerId, determined_by_name: det.determined_by_name, determined_at: at,
-          determination_log: [logEntry(null)], source: 'iea_review',
-        }).select('id').single()
-        if (error) throw error
-        const newId = (ins as any).id as string
-        ieUndo.push(async () => { await S().from('income_eligibility').delete().eq('id', newId) })
-      }
+      ieUndo.push(await recordDetermination({
+        roster_id: rid, org_id: sub.org_id, center_id: sub.center_id,
+        frp: det.frp, frp_expires: det.frp_expires, fiscal_year: det.fiscal_year,
+        eligibility_source: det.eligibility_source, determined_by: reviewerId,
+        determined_by_name: det.determined_by_name, ieSource: 'iea_review', at,
+      }))
     }
   } catch (e) {
     // Roll the income_eligibility writes back on partial failure, then restore

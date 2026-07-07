@@ -10,6 +10,8 @@ import {
   type TabKey, type RecordCtx, type FieldDef,
 } from '@/lib/childFieldRegistry'
 import { displayChildName } from '@/lib/childName'
+import { useAuth } from '@/hooks/useAuth'
+import { parseIeaFiscalYear, frpExpiryDefault, recordDetermination } from '@/lib/enrollmentApprove'
 import ChildExportPanel from './ChildExportPanel'
 import ChildDocumentsTab from './ChildDocumentsTab'
 
@@ -113,6 +115,25 @@ export default function ChildSettingsPage({
   const [confirmDeact, setConfirmDeact] = useState(false)   // deactivate confirm overlay
   const [deactReason, setDeactReason] = useState('')
   const [deactBusy, setDeactBusy] = useState(false)
+  const { user } = useAuth()
+  // Layer 2 — F/R/P late corrections: capture the eligibility as loaded so a
+  // change on save is recorded as a determination (income_eligibility + log),
+  // and surface the current-cycle determination signature on the CACFP tab.
+  const [orig, setOrig] = useState<{ frp: string | null; expires: string | null }>({ frp: null, expires: null })
+  const [fiscalYear, setFiscalYear] = useState<string | null>(null)
+  const [detSig, setDetSig] = useState<{ eligibility: string | null; by: string | null; at: string | null; source: string | null } | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const r = await fetch('/enroll-registry.json', { cache: 'no-cache' })
+        const j = await r.json(); const iea = j?.forms?.iea
+        if (!cancelled) setFiscalYear(parseIeaFiscalYear(iea?.versions?.[iea?.current] ?? iea?.fallbackUrl))
+      } catch { if (!cancelled) setFiscalYear(null) }
+    })()
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => { loadAll() }, [childId])
 
@@ -133,7 +154,7 @@ export default function ChildSettingsPage({
     // which FKs to menumaker.child.id — reached via roster.child_id. Load the
     // roster row first, then fetch guardians by its child_id.
     const { data: c } = await supabase.schema('menumaker').from('roster').select('*').eq('id', childId).single()
-    if (c) setChild(c as Child)
+    if (c) { setChild(c as Child); setOrig({ frp: (c as any).frp ?? null, expires: (c as any).frp_expires ?? null }) }
     const cid = (c as any)?.child_id as string | null
 
     let guardianRows: any[] = []
@@ -158,13 +179,37 @@ export default function ChildSettingsPage({
     setView(vw ?? null)
   }
 
+  // Load the current-cycle determination signature for the CACFP tab.
+  useEffect(() => {
+    if (!childId || !fiscalYear) { setDetSig(null); return }
+    let cancelled = false
+    ;(async () => {
+      const { data } = await supabase.schema('menumaker').from('income_eligibility')
+        .select('eligibility,determined_by_name,determined_at,eligibility_source')
+        .eq('roster_id', childId).eq('fiscal_year', fiscalYear)
+        .order('updated_at', { ascending: false }).limit(1).maybeSingle()
+      if (!cancelled) setDetSig(data ? {
+        eligibility: (data as any).eligibility, by: (data as any).determined_by_name,
+        at: (data as any).determined_at ? String((data as any).determined_at).slice(0, 10) : null,
+        source: (data as any).eligibility_source,
+      } : null)
+    })()
+    return () => { cancelled = true }
+  }, [childId, fiscalYear])
+
   async function doSaveRoster() {
     if (!child) return
+    const frp = (child.frp ?? '').trim().toUpperCase().slice(0, 1) || null
+    // A late F/R correction defaults frp_expires to determination + 12 months
+    // (CACFP validity) when left blank — mirrors the IEA approve flow.
+    const expires = (frp === 'F' || frp === 'R')
+      ? (child.frp_expires || frpExpiryDefault(todayStr, null))
+      : child.frp_expires
     await supabase.schema('menumaker').from('roster').update({
       first_name: child.first_name, last_name: child.last_name,
       birthday: child.birthday, classroom_id: child.classroom_id,
       date_in: child.date_in, date_out: child.date_out,
-      frp: child.frp, frp_expires: child.frp_expires, milk_kind: child.milk_kind,
+      frp, frp_expires: expires, milk_kind: child.milk_kind,
       child_address: child.child_address, has_health_condition: child.has_health_condition,
       development_notes: child.development_notes, accommodations: child.accommodations,
       specialized_services: child.specialized_services,
@@ -173,6 +218,23 @@ export default function ChildSettingsPage({
       // child_name canonical = "Last First" (see docs/platform-standards.md)
       child_name: `${child.last_name ?? ''} ${child.first_name ?? ''}`.trim()
     }).eq('id', childId)
+
+    // Layer 2: if eligibility changed, record it as a determination (manual,
+    // profile edit) on the current-cycle income_eligibility row + append-only
+    // log, so late corrections carry the same audit trail as an IEA approval.
+    const changed = frp !== (orig.frp ?? null) || (expires ?? null) !== (orig.expires ?? null)
+    if (changed && frp && fiscalYear) {
+      await recordDetermination({
+        roster_id: childId, org_id: child.org_id, center_id: child.center_id,
+        frp, frp_expires: expires ?? null, fiscal_year: fiscalYear,
+        eligibility_source: 'manual', ieSource: 'profile_edit',
+        determined_by: user?.id ?? '',
+        determined_by_name: (user?.user_metadata?.full_name as string) || (user?.email?.split('@')[0]) || 'Staff',
+      })
+      setOrig({ frp, expires: expires ?? null })
+      setChild(p => p ? { ...p, frp, frp_expires: expires ?? null } as Child : p)
+      setDetSig({ eligibility: frp, by: (user?.user_metadata?.full_name as string) || (user?.email?.split('@')[0]) || 'Staff', at: todayStr, source: 'manual' })
+    }
   }
 
   // Deactivate: stop the child being countable (meal count / reports filter
@@ -421,7 +483,14 @@ export default function ChildSettingsPage({
           {tab === 4 && (
             <div>
               {renderFieldsTab('cacfp')}
-              <div style={{ background:'#f0f7f4', borderRadius:10, padding:14, fontSize:13, color:'#0f4c35', marginTop:4 }}>
+              <div style={{ borderRadius:10, padding:'10px 14px', fontSize:12.5, marginTop:4,
+                background: detSig ? '#f0fff4' : '#fff3cd', border: `1px solid ${detSig ? '#bbf7d0' : '#ffc107'}`,
+                color: detSig ? '#0f4c35' : '#856404' }}>
+                {detSig
+                  ? <>Determination on file ({fiscalYear}): <strong>{detSig.eligibility}</strong> — set by {detSig.by ?? 'unknown'} on {detSig.at ?? '—'}{detSig.source ? ` · ${detSig.source}` : ''}. Changing FRP here records a new manual determination.</>
+                  : <>⚠️ No current-cycle IEA determination on file{fiscalYear ? ` (${fiscalYear})` : ''}. Changing FRP here records a manual determination; prefer approving the IEA form when available.</>}
+              </div>
+              <div style={{ background:'#f0f7f4', borderRadius:10, padding:14, fontSize:13, color:'#0f4c35', marginTop:8 }}>
                 <strong>Note:</strong> Age group and milk (oz) are auto-calculated from birthday via v_child_age_profile (read-only). Edit birthday on the Profile tab to change them.
               </div>
             </div>

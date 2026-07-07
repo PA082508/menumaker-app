@@ -59,6 +59,7 @@ export default function EnrollmentReviewModal({
   const [chosenMatch, setChosenMatch] = useState<string | 'new' | null>(null)
   const [rejecting, setRejecting] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
+  const [showWarnings, setShowWarnings] = useState(false)
 
   // Resolve the existing child (matched by child_id column, or a uuid inside
   // form_data). New applicants have neither → right column stays empty.
@@ -206,10 +207,18 @@ export default function EnrollmentReviewModal({
 
   async function doApprove() {
     if (v.status === 'errors') return
-    if (v.status === 'warnings' && !window.confirm('This submission has warnings. Approve anyway?')) return
+    // Warnings → open a review modal listing them (not a native confirm).
+    if (v.status === 'warnings') { setShowWarnings(true); return }
     // Anti-misclick: if the reviewer never edited the diff, confirm the roster
     // write first. Editing (dirty) already signals a deliberate review.
     if (!dirty && !window.confirm(`Approve ${childName}? This creates or updates the roster.`)) return
+    runApprove()
+  }
+
+  // The actual roster write. Reached with no warnings (after the misclick confirm)
+  // or via the warnings modal's "Approve anyway".
+  async function runApprove() {
+    setShowWarnings(false)
     setBusy(true); setErr(null)
     try {
       let result: ApproveResult
@@ -508,6 +517,42 @@ export default function EnrollmentReviewModal({
           }}>{busy ? 'Working…' : '✓ Approve'}</button>
         </div>
       </div>
+
+      {showWarnings && (
+        <div onClick={() => setShowWarnings(false)} style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 3000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+        }}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background: '#fff', borderRadius: 14, width: '100%', maxWidth: 440,
+            boxShadow: '0 20px 60px rgba(0,0,0,0.25)', fontFamily: "'DM Sans', sans-serif", overflow: 'hidden',
+          }}>
+            <div style={{ padding: '16px 20px', background: '#fffbeb', borderBottom: '1px solid #fde68a' }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#92400e' }}>🟡 Approve with warnings?</div>
+              <div style={{ fontSize: 12.5, color: '#92400e', marginTop: 3 }}>
+                {childName} — please review before writing to the roster.
+              </div>
+            </div>
+            <ul style={{ listStyle: 'none', margin: 0, padding: '14px 20px', maxHeight: 260, overflowY: 'auto' }}>
+              {v.warnings.map((w, i) => (
+                <li key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, color: '#374151', padding: '4px 0' }}>
+                  <span style={{ color: '#d97706' }}>⚠︎</span><span>{w}</span>
+                </li>
+              ))}
+            </ul>
+            <div style={{ display: 'flex', gap: 10, padding: '14px 20px', borderTop: '1px solid #f3f4f6' }}>
+              <button onClick={() => setShowWarnings(false)} style={{
+                flex: 1, padding: '10px', borderRadius: 9, border: '1.5px solid #c0d8c0',
+                background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13.5, fontWeight: 600, color: '#0f4c35',
+              }}>Review warnings</button>
+              <button onClick={runApprove} style={{
+                flex: 1, padding: '10px', borderRadius: 9, border: 'none',
+                background: '#0f4c35', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13.5, fontWeight: 700,
+              }}>Approve anyway</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,7 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
+import { rotationWeek, mondayOfWeekWith } from './OfficialMenu'
+
+// Auto-return to the live week after this much inactivity on another tab.
+const IDLE_RETURN_MS = 3 * 60 * 1000
 
 interface MenuItem {
   id: string
@@ -76,6 +80,36 @@ export default function MenuPlannerPage() {
   const [holidayMap, setHolidayMap]     = useState<Record<string, Holiday>>({})
   const [cycleStart, setCycleStart]     = useState<string | null>(null)
   const [savingDate, setSavingDate]     = useState(false)
+
+  // The live week of the rotation for today (from cycle_start, mod total_weeks).
+  const currentCycleWeek = useMemo(
+    () => cycleStart ? rotationWeek(mondayOfWeekWith(new Date()), cycleStart, totalWeeks) : 1,
+    [cycleStart, totalWeeks],
+  )
+
+  // Auto-select the current week's tab whenever the live week resolves/changes
+  // (cycle anchor loads or its start/length is edited). currentCycleWeek does NOT
+  // change on manual tab clicks, so this never fights the user's selection.
+  useEffect(() => {
+    if (cycleStart) setSelectedWeek(currentCycleWeek)
+  }, [cycleStart, currentCycleWeek])
+
+  // Idle auto-return: if the planner sits on a non-current week with no user
+  // activity for IDLE_RETURN_MS, snap back to the live week.
+  useEffect(() => {
+    if (!cycleStart) return
+    let timer: ReturnType<typeof setTimeout>
+    const arm = () => {
+      clearTimeout(timer)
+      timer = setTimeout(() => {
+        setSelectedWeek(w => (w === currentCycleWeek ? w : currentCycleWeek))
+      }, IDLE_RETURN_MS)
+    }
+    const evs = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'] as const
+    evs.forEach(e => window.addEventListener(e, arm, { passive: true }))
+    arm()
+    return () => { clearTimeout(timer); evs.forEach(e => window.removeEventListener(e, arm)) }
+  }, [cycleStart, currentCycleWeek])
 
   const handlePrint = () => {
     const weekItems = items.filter(i => i.week_number === selectedWeek)

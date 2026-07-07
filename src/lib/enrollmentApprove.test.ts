@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { matchRoster, type RosterLite } from './enrollmentApprove'
+import { matchRoster, parseIeaFiscalYear, frpExpiryDefault, isoDate, type RosterLite } from './enrollmentApprove'
 
 const kid = (o: Partial<RosterLite>): RosterLite => ({
   id: o.id ?? 'x', first_name: null, last_name: null, child_name: null,
@@ -35,5 +35,42 @@ describe('matchRoster — gate detector', () => {
 
   it('does not match an unrelated child', () => {
     expect(matchRoster([talulah], 'Smith John', '2021-09-29')).toEqual([])
+  })
+})
+
+describe('parseIeaFiscalYear — fiscal year from the FORM EDITION (never date math)', () => {
+  it('parses the embed form_data.type token', () => {
+    expect(parseIeaFiscalYear('iea_fy2026_27')).toBe('FY2026-27')
+  })
+  it('parses the registry edition URL/filename', () => {
+    expect(parseIeaFiscalYear('https://pa082508.github.io/forms/1-data-sources/IEA_FY2026-27_v5.html')).toBe('FY2026-27')
+    expect(parseIeaFiscalYear('IEA_FY2027-28_v6.html')).toBe('FY2027-28')
+  })
+  it('returns null when no FY token is present', () => {
+    expect(parseIeaFiscalYear('iea')).toBeNull()
+    expect(parseIeaFiscalYear(null)).toBeNull()
+    expect(parseIeaFiscalYear(undefined)).toBeNull()
+  })
+})
+
+describe('isoDate', () => {
+  it('normalizes US M/D/YYYY to ISO', () => {
+    expect(isoDate('7/31/2027')).toBe('2027-07-31')
+    expect(isoDate('12/5/2026')).toBe('2026-12-05')
+  })
+  it('passes ISO through', () => {
+    expect(isoDate('2027-07-31')).toBe('2027-07-31')
+  })
+})
+
+describe('frpExpiryDefault', () => {
+  it('uses the paper expiration when present (normalized to ISO)', () => {
+    expect(frpExpiryDefault('2026-07-07', '7/31/2027')).toBe('2027-07-31')
+    expect(frpExpiryDefault('2026-07-07', '2027-07-31')).toBe('2027-07-31')
+  })
+  it('defaults to determination date + 12 months when the paper has no expiration', () => {
+    expect(frpExpiryDefault('2026-07-07', null)).toBe('2027-07-07')
+    expect(frpExpiryDefault('2026-07-07', '')).toBe('2027-07-07')
+    expect(frpExpiryDefault('2026-07-07', undefined)).toBe('2027-07-07')
   })
 })

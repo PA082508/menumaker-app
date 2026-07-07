@@ -13,6 +13,7 @@ import { resolveScanUrl, lowConfidenceSet, ocrMeta, hasScan } from '@/lib/enroll
 import {
   buildCacfpPatch, buildIeaFrp, loadCenterRoster, matchRoster,
   approveCacfpInsert, approveCacfpUpdate, approveIea, rejectSubmission,
+  parseIeaFiscalYear, frpExpiryDefault,
   type RosterLite, type ApproveResult,
 } from '@/lib/enrollmentApprove'
 
@@ -33,10 +34,15 @@ const BADGE: Record<ValStatus, { dot: string; label: string; fg: string }> = {
 }
 
 export default function EnrollmentReviewModal({
-  submission, reviewerId, onClose, onSaved, onDone,
+  submission, reviewerId, reviewerName, ieaApproveEnabled = false, onClose, onSaved, onDone,
 }: {
   submission: Submission
   reviewerId: string
+  reviewerName: string
+  // TEMPORARY gate: the IEA F/R/P approve path (Layer 1) is admin-only until it
+  // has been verified on a real form. Directors keep seeing the review but can't
+  // approve IEA yet. Flip this to open it up once sign-off lands.
+  ieaApproveEnabled?: boolean
   onClose: () => void
   onSaved: () => void
   onDone: (result: ApproveResult) => void
@@ -155,10 +161,52 @@ export default function EnrollmentReviewModal({
     [ieaChildren],
   )
 
+  // IEA F/R/P determination editor (Layer 1). The selector defaults to the OCR /
+  // Sponsor value; the director confirms or overrides it. When Sponsor is empty
+  // the director can still pick a value — that unblocks accumulated forms.
+  const today = new Date().toISOString().slice(0, 10)
+  const [frpChoice, setFrpChoice] = useState('')
+  const [frpExpiry, setFrpExpiry] = useState('')
+  const [frpTouched, setFrpTouched] = useState(false)
+  useEffect(() => {
+    if (!isIea) return
+    setFrpChoice(frpInfo?.frp ?? '')
+    setFrpExpiry(frpExpiryDefault(today, frpInfo?.frp_expires ?? null))
+    setFrpTouched(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isIea, frpInfo?.frp, frpInfo?.frp_expires])
+
+  // Fiscal year is the FORM EDITION, never date math. Embed forms carry
+  // form_data.type ('iea_fy2026_27'); scanned paper doesn't → resolve the
+  // registry's current IEA edition (…/IEA_FY2026-27_v5.html).
+  const [ieaFiscalYear, setIeaFiscalYear] = useState<string | null>(null)
+  useEffect(() => {
+    if (!isIea) { setIeaFiscalYear(null); return }
+    const fromType = parseIeaFiscalYear(fd?.type)
+    if (fromType) { setIeaFiscalYear(fromType); return }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const r = await fetch('/enroll-registry.json', { cache: 'no-cache' })
+        const j = await r.json()
+        const iea = j?.forms?.iea
+        const url = iea?.versions?.[iea?.current] ?? iea?.fallbackUrl
+        if (!cancelled) setIeaFiscalYear(parseIeaFiscalYear(url))
+      } catch { if (!cancelled) setIeaFiscalYear(null) }
+    })()
+    return () => { cancelled = true }
+  }, [isIea, fd?.type])
+
+  const frpOverridden = frpTouched && frpChoice !== (frpInfo?.frp ?? '')
+  const eligibilitySource = frpOverridden ? 'manual'
+    : frpInfo?.source === 'sponsor' ? 'ocr_sponsor'
+    : frpInfo?.source === 'helper' ? 'ocr_helper'
+    : 'manual'
+
   // Approve gating: 🔴 blocks; unresolved CACFP duplicate blocks.
   const dupUnresolved = isCacfp && !resolvedChildId && cacfpMatches.length > 0 && !chosenMatch
   const approveBlocked = v.status === 'errors' || dupUnresolved || busy
-    || (isIea && (!frpInfo?.frp || ieaMatchedIds.length === 0))
+    || (isIea && (!ieaApproveEnabled || !frpChoice || !ieaFiscalYear || ieaMatchedIds.length === 0))
 
   async function doApprove() {
     if (v.status === 'errors') return
@@ -178,9 +226,18 @@ export default function EnrollmentReviewModal({
           ? await approveCacfpUpdate(submission, target, patch, reviewerId, paperSigned, reactivate)
           : await approveCacfpInsert(submission, patch, reviewerId, paperSigned)
       } else if (isIea) {
-        if (!frpInfo?.frp) throw new Error('No FRP determination on the form (Sponsor section empty)')
+        if (!ieaApproveEnabled) throw new Error('IEA approval is being verified — available to admins only for now')
+        if (!frpChoice) throw new Error('Choose an F/R/P determination')
+        if (!ieaFiscalYear) throw new Error('Could not resolve the IEA form edition / fiscal year')
         if (ieaMatchedIds.length === 0) throw new Error('No roster children matched — add them via CACFP enrollment first')
-        result = await approveIea(submission, { frp: frpInfo.frp, frp_expires: frpInfo.frp_expires }, ieaMatchedIds, reviewerId, paperSigned)
+        result = await approveIea(
+          submission,
+          {
+            frp: frpChoice, frp_expires: frpExpiry || null, fiscal_year: ieaFiscalYear,
+            eligibility_source: eligibilitySource, determined_by: reviewerId, determined_by_name: reviewerName,
+          },
+          ieaMatchedIds, reviewerId, paperSigned,
+        )
       } else {
         throw new Error('This submission type cannot be approved yet')
       }
@@ -370,20 +427,45 @@ export default function EnrollmentReviewModal({
           )}
 
           {isIea && (
-            <div style={{ fontSize: 12.5, color: '#374151' }}>
-              {frpInfo?.frp ? (
-                <>
-                  <div>FRP determination: <strong>{frpInfo.frp}</strong>{frpInfo.frp_expires ? ` · expires ${frpInfo.frp_expires}` : ''}
-                    {frpInfo.source === 'helper' && <span style={{ color: '#92400e' }}> (⚠︎ from calculator fallback — Sponsor section empty)</span>}
-                  </div>
-                  <div style={{ color: ieaMatchedIds.length ? '#0f4c35' : '#991b1b', marginTop: 2 }}>
-                    Applies to {ieaMatchedIds.length} matched child{ieaMatchedIds.length === 1 ? '' : 'ren'}
-                    {ieaChildren.some(c => c.matches.length === 0) &&
-                      ` · skipped (no roster match): ${ieaChildren.filter(c => !c.matches.length).map(c => c.name).join(', ')}`}
-                  </div>
-                </>
-              ) : (
-                <div style={{ color: '#991b1b' }}>No FRP determination on the form (Sponsor section empty) — cannot approve.</div>
+            <div style={{ fontSize: 12.5, color: '#374151', display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', background: '#f9fafb', border: '1px solid #eef2f7', borderRadius: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <strong>F/R/P determination</strong>
+                <select value={frpChoice} onChange={e => { setFrpChoice(e.target.value); setFrpTouched(true) }}
+                  style={{ padding: '5px 8px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: '#fff' }}>
+                  <option value="">— choose —</option>
+                  <option value="F">Free</option>
+                  <option value="R">Reduced</option>
+                  <option value="P">Paid</option>
+                </select>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#6b7280' }}>
+                  expires
+                  <input type="date" value={frpExpiry} onChange={e => setFrpExpiry(e.target.value)}
+                    style={{ padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 12.5, fontFamily: 'inherit' }} />
+                </label>
+              </div>
+              <div style={{ fontSize: 11.5, color: '#6b7280' }}>
+                {ieaFiscalYear
+                  ? <>Fiscal year <strong>{ieaFiscalYear}</strong> · </>
+                  : <span style={{ color: '#991b1b' }}>Fiscal year unresolved (form edition unknown) · </span>}
+                Source: {frpOverridden ? <strong style={{ color: '#92400e' }}>manual override</strong>
+                  : frpInfo?.source === 'sponsor' ? 'Sponsor certification'
+                  : frpInfo?.source === 'helper' ? <span style={{ color: '#92400e' }}>⚠︎ calculator fallback (Sponsor empty)</span>
+                  : 'manual'}
+              </div>
+              {frpChoice && (
+                <div style={{ fontSize: 11.5, color: '#0f4c35' }}>
+                  Determination set by <strong>{reviewerName || 'director'}</strong> on {today}
+                </div>
+              )}
+              <div style={{ color: ieaMatchedIds.length ? '#0f4c35' : '#991b1b' }}>
+                Applies to {ieaMatchedIds.length} matched child{ieaMatchedIds.length === 1 ? '' : 'ren'}
+                {ieaChildren.some(c => c.matches.length === 0) &&
+                  ` · skipped (no roster match): ${ieaChildren.filter(c => !c.matches.length).map(c => c.name).join(', ')}`}
+              </div>
+              {!ieaApproveEnabled && (
+                <div style={{ color: '#856404', background: '#fff3cd', border: '1px solid #ffc107', borderRadius: 8, padding: '6px 8px' }}>
+                  ⚠️ IEA approval is in verification — enabled for admins only until sign-off.
+                </div>
               )}
             </div>
           )}

@@ -331,6 +331,8 @@ export default function EnrollmentInboxPage() {
         <EnrollmentReviewModal
           submission={reviewing}
           reviewerId={user?.id ?? ''}
+          reviewerName={(user?.user_metadata?.full_name as string) || (user?.email?.split('@')[0]) || 'Director'}
+          ieaApproveEnabled={roles.includes('admin')}
           onClose={() => setReviewing(null)}
           onSaved={() => { setReviewing(null); setReloadKey(k => k + 1) }}
           onDone={(result) => {

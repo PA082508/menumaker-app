@@ -68,6 +68,34 @@ export function buildIeaFrp(fd: any): { frp: string | null; source: 'sponsor' | 
   return { frp, source, frp_expires }
 }
 
+// Normalize a date string to ISO 'YYYY-MM-DD'. Paper/OCR forms carry US
+// 'M/D/YYYY' (e.g. "7/31/2027"); embed forms carry ISO already.
+export function isoDate(v: any): string {
+  const s = String(v ?? '').trim()
+  const us = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (us) return `${us[3]}-${us[1].padStart(2, '0')}-${us[2].padStart(2, '0')}`
+  return s.slice(0, 10)
+}
+
+// Fiscal year for an IEA determination comes from the FORM EDITION, never date
+// math (source of truth = the registry blank). Embed submissions carry
+// form_data.type = 'iea_fy2026_27'; scanned-paper submissions don't, so the
+// caller passes the registry's current edition URL (…/IEA_FY2026-27_v5.html).
+// Both encode the same FY token → 'FY2026-27'.
+export function parseIeaFiscalYear(source: any): string | null {
+  const m = String(source ?? '').match(/fy_?(\d{4})[_-](\d{2})/i)
+  return m ? `FY${m[1]}-${m[2]}` : null
+}
+
+// frp_expires: the paper's stated expiration if present, else the CACFP default
+// of determinationDate + 12 months. determinationDate is ISO 'YYYY-MM-DD'.
+export function frpExpiryDefault(determinationDate: string, paperExpiration: string | null | undefined): string {
+  if (!blank(paperExpiration)) return isoDate(paperExpiration)
+  const d = new Date(`${determinationDate}T00:00:00Z`)
+  d.setUTCFullYear(d.getUTCFullYear() + 1)
+  return d.toISOString().slice(0, 10)
+}
+
 // ─── duplicate / child matching ──────────────────────────────────────────────
 export type RosterLite = { id: string; first_name: string | null; last_name: string | null; child_name: string | null; birthday: string | null; is_active: boolean }
 
@@ -191,24 +219,86 @@ export async function approveCacfpUpdate(
 }
 
 // ─── IEA: apply FRP to every matched child ───────────────────────────────────
+// The director-confirmed determination (F/R/P + expiry + form-edition fiscal
+// year + who/when). eligibility_source: 'ocr_sponsor' | 'ocr_helper' | 'manual'.
+export interface IeaDetermination {
+  frp: string
+  frp_expires: string | null
+  fiscal_year: string           // from the form edition, e.g. 'FY2026-27'
+  eligibility_source: string
+  determined_by: string         // reviewer auth uid
+  determined_by_name: string    // human-readable director name (signature)
+}
+
+const IE_SNAP = 'id,eligibility,frp_expires,eligibility_source,determined_by,determined_by_name,determined_at,determination_log'
+
 export async function approveIea(
-  sub: { id: string; child_id: string | null },
-  frpUpdate: { frp: string; frp_expires: string | null },
+  sub: { id: string; child_id: string | null; org_id: string; center_id: string },
+  det: IeaDetermination,
   matchedIds: string[], reviewerId: string, paperSigned: boolean,
 ): Promise<ApproveResult> {
   if (matchedIds.length === 0) throw new Error('No matched roster children to apply eligibility to')
+  if (!det.fiscal_year) throw new Error('Could not resolve the IEA form edition / fiscal year')
+  const at = nowIso()
+
+  // 1) roster.frp / frp_expires — the current effective value the claim RPC reads.
   const { data: prevRows } = await S().from('roster').select('id,frp,frp_expires').in('id', matchedIds)
-  const prev = new Map((prevRows ?? []).map((r: any) => [r.id, { frp: r.frp, frp_expires: r.frp_expires }]))
-  const { error } = await S().from('roster').update(frpUpdate).in('id', matchedIds)
-  if (error) throw error
+  const prevRoster = new Map((prevRows ?? []).map((r: any) => [r.id, { frp: r.frp, frp_expires: r.frp_expires }]))
+  const { error: rErr } = await S().from('roster').update({ frp: det.frp, frp_expires: det.frp_expires }).in('id', matchedIds)
+  if (rErr) throw rErr
+
+  // 2) income_eligibility — the authoritative FY determination record, one per
+  // child for det.fiscal_year (NEW row; prior-cycle FYs are left untouched as
+  // history). There is no unique key, so select-then-update/insert.
+  const ieUndo: Array<() => Promise<void>> = []
+  const logEntry = (from: any) => ({ at, by: reviewerId, by_name: det.determined_by_name, from: from ?? null, to: det.frp, source: det.eligibility_source })
+  try {
+    for (const rid of matchedIds) {
+      const { data: existing } = await S().from('income_eligibility').select(IE_SNAP)
+        .eq('roster_id', rid).eq('fiscal_year', det.fiscal_year)
+        .order('updated_at', { ascending: false }).limit(1).maybeSingle()
+      if (existing?.id) {
+        const prev: any = { ...existing }
+        const log = Array.isArray(existing.determination_log) ? existing.determination_log : []
+        const { error } = await S().from('income_eligibility').update({
+          eligibility: det.frp, frp_expires: det.frp_expires, eligibility_source: det.eligibility_source,
+          determined_by: reviewerId, determined_by_name: det.determined_by_name, determined_at: at,
+          determination_log: [...log, logEntry(existing.eligibility)], updated_at: at,
+        }).eq('id', existing.id)
+        if (error) throw error
+        ieUndo.push(async () => {
+          await S().from('income_eligibility').update({
+            eligibility: prev.eligibility, frp_expires: prev.frp_expires, eligibility_source: prev.eligibility_source,
+            determined_by: prev.determined_by, determined_by_name: prev.determined_by_name,
+            determined_at: prev.determined_at, determination_log: prev.determination_log,
+          }).eq('id', prev.id)
+        })
+      } else {
+        const { data: ins, error } = await S().from('income_eligibility').insert({
+          org_id: sub.org_id, center_id: sub.center_id, roster_id: rid, fiscal_year: det.fiscal_year,
+          eligibility: det.frp, frp_expires: det.frp_expires, eligibility_source: det.eligibility_source,
+          determined_by: reviewerId, determined_by_name: det.determined_by_name, determined_at: at,
+          determination_log: [logEntry(null)], source: 'iea_review',
+        }).select('id').single()
+        if (error) throw error
+        const newId = (ins as any).id as string
+        ieUndo.push(async () => { await S().from('income_eligibility').delete().eq('id', newId) })
+      }
+    }
+  } catch (e) {
+    // Roll the income_eligibility writes back on partial failure, then restore
+    // roster, so a mid-loop error doesn't leave a half-applied determination.
+    for (const u of ieUndo) await u().catch(() => {})
+    for (const id of matchedIds) await S().from('roster').update(prevRoster.get(id) ?? { frp: null, frp_expires: null }).eq('id', id)
+    throw e
+  }
+
   await markApproved(sub.id, null, reviewerId, paperSigned)
   return {
-    message: `Approved — FRP ${frpUpdate.frp} applied to ${matchedIds.length} child${matchedIds.length > 1 ? 'ren' : ''}`,
+    message: `Approved — FRP ${det.frp} (${det.fiscal_year}) applied to ${matchedIds.length} child${matchedIds.length > 1 ? 'ren' : ''}`,
     undo: async () => {
-      for (const id of matchedIds) {
-        const p = prev.get(id) ?? { frp: null, frp_expires: null }
-        await S().from('roster').update(p).eq('id', id)
-      }
+      for (const u of ieUndo) await u()
+      for (const id of matchedIds) await S().from('roster').update(prevRoster.get(id) ?? { frp: null, frp_expires: null }).eq('id', id)
       await restorePending(sub.id, sub.child_id)
     },
   }

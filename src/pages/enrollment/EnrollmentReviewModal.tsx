@@ -34,15 +34,11 @@ const BADGE: Record<ValStatus, { dot: string; label: string; fg: string }> = {
 }
 
 export default function EnrollmentReviewModal({
-  submission, reviewerId, reviewerName, ieaApproveEnabled = false, onClose, onSaved, onDone,
+  submission, reviewerId, reviewerName, onClose, onSaved, onDone,
 }: {
   submission: Submission
   reviewerId: string
   reviewerName: string
-  // TEMPORARY gate: the IEA F/R/P approve path (Layer 1) is admin-only until it
-  // has been verified on a real form. Directors keep seeing the review but can't
-  // approve IEA yet. Flip this to open it up once sign-off lands.
-  ieaApproveEnabled?: boolean
   onClose: () => void
   onSaved: () => void
   onDone: (result: ApproveResult) => void
@@ -206,7 +202,7 @@ export default function EnrollmentReviewModal({
   // Approve gating: 🔴 blocks; unresolved CACFP duplicate blocks.
   const dupUnresolved = isCacfp && !resolvedChildId && cacfpMatches.length > 0 && !chosenMatch
   const approveBlocked = v.status === 'errors' || dupUnresolved || busy
-    || (isIea && (!ieaApproveEnabled || !frpChoice || !ieaFiscalYear || ieaMatchedIds.length === 0))
+    || (isIea && (!frpChoice || !ieaFiscalYear || ieaMatchedIds.length === 0))
 
   async function doApprove() {
     if (v.status === 'errors') return
@@ -226,7 +222,6 @@ export default function EnrollmentReviewModal({
           ? await approveCacfpUpdate(submission, target, patch, reviewerId, paperSigned, reactivate)
           : await approveCacfpInsert(submission, patch, reviewerId, paperSigned)
       } else if (isIea) {
-        if (!ieaApproveEnabled) throw new Error('IEA approval is being verified — available to admins only for now')
         if (!frpChoice) throw new Error('Choose an F/R/P determination')
         if (!ieaFiscalYear) throw new Error('Could not resolve the IEA form edition / fiscal year')
         if (ieaMatchedIds.length === 0) throw new Error('No roster children matched — add them via CACFP enrollment first')
@@ -462,11 +457,6 @@ export default function EnrollmentReviewModal({
                 {ieaChildren.some(c => c.matches.length === 0) &&
                   ` · skipped (no roster match): ${ieaChildren.filter(c => !c.matches.length).map(c => c.name).join(', ')}`}
               </div>
-              {!ieaApproveEnabled && (
-                <div style={{ color: '#856404', background: '#fff3cd', border: '1px solid #ffc107', borderRadius: 8, padding: '6px 8px' }}>
-                  ⚠️ IEA approval is in verification — enabled for admins only until sign-off.
-                </div>
-              )}
             </div>
           )}
 

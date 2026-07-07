@@ -239,7 +239,7 @@ function DetailPopup({ data, onClose, classrooms, onChanged }: { data: PopupData
 export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?: string } = {}) {
   const { centerId: centerIdParam } = useParams<{ centerId: string }>()
   const centerId = centerIdProp ?? centerIdParam
-  const { centers, currentCenter, org } = useOrg()
+  const { centers, currentCenter, org, isOrgAdmin } = useOrg()
   const navigate = useNavigate()
   const center = centers.find(c => c.id === centerId)
 
@@ -411,7 +411,14 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                     style={{ position:'absolute', right:6, top:'50%', transform:'translateY(-50%)', border:'none', background:'transparent', cursor:'pointer', fontSize:14, color:'#999', lineHeight:1, padding:2 }}>✕</button>
                 )}
               </div>
-              <button onClick={() => setShowAddChild(true)} style={{ padding:'8px 18px', borderRadius:9, background:'#0f4c35', color:'#fff', border:'none', cursor:'pointer', fontWeight:700, fontSize:13, fontFamily:'inherit', display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>➕ Add Child</button>
+              {/* Directors go through the enrollment flow (＋ New enrollment); bare
+                  roster creation is admin/office-only. Closes the intake-bypass hole. */}
+              <button
+                onClick={() => isOrgAdmin ? setShowAddChild(true) : navigate('/enrollment-inbox')}
+                title={isOrgAdmin ? 'Create a roster record directly' : 'Start a new enrollment'}
+                style={{ padding:'8px 18px', borderRadius:9, background:'#0f4c35', color:'#fff', border:'none', cursor:'pointer', fontWeight:700, fontSize:13, fontFamily:'inherit', display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
+                {isOrgAdmin ? '➕ Add Child' : '＋ New enrollment'}
+              </button>
             </div>
           </div>
           {viewMode === 'list' && (() => {
@@ -793,7 +800,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
           onDone={() => { setReactivateTarget(null); loadRoster(true) }}
         />
       )}
-      {showAddChild && currentCenter && (
+      {showAddChild && currentCenter && isOrgAdmin && (
         <AddChildModal
           centerId={currentCenter.id}
           orgId={org?.id ?? ''}

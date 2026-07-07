@@ -25,6 +25,7 @@ import DeliveryPage from '@/pages/delivery/DeliveryPage'
 import CustomExportPage from '@/pages/export/CustomExportPage'
 import SiteClaimReport from './pages/reports/SiteClaimReport'
 import EligibilityReconciliationReport from './pages/reports/EligibilityReconciliationReport'
+import SkeletonReconciliationReport from './pages/reports/SkeletonReconciliationReport'
 import ReimbursementPreview from './pages/reports/ReimbursementPreview'
 import CACFPChecklistPage from './pages/cacfp-reports/CACFPChecklistPage'
 import SafePassTeacherPage from './pages/safepass/SafePassTeacherPage'
@@ -156,6 +157,7 @@ export default function App() {
               <Route path="export"      element={<CustomExportPage />} />
               <Route path="claim-report"    element={<SiteClaimReport />} />
               <Route path="eligibility-reconciliation" element={<EligibilityReconciliationReport />} />
+              <Route path="skeleton-reconciliation" element={<SkeletonReconciliationReport />} />
               <Route path="reimbursement-preview" element={<ReimbursementPreview />} />
               <Route path="cacfp-checklist" element={<CACFPChecklistPage />} />
               <Route path="safepass/teacher" element={<SafePassTeacherPage />} />

@@ -10,8 +10,8 @@ self.addEventListener('push', e => {
   e.waitUntil(
     self.registration.showNotification(data.title || 'Play Academy', {
       body: data.body || '',
-      icon: 'https://rkabxzqcikojcphwrkty.supabase.co/storage/v1/object/public/assets/PA-Logo-144x144.png',
-      badge: 'https://rkabxzqcikojcphwrkty.supabase.co/storage/v1/object/public/assets/PA-Logo-144x144.png',
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
       tag: data.tag || 'pa-notification',
       requireInteraction: data.urgent || false,
       data: { url: data.url || '/' }

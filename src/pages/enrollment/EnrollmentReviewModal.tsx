@@ -10,6 +10,7 @@ import { type RecordCtx } from '@/lib/childFieldRegistry'
 import { buildDiff, getPath, setPath, type DiffRow } from '@/lib/enrollmentFieldMap'
 import { validateSubmission, submissionTypeLabel, type ValStatus } from '@/lib/enrollmentValidationRules'
 import { resolveScanUrl, lowConfidenceSet, ocrMeta, hasScan } from '@/lib/enrollmentScan'
+import ReturnWindow from '@/pages/children/ReturnWindow'
 import {
   buildCacfpPatch, buildIeaFrp, loadCenterRoster, matchRoster,
   approveCacfpInsert, approveCacfpUpdate, approveIea, rejectSubmission,
@@ -60,6 +61,9 @@ export default function EnrollmentReviewModal({
   const [rejecting, setRejecting] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
   const [showWarnings, setShowWarnings] = useState(false)
+  // Reactivate-from-Review: a chosen inactive match must go through the return
+  // window (reactivate & admit → admission_log) BEFORE Approve attaches the scan.
+  const [readmitOpen, setReadmitOpen] = useState(false)
 
   // Resolve the existing child (matched by child_id column, or a uuid inside
   // form_data). New applicants have neither → right column stays empty.
@@ -200,9 +204,14 @@ export default function EnrollmentReviewModal({
     : frpInfo?.source === 'helper' ? 'ocr_helper'
     : 'manual'
 
-  // Approve gating: 🔴 blocks; unresolved CACFP duplicate blocks.
+  // A chosen match that is still inactive must be reactivated & admitted first.
+  const chosenMatchObj = chosenMatch && chosenMatch !== 'new' ? candidates.find(c => c.id === chosenMatch) ?? null : null
+  const chosenInactive = isCacfp && !!chosenMatchObj && chosenMatchObj.is_active === false
+
+  // Approve gating: 🔴 blocks; unresolved CACFP duplicate blocks; a chosen
+  // inactive match blocks until it's reactivated & admitted via the return window.
   const dupUnresolved = isCacfp && !resolvedChildId && cacfpMatches.length > 0 && !chosenMatch
-  const approveBlocked = v.status === 'errors' || dupUnresolved || busy
+  const approveBlocked = v.status === 'errors' || dupUnresolved || chosenInactive || busy
     || (isIea && (!frpChoice || !ieaFiscalYear || ieaMatchedIds.length === 0))
 
   async function doApprove() {
@@ -430,6 +439,19 @@ export default function EnrollmentReviewModal({
             </div>
           )}
 
+          {chosenInactive && (
+            <div style={{ fontSize: 12.5, background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: 10, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ flex: 1, color: '#92400e' }}>
+                <strong>{chosenMatchObj?.child_name || 'This child'}</strong> left the center. Reactivate &amp; admit them
+                (records the admission + document snapshot), then Approve attaches this scan.
+              </div>
+              <button onClick={() => setReadmitOpen(true)} style={{
+                padding: '8px 14px', borderRadius: 8, border: 'none', background: '#16a34a', color: '#fff',
+                fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+              }}>↩ Reactivate &amp; admit</button>
+            </div>
+          )}
+
           {isIea && (
             <div style={{ fontSize: 12.5, color: '#374151', display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', background: '#f9fafb', border: '1px solid #eef2f7', borderRadius: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -486,7 +508,7 @@ export default function EnrollmentReviewModal({
           {!err && <span style={{ flex: 1, fontSize: 11.5, color: '#9ca3af' }}>
             {rejecting
               ? 'Rejecting doesn’t require valid fields — just add a reason and confirm.'
-              : v.status === 'errors' ? 'Resolve required fields before approving.' : dupUnresolved ? 'Choose a duplicate resolution above.' : 'Nothing is written to the roster until you Approve.'}
+              : v.status === 'errors' ? 'Resolve required fields before approving.' : dupUnresolved ? 'Choose a duplicate resolution above.' : chosenInactive ? 'Reactivate & admit the matched child first, then Approve attaches this scan.' : 'Nothing is written to the roster until you Approve.'}
           </span>}
           <button onClick={onClose} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Close</button>
           <button onClick={save} disabled={!dirty || saving} style={{
@@ -517,6 +539,37 @@ export default function EnrollmentReviewModal({
           }}>{busy ? 'Working…' : '✓ Approve'}</button>
         </div>
       </div>
+
+      {readmitOpen && chosenMatchObj && (
+        <div onClick={() => setReadmitOpen(false)} style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 3000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+        }}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background: '#fff', borderRadius: 16, width: '100%', maxWidth: 560, maxHeight: '90vh',
+            display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+            fontFamily: "'DM Sans', sans-serif", overflow: 'hidden',
+          }}>
+            <div style={{ background: '#0f4c35', padding: '18px 22px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+              <div style={{ color: '#fff', fontWeight: 700, fontSize: 17 }}>↩ {chosenMatchObj.child_name || 'Reactivate & admit'}</div>
+              <button onClick={() => setReadmitOpen(false)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', fontSize: 18 }}>×</button>
+            </div>
+            <div style={{ padding: 22, overflowY: 'auto' }}>
+              <ReturnWindow
+                child={{ id: chosenMatchObj.id, name: chosenMatchObj.child_name ?? undefined, is_active: false }}
+                reviewerId={reviewerId} reviewerName={reviewerName}
+                pendingScan={{ submissionType: submission.submission_type, dcyForm: fd?.dcy_form ?? null }}
+                onDone={() => {
+                  // Now active — flip locally so Approve runs as a plain Update
+                  // (attach scan), not another reactivate; then close the window.
+                  setCandidates(cs => cs.map(c => c.id === chosenMatchObj.id ? { ...c, is_active: true } : c))
+                  setReadmitOpen(false)
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {showWarnings && (
         <div onClick={() => setShowWarnings(false)} style={{

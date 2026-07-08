@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useOrg } from "@/contexts/OrgContext";
+import { loadFormsRegistry, type RegistryForm } from "@/lib/childReadmission";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -334,6 +335,106 @@ export default function DocumentsPage() {
           </div>
         )}
       </div>
+
+      {/* Doc-Hub Form Library (Stage 3a — read side, from the registry) */}
+      <FormLibraryCard />
+    </div>
+  );
+}
+
+// ─── Form Library (Doc-Hub, Stage 3a) ────────────────────────────────────────────
+// Read side of the forms registry: every current parent/physician form, grouped
+// by requiring org, with signer + intake-mode badges and a preview (iframe of the
+// current version). Send-a-bundle (multi-select) is Stage 3b — not here yet.
+
+const INTAKE_LABEL: Record<string, string> = { paper_scan: 'Paper + scan', online: 'Online' };
+
+function FormLibraryCard() {
+  const [forms, setForms] = useState<RegistryForm[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [preview, setPreview] = useState<RegistryForm | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadFormsRegistry()
+      .then((r) => { if (!cancelled) setForms(Object.values(r)); })
+      .catch(() => { if (!cancelled) setForms([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const groups = useMemo(() => {
+    const m = new Map<string, RegistryForm[]>();
+    for (const f of forms) {
+      const k = f.requiringOrg || 'Other';
+      if (!m.has(k)) m.set(k, []);
+      m.get(k)!.push(f);
+    }
+    return Array.from(m.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [forms]);
+
+  const currentUrl = (f: RegistryForm): string | null =>
+    (f as any).versions?.[(f as any).current] ?? f.fallbackUrl ?? null;
+
+  const chip = (text: string, bg: string, fg: string) => (
+    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: bg, color: fg, whiteSpace: 'nowrap' }}>{text}</span>
+  );
+
+  return (
+    <div style={card}>
+      <div style={cardHeader}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span>📚</span>
+          <span style={{ fontWeight: 600, fontSize: 14 }}>Form Library</span>
+          <span style={{ fontSize: 11, color: '#888' }}>{forms.length}</span>
+        </span>
+      </div>
+
+      {loading ? (
+        <div style={empty}>Loading…</div>
+      ) : forms.length === 0 ? (
+        <div style={empty}>Form registry unavailable.</div>
+      ) : (
+        <div style={{ padding: '4px 16px 16px' }}>
+          {groups.map(([org, list]) => (
+            <div key={org} style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#0f4c35', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 6px' }}>{org}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {list.map((f) => (
+                  <div key={f.slug} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', border: '1px solid #eef2ee', borderRadius: 10, background: '#fff' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#1f2937', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {f.title} {(f as any).current && <span style={{ color: '#9ca3af', fontWeight: 400 }}>· {(f as any).current}</span>}
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, marginTop: 5, flexWrap: 'wrap' }}>
+                        {chip(f.signer === 'physician' ? '🩺 Physician' : '👤 Parent', '#f0f4f8', '#334155')}
+                        {chip((f as any).badge || INTAKE_LABEL[f.intakeMode] || f.intakeMode, '#f0fff4', '#0f4c35')}
+                      </div>
+                    </div>
+                    <button onClick={() => setPreview(f)} disabled={!currentUrl(f)}
+                      style={{ ...BTN_SEC, padding: '5px 12px', fontSize: 12, opacity: currentUrl(f) ? 1 : 0.5 }}>
+                      Preview
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {preview && currentUrl(preview) && (
+        <div onClick={() => setPreview(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 820, height: '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.25)', fontFamily: "'DM Sans', sans-serif" }}>
+            <div style={{ background: '#0f4c35', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ flex: 1, color: '#fff', fontWeight: 700, fontSize: 15 }}>{preview.title} {(preview as any).current ? `· ${(preview as any).current}` : ''}</div>
+              <a href={currentUrl(preview)!} target="_blank" rel="noreferrer" style={{ color: '#7ee8b0', fontSize: 12, fontWeight: 600, textDecoration: 'none' }}>Open ↗</a>
+              <button onClick={() => setPreview(null)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 28, height: 28, borderRadius: '50%', cursor: 'pointer', fontSize: 17 }}>×</button>
+            </div>
+            <iframe title={preview.title} src={currentUrl(preview)!} style={{ flex: 1, border: 'none', width: '100%' }} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

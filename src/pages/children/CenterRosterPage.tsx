@@ -6,10 +6,12 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import ChildSettingsPage from './ChildSettingsPage'
 import EmergencyPopup from './EmergencyPopup'
+import AddChildRouterModal from './AddChildRouter'
 import { useOrg } from '@/contexts/OrgContext'
 import { useAuth } from '@/hooks/useAuth'
 import { displayChildName } from '@/lib/childName'
 import { isActiveOn } from '@/lib/childActive'
+import { classifyChild, type MatchKind } from '@/lib/childSearch'
 
 type Classroom = { id: string; name: string; sort_order: number; capacity_internal: number | null; is_roster?: boolean | null }
 
@@ -78,21 +80,13 @@ const fmtDate = (d: string | null) => {
 }
 const fullName = (c: Child) => displayChildName(c)
 
-// Diacritic-insensitive, case-insensitive normalization for name search.
-const normSearch = (s: string) =>
-  s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()
-
-// Substring match against both "Last First" and "First Last" (and stored child_name).
-// "Kendzierski Colton", "colton", "kendz" all match the same child.
+// Name search delegates to the shared token+fuzzy matcher (src/lib/childSearch)
+// so every child-search surface behaves identically: token match in any order
+// ("Erulan Rakhmanov" finds "Rakhmanov Erulan"), plus fuzzy 'similar' suggestions
+// so typo records (Rackmanov ↔ Rakhmanov) are never invisible.
+const childSearchKind = (c: Child, q: string): MatchKind => q ? classifyChild(c, q) : 'exact'
 function childMatchesSearch(c: Child, q: string): boolean {
-  if (!q) return true
-  const nq = normSearch(q)
-  const last = c.last_name ?? '', first = c.first_name ?? ''
-  return (
-    normSearch(`${last} ${first}`).includes(nq) ||
-    normSearch(`${first} ${last}`).includes(nq) ||
-    normSearch(c.child_name ?? '').includes(nq)
-  )
+  return childSearchKind(c, q) !== null
 }
 
 const staffName = (s: StaffRow) =>
@@ -240,6 +234,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
   const { centerId: centerIdParam } = useParams<{ centerId: string }>()
   const centerId = centerIdProp ?? centerIdParam
   const { centers, currentCenter, org, isOrgAdmin } = useOrg()
+  const { user } = useAuth()
   const navigate = useNavigate()
   const center = centers.find(c => c.id === centerId)
 
@@ -251,6 +246,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
   const [expanded,   setExpanded]   = useState<Record<string, boolean>>({})
   const [popup,      setPopup]      = useState<PopupData | null>(null)
   const [showAddChild, setShowAddChild] = useState(false)
+  const [showAddRouter, setShowAddRouter] = useState(false)
   const [highlightId, setHighlightId] = useState<string|null>(null)  // just-added child → flash + scroll
   const [toast, setToast] = useState<string|null>(null)
   const [childSettingsId, setChildSettingsId] = useState<string|null>(null)
@@ -411,13 +407,14 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                     style={{ position:'absolute', right:6, top:'50%', transform:'translateY(-50%)', border:'none', background:'transparent', cursor:'pointer', fontSize:14, color:'#999', lineHeight:1, padding:2 }}>✕</button>
                 )}
               </div>
-              {/* Directors go through the enrollment flow (＋ New enrollment); bare
-                  roster creation is admin/office-only. Closes the intake-bypass hole. */}
+              {/* ADD CHILD 2.0 — search-first router for everyone: find a returning
+                  child (reactivate & admit) or start a new enrollment. Bare roster
+                  insert stays admin-only, surfaced inside the router's not-found branch. */}
               <button
-                onClick={() => isOrgAdmin ? setShowAddChild(true) : navigate('/enrollment-inbox')}
-                title={isOrgAdmin ? 'Create a roster record directly' : 'Start a new enrollment'}
+                onClick={() => setShowAddRouter(true)}
+                title="Find a returning child or start a new enrollment"
                 style={{ padding:'8px 18px', borderRadius:9, background:'#0f4c35', color:'#fff', border:'none', cursor:'pointer', fontWeight:700, fontSize:13, fontFamily:'inherit', display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
-                {isOrgAdmin ? '➕ Add Child' : '＋ New enrollment'}
+                ➕ Add Child
               </button>
             </div>
           </div>
@@ -434,7 +431,10 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
               // while searching, ignore the class filter (search all classes of the center)
               .filter(c => searchActive || listClassFilter === 'all' || c.classroom_id === listClassFilter)
               .filter(c => childMatchesSearch(c, debSearch))
-              .sort((a,b) => (a.last_name??'').localeCompare(b.last_name??''))
+              // while searching, active children sort above inactive; then by name.
+              .sort((a,b) =>
+                (searchActive ? (Number(isChildActive(b)) - Number(isChildActive(a))) : 0)
+                || (a.last_name??'').localeCompare(b.last_name??''))
 
             function exportCSV() {
               const headers = ['#','Last Name','First Name',...COLS.filter(c=>(listCols as any)[c.key]).map(c=>c.label)]
@@ -517,6 +517,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                         const ageMs = child.birthday ? Date.now() - new Date(child.birthday).getTime() : 0
                         const ageY = Math.floor(ageMs / (1000*60*60*24*365.25))
                         const rowActive = isChildActive(child)
+                        const rowSimilar = searchActive && childSearchKind(child, debSearch) === 'similar'
                         return (
                           <tr key={child.id} onClick={() => { setFocusField(null); setChildSettingsId(child.id) }}
                             style={{ borderBottom:'1px solid #f0f4f1', cursor:'pointer', background: idx%2===0 ? '#fff' : '#fafbfa', opacity: rowActive ? 1 : 0.55 }}
@@ -525,7 +526,8 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                             <td style={{ padding:'7px 12px', color:'#aaa', fontSize:12 }}>{idx+1}</td>
                             <td style={{ padding:'7px 12px', fontWeight:600, color:'#1a2e1a' }}>
                               {child.last_name ?? '—'}
-                              {!rowActive && <span style={{ marginLeft:6, fontSize:9, fontWeight:700, color:'#b91c1c', background:'#fee2e2', padding:'1px 6px', borderRadius:5, textTransform:'uppercase', letterSpacing:'0.04em' }}>Inactive</span>}
+                              {!rowActive && <span style={{ marginLeft:6, fontSize:9, fontWeight:700, color:'#6b7280', background:'#f3f4f6', padding:'1px 6px', borderRadius:5, textTransform:'uppercase', letterSpacing:'0.04em' }}>inactive</span>}
+                              {rowSimilar && <span style={{ marginLeft:6, fontSize:9, fontWeight:700, color:'#92400e', background:'#fef3c7', padding:'1px 6px', borderRadius:5, letterSpacing:'0.02em' }}>similar</span>}
                             </td>
                             <td style={{ padding:'7px 12px', color:'#1a2e1a' }}>{child.first_name ?? '—'}</td>
                             {listCols.classroom && <td style={{ padding:'7px 12px', color:'#555' }}>{room?.name ?? '—'}</td>}
@@ -700,7 +702,8 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                                   <div style={{ flex: 1, minWidth: 0 }}>
                                     <div style={{ fontSize: 12, fontWeight: 600, color: '#1a2e1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display:'flex', alignItems:'center', gap:5 }}>
                                       <span style={{ overflow:'hidden', textOverflow:'ellipsis' }}>{name}</span>
-                                      {!childActive && <span style={{ flexShrink:0, fontSize:8, fontWeight:700, color:'#b91c1c', background:'#fee2e2', padding:'1px 5px', borderRadius:4, textTransform:'uppercase', letterSpacing:'0.04em' }}>Inactive</span>}
+                                      {!childActive && <span style={{ flexShrink:0, fontSize:8, fontWeight:700, color:'#6b7280', background:'#f3f4f6', padding:'1px 5px', borderRadius:4, textTransform:'uppercase', letterSpacing:'0.04em' }}>inactive</span>}
+                                      {searchActive && childSearchKind(child, debSearch) === 'similar' && <span style={{ flexShrink:0, fontSize:8, fontWeight:700, color:'#92400e', background:'#fef3c7', padding:'1px 5px', borderRadius:4, letterSpacing:'0.02em' }}>similar</span>}
                                     </div>
                                     <div style={{ fontSize: 10, color: '#888', marginTop: 1 }}>
                                       {frpKey && (
@@ -798,6 +801,19 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
           child={reactivateTarget}
           onClose={() => setReactivateTarget(null)}
           onDone={() => { setReactivateTarget(null); loadRoster(true) }}
+        />
+      )}
+      {showAddRouter && currentCenter && (
+        <AddChildRouterModal
+          centerId={currentCenter.id}
+          reviewerId={user?.id ?? ''}
+          reviewerName={(user?.user_metadata?.full_name as string) || user?.email?.split('@')[0] || 'Director'}
+          isOrgAdmin={isOrgAdmin}
+          onClose={() => setShowAddRouter(false)}
+          onReactivated={() => { setShowAddRouter(false); loadRoster(true) }}
+          onNewEnrollment={() => { setShowAddRouter(false); navigate('/enrollment-inbox') }}
+          onScan={() => { setShowAddRouter(false); navigate('/enrollment-inbox') }}
+          onRawInsert={() => { setShowAddRouter(false); setShowAddChild(true) }}
         />
       )}
       {showAddChild && currentCenter && isOrgAdmin && (

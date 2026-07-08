@@ -89,6 +89,9 @@ Add `satisfies: "income_eligibility"` to BOTH `iea` and `usda_waiver`. They are 
 
 ---
 
+### Note — child_documents ledger feeds ADD CHILD 2.0's return-window checklist (added 2026-07-08)
+The ADD CHILD 2.0 "found → return window" (П.0) already renders the per-child document checklist from the registry, but **honest empty-state**: ✓/⚠/✗ only where real data lives today (the `income_eligibility` slot for IEA/waiver + APPROVED `enrollment_submissions` matched by `child_id`); every other form shows ○ *not tracked*, and the director's mandatory paper-folder attestation (snapshotted into `roster.admission_log`) is the legal basis until this ledger exists. Stage 4 must add a `menumaker.child_documents` ledger (per-child × form_slug: signature_date, expires_at, source) **auto-populated** from (a) Approve of typed forms in the Inbox and (b) a one-time backfill from existing `enrollment_submissions`. Then the ○ marks in the return window fill in on their own — **the window is NOT redesigned**; `buildReturnChecklist()` (`src/lib/childReadmission.ts`) simply gains the ledger as a data source.
+
 ## STAGE 4 — ODJFS Inspection Readiness (separate plan)
 Per-center checklist to inspection, with statuses + due dates. Official DCY checklist to bake in:
 - **Child records:** DCY 01234 (enrollment), 01305 (medical statement), 01217 (medication), 01236 (care plan), 01235, "cot", 01229, alt-milk; 01299.

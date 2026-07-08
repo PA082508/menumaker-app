@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
+import { fuzzyMatch, nameForms } from '@/lib/childSearch'
 
 const S = () => supabase.schema('menumaker')
 const norm = (s: any) => String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
@@ -19,7 +20,8 @@ type Row = {
   name: string
   active: boolean
   eligibility: string | null
-  keeper: Keeper | null      // exact-name keeper in same center (mergeable)
+  keeper: Keeper | null      // keeper in same center (mergeable)
+  similar: boolean           // keeper found via fuzzy name match (typo variant)
 }
 
 export default function SkeletonReconciliationReport() {
@@ -41,19 +43,39 @@ export default function SkeletonReconciliationReport() {
         S().from('income_eligibility').select('roster_id,eligibility').eq('center_id', centerId),
       ])
       const ieByRoster = new Map((ie ?? []).map((r: any) => [r.roster_id, r.eligibility]))
+      const keeperList: Keeper[] = []
       const keeperByName = new Map<string, Keeper>()
       for (const k of (keepers ?? []) as any[]) {
         const nn = norm(k.child_name)
-        if (!keeperByName.has(nn)) keeperByName.set(nn, { id: k.id, name: k.child_name, nn })
+        const kp: Keeper = { id: k.id, name: k.child_name, nn }
+        keeperList.push(kp)
+        if (!keeperByName.has(nn)) keeperByName.set(nn, kp)
       }
-      const out: Row[] = ((skel ?? []) as any[]).map(s => ({
-        id: s.id,
-        name: s.child_name,
-        active: s.is_active !== false,
-        eligibility: ieByRoster.get(s.id) ?? null,
-        keeper: keeperByName.get(norm(s.child_name)) ?? null,
-      }))
-      out.sort((a, b) => Number(!!b.keeper) - Number(!!a.keeper) || a.name.localeCompare(b.name))
+      // Exact-name keeper first; else a fuzzy 'similar' keeper so typo stubs
+      // (Rakhmanov ↔ Rackmanov) stop landing in orphan. Fuzzy is bounded and
+      // both name tokens must be close, so false positives are rare.
+      const findKeeper = (name: string): { keeper: Keeper; similar: boolean } | null => {
+        const exact = keeperByName.get(norm(name))
+        if (exact) return { keeper: exact, similar: false }
+        const fz = keeperList.find(k => fuzzyMatch(nameForms(null, null, k.name), name))
+        return fz ? { keeper: fz, similar: true } : null
+      }
+      const out: Row[] = ((skel ?? []) as any[]).map(s => {
+        const fk = findKeeper(s.child_name)
+        return {
+          id: s.id,
+          name: s.child_name,
+          active: s.is_active !== false,
+          eligibility: ieByRoster.get(s.id) ?? null,
+          keeper: fk?.keeper ?? null,
+          similar: fk?.similar ?? false,
+        }
+      })
+      // Mergeable first; exact keeper above fuzzy 'similar'; then by name.
+      out.sort((a, b) =>
+        (Number(!!b.keeper) - Number(!!a.keeper))
+        || (Number(a.similar) - Number(b.similar))
+        || a.name.localeCompare(b.name))
       setRows(out)
       setLoading(false)
     })()
@@ -72,7 +94,7 @@ export default function SkeletonReconciliationReport() {
         <td>${i + 1}</td><td>${esc(r.name)}</td>
         <td>${esc(FRP_LABEL[r.eligibility ?? ''] ?? r.eligibility ?? '')}</td>
         <td>${r.active ? 'active' : 'inactive'}</td>
-        <td>${r.keeper ? 'Merge → ' + esc(r.keeper.name) : 'No keeper match — review'}</td>
+        <td>${r.keeper ? 'Merge → ' + esc(r.keeper.name) + (r.similar ? ' (similar)' : '') : 'No keeper match — review'}</td>
         <td class="sig">&nbsp;</td>
       </tr>`).join('')
     w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Skeleton Reconciliation — ${esc(currentCenter?.name)}</title>
@@ -134,7 +156,7 @@ export default function SkeletonReconciliationReport() {
                   <td style={td}><span style={{ fontSize: 11, color: r.active ? '#0f4c35' : '#6b7280' }}>{r.active ? 'active' : 'inactive'}</span></td>
                   <td style={td}>
                     {r.keeper
-                      ? <span style={{ color: '#0f4c35' }}>Merge → <strong>{r.keeper.name}</strong></span>
+                      ? <span style={{ color: '#0f4c35' }}>Merge → <strong>{r.keeper.name}</strong>{r.similar && <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, color: '#92400e', background: '#fef3c7', padding: '1px 7px', borderRadius: 20 }}>similar</span>}</span>
                       : <span style={{ color: '#92400e', fontWeight: 600, background: '#fff3cd', border: '1px solid #ffc107', borderRadius: 4, padding: '1px 7px' }}>No keeper — review</span>}
                   </td>
                 </tr>

@@ -98,8 +98,17 @@ function validateCacfp(
   fd: any,
   signatureDate?: string | null,
   activeMealSlots?: string[] | null,
+  source?: string | null,
 ): ValidationResult {
   const errors: string[] = [], warnings: string[] = [], missing: string[] = []
+
+  // Manual entry (director typed it — no paper form) follows the rule "the child
+  // doesn't wait for paperwork; documents catch up": contact/address/signature-date
+  // are NOT Approve blockers — they downgrade to a "docs pending" warning. The
+  // minimal hard set stays: child name, DOB, Care & meals (≥1 day), classroom, FRP,
+  // Date In. online/paper submissions are unchanged.
+  const softManual = source === 'manual_entry'
+  const softMiss = (label: string) => (softManual ? warnings.push(`${label} — docs pending`) : missing.push(label))
 
   if (blank(fd?.child_name)) missing.push('Child name')
 
@@ -147,20 +156,29 @@ function validateCacfp(
     warnings.push(`Exceeds CACFP daily maximum (${MAX_MEALS_PER_DAY} meals + ${MAX_SNACKS_PER_DAY} snacks) on at least one day`)
   }
 
-  if (blank(fd?.day_phone)) missing.push('Daytime phone')
+  if (blank(fd?.day_phone)) softMiss('Daytime phone')
   else if (!validPhone(fd.day_phone)) warnings.push('Daytime phone format looks invalid')
 
   const m = fd?.mailing ?? {}
   if (blank(m.street) || blank(m.city) || blank(m.zip)) {
-    missing.push('Mailing address (street, city, ZIP)')
+    softMiss('Mailing address (street, city, ZIP)')
   } else if (!validZip(m.zip)) {
     warnings.push('ZIP code format looks invalid')
   }
 
   // Signature date (drawn signature intentionally not required — paper flow).
   const sigDate = !blank(signatureDate) ? signatureDate : fd?.signature_date
-  if (blank(sigDate)) missing.push('Signature date')
+  if (blank(sigDate)) softMiss('Signature date')
   else if (!isISODate(sigDate)) warnings.push('Signature date format looks invalid')
+
+  // Manual entry's minimal hard set includes classroom / FRP / Date In (the manual
+  // form collects them). Parent/online submissions set these at Approve, not on the
+  // form, so they're only enforced for manual_entry.
+  if (softManual) {
+    if (blank(fd?.classroom_id)) missing.push('Classroom')
+    if (blank(fd?.frp)) missing.push('Meal status (FRP)')
+    if (blank(fd?.date_in)) missing.push('Date In')
+  }
 
   return { status: statusFrom({ errors, warnings, missing }), errors, warnings, missing }
 }
@@ -229,7 +247,7 @@ function validateIea(fd: any): ValidationResult {
 }
 
 // ─── Registry of validators by submission_type ──────────────────────────────
-type Validator = (fd: any, signatureDate?: string | null, activeMealSlots?: string[] | null) => ValidationResult
+type Validator = (fd: any, signatureDate?: string | null, activeMealSlots?: string[] | null, source?: string | null) => ValidationResult
 
 const VALIDATORS: Record<string, Validator> = {
   cacfp_enrollment: validateCacfp,
@@ -249,7 +267,7 @@ export const submissionTypeLabel = (t: string): string =>
 export function validateSubmission(
   submissionType: string,
   formData: any,
-  opts?: { signatureDate?: string | null; activeMealSlots?: string[] | null },
+  opts?: { signatureDate?: string | null; activeMealSlots?: string[] | null; source?: string | null },
 ): ValidationResult {
   const v = VALIDATORS[submissionType]
   if (!v) {
@@ -258,5 +276,5 @@ export function validateSubmission(
       missing: [`No validation rules for "${submissionTypeLabel(submissionType)}" yet`],
     }
   }
-  return v(formData, opts?.signatureDate, opts?.activeMealSlots ?? null)
+  return v(formData, opts?.signatureDate, opts?.activeMealSlots ?? null, opts?.source ?? null)
 }

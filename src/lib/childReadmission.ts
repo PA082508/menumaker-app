@@ -100,10 +100,16 @@ export interface ChecklistResult {
   incomeEligibilityMet: boolean
 }
 
+// When the return window is opened from the Enrollment Review (a scanned form
+// is mid-approval), the form being reviewed isn't an approved submission yet —
+// mark its registry row "this scan (pending approval)" so it reads ✓ in-flight.
+export interface PendingScan { submissionType: string; dcyForm?: string | null }
+
 /** Build the return-window document checklist for one roster child. Reads the
  *  registry catalog and joins the only per-child state that persists today:
- *  the income_eligibility FY record and APPROVED enrollment_submissions. */
-export async function buildReturnChecklist(rosterId: string): Promise<ChecklistResult> {
+ *  the income_eligibility FY record and APPROVED enrollment_submissions.
+ *  `pendingScan` (Review flow) marks the in-flight form's row as ✓ pending. */
+export async function buildReturnChecklist(rosterId: string, opts?: { pendingScan?: PendingScan }): Promise<ChecklistResult> {
   const registry = await loadFormsRegistry()
   const t = today()
 
@@ -173,6 +179,13 @@ export async function buildReturnChecklist(rosterId: string): Promise<ChecklistR
     }
     return row
   })
+
+  // Review flow: flag the in-flight scanned form's row as pending-approval ✓.
+  if (opts?.pendingScan) {
+    const slug = submissionSlug(opts.pendingScan.submissionType, opts.pendingScan.dcyForm)
+    const row = slug ? rows.find(r => r.slug === slug) : undefined
+    if (row) { row.status = 'ok'; row.onFileDate = null; row.validUntil = null; row.note = 'this scan (pending approval)' }
+  }
 
   return { rows, incomeEligibilityMet }
 }

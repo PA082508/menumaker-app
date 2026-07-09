@@ -44,10 +44,12 @@ function candBadge(c: Candidate): { text: string; bg: string; fg: string } {
 }
 
 export default function AddChildRouterModal({
-  centerId, reviewerId, reviewerName, isOrgAdmin,
+  centerId, orgId, classrooms, reviewerId, reviewerName, isOrgAdmin,
   onClose, onReactivated, onNewEnrollment, onScan, onRawInsert,
 }: {
   centerId: string
+  orgId: string
+  classrooms: { id: string; name: string }[]
   reviewerId: string
   reviewerName: string
   isOrgAdmin: boolean
@@ -61,6 +63,7 @@ export default function AddChildRouterModal({
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Candidate | null>(null)
+  const [showManual, setShowManual] = useState(false)
 
   // Load the WHOLE center once (active + inactive + stubs) — same corpus as the
   // enrollment dup gate, plus source/date_out for the badges.
@@ -99,16 +102,21 @@ export default function AddChildRouterModal({
       <div onClick={e => e.stopPropagation()} style={card}>
         <div style={{ background: GREEN, padding: '18px 22px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
           <div style={{ color: '#fff', fontWeight: 700, fontSize: 17 }}>
-            {selected ? `↩ ${candName(selected)}` : '🔎 Add Child'}
+            {showManual ? '✍️ Manual entry — no scan' : selected ? `↩ ${candName(selected)}` : '🔎 Add Child'}
           </div>
-          <button onClick={selected ? () => setSelected(null) : onClose}
-            style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', fontSize: selected ? 15 : 18 }}>
-            {selected ? '‹' : '×'}
+          <button onClick={showManual ? () => setShowManual(false) : selected ? () => setSelected(null) : onClose}
+            style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', fontSize: (showManual || selected) ? 15 : 18 }}>
+            {(showManual || selected) ? '‹' : '×'}
           </button>
         </div>
 
         <div style={{ padding: 22, overflowY: 'auto' }}>
-          {selected ? (
+          {showManual ? (
+            <ManualEntryModal
+              centerId={centerId} orgId={orgId} classrooms={classrooms} reviewerName={reviewerName}
+              onDone={() => { onClose(); onNewEnrollment() }}
+            />
+          ) : selected ? (
             <ReturnWindow
               child={{ id: selected.id, name: candName(selected), is_active: selected.is_active, date_out: selected.date_out }}
               reviewerId={reviewerId} reviewerName={reviewerName}
@@ -144,7 +152,8 @@ export default function AddChildRouterModal({
 
               {noMatch && (
                 <NotFoundBlock name={query} isOrgAdmin={isOrgAdmin}
-                  onScan={onScan} onNewEnrollment={onNewEnrollment} onRawInsert={onRawInsert} />
+                  onScan={onScan} onNewEnrollment={onNewEnrollment} onRawInsert={onRawInsert}
+                  onManual={() => setShowManual(true)} />
               )}
             </>
           )}
@@ -155,8 +164,8 @@ export default function AddChildRouterModal({
 }
 
 // ─── not-found choices ────────────────────────────────────────────────────────
-function NotFoundBlock({ name, isOrgAdmin, onScan, onNewEnrollment, onRawInsert }: {
-  name: string; isOrgAdmin: boolean; onScan: () => void; onNewEnrollment: () => void; onRawInsert: () => void
+function NotFoundBlock({ name, isOrgAdmin, onScan, onNewEnrollment, onRawInsert, onManual }: {
+  name: string; isOrgAdmin: boolean; onScan: () => void; onNewEnrollment: () => void; onRawInsert: () => void; onManual: () => void
 }) {
   const big: React.CSSProperties = { width: '100%', padding: '13px', borderRadius: 11, border: `1.5px solid ${GREEN}`, background: '#fff', color: GREEN, cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, fontWeight: 700, textAlign: 'left', display: 'flex', gap: 10, alignItems: 'center' }
   return (
@@ -167,12 +176,81 @@ function NotFoundBlock({ name, isOrgAdmin, onScan, onNewEnrollment, onRawInsert 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <button style={big} onClick={onScan}>📷 <span>Scan paper form <span style={{ fontWeight: 400, color: '#6b7280' }}>— photo → Inbox</span></span></button>
         <button style={{ ...big, background: GREEN, color: '#fff', border: 'none' }} onClick={onNewEnrollment}>＋ <span>New enrollment</span></button>
+        <button style={big} onClick={onManual}>✍️ <span>Manual entry <span style={{ fontWeight: 400, color: '#6b7280' }}>— no scan (paper unusable)</span></span></button>
         {isOrgAdmin && (
           <button style={{ ...big, borderColor: '#e5e7eb', color: '#6b7280', fontWeight: 600 }} onClick={onRawInsert}>
             ⚙️ <span>Create record directly <span style={{ fontWeight: 400 }}>— admin only</span></span>
           </button>
         )}
       </div>
+    </div>
+  )
+}
+
+// ─── manual entry (no scan) ───────────────────────────────────────────────────
+// Director types an enrollment when the paper form is unusable/unscannable. Files
+// a pending CACFP submission with source='manual_entry' (audit note in form_data)
+// → standard Inbox Review/Approve → roster child in a classroom → meal grid.
+function ManualEntryModal({ centerId, orgId, classrooms, reviewerName, onDone }: {
+  centerId: string; orgId: string; classrooms: { id: string; name: string }[]; reviewerName: string; onDone: () => void
+}) {
+  const [form, setForm] = useState({ first_name: '', last_name: '', birthday: '', classroom_id: '', date_in: new Date().toISOString().slice(0, 10), frp: 'F' })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }))
+
+  async function submit() {
+    if (!form.first_name || !form.last_name || !form.birthday || !form.classroom_id) { setError('Enter first & last name, birthday, and classroom'); return }
+    setSaving(true); setError('')
+    try {
+      const child_name = `${form.last_name} ${form.first_name}`
+      const form_data = {
+        type: 'cacfp_enrollment', child_name, first_name: form.first_name, last_name: form.last_name,
+        birthdate: form.birthday, classroom_id: form.classroom_id, date_in: form.date_in, frp: form.frp,
+        _manual: true, _source_note: 'manual (no scan / paper unusable)', _entered_by: reviewerName,
+      }
+      const { error: err } = await (supabase.schema('menumaker').rpc as any)('submit_enrollment_form', {
+        p_org: orgId, p_center: centerId, p_submission_type: 'cacfp_enrollment',
+        p_form_data: form_data, p_signatures: {}, p_signature_date: null, p_source: 'manual_entry',
+      })
+      if (err) throw err
+      onDone()
+    } catch (e: any) { setError(e.message); setSaving(false) }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ fontSize: 13, color: '#555', lineHeight: 1.5 }}>
+        Paper form unusable? Type the essentials — this files a pending enrollment (marked
+        <strong> manual, no scan</strong>) for you to Review &amp; Approve in the Inbox. The child then
+        appears in this center's meal grid.
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div><label style={lbl}>First name *</label><input style={inp} value={form.first_name} onChange={e => set('first_name', e.target.value)} /></div>
+        <div><label style={lbl}>Last name *</label><input style={inp} value={form.last_name} onChange={e => set('last_name', e.target.value)} /></div>
+      </div>
+      <div><label style={lbl}>Birthday *</label><input type="date" style={inp} value={form.birthday} onChange={e => set('birthday', e.target.value)} /></div>
+      <div>
+        <label style={lbl}>Classroom *</label>
+        <select style={inp} value={form.classroom_id} onChange={e => set('classroom_id', e.target.value)}>
+          <option value="">Select classroom…</option>
+          {classrooms.filter(c => !c.name.toLowerCase().includes('staff')).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div><label style={lbl}>Date In</label><input type="date" style={inp} value={form.date_in} onChange={e => set('date_in', e.target.value)} /></div>
+        <div>
+          <label style={lbl}>Meal Status (FRP)</label>
+          <select style={inp} value={form.frp} onChange={e => set('frp', e.target.value)}>
+            <option value="F">Free</option><option value="R">Reduced</option><option value="P">Paid</option>
+          </select>
+        </div>
+      </div>
+      {error && <div style={{ color: '#dc2626', fontSize: 13 }}>{error}</div>}
+      <button onClick={submit} disabled={saving}
+        style={{ padding: '12px', borderRadius: 9, background: GREEN, color: '#fff', border: 'none', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit', opacity: saving ? 0.6 : 1 }}>
+        {saving ? 'Filing…' : '✍️ File for review (no scan)'}
+      </button>
     </div>
   )
 }

@@ -47,7 +47,15 @@ export function buildCacfpPatch(fd: any, dateIn?: string | null): RosterPatch {
   if (last) patch.last_name = last
   if (!blank(fd?.birthdate)) patch.birthday = String(fd.birthdate).slice(0, 10)
   if (addr) patch.child_address = addr
-  if (!blank(dateIn)) patch.date_in = String(dateIn).slice(0, 10)
+  // Date In: reviewer's field wins; else fall back to the form's own date_in
+  // (manual entry carries it) so the child is active on the intended start.
+  const di = !blank(dateIn) ? dateIn : fd?.date_in
+  if (!blank(di)) patch.date_in = String(di).slice(0, 10)
+  // Manual entry carries classroom + FRP so the approved child lands in a
+  // classroom (visible in the meal grid) with the director-set status. Parent
+  // submissions omit these → behaviour unchanged.
+  if (!blank(fd?.classroom_id)) patch.classroom_id = fd.classroom_id
+  if (!blank(fd?.frp)) patch.frp = fd.frp
   return patch
 }
 

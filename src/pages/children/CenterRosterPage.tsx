@@ -806,6 +806,8 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
       {showAddRouter && currentCenter && (
         <AddChildRouterModal
           centerId={currentCenter.id}
+          orgId={org?.id ?? ''}
+          classrooms={classrooms}
           reviewerId={user?.id ?? ''}
           reviewerName={(user?.user_metadata?.full_name as string) || user?.email?.split('@')[0] || 'Director'}
           isOrgAdmin={isOrgAdmin}

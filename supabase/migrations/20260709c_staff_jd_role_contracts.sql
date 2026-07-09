@@ -60,7 +60,7 @@ Provide a successful, safe and supervised educational setting for children while
 
 - Ensure supervision and monitor children at all times is taking place for all staff members.
 
-- Ensure classrooms are kept clean and orderly. Monitor classroom activities and materials to ensure all classrooms are meetings the developmental and intellectual needs of the children they are serving.
+- Ensure classrooms are kept clean and orderly. Monitor classroom activities and materials to ensure all classrooms are meeting the developmental and intellectual needs of the children they are serving.
 
 - Respond to crisis or emergency situations that may occur. Provide first aid or CPR, prevent the spread of blood borne pathogens, and access emergency services as needed. Fill out paperwork for each incident that you have to perform first aid.  Make sure that parents are notified.
 

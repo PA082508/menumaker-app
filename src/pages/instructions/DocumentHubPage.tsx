@@ -272,7 +272,7 @@ export default function DocumentHubPage() {
         <button onClick={()=>setSignOpen(true)} style={{padding:'10px 20px',background:'#fff',color:'#1a5c3f',border:'none',borderRadius:8,fontWeight:700,fontSize:14,cursor:'pointer',fontFamily:'inherit'}}>Sign Now →</button>
       </div>
 
-      <StaffJdOnboarding onSignByod={()=>setSignOpen(true)} />
+      <StaffJdOnboarding />
 
       <div style={{display:'flex',gap:20,marginBottom:18,flexWrap:'wrap'}}>
         <div>

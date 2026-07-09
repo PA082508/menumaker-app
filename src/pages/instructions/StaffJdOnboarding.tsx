@@ -9,15 +9,38 @@ import {
 } from '@/lib/staffJdRegistry'
 import AckSignModal, { type AckSignPayload } from '@/components/signing/AckSignModal'
 
-// Staff onboarding — JD acknowledgments. SURFACE = IN-APP, signer variant (в):
-// the new hire signs PERSONALLY in the director's session (like the parent kiosk).
-// The signed row lands in staff_agreement_signatures (staging, pending_approve);
-// witnessed_by_auth_id = the director whose session it is. §6 BYOD reuses the
-// existing Document Hub "Sign Online" flow via onSignByod (not re-implemented here).
+// Staff onboarding — the first-day sign-set (role JD + §6 BYOD). SURFACE = IN-APP,
+// signer variant (в): the new hire signs PERSONALLY in the director's session (like
+// the parent kiosk). EVERY item — JD and BYOD — lands in staff_agreement_signatures
+// (staging, pending_approve; witnessed_by_auth_id = the director whose session it is),
+// carried to the permanent tables at Approve→staff. The new hire is NOT an auth user,
+// so onboarding BYOD must NOT write byod_signatures (that table's RLS expects a
+// self-signing employee) — the legacy self-service BYOD modal is untouched.
 
 const S = () => supabase.schema('menumaker')
 
-export default function StaffJdOnboarding({ onSignByod }: { onSignByod: () => void }) {
+// BYOD ('byod') has no policy_documents row yet — its text is rendered inline here
+// (same content as the legacy self-service modal). TODO: seed 'byod' into
+// policy_documents so this reads from fetchActiveJdBody like the JDs.
+const BYOD_BODY = `**Play Academy Inc. BYOD Device Use Agreement**
+
+**Art.1 Purpose.** Employee voluntarily uses personal device for SafePass and authorized apps. App works ONLY on registered authorized devices.
+
+**Art.2 Compensation.** Monthly stipend of $20.00 in regular paycheck.
+
+**Art.3 Obligations.** Keep device charged; enable screen lock; not share credentials; report loss immediately; allow app removal upon termination.
+
+**Art.4 Company Limits.** Play Academy will NOT access personal content. Work data on Company servers only.
+
+**Art.5 Confidentiality.** All child data is confidential. No disclosure to unauthorized persons.
+
+**Art.6 Termination.** Either party may terminate. Employee: written notice. Company: immediately upon violation.
+
+**Art.7 Governing Law.** Ohio law. Cuyahoga County courts.
+
+**Art.8 Push Notifications.** Employee consents to receive work-related Push Notifications through the Play Academy app on their personal device. Notifications may include: CACFP meal count alerts, SafePass child handoff events, schedule reminders, and urgent messages from management. Employee may not disable work notifications during scheduled work hours.`
+
+export default function StaffJdOnboarding() {
   const { org, currentCenter } = useOrg()
   const { user } = useAuth()
   const [role, setRole] = useState<StaffRole | ''>('')
@@ -35,13 +58,18 @@ export default function StaffJdOnboarding({ onSignByod }: { onSignByod: () => vo
       .then(({ count }) => setPending(count ?? 0))
   }, [org?.id, signing])
 
-  async function openJdSign(doc: JdDoc) {
-    setSigning(doc); setBody(null); setBodyLoading(true)
+  // Open the sign flow for any sign-set item. BYOD renders inline; JDs fetch the
+  // active body from policy_documents.
+  async function openDocSign(doc: JdDoc) {
+    setSigning(doc)
+    if (doc.policyKey === 'byod') { setBody(BYOD_BODY); setBodyLoading(false); return }
+    setBody(null); setBodyLoading(true)
     const b = await fetchActiveJdBody(doc)
     setBody(b); setBodyLoading(false)
   }
 
-  async function submitJd(p: AckSignPayload): Promise<{ refId: string }> {
+  // Every item — JD and BYOD — writes to the SAME staging table (symmetric).
+  async function submitSign(p: AckSignPayload): Promise<{ refId: string }> {
     if (!currentCenter?.id) throw new Error('Select a center first (onboarding is center-specific).')
     if (!user?.id) throw new Error('You must be signed in to witness a signature.')
     const doc = signing!
@@ -100,9 +128,7 @@ export default function StaffJdOnboarding({ onSignByod }: { onSignByod: () => vo
                     <div style={{ fontSize: 12, color: '#6b7280' }}>{isByod ? '§6 Smartphone / BYOD' : `${doc.policyKey} · ${doc.version}`}</div>
                   </div>
                   <div style={{ marginTop: 'auto' }}>
-                    {isByod
-                      ? <button onClick={onSignByod} style={{ ...primaryBtn, background: '#0f4c35' }}>✍️ Sign BYOD →</button>
-                      : <button onClick={() => openJdSign(doc)} style={primaryBtn}>✍️ Sign JD →</button>}
+                    <button onClick={() => openDocSign(doc)} style={primaryBtn}>✍️ Sign {isByod ? 'BYOD' : 'JD'} →</button>
                   </div>
                 </div>
               )
@@ -120,7 +146,7 @@ export default function StaffJdOnboarding({ onSignByod }: { onSignByod: () => vo
           bodyLoading={bodyLoading}
           ackLine={signing.ackLine}
           submitLabel="File signature (pending approval) ✓"
-          onSubmit={submitJd}
+          onSubmit={submitSign}
           onClose={() => setSigning(null)}
           renderSuccess={({ intake, refId }) => (
             <div style={{ textAlign: 'center', padding: '16px 0' }}>

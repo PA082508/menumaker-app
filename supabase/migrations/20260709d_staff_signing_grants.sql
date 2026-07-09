@@ -17,7 +17,7 @@
 -- self-service BYOD modal (byod_signatures) is out of scope and unchanged; if it is
 -- ever used in-app it will need its own grant (flagged, separate decision).
 --
--- PREPARED 2026-07-09 — awaiting Nikolay's go (prepare → go → apply).
+-- Applied to project menumaker (trrmyqfpxntmgxnqkikp) 2026-07-09.
 
 grant select, insert, update on menumaker.staff_agreement_signatures to authenticated;
 grant select on menumaker.policy_documents to authenticated;

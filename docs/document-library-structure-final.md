@@ -53,6 +53,27 @@ Play Academy's own documents.
 - **Batches**; tracking **sent / filled / approved**.
 - Operates on the documents of sections 1–2 (the fillable enrollment + CACFP forms).
 
+## Package scenarios (generator input)
+
+A **scenario** is a **named preset of a document set** — the input the campaign
+panel's personal-packet generator expands into per-child links. Data-driven: the
+scenario registry grows by adding rows, not code.
+
+- **a) Child enrollment** — the full set (Ohio DCY packet + CACFP Enrollment v9 +
+  IEA v6 + attachments). Modes:
+  - **full packet** — everything;
+  - **single form** — pick ONE form to update (e.g. re-sign one doc);
+  - **truncated** — a named subset (example: **renewal = CACFP + IEA**).
+- **b) Employee** — Staff Enrollment + the **first-day sign-set** (role JD + BYOD),
+  i.e. `signSetForRole(role)` from the staff-JD registry.
+
+**Candidate scenarios** (add as data): "New Period" wave, "Schedule change",
+"Special Diet" / off-form-meal GUARD, Drop-In.
+
+**Wiring:** `scenario + mode → purpose` on the generated `form_links`; drives the
+per-child **awaiting** statuses and the **batches** in the campaign panel. A batch is
+built from a scenario; a child's status is per (child × scenario).
+
 ## Document card (every listed doc)
 
 Shows: **version**, **live/dark** state, **QR**, **personal link**.

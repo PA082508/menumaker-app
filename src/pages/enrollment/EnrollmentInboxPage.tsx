@@ -180,7 +180,7 @@ export default function EnrollmentInboxPage() {
   const graded = useMemo(
     () => rows.map(r => ({
       row: r,
-      v: validateSubmission(r.submission_type, r.form_data, { signatureDate: r.signature_date }),
+      v: validateSubmission(r.submission_type, r.form_data, { signatureDate: r.signature_date, source: r.source }),
     })),
     [rows],
   )

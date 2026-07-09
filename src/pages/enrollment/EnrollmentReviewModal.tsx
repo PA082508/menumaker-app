@@ -125,8 +125,8 @@ export default function EnrollmentReviewModal({
 
   const rows = useMemo(() => buildDiff(submission.submission_type, fd, ctx), [submission.submission_type, fd, ctx])
   const v = useMemo(
-    () => validateSubmission(submission.submission_type, fd, { signatureDate: submission.signature_date, activeMealSlots }),
-    [submission.submission_type, fd, submission.signature_date, activeMealSlots],
+    () => validateSubmission(submission.submission_type, fd, { signatureDate: submission.signature_date, activeMealSlots, source: submission.source }),
+    [submission.submission_type, fd, submission.signature_date, activeMealSlots, submission.source],
   )
   const badge = BADGE[v.status]
 

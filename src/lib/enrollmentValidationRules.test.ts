@@ -63,3 +63,42 @@ describe('CACFP meal-slot validation', () => {
     expect(r.warnings.some(w => /Exceeds CACFP daily maximum/.test(w))).toBe(false)
   })
 })
+
+describe('CACFP manual_entry softening', () => {
+  // A manual entry the director typed: Care & meals present, classroom/FRP/Date In
+  // present, but no phone / address / signature date (docs catch up later).
+  const manualMinimal = () => ({
+    child_name: 'Manualov, Test',
+    birthdate: '2022-04-01',
+    classroom_id: 'c-123', frp: 'F', date_in: '2026-07-09',
+    schedule: { Mon: { in_care: true, arr1: '08:00', dep1: '17:00', meals: { b: true, l: true } } },
+  })
+  const manual = (fd: any) => validateSubmission('cacfp_enrollment', fd, { source: 'manual_entry' })
+  const online = (fd: any) => validateSubmission('cacfp_enrollment', fd, { source: 'app' })
+
+  it('does NOT block Approve when only phone/address/sig-date are missing (manual)', () => {
+    const r = manual(manualMinimal())
+    expect(r.missing).toEqual([])          // no hard blockers
+    expect(r.status).not.toBe('errors')    // Approve allowed (warnings at most)
+    expect(r.warnings.some(w => /docs pending/.test(w))).toBe(true)
+  })
+
+  it('still blocks the SAME record on the online/paper path (unchanged)', () => {
+    const r = online(manualMinimal())
+    expect(r.missing).toEqual(expect.arrayContaining(['Daytime phone', 'Mailing address (street, city, ZIP)', 'Signature date']))
+    expect(r.status).toBe('errors')
+  })
+
+  it('keeps Care & meals a HARD requirement even for manual (not softened)', () => {
+    const fd = manualMinimal(); fd.schedule = {}
+    const r = manual(fd)
+    expect(r.missing).toContain('At least one day with care hours and a meal')
+    expect(r.status).toBe('errors')
+  })
+
+  it('requires classroom / FRP / Date In for manual', () => {
+    const fd = manualMinimal(); delete fd.classroom_id; delete fd.frp; delete fd.date_in
+    const r = manual(fd)
+    expect(r.missing).toEqual(expect.arrayContaining(['Classroom', 'Meal status (FRP)', 'Date In']))
+  })
+})

@@ -191,22 +191,90 @@ function NotFoundBlock({ name, isOrgAdmin, onScan, onNewEnrollment, onRawInsert,
 // Director types an enrollment when the paper form is unusable/unscannable. Files
 // a pending CACFP submission with source='manual_entry' (audit note in form_data)
 // → standard Inbox Review/Approve → roster child in a classroom → meal grid.
+// Care & meals is in the MINIMAL set: without a schedule the child never passes
+// Review (anyValidDay) and never reaches the grid. Meals derive from the center's
+// slots + classroom slot windows (same «≤» arrival-inclusive rule as the form-kit).
+const MANUAL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'] as const
+type ManualDay = typeof MANUAL_DAYS[number]
+const SLOT_TO_CODE: Record<string, string> = { breakfast: 'b', am_snack: 'as', lunch: 'l', pm_snack: 'ps', supper: 'su', evening_snack: 'es' }
+const CODE_LABEL: Record<string, string> = { b: 'Bkfst', as: 'AM', l: 'Lunch', ps: 'PM', su: 'Supper', es: 'Eve' }
+const toMin = (t: string): number | null => { const m = /^(\d{1,2}):(\d{2})/.exec(t || ''); return m ? (+m[1]) * 60 + (+m[2]) : null }
+type DaySched = { in_care: boolean; arr1: string; dep1: string; meals: Record<string, boolean> }
+const emptyDay = (): DaySched => ({ in_care: false, arr1: '', dep1: '', meals: {} })
+
 function ManualEntryModal({ centerId, orgId, classrooms, reviewerName, onDone }: {
   centerId: string; orgId: string; classrooms: { id: string; name: string }[]; reviewerName: string; onDone: () => void
 }) {
   const [form, setForm] = useState({ first_name: '', last_name: '', birthday: '', classroom_id: '', date_in: new Date().toISOString().slice(0, 10), frp: 'F' })
+  const [sched, setSched] = useState<Record<ManualDay, DaySched>>(() => Object.fromEntries(MANUAL_DAYS.map(d => [d, emptyDay()])) as Record<ManualDay, DaySched>)
+  const [slotCodes, setSlotCodes] = useState<string[]>([])                 // meal codes the center serves (order preserved)
+  const [slotWin, setSlotWin] = useState<Record<string, { s: number; e: number }>>({})  // code → window (mins) for derive
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }))
 
+  // Center's active meal slots → which meal columns to show.
+  useEffect(() => {
+    let off = false
+    supabase.schema('menumaker').from('meal_count_settings').select('active_slots').eq('center_id', centerId).maybeSingle()
+      .then(({ data }) => {
+        if (off) return
+        const active: string[] = Array.isArray(data?.active_slots) ? data!.active_slots : ['breakfast', 'am_snack', 'lunch', 'supper']
+        setSlotCodes(active.map(s => SLOT_TO_CODE[s]).filter(Boolean))
+      })
+    return () => { off = true }
+  }, [centerId])
+
+  // Selected classroom's slot windows → auto-derive meals from hours (like the kit).
+  useEffect(() => {
+    if (!form.classroom_id) { setSlotWin({}); return }
+    let off = false
+    supabase.schema('menumaker').from('meal_schedule').select('slot, start_time, end_time').eq('classroom_id', form.classroom_id)
+      .then(({ data }) => {
+        if (off) return
+        const win: Record<string, { s: number; e: number }> = {}
+        for (const r of (data ?? []) as any[]) {
+          const code = SLOT_TO_CODE[r.slot]; const s = toMin(String(r.start_time ?? '')); const e = toMin(String(r.end_time ?? ''))
+          if (code && s != null && e != null) win[code] = { s, e }
+        }
+        setSlotWin(win)
+      })
+    return () => { off = true }
+  }, [form.classroom_id])
+
+  // «≤» arrival-inclusive overlap: arrive exactly at a slot's end still counts.
+  function derive(arr1: string, dep1: string): Record<string, boolean> {
+    const a = toMin(arr1), d = toMin(dep1); const meals: Record<string, boolean> = {}
+    if (a == null || d == null || d <= a) return meals
+    for (const code of slotCodes) { const w = slotWin[code]; if (w && a <= w.e && w.s < d) meals[code] = true }
+    return meals
+  }
+  const setDay = (day: ManualDay, patch: Partial<DaySched>) => setSched(p => {
+    const next = { ...p[day], ...patch }
+    if (('arr1' in patch || 'dep1' in patch) && Object.keys(slotWin).length) next.meals = derive(next.arr1, next.dep1)  // re-derive on hours change
+    return { ...p, [day]: next }
+  })
+  const toggleMeal = (day: ManualDay, code: string) => setSched(p => ({ ...p, [day]: { ...p[day], meals: { ...p[day].meals, [code]: !p[day].meals[code] } } }))
+  const applyMonToWeek = () => setSched(p => {
+    const mon = p.Mon; const next = { ...p }
+    for (const d of MANUAL_DAYS) if (d !== 'Mon') next[d] = { in_care: mon.in_care, arr1: mon.arr1, dep1: mon.dep1, meals: { ...mon.meals } }
+    return next
+  })
+
+  const dayValid = (d: DaySched) => d.in_care && !!d.arr1 && !!d.dep1 && Object.values(d.meals).some(Boolean)
+  const anyValidDay = MANUAL_DAYS.some(d => dayValid(sched[d]))
+
   async function submit() {
     if (!form.first_name || !form.last_name || !form.birthday || !form.classroom_id) { setError('Enter first & last name, birthday, and classroom'); return }
+    if (!anyValidDay) { setError('Add at least one care day with arrival, departure, and a meal (Care & meals).'); return }
     setSaving(true); setError('')
     try {
       const child_name = `${form.last_name} ${form.first_name}`
+      const schedule = Object.fromEntries(MANUAL_DAYS.map(d => [d, { in_care: sched[d].in_care, arr1: sched[d].arr1, dep1: sched[d].dep1, arr2: '', dep2: '', meals: sched[d].meals }]))
       const form_data = {
         type: 'cacfp_enrollment', child_name, first_name: form.first_name, last_name: form.last_name,
         birthdate: form.birthday, classroom_id: form.classroom_id, date_in: form.date_in, frp: form.frp,
+        schedule,
         _manual: true, _source_note: 'manual (no scan / paper unusable)', _entered_by: reviewerName,
       }
       const { error: err } = await (supabase.schema('menumaker').rpc as any)('submit_enrollment_form', {
@@ -217,6 +285,9 @@ function ManualEntryModal({ centerId, orgId, classrooms, reviewerName, onDone }:
       onDone()
     } catch (e: any) { setError(e.message); setSaving(false) }
   }
+
+  const th: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', padding: '2px 4px', textAlign: 'center' }
+  const timeInp: React.CSSProperties = { width: '100%', padding: '4px 6px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 12, fontFamily: 'inherit' }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -246,6 +317,41 @@ function ManualEntryModal({ centerId, orgId, classrooms, reviewerName, onDone }:
           </select>
         </div>
       </div>
+
+      {/* Care & meals — minimal set. Meals auto-check from the classroom's slot windows. */}
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <label style={lbl}>Care &amp; meals * <span style={{ fontWeight: 400, color: '#9ca3af' }}>— at least one day</span></label>
+          <button type="button" onClick={applyMonToWeek} style={{ fontSize: 11, background: 'none', border: 'none', color: GREEN, cursor: 'pointer', fontWeight: 600 }}>Apply Mon → Tue–Fri</button>
+        </div>
+        {!Object.keys(slotWin).length && form.classroom_id && (
+          <div style={{ fontSize: 11, color: '#92400e', margin: '2px 0 6px' }}>No slot times set for this classroom — check meals manually.</div>
+        )}
+        <div style={{ border: '1px solid #eee', borderRadius: 8, overflow: 'hidden' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: `70px 1fr 1fr ${slotCodes.map(() => 'auto').join(' ')}`, alignItems: 'center', background: '#f8faf8', borderBottom: '1px solid #eee' }}>
+            <div style={th}>Day</div><div style={th}>Arrive</div><div style={th}>Depart</div>
+            {slotCodes.map(c => <div key={c} style={th}>{CODE_LABEL[c] ?? c}</div>)}
+          </div>
+          {MANUAL_DAYS.map(day => {
+            const d = sched[day]
+            return (
+              <div key={day} style={{ display: 'grid', gridTemplateColumns: `70px 1fr 1fr ${slotCodes.map(() => 'auto').join(' ')}`, alignItems: 'center', padding: '4px 4px', borderBottom: '1px solid #f4f4f4', opacity: d.in_care ? 1 : 0.55 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, padding: '0 4px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={d.in_care} onChange={e => setDay(day, { in_care: e.target.checked })} style={{ accentColor: GREEN }} />{day}
+                </label>
+                <div style={{ padding: '0 3px' }}><input type="time" disabled={!d.in_care} value={d.arr1} onChange={e => setDay(day, { arr1: e.target.value })} style={timeInp} /></div>
+                <div style={{ padding: '0 3px' }}><input type="time" disabled={!d.in_care} value={d.dep1} onChange={e => setDay(day, { dep1: e.target.value })} style={timeInp} /></div>
+                {slotCodes.map(c => (
+                  <div key={c} style={{ textAlign: 'center' }}>
+                    <input type="checkbox" disabled={!d.in_care} checked={!!d.meals[c]} onChange={() => toggleMeal(day, c)} style={{ accentColor: GREEN }} />
+                  </div>
+                ))}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
       {error && <div style={{ color: '#dc2626', fontSize: 13 }}>{error}</div>}
       <button onClick={submit} disabled={saving}
         style={{ padding: '12px', borderRadius: 9, background: GREEN, color: '#fff', border: 'none', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit', opacity: saving ? 0.6 : 1 }}>

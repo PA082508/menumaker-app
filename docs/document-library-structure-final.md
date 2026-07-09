@@ -38,11 +38,25 @@ till Oct 1). This section is the human-facing surface of that export.
 ## Section 4 — Our documents
 
 Play Academy's own documents.
+- **`Parent_ESign_Consent_v1`** — "Parent Consent for Electronic Signatures". Text
+  supplied by Nikolay (paper original from the director). Fields: **Parent/Guardian
+  Name, signature, Date, Child(ren)'s Names** (autofilled from the packet). Typo to
+  fix in the source text: "for the pass a couple weeks" → "for the past couple of
+  weeks". Signing this is the **signature-adoption capture point** (see below).
 - Start-form / Admissions, Fee Agreement.
 - **Staff Enrollment + role JDs + BYOD** — the **in-app** signing surface
   (`StaffJdOnboarding` + `AckSignModal`, PRs #4/#3/#5; `staff_agreement_signatures`
   staging → `safepass_agreements` ledger at Approve→staff).
 - Instructions, QR cards.
+
+### Signature adoption (parent side)
+
+`Parent_ESign_Consent_v1` is the **first document** of the Child-enrollment scenario.
+Signing it **captures the parent's adopted signature** (drawn or typed) once; every
+later form in the packet then offers **"Tap to sign"** with that adopted signature
+instead of re-drawing. Mirrors the `signature_method='adopted'` hook on the staff
+side. Context/why: e-signatures are **already in use on field-trip forms (~2 weeks)** —
+this consent legitimizes the existing practice.
 
 ## Campaign panel — "New Period 2026-27"
 
@@ -59,8 +73,9 @@ A **scenario** is a **named preset of a document set** — the input the campaig
 panel's personal-packet generator expands into per-child links. Data-driven: the
 scenario registry grows by adding rows, not code.
 
-- **a) Child enrollment** — the full set (Ohio DCY packet + CACFP Enrollment v9 +
-  IEA v6 + attachments). Modes:
+- **a) Child enrollment** — `Parent_ESign_Consent_v1` **first** (adopts the parent
+  signature → "Tap to sign" downstream), then the full set (Ohio DCY packet + CACFP
+  Enrollment v9 + IEA v6 + attachments). Modes:
   - **full packet** — everything;
   - **single form** — pick ONE form to update (e.g. re-sign one doc);
   - **truncated** — a named subset (example: **renewal = CACFP + IEA**).

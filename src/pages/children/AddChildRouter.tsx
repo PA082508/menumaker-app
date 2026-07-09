@@ -205,7 +205,9 @@ const emptyDay = (): DaySched => ({ in_care: false, arr1: '', dep1: '', meals: {
 function ManualEntryModal({ centerId, orgId, classrooms, reviewerName, onDone }: {
   centerId: string; orgId: string; classrooms: { id: string; name: string }[]; reviewerName: string; onDone: () => void
 }) {
-  const [form, setForm] = useState({ first_name: '', last_name: '', birthday: '', classroom_id: '', date_in: new Date().toISOString().slice(0, 10), frp: 'F' })
+  // FRP defaults to 'P' (Paid) — the actual category is set by the determining
+  // official after IEA review; 'P' is the safe pre-determination default.
+  const [form, setForm] = useState({ first_name: '', last_name: '', birthday: '', classroom_id: '', date_in: new Date().toISOString().slice(0, 10), frp: 'P' })
   const [sched, setSched] = useState<Record<ManualDay, DaySched>>(() => Object.fromEntries(MANUAL_DAYS.map(d => [d, emptyDay()])) as Record<ManualDay, DaySched>)
   const [slotCodes, setSlotCodes] = useState<string[]>([])                 // meal codes the center serves (order preserved)
   const [slotWin, setSlotWin] = useState<Record<string, { s: number; e: number }>>({})  // code → window (mins) for derive
@@ -315,6 +317,9 @@ function ManualEntryModal({ centerId, orgId, classrooms, reviewerName, onDone }:
           <select style={inp} value={form.frp} onChange={e => set('frp', e.target.value)}>
             <option value="F">Free</option><option value="R">Reduced</option><option value="P">Paid</option>
           </select>
+          <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3, lineHeight: 1.4 }}>
+            P until income determination; category is set by the determining official after IEA review.
+          </div>
         </div>
       </div>
 

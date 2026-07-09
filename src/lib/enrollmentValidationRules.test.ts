@@ -67,7 +67,7 @@ describe('CACFP meal-slot validation', () => {
 describe('CACFP manual_entry softening', () => {
   // A manual entry the director typed: Care & meals present, classroom/FRP/Date In
   // present, but no phone / address / signature date (docs catch up later).
-  const manualMinimal = () => ({
+  const manualMinimal = (): any => ({
     child_name: 'Manualov, Test',
     birthdate: '2022-04-01',
     classroom_id: 'c-123', frp: 'F', date_in: '2026-07-09',

@@ -38,11 +38,11 @@ till Oct 1). This section is the human-facing surface of that export.
 ## Section 4 — Our documents
 
 Play Academy's own documents.
-- **`Parent_ESign_Consent_v1`** — "Parent Consent for Electronic Signatures". Text
-  supplied by Nikolay (paper original from the director). Fields: **Parent/Guardian
-  Name, signature, Date, Child(ren)'s Names** (autofilled from the packet). Typo to
-  fix in the source text: "for the pass a couple weeks" → "for the past couple of
-  weeks". Signing this is the **signature-adoption capture point** (see below).
+- **`Parent_ESign_Consent_v1`** — "Parent Consent for Electronic Signatures".
+  **Verbatim body + ack line in the Appendix below** (typo already fixed). Fields:
+  **Parent/Guardian Name · Electronic Signature · Date · Child(ren)'s Name(s)**
+  (autofilled from the packet). Signature format = **both drawn and typed** (like the
+  staff side). Signing this is the **signature-adoption capture point** (see below).
 - Start-form / Admissions, Fee Agreement.
 - **Staff Enrollment + role JDs + BYOD** — the **in-app** signing surface
   (`StaffJdOnboarding` + `AckSignModal`, PRs #4/#3/#5; `staff_agreement_signatures`
@@ -100,3 +100,40 @@ Shows: **version**, **live/dark** state, **QR**, **personal link**.
 into the 4 sections (driven by the registry, not a hand-kept flat list), add the
 Claim-results section (wire to the existing exports), and add the campaign tab
 (reads `pa_*` awaiting flags + the prefill/token engine).
+
+---
+
+## Appendix — `Parent_ESign_Consent_v1` (verbatim)
+
+Source of truth until the library build seeds it into the registry. Body is the
+**signable text only**; the ack line + fields are rendered by the modal/kit (not stored
+in the body), same pattern as the JD acks. Signature format = drawn **or** typed
+(adopted-capture). Typo already corrected ("for the past couple of weeks").
+
+**Title:** Parent Consent for Electronic Signatures
+
+**Body:**
+
+> Dear Parents/Guardians,
+>
+> At Play Academy, Inc., we are committed to making our enrollment and paperwork process as convenient and efficient as possible for our families. To simplify document completion, we will be transitioning to the use of electronic signatures (e-signatures) in some parent forms, like we have been doing with field trips forms for the past couple of weeks.
+>
+> Electronically signed parent forms, including enrollment documents and the CACFP Income Eligibility Application, are acceptable. Electronic signatures carry the same intent and authorization as handwritten signatures for these forms.
+>
+> By signing below, you acknowledge and agree that:
+> - You consent to receiving and completing applicable parent forms electronically.
+> - You understand that your electronic signature will be considered your legal signature on documents provided by Play Academy, Inc.
+> - You may request a paper copy of any document at any time if you prefer to complete forms by hand.
+>
+> If you have any questions regarding this process, please contact our office. We appreciate your cooperation as we continue to improve our services for our families.
+>
+> Thank you for your continued trust and support.
+>
+> Sincerely,
+> Play Academy, Inc.
+
+**Ack line** (rendered by the modal, not in body):
+
+> I, [Name], give my consent for Play Academy, Inc. to provide enrollment and other required parent forms electronically and to accept my electronic signature on those documents.
+
+**Fields:** Parent/Guardian Name · Electronic Signature (adopted capture: drawn/typed) · Date · Child(ren)'s Name(s) (autofill from packet).

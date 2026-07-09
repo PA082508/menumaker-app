@@ -10,24 +10,31 @@
 // Approve→staff; the safepass_agreements ledger row is written there too
 // (that flow is a follow-up — this registry stands alone meanwhile).
 //
-// Adding cook/driver/office/director = add a policy_documents record + a
-// STAFF_JD entry here. No form-kit / SignModal change needed.
+// Adding cook/driver/office = add a policy_documents record + a STAFF_JD entry
+// here. No form-kit / SignModal change needed.
 // ============================================================
 
 import { supabase } from '@/lib/supabase'
 
 const S = () => supabase.schema('menumaker')
 
-// §2 role — job position, matches the labels used across staff onboarding
-// (not the auth get_user_role() set). Keep in sync with the storefront §2.
+// §2 role — job position × age group, matching the storefront §2 role list
+// (not the auth get_user_role() set). Keep in sync with Staff_Enrollment_v1.
+// The generic 'teacher'/'teacher assistant' from Increment 1 are RETIRED —
+// every teaching role is now a precise per-age-group doc.
 export type StaffRole =
-  | 'teacher'
-  | 'teacher assistant'
+  | 'director'
+  | 'director helper'
+  | 'infant-toddler lead'
+  | 'infant-toddler assistant'
+  | 'preschool lead'
+  | 'preschool assistant'
+  | 'school-age lead'
+  | 'school-age assistant'
   | 'floater'
   | 'cook'
   | 'driver'
   | 'office'
-  | 'director'
 
 export interface JdDoc {
   /** policy_documents.key — key + '_' + version = Nikolay's identifier (e.g. Staff_JD_Teacher_v1). */
@@ -50,33 +57,68 @@ export interface JdDoc {
 
 const STD_FIELDS: JdDoc['fields'] = ['namePrint', 'signature', 'date']
 
-// role → its ONE JD acknowledgment. Roles WITHOUT a JD yet (text pending) are
-// intentionally absent — jdForRole() returns null, so the sign-set skips them.
+// role → its ONE JD acknowledgment. ackLine = the document's native first phrase
+// ("I, as a … understand the following responsibilities and duties."). Roles
+// WITHOUT a JD (cook/driver/office) are intentionally absent — jdForRole() returns
+// null, so the sign-set skips the JD and just carries §6 BYOD.
 export const STAFF_JD_BY_ROLE: Partial<Record<StaffRole, JdDoc>> = {
-  'teacher assistant': {
-    policyKey: 'Staff_JD_TeacherAssistant',
-    version: 'v1',
-    title: 'Teacher Assistant — Job Description',
-    ackLine: 'I acknowledge that I understand the above listed job requirements.',
+  director: {
+    policyKey: 'Staff_JD_Director', version: 'v1',
+    title: 'Director — Job Description',
+    ackLine: 'I, as a Director of Play Academy understand the following responsibilities and duties.',
+    fields: STD_FIELDS,
+  },
+  'director helper': {
+    policyKey: 'Staff_JD_DirectorHelper', version: 'v1',
+    title: 'Director Helper — Job Description',
+    ackLine: 'I, as a helper of the Director of Play Academy understand the following responsibilities and duties.',
+    fields: STD_FIELDS,
+  },
+  'infant-toddler lead': {
+    policyKey: 'Staff_JD_InfantToddlerLead', version: 'v1',
+    title: 'Lead Teacher (Infant/Toddler) — Job Description',
+    ackLine: 'I, as a Lead Teacher of the infant-toddler classroom understand the following responsibilities and duties.',
+    fields: STD_FIELDS,
+  },
+  'infant-toddler assistant': {
+    policyKey: 'Staff_JD_InfantToddlerAssistant', version: 'v1',
+    title: 'Assistant Teacher (Infant/Toddler) — Job Description',
+    ackLine: 'I, as an Assistant Teacher of the infant-toddler classroom understand the following responsibilities and duties.',
+    fields: STD_FIELDS,
+  },
+  'preschool lead': {
+    policyKey: 'Staff_JD_PreschoolLead', version: 'v1',
+    title: 'Lead Teacher (Preschool/Pre-K) — Job Description',
+    ackLine: 'I, as a Lead Teacher of the Preschool/Pre-K classroom understand the following responsibilities and duties.',
+    fields: STD_FIELDS,
+  },
+  'preschool assistant': {
+    policyKey: 'Staff_JD_PreschoolAssistant', version: 'v1',
+    title: 'Assistant Teacher (Preschool/Pre-K) — Job Description',
+    ackLine: 'I, as an Assistant Teacher of the Preschool/Pre-K classroom understand the following responsibilities and duties.',
+    fields: STD_FIELDS,
+  },
+  'school-age lead': {
+    policyKey: 'Staff_JD_SchoolAgeLead', version: 'v1',
+    title: 'Lead Teacher (School-Age) — Job Description',
+    ackLine: 'I, as a Lead Teacher of the School-age classroom understand the following responsibilities and duties.',
+    fields: STD_FIELDS,
+  },
+  'school-age assistant': {
+    policyKey: 'Staff_JD_SchoolAgeAssistant', version: 'v1',
+    title: 'Assistant Teacher (School-Age) — Job Description',
+    ackLine: 'I, as an Assistant Teacher of the School-age classroom understand the following responsibilities and duties.',
     fields: STD_FIELDS,
   },
   floater: {
-    policyKey: 'Staff_Floater_Takeover',
-    version: 'v1',
+    policyKey: 'Staff_Floater_Takeover', version: 'v1',
     title: 'Floater Teacher — Job Description When Taking Over the Classroom',
     ackLine: 'I understand the above statement and expectations.',
     fields: STD_FIELDS,
   },
-  teacher: {
-    policyKey: 'Staff_JD_Teacher',
-    version: 'v1',
-    title: 'Teacher — Job Description',
-    // DOC 3 (version B) carried no printed ack line; Nikolay confirmed the
-    // standard wording (= DOC 1 Teacher Assistant).
-    ackLine: 'I acknowledge that I understand the above listed job requirements.',
-    fields: STD_FIELDS,
-  },
-  // cook / driver / office / director — pending JD text; add here when it arrives.
+  // cook / driver / office — pending JD text; add a policy_documents record + an
+  // entry here when it arrives. Generic Staff_JD_Teacher / Staff_JD_TeacherAssistant
+  // (Increment 1) are RETIRED in the DB — superseded by the per-age-group docs above.
 }
 
 /** All §2 roles that currently have a JD acknowledgment to sign. */

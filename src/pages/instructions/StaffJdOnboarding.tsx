@@ -19,25 +19,6 @@ import AckSignModal, { type AckSignPayload } from '@/components/signing/AckSignM
 
 const S = () => supabase.schema('menumaker')
 
-// BYOD ('byod') has no policy_documents row yet — its text is rendered inline here
-// (same content as the legacy self-service modal). TODO: seed 'byod' into
-// policy_documents so this reads from fetchActiveJdBody like the JDs.
-const BYOD_BODY = `**Play Academy Inc. BYOD Device Use Agreement**
-
-**Art.1 Purpose.** Employee voluntarily uses personal device for SafePass and authorized apps. App works ONLY on registered authorized devices.
-
-**Art.2 Obligations.** Keep device charged; enable screen lock; not share credentials; report loss immediately; allow app removal upon termination.
-
-**Art.3 Company Limits.** Play Academy will NOT access personal content. Work data on Company servers only.
-
-**Art.4 Confidentiality.** All child data is confidential. No disclosure to unauthorized persons.
-
-**Art.5 Termination.** Either party may terminate. Employee: written notice. Company: immediately upon violation.
-
-**Art.6 Governing Law.** Ohio law. Cuyahoga County courts.
-
-**Art.7 Push Notifications.** Employee consents to receive work-related Push Notifications through the Play Academy app on their personal device. Notifications may include: CACFP meal count alerts, SafePass child handoff events, schedule reminders, and urgent messages from management. Employee may not disable work notifications during scheduled work hours.`
-
 export default function StaffJdOnboarding() {
   const { org, currentCenter } = useOrg()
   const { user } = useAuth()
@@ -56,12 +37,10 @@ export default function StaffJdOnboarding() {
       .then(({ count }) => setPending(count ?? 0))
   }, [org?.id, signing])
 
-  // Open the sign flow for any sign-set item. BYOD renders inline; JDs fetch the
-  // active body from policy_documents.
+  // Open the sign flow for any sign-set item. Every doc — JDs and 'byod' — reads its
+  // active body from policy_documents (byod seeded by migration 20260709e).
   async function openDocSign(doc: JdDoc) {
-    setSigning(doc)
-    if (doc.policyKey === 'byod') { setBody(BYOD_BODY); setBodyLoading(false); return }
-    setBody(null); setBodyLoading(true)
+    setSigning(doc); setBody(null); setBodyLoading(true)
     const b = await fetchActiveJdBody(doc)
     setBody(b); setBodyLoading(false)
   }

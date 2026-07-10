@@ -368,6 +368,9 @@ export default function AppLayout() {
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {user?.email}
               </div>
+              <div title="deployed build" style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 3, fontFamily: 'monospace' }}>
+                build {__BUILD_ID__}
+              </div>
             </div>
           )}
           {collapsed && (

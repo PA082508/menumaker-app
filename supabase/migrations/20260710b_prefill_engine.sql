@@ -1,9 +1,11 @@
 -- Prefill engine (prefill-engine-spec.md §A) — token + whitelist RPC.
 --
 -- ┌─────────────────────────────────────────────────────────────────────────┐
--- │ STATUS: PREPARED — **NOT APPLIED**. Apply ONLY on Nikolay's explicit go   │
--- │ (menumaker-live-db-write-protocol). At apply time, verify the `-- VERIFY` │
--- │ column/table names below against the live schema, then apply + read-back. │
+-- │ STATUS: VERIFIED 2026-07-10 (roster.org_id ✓ · guardian first_name/       │
+-- │ last_name/email/mobile_phone/phone_1/address ✓ · guardian table ✓) —      │
+-- │ still **NOT APPLIED**. Apply ONLY on Nikolay's explicit go, then read-back.│
+-- │ Token uses gen_random_uuid() (pg_catalog) — NOT pgcrypto's gen_random_    │
+-- │ bytes, which would not resolve under the pinned search_path.               │
 -- └─────────────────────────────────────────────────────────────────────────┘
 --
 -- What it does: the library/campaign panel mints a per-child token when it builds
@@ -17,8 +19,12 @@
 -- FRP/eligibility — those columns are simply not selected.
 
 -- ── Token table ────────────────────────────────────────────────────────────
+-- Token = two concatenated gen_random_uuid() hex strings (~244 bits, unguessable).
+-- gen_random_uuid() is in pg_catalog (always on search_path) — unlike pgcrypto's
+-- gen_random_bytes, which would NOT resolve under our pinned search_path.
 create table if not exists menumaker.prefill_tokens (
-  token       text primary key default encode(gen_random_bytes(24), 'hex'),  -- unguessable
+  token       text primary key
+              default replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', ''),
   child_id    uuid not null references menumaker.roster(id) on delete cascade,
   center_id   uuid not null,
   org_id      uuid not null,
@@ -112,7 +118,7 @@ begin
   insert into menumaker.prefill_tokens (child_id, center_id, org_id, batch_id)
   values (p_child, p_center, p_org, p_batch)
   on conflict (child_id) do update
-    set token = encode(gen_random_bytes(24), 'hex'),
+    set token = replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', ''),
         center_id = excluded.center_id,
         org_id = excluded.org_id,
         batch_id = excluded.batch_id,

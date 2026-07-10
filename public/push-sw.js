@@ -1,7 +1,10 @@
-// Play Academy Service Worker — Push Notifications + Offline Cache
-
-self.addEventListener('install', e => self.skipWaiting())
-self.addEventListener('activate', e => e.waitUntil(clients.claim()))
+// Play Academy Service Worker — Push Notifications
+//
+// This file is layered into the Workbox-generated service worker via
+// `workbox.importScripts` (see vite.config.ts). Workbox owns install/activate,
+// precaching of the app shell, skipWaiting and clientsClaim — so this file must
+// NOT register its own install/activate handlers (that would fight Workbox).
+// It contributes ONLY the Web Push behaviour.
 
 // Push notification received
 self.addEventListener('push', e => {

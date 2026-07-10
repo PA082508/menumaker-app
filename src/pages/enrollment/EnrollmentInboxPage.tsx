@@ -14,8 +14,8 @@ import {
   type ValidationResult, type ValStatus,
 } from '@/lib/enrollmentValidationRules'
 import EnrollmentReviewModal from './EnrollmentReviewModal'
-import EmbedEnrollHost from './EmbedEnrollHost'
 import { ocrFailed as isOcrFailed, reRunOcr } from '@/lib/enrollmentScan'
+import { scoreMatch, nameForms } from '@/lib/childSearch'
 
 // Backup approvers: when the director is absent, office managers, admins and the
 // owner can also review/approve enrollment submissions.
@@ -86,13 +86,17 @@ export default function EnrollmentInboxPage() {
   const [toast, setToast] = useState<{ msg: string; undo?: () => Promise<void> } | null>(null)
   const [rerunning, setRerunning] = useState<string | null>(null)
   const [showNew, setShowNew] = useState(false)
-  // Center for the in-app embedded form: active center, else pick one (org view).
-  const [newCenter, setNewCenter] = useState('')
+  const [search, setSearch] = useState('')
   // Enrollment-enabled center_ids, from the embed registry's `centers` map. Null
-  // until loaded — the "＋ New enrollment" picker offers only these (intersection),
-  // so Kitchen / future non-enrollment centers never appear. Adding a center to
-  // the registry surfaces it here automatically — no hardcoded list.
+  // until loaded — the "Open the enrollment form" picker offers only these
+  // (intersection), so Kitchen / future non-enrollment centers never appear.
+  // Adding a center to the registry surfaces it here automatically.
   const [enrollCenterIds, setEnrollCenterIds] = useState<Set<string> | null>(null)
+  // Standalone enroll-form URL (current version) + center_id→slug map, both from
+  // the registry — used to open the real GitHub-Pages form (?center=<slug>) in a
+  // new tab. Submitting there files a source='online' row into this Inbox.
+  const [enrollBaseUrl, setEnrollBaseUrl] = useState<string | null>(null)
+  const [slugById, setSlugById] = useState<Map<string, string>>(new Map())
 
   const isStaff = useMemo(
     () => (roles ?? []).some(r => STAFF_ROLES.includes(r)),
@@ -110,10 +114,15 @@ export default function EnrollmentInboxPage() {
         const r = await fetch('/enroll-registry.json', { cache: 'no-cache' })
         if (!r.ok) return
         const reg = await r.json()
-        const ids = Object.values(reg?.centers ?? {})
-          .map((c: any) => c?.center_id)
-          .filter(Boolean) as string[]
-        if (!cancelled) setEnrollCenterIds(new Set(ids))
+        const centersMap = (reg?.centers ?? {}) as Record<string, { center_id?: string }>
+        const ids: string[] = []
+        const byId = new Map<string, string>()
+        for (const [slug, c] of Object.entries(centersMap)) {
+          if (c?.center_id) { ids.push(c.center_id); byId.set(c.center_id, slug) }
+        }
+        const ef = reg?.forms?.enroll
+        const url = (ef?.versions && ef.current && ef.versions[ef.current]) || ef?.fallbackUrl || null
+        if (!cancelled) { setEnrollCenterIds(new Set(ids)); setSlugById(byId); setEnrollBaseUrl(url) }
       } catch { /* registry unreachable → picker stays empty, no leak */ }
     })()
     return () => { cancelled = true }
@@ -124,6 +133,15 @@ export default function EnrollmentInboxPage() {
     () => (centers ?? []).filter(c => enrollCenterIds?.has(c.id)),
     [centers, enrollCenterIds],
   )
+
+  // Open the real standalone enroll form (new tab), scoped to a center via slug.
+  // Submitting there files a source='online' row that appears here on next load.
+  function openEnrollForm(centerId: string) {
+    if (!enrollBaseUrl) return
+    const slug = slugById.get(centerId)
+    const url = slug ? `${enrollBaseUrl}?center=${encodeURIComponent(slug)}` : enrollBaseUrl
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
 
   useEffect(() => {
     if (orgLoading || !org?.id || !isStaff) return
@@ -185,6 +203,17 @@ export default function EnrollmentInboxPage() {
     [rows],
   )
 
+  // search-v2: filter the pending list by child name (scoreMatch), ranked when set.
+  const visible = useMemo(() => {
+    const q = search.trim()
+    if (!q) return graded
+    return graded
+      .map(g => ({ g, s: scoreMatch(nameForms(null, null, String(g.row.form_data?.child_name ?? '')), q) }))
+      .filter(x => x.s > 0)
+      .sort((a, b) => b.s - a.s)
+      .map(x => x.g)
+  }, [graded, search])
+
   if (!orgLoading && !isStaff) {
     return (
       <div style={{ padding: 40, fontFamily: "'DM Sans', sans-serif", color: '#6b7280' }}>
@@ -203,18 +232,58 @@ export default function EnrollmentInboxPage() {
           <h1 style={{ fontSize: 24, fontWeight: 700, color: '#0f4c35', margin: 0 }}>Enrollment Inbox</h1>
           <span style={{ fontSize: 13, color: '#6b7280' }}>{scopeLabel}</span>
         </div>
-        <button
-          onClick={() => { setNewCenter(currentCenter?.id ?? ''); setShowNew(true) }}
-          style={{
-            padding: '8px 16px', borderRadius: 9, border: 'none', background: '#0f4c35',
-            color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
-          }}>
-          ＋ New enrollment
-        </button>
+        {/* Active center → open the real form directly (new tab). Org view → pick
+            a center first (slim picker, no broken in-app embed). */}
+        {currentCenter?.id ? (
+          <a
+            href={enrollBaseUrl && slugById.get(currentCenter.id)
+              ? `${enrollBaseUrl}?center=${encodeURIComponent(slugById.get(currentCenter.id)!)}`
+              : enrollBaseUrl ?? '#'}
+            target="_blank" rel="noopener noreferrer"
+            onClick={e => { if (!enrollBaseUrl) e.preventDefault() }}
+            style={{
+              padding: '8px 16px', borderRadius: 9, background: '#0f4c35', color: '#fff',
+              fontSize: 13, fontWeight: 700, cursor: enrollBaseUrl ? 'pointer' : 'not-allowed',
+              whiteSpace: 'nowrap', textDecoration: 'none', display: 'inline-block',
+              opacity: enrollBaseUrl ? 1 : 0.6,
+            }}>
+            Open the enrollment form ↗
+          </a>
+        ) : (
+          <button
+            onClick={() => setShowNew(true)}
+            disabled={!enrollBaseUrl}
+            style={{
+              padding: '8px 16px', borderRadius: 9, border: 'none', background: '#0f4c35',
+              color: '#fff', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap',
+              cursor: enrollBaseUrl ? 'pointer' : 'not-allowed', opacity: enrollBaseUrl ? 1 : 0.6,
+            }}>
+            Open the enrollment form ↗
+          </button>
+        )}
       </div>
       <div style={{ fontSize: 13, color: '#888', marginBottom: 20 }}>
         Pending enrollment packet submissions awaiting director review.
       </div>
+
+      {/* search-v2: filter pending submissions by child name */}
+      {!loading && !orgLoading && rows.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search by child name…"
+            style={{
+              flex: '1 1 260px', minWidth: 200, maxWidth: 360, padding: '8px 12px',
+              border: '1.5px solid #e5e7eb', borderRadius: 9, fontSize: 13.5,
+              fontFamily: 'inherit', color: '#111827',
+            }}
+          />
+          {search.trim() && (
+            <span style={{ fontSize: 12.5, color: '#6b7280' }}>{visible.length} of {rows.length}</span>
+          )}
+        </div>
+      )}
 
       {(loading || orgLoading) && <div style={{ color: '#888', fontSize: 14 }}>Loading…</div>}
       {err && <div style={{ color: '#991b1b', fontSize: 14 }}>Error: {err}</div>}
@@ -227,9 +296,17 @@ export default function EnrollmentInboxPage() {
           No pending submissions.
         </div>
       )}
+      {!loading && !orgLoading && !err && graded.length > 0 && visible.length === 0 && (
+        <div style={{
+          padding: '32px 24px', textAlign: 'center', color: '#9ca3af', fontSize: 14,
+          background: '#fafafa', borderRadius: 12, border: '1px dashed #e5e7eb',
+        }}>
+          No pending submissions match “{search.trim()}”.
+        </div>
+      )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {graded.map(({ row, v }) => {
+        {visible.map(({ row, v }) => {
           const isNew = !row.child_id
           const childName = row.form_data?.child_name || '(no name)'
           const details = [...v.missing.map(m => ({ kind: 'missing', text: m })),
@@ -344,40 +421,40 @@ export default function EnrollmentInboxPage() {
         />
       )}
 
+      {/* Org view has no active center, so the form needs one before opening.
+          Slim picker only — choosing a center opens the real form in a new tab. */}
       {showNew && (
         <div onClick={() => setShowNew(false)} style={{
           position: 'fixed', inset: 0, background: 'rgba(10,30,20,0.45)', zIndex: 1090,
           display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 24, overflow: 'auto',
         }}>
           <div onClick={e => e.stopPropagation()} style={{
-            // Wide enough for the paper-replica form (scaled-to-fit by the loader).
-            background: '#fff', borderRadius: 16, width: newCenter ? 'min(1000px, 100%)' : 'min(560px, 100%)', padding: 20,
+            background: '#fff', borderRadius: 16, width: 'min(460px, 100%)', padding: 20,
             boxShadow: '0 20px 60px rgba(0,0,0,0.25)', fontFamily: "'DM Sans', sans-serif",
           }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
               <div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: '#0f4c35' }}>New enrollment</div>
-                <div style={{ fontSize: 12, color: '#6b7280' }}>Fill the form; it files into this Inbox for review.</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: '#0f4c35' }}>Open the enrollment form</div>
+                <div style={{ fontSize: 12, color: '#6b7280' }}>Choose a center — the form opens in a new tab and files here for review.</div>
               </div>
               <button onClick={() => setShowNew(false)} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Close</button>
             </div>
-            {!newCenter ? (
-              <div style={{ padding: '8px 0 6px' }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Choose a center</label>
-                <select value={newCenter} onChange={e => setNewCenter(e.target.value)}
-                  style={{ padding: '8px 10px', border: '1.5px solid #e5e7eb', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }}>
-                  <option value="">Select…</option>
-                  {enrollmentCenters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </div>
-            ) : (
-              <EmbedEnrollHost
-                center={newCenter}
-                form="enroll"
-                onSaved={() => { setReloadKey(k => k + 1); setToast({ msg: 'Enrollment submitted — filed to the Inbox.' }) }}
-                onClose={() => { setShowNew(false); setNewCenter('') }}
-              />
-            )}
+            <div style={{ padding: '8px 0 6px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {enrollmentCenters.map(c => (
+                <button key={c.id}
+                  onClick={() => { openEnrollForm(c.id); setShowNew(false) }}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                    padding: '11px 14px', borderRadius: 10, border: '1.5px solid #e5e7eb', background: '#fff',
+                    fontSize: 14, fontWeight: 600, color: '#111827', cursor: 'pointer', textAlign: 'left',
+                  }}>
+                  {c.name}<span style={{ color: '#0f4c35', fontWeight: 700 }}>Open ↗</span>
+                </button>
+              ))}
+              {enrollmentCenters.length === 0 && (
+                <div style={{ fontSize: 13, color: '#9ca3af' }}>No enrollment-enabled centers found.</div>
+              )}
+            </div>
           </div>
         </div>
       )}

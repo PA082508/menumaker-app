@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { normName } from '@/lib/enrollmentApprove'
-import { classifyChild, type MatchKind } from '@/lib/childSearch'
+import { classifyChild, scoreChild, type MatchKind } from '@/lib/childSearch'
 import ReturnWindow from './ReturnWindow'
 
 const GREEN = '#0f4c35'
@@ -85,11 +85,12 @@ export default function AddChildRouterModal({
   const results = useMemo(() => {
     if (nrm(query).length < 2) return []
     const scored = roster
-      .map(c => ({ c, kind: classifyChild(c, query) as MatchKind }))
+      .map(c => ({ c, kind: classifyChild(c, query) as MatchKind, score: scoreChild(c, query) }))
       .filter(x => x.kind !== null)
     scored.sort((a, b) =>
-      ((a.kind === 'exact' ? 0 : 1) - (b.kind === 'exact' ? 0 : 1))
-      || (Number(!!b.c.is_active) - Number(!!a.c.is_active))
+      ((a.kind === 'exact' ? 0 : 1) - (b.kind === 'exact' ? 0 : 1))   // exact before similar
+      || (b.score - a.score)                                          // then by relevance (search-v2)
+      || (Number(!!b.c.is_active) - Number(!!a.c.is_active))          // active before inactive
       || candName(a.c).localeCompare(candName(b.c)))
     return scored.slice(0, 40)
   }, [query, roster])

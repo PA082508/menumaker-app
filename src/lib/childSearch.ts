@@ -70,6 +70,41 @@ export function fuzzyMatch(forms: string[], query: string): boolean {
   })
 }
 
+// ── search-v2 scoring ────────────────────────────────────────────────────────
+// Graded relevance for RANKING (token match alone can't order results): each
+// query token scores its best hit against any candidate name-form token —
+//   exact whole word = 3 · word-prefix = 2 · fragment (substring) = 1.
+// Threshold: EVERY query token must hit (best ≥ 1), else score 0 (no match) —
+// so `scoreMatch(f,q) > 0` is exactly equivalent to `tokenMatch(f,q)`. The
+// returned number is the sum, higher = more relevant ("erulan" over "eru").
+export function scoreMatch(forms: string[], query: string): number {
+  const qt = tokensOf(query)
+  if (!qt.length) return 0
+  const cand = new Set<string>()
+  for (const f of forms) for (const t of f.split(' ')) if (t) cand.add(t)
+  if (!cand.size) return 0
+  let total = 0
+  for (const q of qt) {
+    let best = 0
+    for (const c of cand) {
+      if (c === q) { best = 3; break }
+      if (c.startsWith(q)) best = Math.max(best, 2)
+      else if (c.includes(q)) best = Math.max(best, 1)
+    }
+    if (best === 0) return 0            // a token missed → whole query fails
+    total += best
+  }
+  return total
+}
+
+// Convenience for a {first_name,last_name,child_name}-shaped record.
+export function scoreChild(
+  c: { first_name?: string | null; last_name?: string | null; child_name?: string | null },
+  query: string,
+): number {
+  return scoreMatch(nameForms(c.first_name, c.last_name, c.child_name), query)
+}
+
 // Classify a candidate against a query: exact (token) beats similar (fuzzy).
 export function classifyMatch(forms: string[], query: string): MatchKind {
   if (tokenMatch(forms, query)) return 'exact'

@@ -11,6 +11,7 @@ const DOCS = [
   // Permanent public link + client-side QR (no external API). URL is centralized
   // in config/showcaseLinks.ts so a move off GitHub Pages is a one-line change.
   { id:'parent-forms', title:'Parent Forms', description:'CACFP enrollment & income-eligibility forms for families. Share the link or QR — opens on any device.', audience:'Parent', category:'Enrollment', parentForms:true, driveUrl:PARENT_FORMS_URL },
+  { id:'staff-enrollment', title:'Staff Enrollment', description:'New-hire onboarding (§1–§5). Give the link or QR to a new employee — opens on any device; the office reviews & finalizes.', audience:'Staff', category:'Enrollment', parentForms:true, driveUrl:'https://pa082508.github.io/forms/1-data-sources/Staff_Enrollment_v1.html' },
 
   // ── BYOD ─────────────────────────────────────────────────────────────────
   { id:'byod-agreement', title:'BYOD Device Use Agreement', description:'Sign online — saved securely. Director countersigns digitally.', audience:'Staff', category:'BYOD', canSign:true, highlight:true },
@@ -177,7 +178,7 @@ function SignModal({ onClose }: { onClose: ()=>void }) {
 // Client-side QR (qrcode.react → <canvas>, no external API). The canvas is
 // rendered at high resolution and displayed scaled down, so Download PNG / Print
 // stay crisp. Used by the "Parent Forms" card.
-function ParentFormsQR({ url, onClose }: { url: string; onClose: ()=>void }) {
+function ParentFormsQR({ url, title='Parent Forms', onClose }: { url: string; title?: string; onClose: ()=>void }) {
   const boxRef = useRef<HTMLDivElement>(null)
 
   const getCanvas = () => boxRef.current?.querySelector('canvas') as HTMLCanvasElement | null
@@ -196,9 +197,9 @@ function ParentFormsQR({ url, onClose }: { url: string; onClose: ()=>void }) {
     const w = window.open('', '_blank', 'width=480,height=640')
     if (!w) return
     w.document.write(
-      `<html><head><title>Parent Forms — QR</title></head>` +
+      `<html><head><title>${title} — QR</title></head>` +
       `<body style="margin:0;font-family:sans-serif;text-align:center;padding:40px">` +
-      `<h2 style="color:#0a3320;margin:0 0 6px">Parent Forms</h2>` +
+      `<h2 style="color:#0a3320;margin:0 0 6px">${title}</h2>` +
       `<p style="color:#6b7280;font-size:13px;margin:0 0 20px">Scan to open on any device</p>` +
       `<img src="${dataUrl}" style="width:300px;height:300px" onload="window.focus();window.print();window.close()"/>` +
       `<p style="color:#374151;font-size:12px;margin-top:16px;word-break:break-all">${url}</p>` +
@@ -212,7 +213,7 @@ function ParentFormsQR({ url, onClose }: { url: string; onClose: ()=>void }) {
   return (
     <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
       <div onClick={(e:any)=>e.stopPropagation()} style={{background:'#fff',borderRadius:16,padding:32,maxWidth:320,width:'100%',textAlign:'center',boxShadow:'0 24px 80px rgba(0,0,0,0.25)'}}>
-        <div style={{fontSize:14,fontWeight:600,color:'#0a3320',marginBottom:4}}>Parent Forms</div>
+        <div style={{fontSize:14,fontWeight:600,color:'#0a3320',marginBottom:4}}>{title}</div>
         <div style={{fontSize:12,color:'#6b7280',marginBottom:18}}>Scan to open on any device</div>
         <div ref={boxRef} style={{display:'inline-block',padding:10,borderRadius:8,border:'1px solid #e5e7eb',background:'#fff'}}>
           <QRCodeCanvas value={url} size={512} level="M" marginSize={2} style={{width:200,height:200}} />
@@ -233,7 +234,7 @@ export default function DocumentHubPage() {
   const [aud, setAud] = useState('all')
   const [signOpen, setSignOpen] = useState(false)
   const [qrDoc, setQrDoc] = useState<any>(null)
-  const [parentQrOpen, setParentQrOpen] = useState(false)
+  const [qrShare, setQrShare] = useState<{url:string;title:string}|null>(null)
   const [count, setCount] = useState<number|null>(null)
 
   useEffect(()=>{
@@ -318,8 +319,8 @@ export default function DocumentHubPage() {
               <div style={{marginTop:'auto'}}>
                 {(doc as any).parentForms ? (
                   <div style={{display:'flex',gap:8}}>
-                    <a href={PARENT_FORMS_URL} target="_blank" rel="noreferrer" style={{flex:1,padding:'8px 12px',borderRadius:8,fontSize:13,fontWeight:500,background:'#0f4c35',color:'#fff',textDecoration:'none',textAlign:'center' as const,fontFamily:'inherit'}}>Open ↗</a>
-                    <button onClick={()=>setParentQrOpen(true)} style={{padding:'8px 14px',borderRadius:8,fontSize:13,background:'#f0f7f4',color:'#1a5c3f',border:'1px solid #d1fae5',cursor:'pointer',fontFamily:'inherit'}}>QR</button>
+                    <a href={(doc as any).driveUrl} target="_blank" rel="noreferrer" style={{flex:1,padding:'8px 12px',borderRadius:8,fontSize:13,fontWeight:500,background:'#0f4c35',color:'#fff',textDecoration:'none',textAlign:'center' as const,fontFamily:'inherit'}}>Open ↗</a>
+                    <button onClick={()=>setQrShare({url:(doc as any).driveUrl,title:doc.title})} style={{padding:'8px 14px',borderRadius:8,fontSize:13,background:'#f0f7f4',color:'#1a5c3f',border:'1px solid #d1fae5',cursor:'pointer',fontFamily:'inherit'}}>QR</button>
                   </div>
                 ) : (doc as any).canSign ? (
                   // Legacy self-service BYOD is disabled until it is re-pointed off the
@@ -342,7 +343,7 @@ export default function DocumentHubPage() {
         })}
       </div>
       {signOpen && <SignModal onClose={()=>setSignOpen(false)}/>}
-      {parentQrOpen && <ParentFormsQR url={PARENT_FORMS_URL} onClose={()=>setParentQrOpen(false)}/>}
+      {qrShare && <ParentFormsQR url={qrShare.url} title={qrShare.title} onClose={()=>setQrShare(null)}/>}
       {qrDoc && (
         <div onClick={()=>setQrDoc(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
           <div onClick={(e:any)=>e.stopPropagation()} style={{background:'#fff',borderRadius:16,padding:32,maxWidth:300,width:'100%',textAlign:'center',boxShadow:'0 24px 80px rgba(0,0,0,0.25)'}}>

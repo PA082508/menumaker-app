@@ -317,7 +317,7 @@ export default function DocumentHubPage() {
         <div style={{ marginTop: 'auto', display: 'flex', gap: 8 }}>
           {scoped ? (
             <>
-              <a href={scoped} target="_blank" rel="noreferrer" style={openBtnS}>{isDoc ? 'Open PDF ↗' : 'Open ↗'}</a>
+              <a href={scoped} target="_blank" rel="noreferrer" style={openBtnS}>{isDoc ? 'Open / download ↗' : 'Open ↗'}</a>
               <button style={ghostS} onClick={() => setQrShare({ url: scoped, title })}>QR</button>
             </>
           ) : <span style={{ fontSize: 12, color: '#9ca3af', fontStyle: 'italic' }}>Coming soon</span>}

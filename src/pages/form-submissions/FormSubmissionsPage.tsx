@@ -9,9 +9,10 @@
 // Клиент создан без db.schema — поэтому везде .schema('menumaker').
 // ============================================================
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import { scoreMatch, nameForms } from '@/lib/childSearch'
 
 // ---------- типы ----------
 type Row = Record<string, any>
@@ -206,6 +207,23 @@ const tabBtn = (active: boolean): React.CSSProperties => ({
   borderBottomStyle: 'solid', fontFamily: 'inherit',
 })
 
+// ---------- фильтр периода (по created_at) ----------
+// null days = All. "Today" = с полуночи сегодня; N = последние N суток.
+const PERIODS: { id: string; label: string; days: number | null }[] = [
+  { id: 'today', label: 'Today', days: 0 },
+  { id: '7',     label: '7 days',  days: 7 },
+  { id: '30',    label: '30 days', days: 30 },
+  { id: '90',    label: '90 days', days: 90 },
+  { id: 'all',   label: 'All',     days: null },
+]
+
+// Нижняя граница окна (ms) для выбранного периода, либо null (без ограничения).
+function periodFloor(days: number | null): number | null {
+  if (days == null) return null
+  if (days === 0) { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime() }
+  return Date.now() - days * 24 * 60 * 60 * 1000
+}
+
 // ---------- утилиты ----------
 const fmtDate = (d: unknown): string => {
   if (!d) return '—'
@@ -232,8 +250,29 @@ export default function FormSubmissionsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selected, setSelected] = useState<Row | null>(null)
+  const [search, setSearch] = useState('')
+  const [period, setPeriod] = useState('all')
 
   const tab = TABS.find(t => t.id === tabId)!
+  // Столбец с именем ребёнка/младенца — первая колонка вкладки (search-v2 ищет по нему).
+  const nameKey = tab.columns[0].key
+
+  // Видимые строки: фильтр периода (created_at) + поиск по имени (scoreMatch).
+  // При активном поиске сортируем по релевантности (score desc); иначе — как пришло.
+  const visible = useMemo(() => {
+    const floor = periodFloor(PERIODS.find(p => p.id === period)?.days ?? null)
+    const q = search.trim()
+    let list = rows
+    if (floor != null) list = list.filter(r => r.created_at && new Date(r.created_at).getTime() >= floor)
+    if (q) {
+      list = list
+        .map(r => ({ r, s: scoreMatch(nameForms(null, null, String(r[nameKey] ?? '')), q) }))
+        .filter(x => x.s > 0)
+        .sort((a, b) => b.s - a.s)
+        .map(x => x.r)
+    }
+    return list
+  }, [rows, period, search, nameKey])
 
   // синхронизация при внешней навигации (например, клик по чипу из Dispatch,
   // когда страница уже открыта) — ?type= меняется → выбираем вкладку
@@ -319,6 +358,44 @@ export default function FormSubmissionsPage() {
         </button>
       </div>
 
+      {/* ---------- поиск + фильтр периода (search-v2) ---------- */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search by name…"
+          style={{
+            flex: '1 1 240px', minWidth: 200, maxWidth: 340, padding: '8px 12px',
+            border: '1.5px solid #e3e8e4', borderRadius: 9, fontSize: 13.5,
+            fontFamily: 'inherit', color: '#23332a',
+          }}
+        />
+        <div style={{ display: 'flex', gap: 6 }}>
+          {PERIODS.map(p => {
+            const on = p.id === period
+            return (
+              <button
+                key={p.id}
+                onClick={() => setPeriod(p.id)}
+                style={{
+                  padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 12.5,
+                  fontWeight: 600, fontFamily: 'inherit',
+                  border: on ? '1.5px solid #0f4c35' : '1.5px solid #e3e8e4',
+                  background: on ? '#0f4c35' : '#fff', color: on ? '#fff' : '#5b6b62',
+                }}
+              >
+                {p.label}
+              </button>
+            )
+          })}
+        </div>
+        {(search.trim() || period !== 'all') && !loading && (
+          <span style={{ fontSize: 12.5, color: '#888' }}>
+            {visible.length} of {rows.length}
+          </span>
+        )}
+      </div>
+
       <table style={S.table}>
         <thead>
           <tr>
@@ -331,7 +408,9 @@ export default function FormSubmissionsPage() {
             <tr><td colSpan={tab.columns.length + 1} style={S.empty}>Loading…</td></tr>
           ) : rows.length === 0 ? (
             <tr><td colSpan={tab.columns.length + 1} style={S.empty}>No submissions yet</td></tr>
-          ) : rows.map(row => (
+          ) : visible.length === 0 ? (
+            <tr><td colSpan={tab.columns.length + 1} style={S.empty}>No submissions match this search / period.</td></tr>
+          ) : visible.map(row => (
             <tr
               key={row.id}
               style={{ cursor: 'pointer' }}

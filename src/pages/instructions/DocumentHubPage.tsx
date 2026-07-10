@@ -228,8 +228,17 @@ function ParentFormsQR({ url, title='Parent Forms', onClose }: { url: string; ti
   )
 }
 
+// Append ?center=<slug> so a shared enrollment/parent/staff form is pre-scoped to
+// one center — a parent never picks a center ("формы не обезличены"). Applied to
+// the center-scoped form docs; org-view admin (no active center) leaves links
+// generic (they scope by picking a center in the header switcher).
+function scopeToCenter(url: string, slug: string | null | undefined): string {
+  if (!slug) return url
+  return url + (url.includes('?') ? '&' : '?') + 'center=' + encodeURIComponent(slug)
+}
+
 export default function DocumentHubPage() {
-  const { org } = useOrg()
+  const { org, currentCenter, isOrgAdmin } = useOrg()
   const [cat, setCat] = useState('all')
   const [aud, setAud] = useState('all')
   const [signOpen, setSignOpen] = useState(false)
@@ -257,9 +266,22 @@ export default function DocumentHubPage() {
     <div style={{padding:'28px 24px',fontFamily:"'DM Sans',sans-serif",maxWidth:1100,margin:'0 auto'}}>
       <div style={{marginBottom:22}}>
         <div style={{fontSize:11,fontWeight:600,letterSpacing:'0.08em',textTransform:'uppercase',color:'#6b7280',marginBottom:4}}>DOCUMENTS & GUIDES</div>
-        <h1 style={{fontSize:24,fontWeight:700,color:'#0a3320',margin:0}}>Document Hub</h1>
+        <h1 style={{fontSize:24,fontWeight:700,color:'#0a3320',margin:0}}>Library</h1>
         <p style={{margin:'4px 0 0',color:'#6b7280',fontSize:13}}>All instructions, guides and policies — download, print, share via QR, or sign online</p>
       </div>
+
+      {/* Center scope for shared enrollment/parent/staff forms: links + QR carry
+          this center's ?center= so a parent never picks a center. */}
+      {currentCenter ? (
+        <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:10,padding:'10px 14px',marginBottom:16,fontSize:13,color:'#166534'}}>
+          <span style={{fontWeight:700}}>📍 {currentCenter.name}</span>
+          <span style={{color:'#15803d'}}>— enrollment form links & QR carry <code style={{background:'#dcfce7',padding:'1px 5px',borderRadius:4}}>?center={currentCenter.slug}</code>, so families never pick a center.</span>
+        </div>
+      ) : isOrgAdmin ? (
+        <div style={{background:'#fffbeb',border:'1px solid #fde68a',borderRadius:10,padding:'10px 14px',marginBottom:16,fontSize:13,color:'#92400e'}}>
+          Organization view — pick a center in the header switcher to scope enrollment links & QR to it. Editing the document registry is admin-only.
+        </div>
+      ) : null}
 
       {/* Onboarding is the PRIMARY path (new hire signs their sign-set → staging). */}
       <StaffJdOnboarding />
@@ -317,12 +339,16 @@ export default function DocumentHubPage() {
                 <div style={{fontSize:12,color:'#6b7280',lineHeight:1.5}}>{doc.description}</div>
               </div>
               <div style={{marginTop:'auto'}}>
-                {(doc as any).parentForms ? (
+                {(doc as any).parentForms ? (() => {
+                  // Center-scoped: link + QR carry ?center=<current center slug>.
+                  const scopedUrl = scopeToCenter((doc as any).driveUrl, currentCenter?.slug)
+                  return (
                   <div style={{display:'flex',gap:8}}>
-                    <a href={(doc as any).driveUrl} target="_blank" rel="noreferrer" style={{flex:1,padding:'8px 12px',borderRadius:8,fontSize:13,fontWeight:500,background:'#0f4c35',color:'#fff',textDecoration:'none',textAlign:'center' as const,fontFamily:'inherit'}}>Open ↗</a>
-                    <button onClick={()=>setQrShare({url:(doc as any).driveUrl,title:doc.title})} style={{padding:'8px 14px',borderRadius:8,fontSize:13,background:'#f0f7f4',color:'#1a5c3f',border:'1px solid #d1fae5',cursor:'pointer',fontFamily:'inherit'}}>QR</button>
+                    <a href={scopedUrl} target="_blank" rel="noreferrer" style={{flex:1,padding:'8px 12px',borderRadius:8,fontSize:13,fontWeight:500,background:'#0f4c35',color:'#fff',textDecoration:'none',textAlign:'center' as const,fontFamily:'inherit'}}>Open ↗</a>
+                    <button onClick={()=>setQrShare({url:scopedUrl,title:doc.title})} style={{padding:'8px 14px',borderRadius:8,fontSize:13,background:'#f0f7f4',color:'#1a5c3f',border:'1px solid #d1fae5',cursor:'pointer',fontFamily:'inherit'}}>QR</button>
                   </div>
-                ) : (doc as any).canSign ? (
+                  )
+                })() : (doc as any).canSign ? (
                   // Legacy self-service BYOD is disabled until it is re-pointed off the
                   // ungranted byod_signatures table. New hires sign via Staff Onboarding.
                   <div>

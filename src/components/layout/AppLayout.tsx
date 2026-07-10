@@ -94,7 +94,7 @@ const SECTIONS: Section[] = [
       { path: '/dispatch',    label: 'Q&A / Instructions', icon: 'ti-message-question' },
       { path: '/messages',    label: 'Messages', icon: 'ti-message' },
       { path: '/instructions',  label: 'Instructions',      icon: 'ti-book' },
-      { path: '/document-hub',  label: 'Document Hub',       icon: 'ti-books' },
+      { path: '/document-hub',  label: 'Library',            icon: 'ti-books' },
       { path: '/byod-director', label: 'BYOD Signatures',    icon: 'ti-signature' },
       { path: '/policies',      label: 'Policies',           icon: 'ti-file-certificate' },
     ],

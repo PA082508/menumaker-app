@@ -253,9 +253,11 @@ const FORM_LABELS: Record<string, string> = {
   special_diet: 'Special Diet Statement', infant_meals: 'Infant Meals Preference',
   parent_consent: 'Parent Consent for E-Signatures', staff: 'Staff Enrollment',
 }
-const SEC1 = ['dcy_01234', 'dcy_01236', 'dcy_01217', 'dcy_01305']
+const SEC1 = ['dcy_01234', 'dcy_01236', 'dcy_01217', 'dcy_01305', 'dcy_01218', 'dcy_01225', 'dcy_01226', 'center_parent_info']
+const SUTQ_DOCS = ['sutq_family_needs_survey']
 const SEC2 = ['enroll', 'iea', 'usda_waiver', 'fluid_milk', 'special_diet', 'infant_meals']
 const SEC4_FORMS = ['parent_consent', 'staff']
+const OUR_DOCS = ['child_release_authorization', 'parent_responsibilities', 'topical_product_consent', 'transition_into_program', 'building_for_the_future', 'what_to_bring_infant']
 const CLAIM_EXPORTS = [
   { label: 'Meal counts / attendance (checkmarks)', to: '/reports', note: 'The checkmark export — protected till Oct 1.' },
   { label: 'Menu', to: '/menu/current' },
@@ -296,23 +298,26 @@ export default function DocumentHubPage() {
     const f = reg?.forms?.[key]
     const cur = f?.current
     const url = (cur && f?.versions?.[cur]) || f?.fallbackUrl || (f?.versions ? Object.values(f.versions)[0] : null) || null
-    return { url, version: cur || (f?.versions ? Object.keys(f.versions)[0] : null), live: !!cur, title: FORM_LABELS[key] || f?.title || key }
+    return { url, version: cur || (f?.versions ? Object.keys(f.versions)[0] : null), live: !!cur, title: FORM_LABELS[key] || f?.title || key,
+             kind: (f as any)?.kind as string | undefined, futureFormKit: !!(f as any)?.futureFormKit }
   }
 
   function FormCard({ keyId }: { keyId: string }) {
-    const { url, version, live, title } = resolve(keyId)
-    const scoped = url ? scopeToCenter(url, slug) : null
+    const { url, version, live, title, kind, futureFormKit } = resolve(keyId)
+    const isDoc = kind === 'document'
+    const scoped = url ? (isDoc ? url : scopeToCenter(url, slug)) : null  // static docs aren't center-scoped
     return (
       <div style={cardS}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 13.5, fontWeight: 700, color: '#0a3320' }}>{title}</span>
           {version && <span style={pill('#eef2ff', '#3730a3')}>{version}</span>}
           <span style={live ? pill('#dcfce7', '#166534') : pill('#fef3c7', '#92400e')}>{live ? '● live' : '○ dark'}</span>
+          {futureFormKit && <span title="Signature form — planned as an online form-kit form later" style={pill('#f3e8ff', '#6b21a8')}>form-kit planned</span>}
         </div>
         <div style={{ marginTop: 'auto', display: 'flex', gap: 8 }}>
           {scoped ? (
             <>
-              <a href={scoped} target="_blank" rel="noreferrer" style={openBtnS}>Open ↗</a>
+              <a href={scoped} target="_blank" rel="noreferrer" style={openBtnS}>{isDoc ? 'Open PDF ↗' : 'Open ↗'}</a>
               <button style={ghostS} onClick={() => setQrShare({ url: scoped, title })}>QR</button>
             </>
           ) : <span style={{ fontSize: 12, color: '#9ca3af', fontStyle: 'italic' }}>Coming soon</span>}
@@ -369,7 +374,8 @@ export default function DocumentHubPage() {
           {/* §1 Ohio DCY */}
           <SectionHead num={1} title="Ohio DCY" desc="The state childcare-licensing packet. DCY 01234 is the trigger form; 01236 / 01217 are physician-signed conditionals." />
           <div style={grid}>{SEC1.map(k => <FormCard key={k} keyId={k} />)}</div>
-          <div style={{ marginTop: 10, fontSize: 12, color: '#6b7280', marginLeft: 34 }}>↳ <strong>Step Up To Quality (SUTQ)</strong> — subgroup under Ohio DCY (documents added as the registry grows).</div>
+          <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700, color: '#0a3320', marginLeft: 34, marginBottom: 8 }}>↳ Step Up To Quality (SUTQ)</div>
+          <div style={{ ...grid, marginLeft: 34 }}>{SUTQ_DOCS.map(k => <FormCard key={k} keyId={k} />)}</div>
 
           {/* §2 CACFP */}
           <SectionHead num={2} title="CACFP — participation forms" desc="The food-program forms families and officials fill." />
@@ -404,6 +410,7 @@ export default function DocumentHubPage() {
           <SectionHead num={4} title="Our documents" desc="Play Academy's own documents, staff onboarding, guides and QR cards." />
           <div style={{ ...grid, marginBottom: 14 }}>
             {SEC4_FORMS.map(k => <FormCard key={k} keyId={k} />)}
+            {OUR_DOCS.map(k => <FormCard key={k} keyId={k} />)}
             <Link to="/instructions" style={{ ...cardS, textDecoration: 'none', background: 'linear-gradient(135deg,#0f4c35,#1a6b4a)' }}>
               <div style={{ fontSize: 13.5, fontWeight: 700, color: '#fff' }}>📖 Instructions</div>
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)' }}>How every feature works — filtered by your role.</div>

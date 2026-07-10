@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { QRCodeCanvas } from 'qrcode.react'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
-import { PARENT_FORMS_URL } from '@/config/showcaseLinks'
+import { PARENT_FORMS_URL, SHOWCASE_ORIGIN } from '@/config/showcaseLinks'
 import StaffJdOnboarding from './StaffJdOnboarding'
 
 const DOCS = [
@@ -237,149 +237,246 @@ function scopeToCenter(url: string, slug: string | null | undefined): string {
   return url + (url.includes('?') ? '&' : '?') + 'center=' + encodeURIComponent(slug)
 }
 
+// ── Library reorg (docs/document-library-structure-final.md): 4 registry-driven
+// sections + a "New Period" campaign tab. Sections 1-2 + the §4 forms are driven
+// by enroll-registry.json (version + live/dark), never a hand-kept list.
+type RegForm = { current?: string | null; versions?: Record<string, string>; fallbackUrl?: string; title?: string }
+type Registry = { forms?: Record<string, RegForm> }
+
+const FORM_LABELS: Record<string, string> = {
+  dcy_01234: 'Child Enrollment & Health (DCY 01234)',
+  dcy_01236: 'Care Plan — Special Needs (DCY 01236)',
+  dcy_01217: 'Medication Administration (DCY 01217)',
+  dcy_01305: 'Child Medical Statement (DCY 01305)',
+  enroll: 'CACFP Enrollment', iea: 'Income Eligibility Application (IEA)',
+  usda_waiver: 'USDA Waiver', fluid_milk: 'Fluid Milk Substitution',
+  special_diet: 'Special Diet Statement', infant_meals: 'Infant Meals Preference',
+  parent_consent: 'Parent Consent for E-Signatures', staff: 'Staff Enrollment',
+}
+const SEC1 = ['dcy_01234', 'dcy_01236', 'dcy_01217', 'dcy_01305']
+const SEC2 = ['enroll', 'iea', 'usda_waiver', 'fluid_milk', 'special_diet', 'infant_meals']
+const SEC4_FORMS = ['parent_consent', 'staff']
+const CLAIM_EXPORTS = [
+  { label: 'Meal counts / attendance (checkmarks)', to: '/reports', note: 'The checkmark export — protected till Oct 1.' },
+  { label: 'Menu', to: '/menu/current' },
+  { label: 'Purchases / receipts', to: '/purchases' },
+  { label: 'F/R/P registry', to: '/submissions?type=income' },
+]
+// Package scenarios (named doc-set presets) driving the campaign generator.
+const SCENARIOS = [
+  { id: 'enroll_full', label: 'Child enrollment — full packet', keys: ['parent_consent', 'dcy_01234', 'enroll', 'iea'] },
+  { id: 'renewal',     label: 'Renewal (CACFP + IEA)',          keys: ['enroll', 'iea'] },
+  { id: 'consent',     label: 'Single — Parent Consent',        keys: ['parent_consent'] },
+  { id: 'employee',    label: 'Employee — Staff Enrollment',    keys: ['staff'] },
+]
+
+const pill = (bg: string, fg: string): React.CSSProperties => ({ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: bg, color: fg })
+const cardS: React.CSSProperties = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10, minHeight: 96 }
+const openBtnS: React.CSSProperties = { flex: 1, padding: '8px 12px', borderRadius: 8, fontSize: 13, fontWeight: 600, background: '#0f4c35', color: '#fff', textDecoration: 'none', textAlign: 'center', fontFamily: 'inherit' }
+const ghostS: React.CSSProperties = { padding: '8px 12px', borderRadius: 8, fontSize: 13, background: '#f0f7f4', color: '#1a5c3f', border: '1px solid #d1fae5', cursor: 'pointer', fontFamily: 'inherit' }
+
 export default function DocumentHubPage() {
   const { org, currentCenter, isOrgAdmin } = useOrg()
-  const [cat, setCat] = useState('all')
-  const [aud, setAud] = useState('all')
+  const [tab, setTab] = useState<'library' | 'newperiod'>('library')
+  const [reg, setReg] = useState<Registry | null>(null)
   const [signOpen, setSignOpen] = useState(false)
-  const [qrDoc, setQrDoc] = useState<any>(null)
-  const [qrShare, setQrShare] = useState<{url:string;title:string}|null>(null)
-  const [count, setCount] = useState<number|null>(null)
+  const [qrShare, setQrShare] = useState<{ url: string; title: string } | null>(null)
+  const [count, setCount] = useState<number | null>(null)
+  const [scenario, setScenario] = useState('enroll_full')
 
-  useEffect(()=>{
-    if(!org?.id) return
-    supabase.schema('menumaker').from('byod_signatures')
-      .select('id',{count:'exact',head:true}).eq('org_id',org.id)
-      .then(({count:c})=>setCount(c))
-  },[org?.id, signOpen])
+  useEffect(() => { fetch('/enroll-registry.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).then(setReg).catch(() => {}) }, [])
+  useEffect(() => {
+    if (!org?.id) return
+    supabase.schema('menumaker').from('byod_signatures').select('id', { count: 'exact', head: true }).eq('org_id', org.id).then(({ count: c }) => setCount(c))
+  }, [org?.id, signOpen])
 
-  const cats = ['all',...[...new Set(DOCS.map(d=>d.category))]]
-  const auds = ['all','Parent','Teacher','Director','Staff','All']
-  const audColors: Record<string,{bg:string;text:string}> = {
-    Parent:{bg:'#dbeafe',text:'#1e40af'}, Teacher:{bg:'#dcfce7',text:'#166534'},
-    Director:{bg:'#fef3c7',text:'#92400e'}, Staff:{bg:'#fce7f3',text:'#9d174d'}, All:{bg:'#f3e8ff',text:'#6b21a8'},
+  const slug = currentCenter?.slug
+
+  function resolve(key: string) {
+    const f = reg?.forms?.[key]
+    const cur = f?.current
+    const url = (cur && f?.versions?.[cur]) || f?.fallbackUrl || (f?.versions ? Object.values(f.versions)[0] : null) || null
+    return { url, version: cur || (f?.versions ? Object.keys(f.versions)[0] : null), live: !!cur, title: FORM_LABELS[key] || f?.title || key }
   }
-  const docs = DOCS.filter(d=>(cat==='all'||d.category===cat)&&(aud==='all'||d.audience===aud))
-  const tb = (a:boolean):React.CSSProperties => ({padding:'5px 14px',borderRadius:20,fontSize:12,cursor:'pointer',fontFamily:'inherit',border:'none',background:a?'#0f4c35':'#f3f4f6',color:a?'#fff':'#374151',fontWeight:a?600:400})
+
+  function FormCard({ keyId }: { keyId: string }) {
+    const { url, version, live, title } = resolve(keyId)
+    const scoped = url ? scopeToCenter(url, slug) : null
+    return (
+      <div style={cardS}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13.5, fontWeight: 700, color: '#0a3320' }}>{title}</span>
+          {version && <span style={pill('#eef2ff', '#3730a3')}>{version}</span>}
+          <span style={live ? pill('#dcfce7', '#166534') : pill('#fef3c7', '#92400e')}>{live ? '● live' : '○ dark'}</span>
+        </div>
+        <div style={{ marginTop: 'auto', display: 'flex', gap: 8 }}>
+          {scoped ? (
+            <>
+              <a href={scoped} target="_blank" rel="noreferrer" style={openBtnS}>Open ↗</a>
+              <button style={ghostS} onClick={() => setQrShare({ url: scoped, title })}>QR</button>
+            </>
+          ) : <span style={{ fontSize: 12, color: '#9ca3af', fontStyle: 'italic' }}>Coming soon</span>}
+        </div>
+      </div>
+    )
+  }
+
+  function SectionHead({ num, title, desc }: { num: number; title: string; desc: string }) {
+    return (
+      <div style={{ margin: '26px 0 12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ width: 24, height: 24, borderRadius: '50%', background: '#0f4c35', color: '#fff', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{num}</span>
+          <h2 style={{ fontSize: 17, fontWeight: 700, color: '#0a3320', margin: 0 }}>{title}</h2>
+        </div>
+        <div style={{ fontSize: 12.5, color: '#6b7280', marginTop: 4, marginLeft: 34 }}>{desc}</div>
+      </div>
+    )
+  }
+
+  const grid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 12 }
+  const guides = DOCS.filter(d => !(d as any).parentForms)  // enrollment forms now live in the sections
+  const storefront = slug ? `${SHOWCASE_ORIGIN}/parent-forms.html?center=${encodeURIComponent(slug)}` : PARENT_FORMS_URL
+  const tabBtn = (on: boolean): React.CSSProperties => ({ padding: '8px 16px', borderRadius: 9, fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', border: on ? '1.5px solid #0f4c35' : '1.5px solid #e5e7eb', background: on ? '#0f4c35' : '#fff', color: on ? '#fff' : '#374151' })
 
   return (
-    <div style={{padding:'28px 24px',fontFamily:"'DM Sans',sans-serif",maxWidth:1100,margin:'0 auto'}}>
-      <div style={{marginBottom:22}}>
-        <div style={{fontSize:11,fontWeight:600,letterSpacing:'0.08em',textTransform:'uppercase',color:'#6b7280',marginBottom:4}}>DOCUMENTS & GUIDES</div>
-        <h1 style={{fontSize:24,fontWeight:700,color:'#0a3320',margin:0}}>Library</h1>
-        <p style={{margin:'4px 0 0',color:'#6b7280',fontSize:13}}>All instructions, guides and policies — download, print, share via QR, or sign online</p>
+    <div style={{ padding: '28px 24px', fontFamily: "'DM Sans',sans-serif", maxWidth: 1100, margin: '0 auto' }}>
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#6b7280', marginBottom: 4 }}>DOCUMENTS & GUIDES</div>
+        <h1 style={{ fontSize: 24, fontWeight: 700, color: '#0a3320', margin: 0 }}>Library</h1>
+        <p style={{ margin: '4px 0 0', color: '#6b7280', fontSize: 13 }}>Enrollment & CACFP forms, claim exports and our documents — download, print, share via QR, or sign online.</p>
       </div>
 
-      {/* Center scope for shared enrollment/parent/staff forms: links + QR carry
-          this center's ?center= so a parent never picks a center. */}
+      {/* Tabs: Library sections vs the New Period campaign panel */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <button style={tabBtn(tab === 'library')} onClick={() => setTab('library')}>📚 Library</button>
+        <button style={tabBtn(tab === 'newperiod')} onClick={() => setTab('newperiod')}>🗓️ New Period 2026-27</button>
+      </div>
+
+      {/* Center scope */}
       {currentCenter ? (
-        <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:10,padding:'10px 14px',marginBottom:16,fontSize:13,color:'#166534'}}>
-          <span style={{fontWeight:700}}>📍 {currentCenter.name}</span>
-          <span style={{color:'#15803d'}}>— enrollment form links & QR carry <code style={{background:'#dcfce7',padding:'1px 5px',borderRadius:4}}>?center={currentCenter.slug}</code>, so families never pick a center.</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: '10px 14px', marginBottom: 4, fontSize: 13, color: '#166534' }}>
+          <span style={{ fontWeight: 700 }}>📍 {currentCenter.name}</span>
+          <span style={{ color: '#15803d' }}>— form links & QR carry <code style={{ background: '#dcfce7', padding: '1px 5px', borderRadius: 4 }}>?center={currentCenter.slug}</code>, so families never pick a center.</span>
         </div>
       ) : isOrgAdmin ? (
-        <div style={{background:'#fffbeb',border:'1px solid #fde68a',borderRadius:10,padding:'10px 14px',marginBottom:16,fontSize:13,color:'#92400e'}}>
-          Organization view — pick a center in the header switcher to scope enrollment links & QR to it. Editing the document registry is admin-only.
+        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '10px 14px', marginBottom: 4, fontSize: 13, color: '#92400e' }}>
+          Organization view — pick a center in the header switcher to scope links & QR. Editing packet composition and the document registry is admin-only.
         </div>
       ) : null}
 
-      {/* Onboarding is the PRIMARY path (new hire signs their sign-set → staging). */}
-      <StaffJdOnboarding />
+      {tab === 'library' ? (
+        <>
+          {/* §1 Ohio DCY */}
+          <SectionHead num={1} title="Ohio DCY" desc="The state childcare-licensing packet. DCY 01234 is the trigger form; 01236 / 01217 are physician-signed conditionals." />
+          <div style={grid}>{SEC1.map(k => <FormCard key={k} keyId={k} />)}</div>
+          <div style={{ marginTop: 10, fontSize: 12, color: '#6b7280', marginLeft: 34 }}>↳ <strong>Step Up To Quality (SUTQ)</strong> — subgroup under Ohio DCY (documents added as the registry grows).</div>
 
-      {/* Legacy self-service BYOD (existing staff only) — writes byod_signatures, a
-          DIFFERENT flow from onboarding. Clearly scoped so directors don't use it to
-          onboard a new hire (that's the section above). */}
-      <div style={{background:'linear-gradient(135deg,#334155,#475569)',borderRadius:12,padding:'14px 18px',marginBottom:20,display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:12}}>
-        <div>
-          <div style={{color:'#fff',fontWeight:700,fontSize:14}}>📱 BYOD — existing staff self-service</div>
-          <div style={{color:'rgba(255,255,255,0.85)',fontSize:12,marginTop:2}}>Temporarily unavailable. New hires: use <strong>Staff Onboarding</strong> above.{count!==null && ` · ${count} on file`}</div>
-        </div>
-        <button disabled title="Temporarily unavailable" style={{padding:'9px 18px',background:'rgba(255,255,255,0.35)',color:'#e5e7eb',border:'none',borderRadius:8,fontWeight:700,fontSize:13,cursor:'not-allowed',fontFamily:'inherit'}}>Temporarily unavailable</button>
-      </div>
-
-      <div style={{display:'flex',gap:20,marginBottom:18,flexWrap:'wrap'}}>
-        <div>
-          <div style={{fontSize:11,fontWeight:600,color:'#6b7280',marginBottom:5,textTransform:'uppercase'}}>Category</div>
-          <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>{cats.map(c=><button key={c} onClick={()=>setCat(c)} style={tb(cat===c)}>{c==='all'?'All':c}</button>)}</div>
-        </div>
-        <div>
-          <div style={{fontSize:11,fontWeight:600,color:'#6b7280',marginBottom:5,textTransform:'uppercase'}}>For</div>
-          <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>{auds.map(a=><button key={a} onClick={()=>setAud(a)} style={tb(aud===a)}>{a==='all'?'Everyone':a}</button>)}</div>
-        </div>
-      </div>
-
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:14}}>
-        {(cat==='all') && (
-          <Link to="/instructions" style={{textDecoration:'none',background:'linear-gradient(135deg,#0f4c35,#1a6b4a)',borderRadius:12,padding:'16px 18px',border:'1.5px solid #0f4c35',boxShadow:'0 4px 16px rgba(15,76,53,0.18)',display:'flex',flexDirection:'column',gap:8}}>
-            <div style={{display:'flex',gap:6,alignItems:'center'}}>
-              <span style={{fontSize:10,fontWeight:700,color:'rgba(255,255,255,0.7)',textTransform:'uppercase'}}>Guides</span>
-              <span style={{fontSize:11,fontWeight:600,padding:'1px 8px',borderRadius:20,background:'rgba(255,255,255,0.2)',color:'#fff'}}>Everyone</span>
+          {/* §2 CACFP */}
+          <SectionHead num={2} title="CACFP — participation forms" desc="The food-program forms families and officials fill." />
+          <div style={{ ...cardS, flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12, background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#0a3320' }}>Parent packet — one page</div>
+              <div style={{ fontSize: 12, color: '#15803d' }}>All CACFP + enrollment forms for {currentCenter?.name ?? 'the selected center'}, pre-scoped. Best link to text or email.</div>
             </div>
+            <a href={storefront} target="_blank" rel="noreferrer" style={{ ...openBtnS, flex: 'none', padding: '8px 16px' }}>Open packet ↗</a>
+            <button style={ghostS} onClick={() => setQrShare({ url: storefront, title: 'Parent packet' })}>QR</button>
+          </div>
+          <div style={grid}>{SEC2.map(k => <FormCard key={k} keyId={k} />)}</div>
+
+          {/* §3 Claim results */}
+          <SectionHead num={3} title="Claim results" desc="Generated exports that feed a monthly claim — not blank forms." />
+          <div style={grid}>
+            {CLAIM_EXPORTS.map(x => (
+              <Link key={x.label} to={x.to} style={{ ...cardS, textDecoration: 'none' }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: '#0a3320' }}>{x.label}</div>
+                {x.note && <div style={{ fontSize: 11, color: '#6b7280' }}>{x.note}</div>}
+                <div style={{ marginTop: 'auto', fontSize: 13, fontWeight: 600, color: '#0f4c35' }}>Open →</div>
+              </Link>
+            ))}
+            <Link to="/claim-report" style={{ ...cardS, textDecoration: 'none', background: 'linear-gradient(135deg,#0f4c35,#1a6b4a)' }}>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: '#fff' }}>📦 Month claim-packet</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)' }}>Assemble the period's claim outputs.</div>
+              <div style={{ marginTop: 'auto', fontSize: 13, fontWeight: 600, color: '#fff' }}>Build →</div>
+            </Link>
+          </div>
+
+          {/* §4 Our documents */}
+          <SectionHead num={4} title="Our documents" desc="Play Academy's own documents, staff onboarding, guides and QR cards." />
+          <div style={{ ...grid, marginBottom: 14 }}>
+            {SEC4_FORMS.map(k => <FormCard key={k} keyId={k} />)}
+            <Link to="/instructions" style={{ ...cardS, textDecoration: 'none', background: 'linear-gradient(135deg,#0f4c35,#1a6b4a)' }}>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: '#fff' }}>📖 Instructions</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)' }}>How every feature works — filtered by your role.</div>
+              <div style={{ marginTop: 'auto', fontSize: 13, fontWeight: 600, color: '#fff' }}>Open →</div>
+            </Link>
+          </div>
+
+          {/* Staff onboarding (in-app sign surface) + legacy BYOD self-service */}
+          <StaffJdOnboarding />
+          <div style={{ background: 'linear-gradient(135deg,#334155,#475569)', borderRadius: 12, padding: '14px 18px', margin: '16px 0 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
             <div>
-              <div style={{fontSize:15,fontWeight:700,color:'#fff',marginBottom:4}}>📖 Instructions</div>
-              <div style={{fontSize:12,color:'rgba(255,255,255,0.85)',lineHeight:1.5}}>How every feature works — searchable, filtered by your role. Updated with each new feature.</div>
+              <div style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>📱 BYOD — existing staff self-service</div>
+              <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 2 }}>Temporarily unavailable. New hires: use <strong>Staff Onboarding</strong> above.{count !== null && ` · ${count} on file`}</div>
             </div>
-            <div style={{marginTop:'auto',fontSize:13,fontWeight:600,color:'#fff'}}>Open Instructions →</div>
-          </Link>
-        )}
-        {docs.map(doc=>{
-          const ac = audColors[doc.audience] || {bg:'#f3f4f6',text:'#374151'}
-          const hl = (doc as any).highlight
-          return (
-            <div key={doc.id} style={{background:hl?'linear-gradient(135deg,#f0fdf4,#ecfdf5)':'#fff',borderRadius:12,padding:'16px 18px',border:`1.5px solid ${hl?'#6ee7b7':'#e5e7eb'}`,boxShadow:hl?'0 4px 16px rgba(26,92,63,0.12)':'0 1px 4px rgba(0,0,0,0.04)',display:'flex',flexDirection:'column',gap:10,position:'relative'}}>
-              {hl&&<div style={{position:'absolute',top:-1,right:14,background:'#1a5c3f',color:'#fff',fontSize:10,fontWeight:700,padding:'2px 10px',borderRadius:'0 0 6px 6px'}}>SIGN ONLINE</div>}
-              <div style={{display:'flex',gap:8,alignItems:'center',justifyContent:'space-between'}}>
-                <div style={{display:'flex',gap:6}}>
-                  <span style={{fontSize:10,fontWeight:700,color:'#6b7280',textTransform:'uppercase'}}>{doc.category}</span>
-                  <span style={{fontSize:11,fontWeight:600,padding:'1px 8px',borderRadius:20,background:ac.bg,color:ac.text}}>{doc.audience}</span>
+            <button disabled title="Temporarily unavailable" style={{ padding: '9px 18px', background: 'rgba(255,255,255,0.35)', color: '#e5e7eb', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'not-allowed', fontFamily: 'inherit' }}>Temporarily unavailable</button>
+          </div>
+
+          {/* Guides & portals — operational links (preserved from the flat hub) */}
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#0a3320', margin: '4px 0 10px' }}>Guides & portals</div>
+          <div style={grid}>
+            {guides.map(doc => (
+              <div key={doc.id} style={cardS}>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' }}>{doc.category}</span>
+                  <span style={pill('#f3f4f6', '#374151')}>{doc.audience}</span>
+                </div>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: '#0a3320' }}>{doc.title}</div>
+                <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.45 }}>{doc.description}</div>
+                <div style={{ marginTop: 'auto' }}>
+                  {(doc as any).canSign ? (
+                    <div>
+                      <button disabled title="Temporarily unavailable" style={{ width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13, fontWeight: 600, background: '#e5e7eb', color: '#9ca3af', border: 'none', cursor: 'not-allowed', fontFamily: 'inherit' }}>Temporarily unavailable</button>
+                    </div>
+                  ) : (doc as any).driveUrl ? (
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <a href={(doc as any).driveUrl} target="_blank" rel="noreferrer" style={openBtnS}>↓ Open</a>
+                      <button style={ghostS} onClick={() => setQrShare({ url: (doc as any).driveUrl, title: doc.title })}>QR</button>
+                    </div>
+                  ) : <div style={{ fontSize: 12, color: '#9ca3af', fontStyle: 'italic' }}>Coming soon</div>}
                 </div>
               </div>
-              <div>
-                <div style={{fontSize:14,fontWeight:600,color:'#0a3320',marginBottom:4}}>{doc.title}</div>
-                <div style={{fontSize:12,color:'#6b7280',lineHeight:1.5}}>{doc.description}</div>
-              </div>
-              <div style={{marginTop:'auto'}}>
-                {(doc as any).parentForms ? (() => {
-                  // Center-scoped: link + QR carry ?center=<current center slug>.
-                  const scopedUrl = scopeToCenter((doc as any).driveUrl, currentCenter?.slug)
-                  return (
-                  <div style={{display:'flex',gap:8}}>
-                    <a href={scopedUrl} target="_blank" rel="noreferrer" style={{flex:1,padding:'8px 12px',borderRadius:8,fontSize:13,fontWeight:500,background:'#0f4c35',color:'#fff',textDecoration:'none',textAlign:'center' as const,fontFamily:'inherit'}}>Open ↗</a>
-                    <button onClick={()=>setQrShare({url:scopedUrl,title:doc.title})} style={{padding:'8px 14px',borderRadius:8,fontSize:13,background:'#f0f7f4',color:'#1a5c3f',border:'1px solid #d1fae5',cursor:'pointer',fontFamily:'inherit'}}>QR</button>
-                  </div>
-                  )
-                })() : (doc as any).canSign ? (
-                  // Legacy self-service BYOD is disabled until it is re-pointed off the
-                  // ungranted byod_signatures table. New hires sign via Staff Onboarding.
-                  <div>
-                    <button disabled title="Temporarily unavailable" style={{width:'100%',padding:'8px 12px',borderRadius:8,fontSize:13,fontWeight:600,background:'#e5e7eb',color:'#9ca3af',border:'none',cursor:'not-allowed',fontFamily:'inherit'}}>Temporarily unavailable</button>
-                    <div style={{fontSize:11,color:'#9ca3af',marginTop:5}}>New hires: use <strong>Staff Onboarding</strong> above.</div>
-                  </div>
-                ) : (doc as any).driveUrl ? (
-                  <div style={{display:'flex',gap:8}}>
-                    <a href={(doc as any).driveUrl} target="_blank" rel="noreferrer" style={{flex:1,padding:'8px 12px',borderRadius:8,fontSize:13,fontWeight:500,background:'#0f4c35',color:'#fff',textDecoration:'none',textAlign:'center' as const,fontFamily:'inherit'}}>↓ Download</a>
-                    <button onClick={()=>setQrDoc(doc)} style={{padding:'8px 14px',borderRadius:8,fontSize:13,background:'#f0f7f4',color:'#1a5c3f',border:'1px solid #d1fae5',cursor:'pointer',fontFamily:'inherit'}}>QR</button>
-                  </div>
-                ) : (
-                  <div style={{fontSize:12,color:'#9ca3af',fontStyle:'italic'}}>Coming soon</div>
-                )}
-              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        /* ── New Period 2026-27 campaign panel ─────────────────────────────── */
+        <div>
+          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '16px 18px', marginBottom: 16 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#0a3320' }}>New Period 2026-27 — issue packets</div>
+            <div style={{ fontSize: 12.5, color: '#6b7280', marginTop: 2 }}>Pick a package scenario; every link & QR is pre-scoped to {currentCenter?.name ?? 'the selected center'}. Cross-form prefill carries answers forward automatically.</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+              {SCENARIOS.map(sc => (
+                <button key={sc.id} onClick={() => setScenario(sc.id)} style={{ padding: '6px 12px', borderRadius: 8, fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', border: scenario === sc.id ? '1.5px solid #0f4c35' : '1.5px solid #e5e7eb', background: scenario === sc.id ? '#0f4c35' : '#fff', color: scenario === sc.id ? '#fff' : '#374151' }}>{sc.label}</button>
+              ))}
             </div>
-          )
-        })}
-      </div>
-      {signOpen && <SignModal onClose={()=>setSignOpen(false)}/>}
-      {qrShare && <ParentFormsQR url={qrShare.url} title={qrShare.title} onClose={()=>setQrShare(null)}/>}
-      {qrDoc && (
-        <div onClick={()=>setQrDoc(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
-          <div onClick={(e:any)=>e.stopPropagation()} style={{background:'#fff',borderRadius:16,padding:32,maxWidth:300,width:'100%',textAlign:'center',boxShadow:'0 24px 80px rgba(0,0,0,0.25)'}}>
-            <div style={{fontSize:14,fontWeight:600,color:'#0a3320',marginBottom:4}}>{qrDoc.title}</div>
-            <div style={{fontSize:12,color:'#6b7280',marginBottom:18}}>Scan to open on any device</div>
-            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrDoc.driveUrl||'')}`} alt="QR" style={{width:200,height:200,borderRadius:8,border:'1px solid #e5e7eb'}}/>
-            <button onClick={()=>setQrDoc(null)} style={{marginTop:16,padding:'8px 24px',borderRadius:8,background:'#1a5c3f',color:'#fff',border:'none',cursor:'pointer',fontSize:13,fontFamily:'inherit'}}>Close</button>
+          </div>
+
+          {!slug ? (
+            <div style={{ padding: '28px 24px', textAlign: 'center', color: '#9ca3af', fontSize: 14, background: '#fafafa', borderRadius: 12, border: '1px dashed #e5e7eb' }}>Pick a center in the header switcher to generate the packet.</div>
+          ) : (
+            <div style={grid}>
+              {(SCENARIOS.find(s => s.id === scenario)?.keys ?? []).map(k => <FormCard key={k} keyId={k} />)}
+            </div>
+          )}
+
+          <div style={{ marginTop: 16, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '14px 16px', fontSize: 13, color: '#92400e' }}>
+            <strong>Per-child batches, tokenized prefill links, and sent / filled / approved tracking activate with the prefill engine</strong> (get_prefill token DB) — migration is prepared and applies on Nikolay's go. Until then, issue center-scoped packets from <Link to="/issue-packet" style={{ color: '#92400e', fontWeight: 700 }}>Issue Packet →</Link>.
           </div>
         </div>
       )}
+
+      {signOpen && <SignModal onClose={() => setSignOpen(false)} />}
+      {qrShare && <ParentFormsQR url={qrShare.url} title={qrShare.title} onClose={() => setQrShare(null)} />}
     </div>
   )
-}// drive urls added Sun Jun 28 20:00:14 EDT 2026
+}

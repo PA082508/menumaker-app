@@ -7,7 +7,9 @@
 --
 -- ack line + fields are NOT in the body (SignModal renders them), same as the JDs.
 --
--- PREPARED 2026-07-09 — awaiting Nikolay's go (prepare → go → apply).
+-- Applied to project menumaker (trrmyqfpxntmgxnqkikp) 2026-07-09 (verified: byod v1
+-- active, 0 stipend mentions). StaffJdOnboarding now fetches 'byod' from the registry
+-- (inline BYOD_BODY removed).
 
 insert into menumaker.policy_documents
   (org_id, key, version, title, body, status, effective_date, announced_at, activated_at)

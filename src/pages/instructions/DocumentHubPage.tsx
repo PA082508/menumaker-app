@@ -269,9 +269,9 @@ export default function DocumentHubPage() {
       <div style={{background:'linear-gradient(135deg,#334155,#475569)',borderRadius:12,padding:'14px 18px',marginBottom:20,display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:12}}>
         <div>
           <div style={{color:'#fff',fontWeight:700,fontSize:14}}>📱 BYOD — existing staff self-service</div>
-          <div style={{color:'rgba(255,255,255,0.85)',fontSize:12,marginTop:2}}>Onboarding a new hire? Use <strong>Staff Onboarding</strong> above. This is only for staff already on record.{count!==null && ` · ${count} on file`}</div>
+          <div style={{color:'rgba(255,255,255,0.85)',fontSize:12,marginTop:2}}>Temporarily unavailable. New hires: use <strong>Staff Onboarding</strong> above.{count!==null && ` · ${count} on file`}</div>
         </div>
-        <button onClick={()=>setSignOpen(true)} style={{padding:'9px 18px',background:'#fff',color:'#334155',border:'none',borderRadius:8,fontWeight:700,fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>Sign (existing staff)</button>
+        <button disabled title="Temporarily unavailable" style={{padding:'9px 18px',background:'rgba(255,255,255,0.35)',color:'#e5e7eb',border:'none',borderRadius:8,fontWeight:700,fontSize:13,cursor:'not-allowed',fontFamily:'inherit'}}>Temporarily unavailable</button>
       </div>
 
       <div style={{display:'flex',gap:20,marginBottom:18,flexWrap:'wrap'}}>
@@ -322,9 +322,11 @@ export default function DocumentHubPage() {
                     <button onClick={()=>setParentQrOpen(true)} style={{padding:'8px 14px',borderRadius:8,fontSize:13,background:'#f0f7f4',color:'#1a5c3f',border:'1px solid #d1fae5',cursor:'pointer',fontFamily:'inherit'}}>QR</button>
                   </div>
                 ) : (doc as any).canSign ? (
-                  <div style={{display:'flex',gap:8}}>
-                    <button onClick={()=>setSignOpen(true)} style={{flex:1,padding:'8px 12px',borderRadius:8,fontSize:13,fontWeight:600,background:'#1a5c3f',color:'#fff',border:'none',cursor:'pointer',fontFamily:'inherit'}}>✍️ Sign Online</button>
-                    {(doc as any).driveUrl && <button onClick={()=>setQrDoc(doc)} style={{padding:'8px 14px',borderRadius:8,fontSize:13,background:'#f0f7f4',color:'#1a5c3f',border:'1px solid #d1fae5',cursor:'pointer',fontFamily:'inherit'}}>QR</button>}
+                  // Legacy self-service BYOD is disabled until it is re-pointed off the
+                  // ungranted byod_signatures table. New hires sign via Staff Onboarding.
+                  <div>
+                    <button disabled title="Temporarily unavailable" style={{width:'100%',padding:'8px 12px',borderRadius:8,fontSize:13,fontWeight:600,background:'#e5e7eb',color:'#9ca3af',border:'none',cursor:'not-allowed',fontFamily:'inherit'}}>Temporarily unavailable</button>
+                    <div style={{fontSize:11,color:'#9ca3af',marginTop:5}}>New hires: use <strong>Staff Onboarding</strong> above.</div>
                   </div>
                 ) : (doc as any).driveUrl ? (
                   <div style={{display:'flex',gap:8}}>

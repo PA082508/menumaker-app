@@ -69,6 +69,7 @@ const SECTIONS: Section[] = [
     items: [
       { path: '/children',        label: 'Children',        icon: 'ti-baby-carriage' },
       { path: '/enrollment-inbox', label: 'Enrollment Inbox', icon: 'ti-inbox' },
+      { path: '/issue-packet',    label: 'Issue Packet',    icon: 'ti-mail-forward' },
       { path: '/children/import', label: 'Import Children',  icon: 'ti-file-upload' },
       { path: '/staff',           label: 'Staff',           icon: 'ti-id-badge' },
       { path: '/staff/time-log',  label: 'Daily Time Log',   icon: 'ti-clock' },
@@ -143,7 +144,7 @@ const DIRECTOR_SECTION_IDS = new Set(['dashboard', 'operations', 'planning', 'pe
 const DIRECTOR_PATHS = new Set([
   '/meal-count',                                     // Operations → Meal Count (director view)
   '/menu/current',                                   // Planning → Current Menu ONLY (no /menu planner)
-  '/children', '/enrollment-inbox', '/staff',        // People
+  '/children', '/enrollment-inbox', '/issue-packet', '/staff',   // People
   '/documents', '/instructions', '/document-hub',    // Documents
 ])
 // Relabel single-purpose sections so the director's flyouts read clearly and the

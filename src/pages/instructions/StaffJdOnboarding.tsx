@@ -26,19 +26,17 @@ const BYOD_BODY = `**Play Academy Inc. BYOD Device Use Agreement**
 
 **Art.1 Purpose.** Employee voluntarily uses personal device for SafePass and authorized apps. App works ONLY on registered authorized devices.
 
-**Art.2 Compensation.** Monthly stipend of $20.00 in regular paycheck.
+**Art.2 Obligations.** Keep device charged; enable screen lock; not share credentials; report loss immediately; allow app removal upon termination.
 
-**Art.3 Obligations.** Keep device charged; enable screen lock; not share credentials; report loss immediately; allow app removal upon termination.
+**Art.3 Company Limits.** Play Academy will NOT access personal content. Work data on Company servers only.
 
-**Art.4 Company Limits.** Play Academy will NOT access personal content. Work data on Company servers only.
+**Art.4 Confidentiality.** All child data is confidential. No disclosure to unauthorized persons.
 
-**Art.5 Confidentiality.** All child data is confidential. No disclosure to unauthorized persons.
+**Art.5 Termination.** Either party may terminate. Employee: written notice. Company: immediately upon violation.
 
-**Art.6 Termination.** Either party may terminate. Employee: written notice. Company: immediately upon violation.
+**Art.6 Governing Law.** Ohio law. Cuyahoga County courts.
 
-**Art.7 Governing Law.** Ohio law. Cuyahoga County courts.
-
-**Art.8 Push Notifications.** Employee consents to receive work-related Push Notifications through the Play Academy app on their personal device. Notifications may include: CACFP meal count alerts, SafePass child handoff events, schedule reminders, and urgent messages from management. Employee may not disable work notifications during scheduled work hours.`
+**Art.7 Push Notifications.** Employee consents to receive work-related Push Notifications through the Play Academy app on their personal device. Notifications may include: CACFP meal count alerts, SafePass child handoff events, schedule reminders, and urgent messages from management. Employee may not disable work notifications during scheduled work hours.`
 
 export default function StaffJdOnboarding() {
   const { org, currentCenter } = useOrg()

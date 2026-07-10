@@ -14,7 +14,7 @@ const DOCS = [
 
   // ── BYOD ─────────────────────────────────────────────────────────────────
   { id:'byod-agreement', title:'BYOD Device Use Agreement', description:'Sign online — saved securely. Director countersigns digitally.', audience:'Staff', category:'BYOD', canSign:true, highlight:true },
-  { id:'byod-policy', title:'BYOD Policy HR-BYOD-001', description:'Voluntary participation, $20/month stipend, privacy protections.', audience:'Staff', category:'BYOD', driveUrl:'https://drive.google.com/file/d/1BsJks_GR4oGKtccX6jZX58oOnj2QCZQW/view?usp=sharing' },
+  { id:'byod-policy', title:'BYOD Policy HR-BYOD-001', description:'Voluntary participation, privacy protections.', audience:'Staff', category:'BYOD', driveUrl:'https://drive.google.com/file/d/1BsJks_GR4oGKtccX6jZX58oOnj2QCZQW/view?usp=sharing' },
 
   // ── SafePass ──────────────────────────────────────────────────────────────
   { id:'safepass-parent-letter', title:'SafePass — Parent Letter (Wickliffe)', description:'Pilot announcement. Registration July 1–14, mandatory July 15.', audience:'Parent', category:'SafePass', driveUrl:'https://drive.google.com/file/d/1pDFFpKA462Cffs_-AS5rfCMRLk37QkGh/view?usp=sharing' },
@@ -119,13 +119,12 @@ function SignModal({ onClose }: { onClose: ()=>void }) {
             <div style={{height:260,overflowY:'auto',border:'1px solid #d1fae5',borderRadius:10,padding:14,fontSize:13,lineHeight:1.7,background:'#f8faf8',marginBottom:14}}>
               <p><strong>Play Academy Inc. BYOD Device Use Agreement</strong></p>
               <p style={{marginTop:10}}><strong>Art.1 Purpose.</strong> Employee voluntarily uses personal device for SafePass and authorized apps. App works ONLY on registered authorized devices.</p>
-              <p style={{marginTop:10}}><strong>Art.2 Compensation.</strong> Monthly stipend of $20.00 in regular paycheck.</p>
-              <p style={{marginTop:10}}><strong>Art.3 Obligations.</strong> Keep device charged; enable screen lock; not share credentials; report loss immediately; allow app removal upon termination.</p>
-              <p style={{marginTop:10}}><strong>Art.4 Company Limits.</strong> Play Academy will NOT access personal content. Work data on Company servers only.</p>
-              <p style={{marginTop:10}}><strong>Art.5 Confidentiality.</strong> All child data is confidential. No disclosure to unauthorized persons.</p>
-              <p style={{marginTop:10}}><strong>Art.6 Termination.</strong> Either party may terminate. Employee: written notice. Company: immediately upon violation.</p>
-              <p style={{marginTop:10}}><strong>Art.7 Governing Law.</strong> Ohio law. Cuyahoga County courts.</p>
-              <p style={{marginTop:10}}><strong>Art.8 Push Notifications.</strong> Employee consents to receive work-related Push Notifications through the Play Academy app on their personal device. Notifications may include: CACFP meal count alerts, SafePass child handoff events, schedule reminders, and urgent messages from management. Employee may not disable work notifications during scheduled work hours.</p>
+              <p style={{marginTop:10}}><strong>Art.2 Obligations.</strong> Keep device charged; enable screen lock; not share credentials; report loss immediately; allow app removal upon termination.</p>
+              <p style={{marginTop:10}}><strong>Art.3 Company Limits.</strong> Play Academy will NOT access personal content. Work data on Company servers only.</p>
+              <p style={{marginTop:10}}><strong>Art.4 Confidentiality.</strong> All child data is confidential. No disclosure to unauthorized persons.</p>
+              <p style={{marginTop:10}}><strong>Art.5 Termination.</strong> Either party may terminate. Employee: written notice. Company: immediately upon violation.</p>
+              <p style={{marginTop:10}}><strong>Art.6 Governing Law.</strong> Ohio law. Cuyahoga County courts.</p>
+              <p style={{marginTop:10}}><strong>Art.7 Push Notifications.</strong> Employee consents to receive work-related Push Notifications through the Play Academy app on their personal device. Notifications may include: CACFP meal count alerts, SafePass child handoff events, schedule reminders, and urgent messages from management. Employee may not disable work notifications during scheduled work hours.</p>
             </div>
             <div style={{display:'flex',gap:10,padding:12,background:'#f0f7f4',borderRadius:8,marginBottom:12}}>
               <input type="checkbox" id="ag" checked={agreed} onChange={e=>setAgreed(e.target.checked)} style={{width:18,height:18,accentColor:'#1a5c3f'}}/>
@@ -166,9 +165,6 @@ function SignModal({ onClose }: { onClose: ()=>void }) {
               <div><strong>Center:</strong> {f.center}</div>
               <div><strong>Reference ID:</strong> {refId}</div>
               <div><strong>Signed:</strong> {new Date().toLocaleString('en-US')}</div>
-            </div>
-            <div style={{background:'#fef3c7',borderRadius:10,padding:14,fontSize:13,color:'#92400e',marginBottom:16}}>
-              ⏳ BYOD stipend of <strong>$20/month</strong> begins after director confirmation.
             </div>
             <button onClick={onClose} style={pb(true)}>Close</button>
           </div>}
@@ -264,15 +260,19 @@ export default function DocumentHubPage() {
         <p style={{margin:'4px 0 0',color:'#6b7280',fontSize:13}}>All instructions, guides and policies — download, print, share via QR, or sign online</p>
       </div>
 
-      <div style={{background:'linear-gradient(135deg,#1a5c3f,#2d7a56)',borderRadius:12,padding:'16px 20px',marginBottom:20,display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:12}}>
-        <div>
-          <div style={{color:'#fff',fontWeight:700,fontSize:15}}>📱 BYOD Agreement — Online Signing</div>
-          <div style={{color:'rgba(255,255,255,0.8)',fontSize:13,marginTop:2}}>{count===null?'Loading...': `${count} employee${count!==1?'s':''} signed`} · Director countersignature pending</div>
-        </div>
-        <button onClick={()=>setSignOpen(true)} style={{padding:'10px 20px',background:'#fff',color:'#1a5c3f',border:'none',borderRadius:8,fontWeight:700,fontSize:14,cursor:'pointer',fontFamily:'inherit'}}>Sign Now →</button>
-      </div>
-
+      {/* Onboarding is the PRIMARY path (new hire signs their sign-set → staging). */}
       <StaffJdOnboarding />
+
+      {/* Legacy self-service BYOD (existing staff only) — writes byod_signatures, a
+          DIFFERENT flow from onboarding. Clearly scoped so directors don't use it to
+          onboard a new hire (that's the section above). */}
+      <div style={{background:'linear-gradient(135deg,#334155,#475569)',borderRadius:12,padding:'14px 18px',marginBottom:20,display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:12}}>
+        <div>
+          <div style={{color:'#fff',fontWeight:700,fontSize:14}}>📱 BYOD — existing staff self-service</div>
+          <div style={{color:'rgba(255,255,255,0.85)',fontSize:12,marginTop:2}}>Onboarding a new hire? Use <strong>Staff Onboarding</strong> above. This is only for staff already on record.{count!==null && ` · ${count} on file`}</div>
+        </div>
+        <button onClick={()=>setSignOpen(true)} style={{padding:'9px 18px',background:'#fff',color:'#334155',border:'none',borderRadius:8,fontWeight:700,fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>Sign (existing staff)</button>
+      </div>
 
       <div style={{display:'flex',gap:20,marginBottom:18,flexWrap:'wrap'}}>
         <div>

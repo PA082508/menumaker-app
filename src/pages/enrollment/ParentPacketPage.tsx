@@ -1,16 +1,18 @@
-// ParentPacketPage.tsx — "Issue enrollment packet to a parent" (Phase 1).
+// ParentPacketPage.tsx — "Issue the admission packet to a parent" (director tool).
 //
-// One page / one action: for a center, assemble the parent enrollment packet
-//   Parent Consent (E-Sign) v1 → CACFP Enrollment v9 → Income Eligibility v6
-// with every link + QR pre-scoped to that center (?center=<slug>) so a family
-// never picks a center. Plus the whole-packet storefront link and a printable
-// QR-pack (one QR per center). Prefill across the packet is automatic — the
-// forms share the kit session-packet (data-fk-field), carrying answers forward
-// and never overwriting a field the parent already touched.
+// One page / one action: for a center, assemble the full admission packet — the
+// Required forms (Parent Consent → DCY 01234 → CACFP v9 → IEA v6 → Child Release →
+// Parent Responsibilities → Center Parent Info → What To Bring) followed by the
+// "If applicable" forms (infant / special-diet groups) and the director-issued
+// in-person forms — with every link + QR pre-scoped to that center (?center=<slug>)
+// so a family never picks a center. Plus the whole-packet storefront link and a
+// printable QR-pack (one QR per center).
 //
-// Registry-driven: form URLs come from enroll-registry.json (forms[key].current
-// → versions[current]). Consent is DARK (current:null) until the gate-smoke flip
-// — shown with a "Not live yet" badge but still linkable for smoke-testing.
+// Registry-driven: composition AND order come from enroll-registry.json
+// (packets.admission.slots); form URLs from forms[key].current → versions[current].
+// This is DATA — editing the packet is a registry change, no code change. Interim
+// (dcy_01234 PDF) and dark (dcy_01217/01236, usda_waiver) slots resolve automatically
+// and light up when their `current` is flipped live.
 
 import { useEffect, useMemo, useState } from 'react'
 import { QRCodeCanvas } from 'qrcode.react'
@@ -19,23 +21,30 @@ import { SHOWCASE_ORIGIN } from '@/config/showcaseLinks'
 
 const GREEN = '#0f4c35'
 
-// Ordered packet — the Child-enrollment scenario (consent first = signature adoption).
-const PACKET = [
-  { key: 'parent_consent', label: 'Parent Consent (E-Sign)', note: 'Signed first — adopts the parent signature for the packet.' },
-  { key: 'enroll',         label: 'CACFP Enrollment',        note: 'Days, hours and meals in care. One per child, yearly.' },
-  { key: 'iea',            label: 'Income Eligibility (IEA)', note: 'Free / reduced-price eligibility. One per household.' },
-] as const
-
+type Slot = {
+  key: string
+  section: 'mandatory' | 'if_applicable'
+  label?: string
+  note?: string
+}
+type Condition = { title?: string; issue?: string }
+type FormRec = { current?: string | null; versions?: Record<string, string>; fallbackUrl?: string | null; title?: string; note?: string; condition?: string }
 type Registry = {
-  forms?: Record<string, { current?: string | null; versions?: Record<string, string>; fallbackUrl?: string; title?: string }>
+  forms?: Record<string, FormRec>
+  conditions?: Record<string, Condition>   // the ONE condition map (titles + order + issue)
+  packets?: { admission?: { title?: string; slots?: Slot[] } }
 }
 
+// Resolve a form's live URL — absolute http(s) only; PENDING / dark → null.
 function formUrl(reg: Registry | null, key: string): { url: string | null; live: boolean } {
   const f = reg?.forms?.[key]
   if (!f) return { url: null, live: false }
-  const cur = f.current
-  const live = !!cur
-  const url = (cur && f.versions?.[cur]) || f.fallbackUrl || (f.versions ? Object.values(f.versions)[0] : null) || null
+  const live = !!f.current
+  const pick = (v?: string | null) => (v && v !== 'PENDING' && /^https?:/.test(v) ? v : null)
+  const url =
+    pick(f.current ? f.versions?.[f.current] : null) ||
+    pick(f.fallbackUrl) ||
+    (f.versions ? (Object.values(f.versions).map(pick).find(Boolean) ?? null) : null)
   return { url, live }
 }
 
@@ -53,6 +62,8 @@ function downloadQR(wrapperId: string, filename: string) {
   a.download = filename
   a.click()
 }
+
+type ResolvedSlot = Slot & { label: string; note: string; url: string | null; live: boolean; condition?: string; director: boolean }
 
 export default function ParentPacketPage() {
   const { currentCenter, centers, isOrgAdmin } = useOrg()
@@ -74,10 +85,33 @@ export default function ParentPacketPage() {
     ?? centers.find(c => c.slug === pickCenter)?.name
     ?? null
 
-  const packetLinks = useMemo(() => PACKET.map(p => {
-    const { url, live } = formUrl(reg, p.key)
-    return { ...p, url: url ? withCenter(url, activeSlug) : null, live }
-  }), [reg, activeSlug])
+  // Full ordered packet, resolved to live URLs + center scope. A conditional slot's
+  // group + director-line status derive from forms[key].condition + the ONE conditions map.
+  const conditions = reg?.conditions ?? {}
+  const slots: ResolvedSlot[] = useMemo(() => {
+    const raw = reg?.packets?.admission?.slots ?? []
+    return raw.map(s => {
+      const { url, live } = formUrl(reg, s.key)
+      const f = reg?.forms?.[s.key]
+      const condition = f?.condition
+      const director = !!(condition && reg?.conditions?.[condition]?.issue === 'director')
+      return {
+        ...s,
+        label: s.label || f?.title || s.key,
+        note: s.note || '',
+        url: url ? withCenter(url, activeSlug) : null,
+        live,
+        condition,
+        director,
+      }
+    })
+  }, [reg, activeSlug])
+
+  // If-applicable group order = conditions map key order (skip _note + director conditions).
+  const condOrder = Object.keys(conditions).filter(k => k !== '_note' && conditions[k]?.issue !== 'director')
+  const mandatory = slots.filter(s => s.section === 'mandatory')
+  const conditional = slots.filter(s => s.section === 'if_applicable' && !s.director)
+  const directorLines = slots.filter(s => s.director)
 
   const storefrontUrl = activeSlug ? `${SHOWCASE_ORIGIN}/parent-forms.html?center=${encodeURIComponent(activeSlug)}` : null
 
@@ -95,7 +129,7 @@ export default function ParentPacketPage() {
     const w = window.open('', '_blank', 'width=900,height=700')
     if (!w) return
     w.document.write(
-      `<html><head><title>Parent Packet — QR pack</title><style>
+      `<html><head><title>Admission Packet — QR pack</title><style>
         body{font-family:'DM Sans',Arial,sans-serif;margin:24px;color:#0a3320}
         h1{font-size:18px;margin:0 0 4px} p{color:#6b7280;font-size:12px;margin:0 0 18px}
         .grid{display:flex;flex-wrap:wrap;gap:24px}
@@ -104,8 +138,8 @@ export default function ParentPacketPage() {
         .card .u{font-size:10px;color:#6b7280;word-break:break-all;margin-top:4px}
         @media print{.card{page-break-inside:avoid}}
       </style></head><body>
-      <h1>Play Academy — Parent Enrollment Packet</h1>
-      <p>Scan to open the enrollment packet for your center. Each code is pre-scoped — parents never pick a center.</p>
+      <h1>Play Academy — Admission Packet</h1>
+      <p>Scan to open the admission packet for your center. Each code is pre-scoped — parents never pick a center.</p>
       <div class="grid">` +
       imgs.map(i => `<div class="card"><img src="${i.data}"/><div class="n">${i.name}</div><div class="u">${i.slug}</div></div>`).join('') +
       `</div></body></html>`
@@ -119,12 +153,44 @@ export default function ParentPacketPage() {
   const openBtn: React.CSSProperties = { padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, background: GREEN, color: '#fff', textDecoration: 'none', textAlign: 'center', fontFamily: 'inherit', display: 'inline-block' }
   const ghost: React.CSSProperties = { padding: '8px 14px', borderRadius: 8, fontSize: 13, background: '#f0f7f4', color: '#1a5c3f', border: '1px solid #d1fae5', cursor: 'pointer', fontFamily: 'inherit' }
 
+  // One resolved-slot card. `num` = 1-based position for Required; null hides the bubble.
+  function SlotCard({ s, num }: { s: ResolvedSlot; num: number | null }) {
+    return (
+      <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {num != null && (
+            <span style={{ width: 22, height: 22, borderRadius: '50%', background: GREEN, color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' }}>{num}</span>
+          )}
+          <span style={{ fontSize: 14, fontWeight: 700, color: '#0a3320' }}>{s.label}</span>
+          {!s.live && <span title="Registered but not flipped live yet" style={{ fontSize: 10, fontWeight: 700, color: '#92400e', background: '#fef3c7', padding: '2px 7px', borderRadius: 6 }}>DARK · not live</span>}
+        </div>
+        {s.note && <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.5 }}>{s.note}</div>}
+        <div style={{ marginTop: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          {s.url ? (
+            <>
+              <a href={s.url} target="_blank" rel="noreferrer" style={{ ...openBtn, flex: 1 }}>Open ↗</a>
+              <div id={`qr-${s.key}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                <QRCodeCanvas value={s.url} size={256} level="M" marginSize={2} style={{ width: 76, height: 76 }} />
+                <button style={{ ...ghost, padding: '2px 8px', fontSize: 11 }} onClick={() => downloadQR(`qr-${s.key}`, `${s.key}-${activeSlug}.png`)}>QR ↓</button>
+              </div>
+            </>
+          ) : (
+            <span style={{ fontSize: 12, color: '#9ca3af', fontStyle: 'italic' }}>Link unavailable</span>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  const gridStyle: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 14, marginBottom: 8 }
+  const sectionHead: React.CSSProperties = { fontSize: 13, fontWeight: 700, color: '#0a3320', margin: '22px 0 10px', textTransform: 'uppercase', letterSpacing: '0.04em' }
+
   return (
     <div style={{ padding: '28px 24px', fontFamily: "'DM Sans', sans-serif", maxWidth: 1000, margin: '0 auto' }}>
       <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#6b7280', marginBottom: 4 }}>ENROLLMENT</div>
-      <h1 style={{ fontSize: 24, fontWeight: 700, color: '#0a3320', margin: 0 }}>Issue packet to a parent</h1>
+      <h1 style={{ fontSize: 24, fontWeight: 700, color: '#0a3320', margin: 0 }}>Issue admission packet</h1>
       <p style={{ margin: '4px 0 18px', color: '#6b7280', fontSize: 13 }}>
-        Consent → CACFP Enrollment → Income Eligibility, every link & QR pre-scoped to one center. Share the link or the QR — the family never picks a center, and answers carry forward across the packet.
+        The full admission packet — Required forms in order, then the "If applicable" forms — every link & QR pre-scoped to one center. Share the link or the QR; the family never picks a center, and answers carry forward across the packet.
       </p>
 
       {/* Center scope */}
@@ -148,46 +214,57 @@ export default function ParentPacketPage() {
         <div style={{ padding: '32px 24px', textAlign: 'center', color: '#9ca3af', fontSize: 14, background: '#fafafa', borderRadius: 12, border: '1px dashed #e5e7eb' }}>
           {isOrgAdmin ? 'Pick a center above to build the packet.' : 'No center in scope.'}
         </div>
+      ) : slots.length === 0 ? (
+        <div style={{ padding: '32px 24px', textAlign: 'center', color: '#9ca3af', fontSize: 14, background: '#fafafa', borderRadius: 12, border: '1px dashed #e5e7eb' }}>
+          Packet composition not found in the registry (packets.admission).
+        </div>
       ) : (
         <>
           {/* Whole-packet storefront link */}
           {storefrontUrl && (
-            <div style={{ ...card, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+            <div style={{ ...card, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
               <div style={{ flex: 1, minWidth: 220 }}>
                 <div style={{ fontSize: 15, fontWeight: 700, color: '#0a3320' }}>The full packet — one page</div>
-                <div style={{ fontSize: 12, color: '#6b7280' }}>Storefront listing all forms for {activeName}. Best link to text or email a parent.</div>
+                <div style={{ fontSize: 12, color: '#6b7280' }}>Storefront listing every form for {activeName}. Best link to text or email a parent.</div>
               </div>
               <a href={storefrontUrl} target="_blank" rel="noreferrer" style={openBtn}>Open packet ↗</a>
               <button style={ghost} onClick={() => navigator.clipboard?.writeText(storefrontUrl)}>Copy link</button>
             </div>
           )}
 
-          {/* Per-form cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 14, marginBottom: 24 }}>
-            {packetLinks.map((p, i) => (
-              <div key={p.key} style={{ ...card, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ width: 22, height: 22, borderRadius: '50%', background: '#0f4c35', color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</span>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: '#0a3320' }}>{p.label}</span>
-                  {!p.live && <span title="Registered but not flipped live yet" style={{ fontSize: 10, fontWeight: 700, color: '#92400e', background: '#fef3c7', padding: '2px 7px', borderRadius: 6 }}>DARK · not live</span>}
-                </div>
-                <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.5 }}>{p.note}</div>
-                <div style={{ marginTop: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-                  {p.url ? (
-                    <>
-                      <a href={p.url} target="_blank" rel="noreferrer" style={{ ...openBtn, flex: 1 }}>Open ↗</a>
-                      <div id={`qr-${p.key}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                        <QRCodeCanvas value={p.url} size={256} level="M" marginSize={2} style={{ width: 76, height: 76 }} />
-                        <button style={{ ...ghost, padding: '2px 8px', fontSize: 11 }} onClick={() => downloadQR(`qr-${p.key}`, `${p.key}-${activeSlug}.png`)}>QR ↓</button>
-                      </div>
-                    </>
-                  ) : (
-                    <span style={{ fontSize: 12, color: '#9ca3af', fontStyle: 'italic' }}>Link unavailable</span>
-                  )}
+          {/* Required */}
+          <div style={sectionHead}>Required</div>
+          <div style={gridStyle}>
+            {mandatory.map((s, i) => <SlotCard key={s.key} s={s} num={i + 1} />)}
+          </div>
+
+          {/* If applicable — grouped by the ONE condition map (registry `conditions`) */}
+          <div style={sectionHead}>If applicable</div>
+          {condOrder.map(cid => {
+            const group = conditional.filter(s => s.condition === cid)
+            if (!group.length) return null
+            return (
+              <div key={cid} style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', margin: '4px 0 8px' }}>{conditions[cid]?.title ?? cid}</div>
+                <div style={gridStyle}>
+                  {group.map(s => <SlotCard key={s.key} s={s} num={null} />)}
                 </div>
               </div>
-            ))}
-          </div>
+            )
+          })}
+
+          {/* Director-issued (dark, in person) */}
+          {directorLines.length > 0 && (
+            <div style={{ ...card, background: '#fbf7ec', border: '1px solid #e7dcc0', marginTop: 6, marginBottom: 24 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#6a5320', marginBottom: 6 }}>Issued by the director in person (not on the parent link)</div>
+              {directorLines.map(s => (
+                <div key={s.key} style={{ fontSize: 12, color: '#7a6533', lineHeight: 1.6 }}>
+                  • <strong>{s.label}</strong>{s.note ? ` — ${s.note}` : ''}
+                  {!s.live && <span style={{ fontSize: 10, fontWeight: 700, color: '#92400e', background: '#fef3c7', padding: '1px 6px', borderRadius: 6, marginLeft: 6 }}>dark</span>}
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* QR-pack — one QR per center */}
           <div style={{ ...card }}>

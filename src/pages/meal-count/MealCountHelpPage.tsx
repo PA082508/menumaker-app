@@ -8,7 +8,17 @@ const C = {
   greenLight:'#f0f7f4', amber:'#92400e', amberLight:'#fef3c7',
   red:'#991b1b', redLight:'#fef2f2',
 }
-type S = 'overview'|'teacher'|'cook'|'director'|'rules'
+type S = 'overview'|'teacher'|'cook'|'director'|'rules'|'offline'
+
+// Add-to-Home-Screen — installs the app so it opens full-screen and works with
+// no WiFi (the shell is precached; meal marks queue on-device until sync).
+const INSTALL_STEPS = [
+  {icon:'📲', title:'On iPad / iPhone (Safari)', desc:'Open this app in Safari. Tap the Share button (□ with ↑), scroll down, and tap "Add to Home Screen". Confirm — an app icon appears on your Home Screen. Always open the app from that icon.'},
+  {icon:'🤖', title:'On Android (Chrome)', desc:'Open the app in Chrome, tap the ⋮ menu, then "Add to Home screen" / "Install app". Confirm to place the icon.'},
+  {icon:'📶', title:'When the WiFi is down', desc:'Keep marking meals exactly as usual. Each check is saved on the device immediately. A yellow "N marks waiting" badge shows how many are not yet sent, and waiting checks have a yellow ◷ outline.'},
+  {icon:'✅', title:'When the WiFi comes back', desc:'The app sends the waiting marks automatically — the badge drops to 0 and the ◷ outline clears. You do not need to re-enter anything. If it ever shows a red "retry" badge, tap it.'},
+  {icon:'🔒', title:'Point-of-service time is preserved', desc:'For CACFP, each mark records the time you actually checked it on the device — not the time it later syncs. Marking during an outage stays compliant.'},
+]
 
 const TEACHER_STEPS = [
   {icon:'1️⃣', title:'Select Your Center and Classroom', desc:'At the top of the screen, make sure your center (Wickliffe, Parma Heights, or Mayfield Hills) is selected. Then choose your classroom tab.'},
@@ -58,11 +68,11 @@ export default function MealCountHelpPage() {
 
   // Tabs visible per role (null = show all)
   const ROLE_TABS: Record<string, S[]> = {
-    teacher:  ['teacher', 'rules'],
-    cook:     ['cook', 'rules'],
-    director: ['director', 'rules'],
+    teacher:  ['teacher', 'offline', 'rules'],
+    cook:     ['cook', 'offline', 'rules'],
+    director: ['director', 'offline', 'rules'],
   }
-  const visibleTabs = role && ROLE_TABS[role] ? ROLE_TABS[role] : ['overview','teacher','cook','director','rules'] as S[]
+  const visibleTabs = role && ROLE_TABS[role] ? ROLE_TABS[role] : ['overview','teacher','cook','director','offline','rules'] as S[]
 
   const [s, setS] = useState<S>(role && ROLE_TABS[role] ? ROLE_TABS[role][0] : 'overview')
 
@@ -115,6 +125,7 @@ export default function MealCountHelpPage() {
         {visibleTabs.includes('teacher') && nb('teacher','👩‍🏫 For Teachers')}
         {visibleTabs.includes('cook') && nb('cook','👨‍🍳 For Cooks')}
         {visibleTabs.includes('director') && nb('director','📊 For Directors')}
+        {visibleTabs.includes('offline') && nb('offline','📶 Install & Offline')}
         {visibleTabs.includes('rules') && nb('rules','⚖️ CACFP Rules')}
       </div>
 
@@ -178,6 +189,20 @@ export default function MealCountHelpPage() {
             <div style={{ fontSize:26, fontWeight:800, color:C.text, marginBottom:6 }}>📊 Director Instructions</div>
             <div style={{ fontSize:15, color:C.muted, marginBottom:24 }}>Review counts and prepare CACFP site claim reports.</div>
             {DIRECTOR_STEPS.map(sc)}
+          </div>
+        )}
+
+        {s === 'offline' && (
+          <div>
+            <div style={{ fontSize:26, fontWeight:800, color:C.text, marginBottom:6 }}>📶 Install & Work Offline</div>
+            <div style={{ fontSize:15, color:C.muted, marginBottom:24 }}>Add the app to your Home Screen so it opens full-screen and keeps working when the internet is down.</div>
+            {INSTALL_STEPS.map(sc)}
+            <div style={{ background:C.greenLight, border:`1.5px solid #d1fae5`, borderRadius:12, padding:'14px 18px', marginTop:8 }}>
+              <div style={{ fontWeight:700, fontSize:14, color:C.green, marginBottom:4 }}>💡 Nothing to remember</div>
+              <div style={{ fontSize:13, color:C.green, lineHeight:1.6 }}>
+                There is no "offline mode" to turn on. Just keep marking — the app handles the rest. Marks are safe on the device even if you close the app or restart the iPad before it syncs.
+              </div>
+            </div>
           </div>
         )}
 

@@ -17,6 +17,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useOrg } from "@/contexts/OrgContext";
 import { format, startOfWeek, addDays, isWeekend } from "date-fns";
 import { displayChildName } from "@/lib/childName";
+import { enqueueMark, cellKey } from "@/lib/mealMarkQueue";
+import { useMealMarkQueue } from "@/hooks/useMealMarkQueue";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -168,7 +170,6 @@ export default function MealCountPage({ portalRoles }: { portalRoles?: string[] 
   const [records, setRecords] = useState<Record<string, WeekRecord>>({});
   const [holidays, setHolidays] = useState<Record<string, { type: string; close_time: string | null }>>({});
   const [slotStart, setSlotStart] = useState<Record<string, string>>({});
-  const [pending, setPending] = useState<Map<string, boolean>>(new Map());
   const [weekStart, setWeekStart] = useState<Date>(() => {
     const today = new Date();
     const dow = today.getDay();
@@ -178,7 +179,10 @@ export default function MealCountPage({ portalRoles }: { portalRoles?: string[] 
     return mon;
   });
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+
+  // Offline meal-count queue — badge count, error state, and per-cell "queued"
+  // (unsynced) styling. Marks tapped without a network survive here until sync.
+  const { pendingCount, hasError, isCellPending, syncNow } = useMealMarkQueue();
 
   const isStaff = selectedClassName.toLowerCase().includes("staff");
 
@@ -303,54 +307,56 @@ export default function MealCountPage({ portalRoles }: { portalRoles?: string[] 
   }, [selectedClassId, weekStart, classrooms]);
 
   // ─── Toggle checkbox ──────────────────────────────────────────────────────
+  // Every tap is optimistic + durably queued (IndexedDB). The queue drains to
+  // menumaker.sync_meal_marks when online — so this one path works identically
+  // whether there's WiFi or not, and a flaky/failed request never loses a mark
+  // (it stays queued with the badge, unlike the old revert-on-error). The mark
+  // carries marked_at = now = the CACFP point-of-service time.
   const toggle = useCallback(async (child: Child, day: DayKey, slot: SlotKey) => {
     const col = colName(day, slot);
     const existing = records[child.child_name];
     const current = existing ? (existing[col] as number) : 0;
-    const next = current ? 0 : 1;
+    const next: 0 | 1 = current ? 0 : 1;
 
+    // Optimistic UI (preserve any existing id so director approve/re-sync work).
     setRecords((prev) => ({
       ...prev,
       [child.child_name]: { ...(prev[child.child_name] ?? { child_name: child.child_name }), [col]: next },
     }));
-    const key = `${child.child_name}_${col}`;
-    setPending((p) => new Map(p).set(key, true));
-    setSaving(true);
 
     try {
-      const mon = format(weekStart, "yyyy-MM-dd");
-      if (existing?.id) {
-        await supabase.schema("menumaker").from("meal_week_records")
-          .update({ [col]: next, updated_at: new Date().toISOString() }).eq("id", existing.id);
-      } else {
-        const { data: ins } = await supabase.schema("menumaker").from("meal_week_records")
-          .upsert({
-            classroom: selectedClassName, classroom_id: selectedClassId,
-            center_id: child.center_id, roster_id: child.roster_id,
-            child_name: child.child_name, monday_date: mon,
-            status: "open", source: "app", [col]: next,
-          }, { onConflict: "classroom_id,child_name,monday_date" })
-          .select().single();
-        if (ins) setRecords((prev) => ({ ...prev, [child.child_name]: ins as WeekRecord }));
-      }
+      await enqueueMark({
+        center_id: child.center_id,
+        classroom_id: selectedClassId,
+        classroom: selectedClassName,
+        roster_id: child.roster_id,
+        child_name: child.child_name,
+        monday_date: format(weekStart, "yyyy-MM-dd"),
+        day, slot, col, value: next,
+      });
     } catch {
+      // Only reached if IndexedDB itself is unavailable — revert so we never
+      // imply a saved state we couldn't persist.
       setRecords((prev) => ({ ...prev, [child.child_name]: { ...(prev[child.child_name] ?? {}), [col]: current } }));
-    } finally {
-      setPending((p) => { const n = new Map(p); n.delete(key); return n; });
-      setSaving(false);
     }
   }, [records, selectedClassId, selectedClassName, weekStart]);
+
+  // Is this grid cell still awaiting sync? (drives the "queued" styling.)
+  const mondayStr = format(weekStart, "yyyy-MM-dd");
+  const isQueued = useCallback(
+    (childName: string, col: string) => isCellPending(cellKey(selectedClassId, childName, mondayStr, col)),
+    [isCellPending, selectedClassId, mondayStr],
+  );
 
   // ─── Director: approve week ───────────────────────────────────────────────
   const approveWeek = useCallback(async (initials: string, scanFile: File | null) => {
     const mon = format(weekStart, "yyyy-MM-dd");
     const now = new Date().toISOString();
-    const ids = Object.values(records).map((r) => r.id).filter(Boolean);
-    if (ids.length) {
-      await supabase.schema("menumaker").from("meal_week_records")
-        .update({ status: "director_approved", director_initials: initials, director_signed_at: now })
-        .in("id", ids);
-    }
+    // Approve the whole week by (classroom, monday) rather than by collected
+    // ids: rows created from offline-queued marks don't carry a local id yet.
+    await supabase.schema("menumaker").from("meal_week_records")
+      .update({ status: "director_approved", director_initials: initials, director_signed_at: now })
+      .eq("classroom_id", selectedClassId).eq("monday_date", mon);
     if (scanFile) {
       const path = `${selectedClassId}/${mon}/${scanFile.name}`;
       await supabase.storage.from("attendance-scans").upload(path, scanFile, { upsert: true });
@@ -511,7 +517,18 @@ export default function MealCountPage({ portalRoles }: { portalRoles?: string[] 
               </span>
             )}
           </div>
-          {saving && <span className="mc-saving-dot" />}
+          {pendingCount > 0 && (
+            <button
+              type="button"
+              className={`mc-queue-badge ${hasError ? "err" : ""}`}
+              onClick={syncNow}
+              title={hasError
+                ? "Sync failed — tap to retry. Marks are safe on this device."
+                : "Waiting to send. Marks are saved on this device and sync automatically."}>
+              <span className="mc-queue-icon">{hasError ? "⚠" : "◷"}</span>
+              {pendingCount} {pendingCount === 1 ? "mark" : "marks"} waiting{hasError ? " · retry" : ""}
+            </button>
+          )}
           {isApproved && <span className="mc-approved-badge">✓ Approved</span>}
         </div>
         {availableModes.length > 1 && (
@@ -557,21 +574,21 @@ export default function MealCountPage({ portalRoles }: { portalRoles?: string[] 
             selectedDay={selectedDay} setSelectedDay={setSelectedDay}
             todayDayKey={todayDayKey} dayBlocked={dayBlocked} slotBlocked={slotBlocked} blockLabel={blockLabel}
             toggle={toggle} checkedCount={checkedCount}
-            milkForSlot={milkForSlot} pending={pending}
+            milkForSlot={milkForSlot} isQueued={isQueued}
             isStaff={isStaff} dayTotals={dayTotals}
           />
         ) : mode === "director" ? (
           <DirectorMode
             roster={roster} records={records} activeSlots={activeSlots}
             dayBlocked={dayBlocked} slotBlocked={slotBlocked} blockLabel={blockLabel} toggle={toggle} milkForSlot={milkForSlot}
-            weekStart={weekStart} pending={pending} isStaff={isStaff} dayTotals={dayTotals}
+            weekStart={weekStart} isQueued={isQueued} isStaff={isStaff} dayTotals={dayTotals}
             isApproved={isApproved} onApprove={approveWeek} showApprove={showApprove}
           />
         ) : (
           <WeekMode
             roster={roster} records={records} activeSlots={activeSlots}
             dayBlocked={dayBlocked} slotBlocked={slotBlocked} blockLabel={blockLabel} toggle={toggle} milkForSlot={milkForSlot}
-            weekStart={weekStart} pending={pending} isStaff={isStaff} dayTotals={dayTotals}
+            weekStart={weekStart} isQueued={isQueued} isStaff={isStaff} dayTotals={dayTotals}
           />
         )}
       <style>{styles}</style>
@@ -591,7 +608,8 @@ interface GridProps {
   toggle: (c: Child, d: DayKey, s: SlotKey) => void;
   milkForSlot: (s: SlotKey, d: DayKey) => { buckets: MilkBucket[]; totalCups: number } | null;
   weekStart: Date;
-  pending: Map<string, boolean>;
+  /** True when this cell is queued offline (unsynced). Drives "queued" styling. */
+  isQueued: (childName: string, col: string) => boolean;
   isStaff: boolean;
   dayTotals: (d: DayKey) => { total: number; reimbursable: number };
   readOnly?: boolean;
@@ -601,7 +619,7 @@ interface GridProps {
 
 function CurrentMode({ roster, records, activeSlots, selectedSlot, setSelectedSlot,
   selectedDay, setSelectedDay, todayDayKey, dayBlocked, slotBlocked, blockLabel, toggle, checkedCount,
-  milkForSlot, pending, isStaff, dayTotals }: {
+  milkForSlot, isQueued, isStaff, dayTotals }: {
     roster: Child[]; records: Record<string, WeekRecord>; activeSlots: SlotKey[];
     selectedSlot: SlotKey; setSelectedSlot: (s: SlotKey) => void;
     selectedDay: DayKey; setSelectedDay: (d: DayKey) => void; todayDayKey: DayKey;
@@ -610,7 +628,7 @@ function CurrentMode({ roster, records, activeSlots, selectedSlot, setSelectedSl
     toggle: (c: Child, d: DayKey, s: SlotKey) => void;
     checkedCount: (d: DayKey, s: SlotKey) => number;
     milkForSlot: (s: SlotKey, d: DayKey) => { buckets: MilkBucket[]; totalCups: number } | null;
-    pending: Map<string, boolean>; isStaff: boolean;
+    isQueued: (childName: string, col: string) => boolean; isStaff: boolean;
     dayTotals: (d: DayKey) => { total: number; reimbursable: number };
   }) {
   const day = selectedDay;
@@ -659,12 +677,13 @@ function CurrentMode({ roster, records, activeSlots, selectedSlot, setSelectedSl
             {roster.map((child) => {
               const col = colName(day, selectedSlot);
               const checked = records[child.child_name]?.[col] === 1;
-              const isPend = pending.has(`${child.child_name}_${col}`);
+              const queued = isQueued(child.child_name, col);
               return (
                 <button key={child.roster_id}
-                  className={`mc-check-row ${checked ? "checked" : ""} ${isPend ? "pending" : ""}`}
+                  className={`mc-check-row ${checked ? "checked" : ""} ${queued ? "queued" : ""}`}
                   onClick={() => toggle(child, day, selectedSlot)}>
                   <span className="mc-checkbox">{checked ? "✓" : ""}</span>
+                  {queued && <span className="mc-queue-flag" title="Waiting to send">◷</span>}
                   <span className="mc-child-name">{displayName(child)}</span>
                   {child.allergies && <span className="mc-sub-badge" title={child.allergies}>⚠ {child.allergies}</span>}
                   {child.milk_label && <span className="mc-milk-tag">{child.milk_label}</span>}
@@ -697,7 +716,7 @@ function CurrentMode({ roster, records, activeSlots, selectedSlot, setSelectedSl
 // ─── Shared Week Grid ────────────────────────────────────────────────────────
 
 function WeekGrid({ roster, records, activeSlots, dayBlocked, slotBlocked, blockLabel, toggle, milkForSlot,
-  weekStart, pending, isStaff, dayTotals, readOnly }: GridProps) {
+  weekStart, isQueued, isStaff, dayTotals, readOnly }: GridProps) {
   const nSlots = activeSlots.length;
   return (
     <div className="mc-week-scroll">
@@ -741,13 +760,14 @@ function WeekGrid({ roster, records, activeSlots, dayBlocked, slotBlocked, block
                   const blocked = slotBlocked(day, slot);
                   const col = colName(day, slot);
                   const checked = records[child.child_name]?.[col] === 1;
-                  const isPend = pending.has(`${child.child_name}_${col}`);
+                  const queued = isQueued(child.child_name, col);
                   return (
                     <td key={`${day}_${slot}`} title={blocked ? blockLabel(day, slot) ?? "Closed" : undefined}
                       className={`mc-td-cell ${blocked ? "blocked" : ""} ${slot === activeSlots[0] ? "mc-td-day-start" : ""}`}>
                       {blocked ? <span className="mc-hol">—</span> : (
-                        <button className={`mc-cell-btn ${checked ? "checked" : ""} ${isPend ? "pending" : ""}`}
+                        <button className={`mc-cell-btn ${checked ? "checked" : ""} ${queued ? "queued" : ""}`}
                           onClick={() => !readOnly && toggle(child, day, slot)}
+                          title={queued ? "Waiting to send" : undefined}
                           style={readOnly ? { cursor: "default" } : {}}>
                           {checked ? "✓" : ""}
                         </button>
@@ -914,6 +934,16 @@ const styles = `
 .mc-saving-dot { width:8px; height:8px; border-radius:50%; background:#7ee8b0; animation:mc-pulse 1s ease-in-out infinite; }
 @keyframes mc-pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
 .mc-approved-badge { font-size:.8rem; background:#7ee8b0; color:#0a3320; padding:.2rem .6rem; border-radius:12px; font-weight:700; }
+/* Offline queue badge — "N marks waiting". Amber = queued, red-ish = sync error. */
+.mc-queue-badge { display:inline-flex; align-items:center; gap:.35rem; font-size:.8rem; font-weight:700; background:#f0a020; color:#3a2600; padding:.25rem .7rem; border-radius:12px; border:none; cursor:pointer; font-family:inherit; }
+.mc-queue-badge .mc-queue-icon { font-size:.85rem; }
+.mc-queue-badge.err { background:#e05a4a; color:#fff; animation:mc-pulse 1.4s ease-in-out infinite; }
+/* Per-cell "queued" state — distinct from the solid-green SYNCED check. */
+.mc-check-row.queued { border-color:#f0a020; background:#fff8ec; }
+.mc-check-row.queued.checked { background:#eef7ee; }
+.mc-queue-flag { color:#c07800; font-size:1rem; font-weight:700; margin-left:-.4rem; }
+.mc-cell-btn.queued { box-shadow:0 0 0 2px #f0a020 inset; }
+.mc-cell-btn.checked.queued { box-shadow:0 0 0 2px #c07800 inset; }
 .mc-mode-toggle { display:flex; background:rgba(255,255,255,.15); border-radius:8px; overflow:hidden; }
 .mc-mode-toggle button { padding:.4rem .85rem; font-size:.8rem; font-weight:600; color:rgba(255,255,255,.7); background:transparent; border:none; cursor:pointer; transition:all .15s; }
 .mc-mode-toggle button.active { background:#7ee8b0; color:#0a3320; }

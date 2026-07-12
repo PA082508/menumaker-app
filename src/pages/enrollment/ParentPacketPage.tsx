@@ -68,7 +68,6 @@ type ResolvedSlot = Slot & { label: string; note: string; url: string | null; li
 export default function ParentPacketPage() {
   const { currentCenter, centers, isOrgAdmin } = useOrg()
   const [reg, setReg] = useState<Registry | null>(null)
-  const [pickCenter, setPickCenter] = useState<string>('')  // admin org-view choice (slug)
 
   useEffect(() => {
     let cancelled = false
@@ -79,11 +78,9 @@ export default function ParentPacketPage() {
     return () => { cancelled = true }
   }, [])
 
-  // Active center: the director's own center, else the admin's picked slug.
-  const activeSlug = currentCenter?.slug ?? (pickCenter || null)
-  const activeName = currentCenter?.name
-    ?? centers.find(c => c.slug === pickCenter)?.name
-    ?? null
+  // Active center = the header switcher's current center (single source; no local picker).
+  const activeSlug = currentCenter?.slug ?? null
+  const activeName = currentCenter?.name ?? null
 
   // Full ordered packet, resolved to live URLs + center scope. A conditional slot's
   // group + director-line status derive from forms[key].condition + the ONE conditions map.
@@ -150,8 +147,12 @@ export default function ParentPacketPage() {
   }
 
   const card: React.CSSProperties = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '16px 18px' }
+  // Library palette: exactly ONE solid fill per screen (the "Open packet ↗" CTA). Everything
+  // else is a ghost link/button; status badges are muted; form names are the scan target.
   const openBtn: React.CSSProperties = { padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, background: GREEN, color: '#fff', textDecoration: 'none', textAlign: 'center', fontFamily: 'inherit', display: 'inline-block' }
   const ghost: React.CSSProperties = { padding: '8px 14px', borderRadius: 8, fontSize: 13, background: '#f0f7f4', color: '#1a5c3f', border: '1px solid #d1fae5', cursor: 'pointer', fontFamily: 'inherit' }
+  const openGhost: React.CSSProperties = { flex: 1, padding: '8px 12px', borderRadius: 8, fontSize: 13, fontWeight: 600, background: '#f0f7f4', color: '#1a5c3f', border: '1px solid #d1fae5', textDecoration: 'none', textAlign: 'center', fontFamily: 'inherit', display: 'inline-block' }
+  const mutedBadge: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: '#6b7280', background: '#f3f4f6', padding: '2px 8px', borderRadius: 20 }
 
   // One resolved-slot card. `num` = 1-based position for Required; null hides the bubble.
   function SlotCard({ s, num }: { s: ResolvedSlot; num: number | null }) {
@@ -161,17 +162,19 @@ export default function ParentPacketPage() {
           {num != null && (
             <span style={{ width: 22, height: 22, borderRadius: '50%', background: GREEN, color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' }}>{num}</span>
           )}
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#0a3320' }}>{s.label}</span>
-          {!s.live && <span title="Registered but not flipped live yet" style={{ fontSize: 10, fontWeight: 700, color: '#92400e', background: '#fef3c7', padding: '2px 7px', borderRadius: 6 }}>DARK · not live</span>}
+          {/* Form name = scan target → larger. */}
+          <span style={{ fontSize: 16, fontWeight: 700, color: '#0a3320', lineHeight: 1.25 }}>{s.label}</span>
+          {!s.live && <span title="Registered but not flipped live yet" style={mutedBadge}>dark</span>}
         </div>
         {s.note && <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.5 }}>{s.note}</div>}
-        <div style={{ marginTop: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ marginTop: 'auto', display: 'flex', gap: 10, alignItems: 'center' }}>
           {s.url ? (
             <>
-              <a href={s.url} target="_blank" rel="noreferrer" style={{ ...openBtn, flex: 1 }}>Open ↗</a>
-              <div id={`qr-${s.key}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                <QRCodeCanvas value={s.url} size={256} level="M" marginSize={2} style={{ width: 76, height: 76 }} />
-                <button style={{ ...ghost, padding: '2px 8px', fontSize: 11 }} onClick={() => downloadQR(`qr-${s.key}`, `${s.key}-${activeSlug}.png`)}>QR ↓</button>
+              <a href={s.url} target="_blank" rel="noreferrer" style={openGhost}>Open ↗</a>
+              {/* Compact QR icon — click to download the 256-res PNG. */}
+              <div id={`qr-${s.key}`} title="Download QR" onClick={() => downloadQR(`qr-${s.key}`, `${s.key}-${activeSlug}.png`)}
+                style={{ flex: '0 0 auto', cursor: 'pointer', lineHeight: 0, border: '1px solid #e5e7eb', borderRadius: 6, padding: 3 }}>
+                <QRCodeCanvas value={s.url} size={256} level="M" marginSize={0} style={{ width: 36, height: 36, display: 'block' }} />
               </div>
             </>
           ) : (
@@ -193,26 +196,17 @@ export default function ParentPacketPage() {
         The full admission packet — Required forms in order, then the "If applicable" forms — every link & QR pre-scoped to one center. Share the link or the QR; the family never picks a center, and answers carry forward across the packet.
       </p>
 
-      {/* Center scope */}
-      {currentCenter ? (
+      {/* Center scope — a single source: the header center switcher (no local picker). */}
+      {currentCenter && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: '10px 14px', marginBottom: 18, fontSize: 13, color: '#166534' }}>
           <span style={{ fontWeight: 700 }}>📍 {currentCenter.name}</span>
           <span style={{ color: '#15803d' }}>— this packet is scoped to your center (<code style={{ background: '#dcfce7', padding: '1px 5px', borderRadius: 4 }}>?center={currentCenter.slug}</code>).</span>
-        </div>
-      ) : (
-        <div style={{ marginBottom: 18 }}>
-          <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Choose a center to scope the packet</label>
-          <select value={pickCenter} onChange={e => setPickCenter(e.target.value)}
-            style={{ padding: '8px 12px', border: '1.5px solid #e5e7eb', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }}>
-            <option value="">Select…</option>
-            {centers.map(c => <option key={c.id} value={c.slug}>{c.name}</option>)}
-          </select>
         </div>
       )}
 
       {!activeSlug ? (
         <div style={{ padding: '32px 24px', textAlign: 'center', color: '#9ca3af', fontSize: 14, background: '#fafafa', borderRadius: 12, border: '1px dashed #e5e7eb' }}>
-          {isOrgAdmin ? 'Pick a center above to build the packet.' : 'No center in scope.'}
+          {isOrgAdmin ? 'Pick a center in the switcher at the top to scope the packet.' : 'No center in scope.'}
         </div>
       ) : slots.length === 0 ? (
         <div style={{ padding: '32px 24px', textAlign: 'center', color: '#9ca3af', fontSize: 14, background: '#fafafa', borderRadius: 12, border: '1px dashed #e5e7eb' }}>
@@ -273,7 +267,7 @@ export default function ParentPacketPage() {
                 <div style={{ fontSize: 15, fontWeight: 700, color: '#0a3320' }}>QR pack — all centers</div>
                 <div style={{ fontSize: 12, color: '#6b7280' }}>Print and post at each center. Every code opens that center's packet.</div>
               </div>
-              <button style={{ ...openBtn, cursor: 'pointer', border: 'none' }} onClick={printPack}>🖨 Print QR pack</button>
+              <button style={ghost} onClick={printPack}>🖨 Print QR pack</button>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20 }}>
               {qrPack.map(c => (

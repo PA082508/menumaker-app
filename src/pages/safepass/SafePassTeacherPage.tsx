@@ -424,7 +424,7 @@ export default function SafePassTeacherPage() {
         <div style={{ padding: '24px 28px', overflowY: 'auto', borderRight: `1px solid ${C.border}` }}>
           <div style={panelLabel}>Incoming Requests</div>
 
-          {!currentCenter?.id && <div style={{ color: C.muted, fontSize: 13 }}>Select a center to begin.</div>}
+          {!currentCenter?.id && <div style={{ color: C.muted, fontSize: 13 }}>Pick a center in the switcher at the top to begin.</div>}
           {currentCenter?.id && classrooms.length === 0 && <div style={{ color: C.muted, fontSize: 13 }}>No active classrooms for {currentCenter.name}.</div>}
           {classId && queue.length === 0 && (
             <div style={{ background: C.surface, border: `1px dashed ${C.border}`, borderRadius: 16, padding: '28px', textAlign: 'center', color: C.muted, fontSize: 13 }}>

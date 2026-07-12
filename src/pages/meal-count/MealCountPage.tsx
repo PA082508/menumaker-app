@@ -489,7 +489,7 @@ export default function MealCountPage({ portalRoles }: { portalRoles?: string[] 
     URL.revokeObjectURL(url);
   }
 
-  if (!currentCenter?.id) return <div className="mc-loading">Select a center to view meal counts.</div>;
+  if (!currentCenter?.id) return <div className="mc-loading">Pick a center in the switcher at the top to view meal counts.</div>;
   if (!classrooms.length) return <div className="mc-loading">No active classrooms for {currentCenter.name}.</div>;
 
   return (

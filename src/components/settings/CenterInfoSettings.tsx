@@ -157,21 +157,10 @@ export default function CenterInfoSettings() {
     }
   }
 
-  // Title row with inline center selector — shown in every state so the user
-  // can pick a center even from Organization view.
+  // Title row — center is chosen once in the header switcher (single source; no local picker).
   const titleRow = (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '.5rem', flexWrap: 'wrap', marginBottom: 4 }}>
       <div style={{ fontSize: 16, fontWeight: 700, color: '#0a3320' }}>🏢 Center Info</div>
-      {centers.length > 1 && (
-        <select
-          value={currentCenter?.id ?? ''}
-          onChange={e => { const v = e.target.value; setCurrentCenter(v ? (centers.find(c => c.id === v) ?? null) : null) }}
-          style={selStyle}
-        >
-          <option value="">🏢 Organization (all centers)</option>
-          {centers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-      )}
     </div>
   )
 
@@ -181,7 +170,7 @@ export default function CenterInfoSettings() {
     return (
       <div style={outer}>
         {titleRow}
-        <div style={{ padding: '28px 0', textAlign: 'center', color: '#aaa', fontSize: 13 }}>Select a center to edit its info.</div>
+        <div style={{ padding: '28px 0', textAlign: 'center', color: '#aaa', fontSize: 13 }}>Pick a center in the switcher at the top to edit its info.</div>
       </div>
     )
   }

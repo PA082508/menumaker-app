@@ -38,7 +38,7 @@ export interface RegistryForm {
 let _registry: Record<string, RegistryForm> | null = null
 export async function loadFormsRegistry(): Promise<Record<string, RegistryForm>> {
   if (_registry) return _registry
-  const res = await fetch('/enroll-registry.json', { cache: 'no-cache' })
+  const res = await fetch('/enroll-registry.json?t=' + Date.now(), { cache: 'no-store' })
   if (!res.ok) throw new Error(`registry ${res.status}`)
   const json = await res.json()
   _registry = (json?.forms ?? {}) as Record<string, RegistryForm>

@@ -127,7 +127,7 @@ export default function ChildSettingsPage({
     let cancelled = false
     ;(async () => {
       try {
-        const r = await fetch('/enroll-registry.json', { cache: 'no-cache' })
+        const r = await fetch('/enroll-registry.json?t=' + Date.now(), { cache: 'no-store' })
         const j = await r.json(); const iea = j?.forms?.iea
         if (!cancelled) setFiscalYear(parseIeaFiscalYear(iea?.versions?.[iea?.current] ?? iea?.fallbackUrl))
       } catch { if (!cancelled) setFiscalYear(null) }

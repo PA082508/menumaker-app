@@ -110,7 +110,7 @@ export default function EnrollmentInboxPage() {
     let cancelled = false
     ;(async () => {
       try {
-        const r = await fetch('/enroll-registry.json', { cache: 'no-cache' })
+        const r = await fetch('/enroll-registry.json?t=' + Date.now(), { cache: 'no-store' })
         if (!r.ok) return
         const reg = await r.json()
         const centersMap = (reg?.centers ?? {}) as Record<string, { center_id?: string }>

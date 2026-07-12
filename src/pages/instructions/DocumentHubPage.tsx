@@ -286,7 +286,7 @@ export default function DocumentHubPage() {
   const [count, setCount] = useState<number | null>(null)
   const [scenario, setScenario] = useState('enroll_full')
 
-  useEffect(() => { fetch('/enroll-registry.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).then(setReg).catch(() => {}) }, [])
+  useEffect(() => { fetch('/enroll-registry.json?t=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(setReg).catch(() => {}) }, [])
   useEffect(() => {
     if (!org?.id) return
     supabase.schema('menumaker').from('byod_signatures').select('id', { count: 'exact', head: true }).eq('org_id', org.id).then(({ count: c }) => setCount(c))

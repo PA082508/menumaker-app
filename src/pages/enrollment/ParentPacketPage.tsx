@@ -71,7 +71,7 @@ export default function ParentPacketPage() {
 
   useEffect(() => {
     let cancelled = false
-    fetch('/enroll-registry.json', { cache: 'no-cache' })
+    fetch('/enroll-registry.json?t=' + Date.now(), { cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
       .then(j => { if (!cancelled) setReg(j) })
       .catch(() => {})

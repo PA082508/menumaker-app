@@ -188,7 +188,7 @@ export default function EnrollmentReviewModal({
     let cancelled = false
     ;(async () => {
       try {
-        const r = await fetch('/enroll-registry.json', { cache: 'no-cache' })
+        const r = await fetch('/enroll-registry.json?t=' + Date.now(), { cache: 'no-store' })
         const j = await r.json()
         const iea = j?.forms?.iea
         const url = iea?.versions?.[iea?.current] ?? iea?.fallbackUrl

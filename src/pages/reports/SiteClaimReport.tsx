@@ -74,7 +74,7 @@ export default function SiteClaimReport() {
     (async()=>{
       let fy:string|null=null;
       try{
-        const r=await fetch("/enroll-registry.json",{cache:"no-cache"});
+        const r=await fetch("/enroll-registry.json?t=" + Date.now(), { cache: "no-store" });
         const j=await r.json(); const iea=j?.forms?.iea;
         fy=parseIeaFiscalYear(iea?.versions?.[iea?.current]??iea?.fallbackUrl);
       }catch{ fy=null; }

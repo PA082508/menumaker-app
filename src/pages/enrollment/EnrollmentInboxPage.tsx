@@ -6,6 +6,7 @@
 // roster yet — diff-view + Approve/Reject land in Slice B/C.
 
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
 import { useAuth } from '@/hooks/useAuth'
@@ -179,13 +180,23 @@ export default function EnrollmentInboxPage() {
     }
   }
 
+  // IA v2 — this page is hidden; reached only via a button on Children/Staff. `from`
+  // drives the "← Back" breadcrumb AND scopes the list (children vs staff submissions).
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const from = searchParams.get('from')  // 'children' | 'staff' | null
+
   // Live validation per row (Phase 1 computes client-side; no trigger yet).
   const graded = useMemo(
-    () => rows.map(r => ({
-      row: r,
-      v: validateSubmission(r.submission_type, r.form_data, { signatureDate: r.signature_date, source: r.source }),
-    })),
-    [rows],
+    () => rows
+      .filter(r => from === 'staff' ? r.submission_type === 'staff'
+                 : from === 'children' ? r.submission_type !== 'staff'
+                 : true)
+      .map(r => ({
+        row: r,
+        v: validateSubmission(r.submission_type, r.form_data, { signatureDate: r.signature_date, source: r.source }),
+      })),
+    [rows, from],
   )
 
   // search-v2: filter the pending list by child name (scoreMatch), ranked when set.
@@ -212,6 +223,16 @@ export default function EnrollmentInboxPage() {
 
   return (
     <div style={{ padding: '28px 32px', fontFamily: "'DM Sans', sans-serif", maxWidth: 980 }}>
+      {/* Entered by a button → leave by a button. Never rely on the browser back arrow. */}
+      {from && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fbf3dc', border: '1px solid #e7dcc0', borderRadius: 10, padding: '8px 12px', marginBottom: 14, fontSize: 13, color: '#6a5320' }}>
+          <button onClick={() => navigate(from === 'staff' ? '/staff' : '/children')}
+            style={{ background: '#fff', border: '1px solid #e7dcc0', borderRadius: 8, padding: '5px 11px', color: '#1a5c3f', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>
+            ← Back to {from === 'staff' ? 'Staff' : 'Children'}
+          </button>
+          <span>showing {from === 'staff' ? 'staff' : 'children'} submissions</span>
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
           <h1 style={{ fontSize: 24, fontWeight: 700, color: '#0f4c35', margin: 0 }}>Enrollment Inbox</h1>

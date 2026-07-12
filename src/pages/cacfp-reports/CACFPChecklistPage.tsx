@@ -243,7 +243,7 @@ export default function CACFPChecklistPage() {
   if (!centerId) {
     return (
       <div style={{ padding: 40, fontFamily: "'DM Sans', sans-serif", color: '#888' }}>
-        Select a center to open its CACFP checklist.
+        Pick a center in the switcher at the top to open its CACFP checklist.
       </div>
     )
   }

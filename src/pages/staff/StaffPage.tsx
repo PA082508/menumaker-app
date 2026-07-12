@@ -129,12 +129,6 @@ export default function StaffPage() {
           <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 26, color: '#0a3320', marginBottom: 2 }}>Staff</div>
           <div style={{ fontSize: 12, color: '#888' }}>{currentCenter ? short(currentCenter.name) : 'Organization'} · {staff.length} staff</div>
         </div>
-        {centers.length > 1 && (
-          <select value={currentCenter?.id ?? ''} onChange={e => { const v = e.target.value; setCurrentCenter(v ? (centers.find(c => c.id === v) ?? null) : null) }} style={selStyle}>
-            <option value="">🏢 Organization (all centers)</option>
-            {sortedCenters.map(c => <option key={c.id} value={c.id}>{short(c.name)}</option>)}
-          </select>
-        )}
       </div>
 
       {/* Filters */}

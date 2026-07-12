@@ -146,7 +146,7 @@ export default function EligibilityReconciliationReport() {
     w.print()
   }
 
-  if (!centerId) return <div style={{ padding: 32, color: '#6b7280' }}>Select a center to view its eligibility reconciliation.</div>
+  if (!centerId) return <div style={{ padding: 32, color: '#6b7280' }}>Pick a center in the switcher at the top to view its eligibility reconciliation.</div>
 
   return (
     <div style={{ padding: '28px 26px', fontFamily: "'DM Sans', sans-serif", maxWidth: 1080, margin: '0 auto' }}>

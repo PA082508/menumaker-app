@@ -62,20 +62,6 @@ export default function MilkRatesSettings() {
     <div style={{padding:"1.5rem",maxWidth:560}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:".5rem",flexWrap:"wrap",marginBottom:".4rem"}}>
         <h2 style={{fontSize:"1.1rem",fontWeight:700,color:"#0f4c35",margin:0}}>🥛 Milk Norms by Age</h2>
-        {centers.length > 1 && (
-          <select
-            value={currentCenter?.id ?? ""}
-            onChange={e => { const v = e.target.value; setCurrentCenter(v ? (centers.find(c => c.id === v) ?? null) : null); }}
-            style={{
-              appearance: "none", WebkitAppearance: "none", MozAppearance: "none",
-              background: "#fff url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M1 1l4 4 4-4' fill='none' stroke='%230f4c35' stroke-width='1.5'/></svg>\") no-repeat right 12px center",
-              border: "1.5px solid #0f4c35", borderRadius: 8, padding: "6px 30px 6px 12px",
-              fontSize: 13, fontFamily: "inherit", color: "#0f4c35", fontWeight: 600, cursor: "pointer", outline: "none",
-            }}>
-            <option value="">🏢 Organization (all centers)</option>
-            {centers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        )}
       </div>
       <p style={{fontSize:".85rem",color:"#666",margin:"0 0 1.25rem",lineHeight:1.5}}>
         Controls how much milk is counted per serving. Children under 12 months receive formula and are excluded from milk totals.

@@ -72,10 +72,33 @@ export default function ParentsPage() {
             frp: (kid.frp as string) ?? null,
           })
         }
-        const list = Array.from(byGuardian.values())
-          .filter(f => f.children.length > 0)
-          .sort((a, b) => (a.guardian.last_name ?? '').localeCompare(b.guardian.last_name ?? ''))
-        if (!cancelled) setFamilies(list)
+        const list = Array.from(byGuardian.values()).filter(f => f.children.length > 0)
+
+        // Secondary source (decision 1b): pull parent contacts from enrollment
+        // submissions' form_data so the hub is populated before guardian-population
+        // (Phase 2/4) lands. De-duped against guardian families by email/name.
+        const seen = new Set(list.map(f => (f.guardian.email || `${f.guardian.first_name ?? ''} ${f.guardian.last_name ?? ''}`).toLowerCase().trim()))
+        const { data: subs } = await supabase.schema('menumaker').from('enrollment_submissions')
+          .select('form_data').eq('center_id', centerId).in('status', ['pending', 'approved'])
+        const fromSubs = new Map<string, Family>()
+        for (const s of subs ?? []) {
+          const fd = (s.form_data ?? {}) as Record<string, string>
+          const pname = (fd.parent_name || [fd.parent_first_name, fd.parent_last_name].filter(Boolean).join(' ') || '').trim()
+          const email = (fd.parent_email || '').trim()
+          const key = (email || pname).toLowerCase()
+          if (!key || seen.has(key)) continue
+          const [maybeLast, maybeFirst] = pname.includes(',') ? pname.split(',').map(x => x.trim()) : ['', pname]
+          const fam: Family = fromSubs.get(key) ?? {
+            guardian: { id: 'sub:' + key, first_name: maybeFirst || pname, last_name: maybeLast || null, email: email || null, mobile_phone: fd.phone || fd.phone_day || null, relationship: 'Parent · from enrollment' },
+            children: [],
+          }
+          const cn = (fd.child_name || '').trim()
+          if (cn && !fam.children.some(c => c.name === cn)) fam.children.push({ child_id: 'sub:' + key + ':' + cn, name: cn, room: '—', frp: null })
+          fromSubs.set(key, fam)
+        }
+        const merged = list.concat(Array.from(fromSubs.values()).filter(f => f.children.length > 0))
+          .sort((a, b) => (a.guardian.last_name ?? a.guardian.first_name ?? '').localeCompare(b.guardian.last_name ?? b.guardian.first_name ?? ''))
+        if (!cancelled) setFamilies(merged)
       } catch {
         if (!cancelled) setFamilies([])
       } finally {

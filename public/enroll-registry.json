@@ -312,14 +312,24 @@
       "kind": "document",
       "section": "our_documents",
       "requiringOrg": "Play Academy",
-      "current": "v1",
+      "current": "v2",
       "versions": {
-        "v1": "https://pa082508.github.io/forms/3-library/our-documents/Child%20Release%20Authorization.docx"
+        "v1": "https://pa082508.github.io/forms/3-library/our-documents/Child%20Release%20Authorization.docx",
+        "v2": "https://pa082508.github.io/forms/1-data-sources/Child_Release_Authorization_v2.html"
       },
-      "fallbackUrl": "https://pa082508.github.io/forms/3-library/our-documents/Child%20Release%20Authorization.docx",
+      "fallbackUrl": "https://pa082508.github.io/forms/1-data-sources/Child_Release_Authorization_v2.html",
       "perInstance": false,
-      "history": [],
-      "futureFormKit": true
+      "history": [
+        {
+          "at": "2026-07-12",
+          "note": "Stage 2 (DARK): Child_Release_Authorization_v2.html — pure form-kit kit-form (no overlay); pickup list ×5 + comments + photo/video consent + adoption signature; form-speed DoD full; submission_type=child_release_authorization → children Inbox."
+        },
+        {
+          "at": "2026-07-12",
+          "note": "FLIP: current v1(docx) → v2 after clean dark-smoke 5/5 (Ref 88CCF228). fallbackUrl → v2; futureFormKit cleared (now a live form-kit form)."
+        }
+      ],
+      "futureFormKit": false
     },
     "parent_responsibilities": {
       "slug": "parent_responsibilities",

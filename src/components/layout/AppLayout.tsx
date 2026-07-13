@@ -45,7 +45,8 @@ const SECTIONS: Section[] = [
   {
     id: 'operations', label: 'Operations', icon: 'ti-report',
     items: [
-      { path: '/meal-count',    label: 'Meal Count',     icon: 'ti-circle-check' },
+      { path: '/meal-count',          label: 'Meal Count — Kitchen',  icon: 'ti-circle-check' },
+      { path: '/meal-count-director', label: 'Meal Count — Director', icon: 'ti-clipboard-check' },
       { path: '/safepass/teacher', label: 'SafePass',       icon: 'ti-shield-check' },
       { path: '/kitchen',       label: 'Kitchen View',   icon: 'ti-chef-hat' },
       { path: '/kitchen-report',label: 'Kitchen Report', icon: 'ti-report' },
@@ -142,7 +143,7 @@ const SECTIONS: Section[] = [
 // so a director cannot fire a planner mutation even outside the UI.
 const DIRECTOR_SECTION_IDS = new Set(['dashboard', 'operations', 'planning', 'people', 'documents'])
 const DIRECTOR_PATHS = new Set([
-  '/meal-count',                                     // Operations → Meal Count (director view)
+  '/meal-count-director',                            // Operations → Director door (their own; cook has /meal-count)
   '/menu/current',                                   // Planning → Current Menu ONLY (no /menu planner)
   '/children', '/parents', '/staff',                 // People (Inbox/Issue-Packet reached via buttons)
   '/documents', '/instructions', '/document-hub',    // Documents

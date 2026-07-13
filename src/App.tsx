@@ -152,8 +152,8 @@ export default function App() {
               <Route path="reports"    element={<CACFPReportsPage />} />
               <Route path="finance"    element={<PlaceholderPage title="Finance Export" />} />
               <Route path="submissions" element={<FormSubmissionsPage />} />
-              <Route path="meal-count"  element={<MealCountPage />} />
-              <Route path="meal-count-director" element={<Navigate to="/meal-count" replace />} />
+              <Route path="meal-count"  element={<MealCountPage variant="kitchen" />} />
+              <Route path="meal-count-director" element={<MealCountPage variant="director" />} />
               <Route path="documents"   element={<DocumentsPage />} />
               <Route path="dispatch"    element={<DispatchPage />} />
               <Route path="export"      element={<CustomExportPage />} />

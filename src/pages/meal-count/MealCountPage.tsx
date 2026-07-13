@@ -105,6 +105,25 @@ function modesForRoles(roleSet: Set<string>): Mode[] {
   return ordered.length ? ordered : ["current", "week"];
 }
 
+// ─── Door split (concurrent-user safety) ────────────────────────────────────────
+// Cook and director are concurrent users on different devices; a single screen
+// with a Director tab meant one person's tab blocked the other. The module is now
+// mounted at two routes, each a separate "door":
+//   variant="kitchen"  (/meal-count)          → cook/admin: Current Meal + Week View
+//   variant="director" (/meal-count-director) → director/office_manager/admin: Director
+// The role gate (modesForRoles) still applies; the variant simply intersects it so
+// each door exposes only its own tabs — even admin (who holds every role) sees a
+// clean single-purpose screen per door.
+export type Variant = "kitchen" | "director";
+const VARIANT_MODES: Record<Variant, Mode[]> = {
+  kitchen:  ["current", "week"],
+  director: ["director"],
+};
+const VARIANT_TITLE: Record<Variant, string> = {
+  kitchen:  "Meal Count — Kitchen",
+  director: "Meal Count — Director",
+};
+
 // Default landing tab uses the single most-privileged role.
 function defaultMode(topRole: string | null, available: Mode[]): Mode {
   const pick = (m: Mode): Mode => (available.includes(m) ? m : available[0]);
@@ -142,7 +161,7 @@ interface MilkBucket { label: string; oz: number; }
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function MealCountPage({ portalRoles }: { portalRoles?: string[] } = {}) {
+export default function MealCountPage({ portalRoles, variant }: { portalRoles?: string[]; variant?: Variant } = {}) {
   const { role, roles } = useAuth();
   const { currentCenter, orgRole } = useOrg();
 
@@ -155,11 +174,20 @@ export default function MealCountPage({ portalRoles }: { portalRoles?: string[] 
     return s;
   }, [roles, orgRole, role, portalRoles]);
 
-  const availableModes = useMemo(() => modesForRoles(effectiveRoles), [effectiveRoles]);
+  // Role-unlocked modes, then intersected with this door's allowed modes.
+  const roleModes = useMemo(() => modesForRoles(effectiveRoles), [effectiveRoles]);
+  const availableModes = useMemo(() => {
+    if (!variant) return roleModes;                       // portal / legacy: role-driven
+    const allow = VARIANT_MODES[variant];
+    return roleModes.filter((m) => allow.includes(m));
+  }, [roleModes, variant]);
   const showApprove = effectiveRoles.has("director") || effectiveRoles.has("admin");
 
-  const [mode, setMode] = useState<Mode>("current");
-  useEffect(() => { setMode(defaultMode(role, availableModes)); }, [role, availableModes]);
+  const [mode, setMode] = useState<Mode>(() => availableModes[0] ?? "current");
+  useEffect(() => {
+    if (!availableModes.length) return;                   // no access on this door — leave as-is
+    setMode(defaultMode(role, availableModes));
+  }, [role, availableModes]);
 
   const [classrooms, setClassrooms] = useState<Classroom[]>([]);
   const [selectedClassId, setSelectedClassId] = useState("");
@@ -489,6 +517,14 @@ export default function MealCountPage({ portalRoles }: { portalRoles?: string[] 
     URL.revokeObjectURL(url);
   }
 
+  if (variant && !availableModes.length) return (
+    <div className="mc-loading">
+      This view is for {variant === "director" ? "directors" : "kitchen staff"}.
+      {variant === "director"
+        ? " Kitchen staff enter meals under Meal Count — Kitchen."
+        : " Directors review and approve under Meal Count — Director."}
+    </div>
+  );
   if (!currentCenter?.id) return <div className="mc-loading">Pick a center in the switcher at the top to view meal counts.</div>;
   if (!classrooms.length) return <div className="mc-loading">No active classrooms for {currentCenter.name}.</div>;
 
@@ -496,7 +532,7 @@ export default function MealCountPage({ portalRoles }: { portalRoles?: string[] 
     <div className="mc-page">
       <div className="mc-header">
         <div className="mc-header-left">
-          <h1 className="mc-title">Meal Count</h1>
+          <h1 className="mc-title">{variant ? VARIANT_TITLE[variant] : "Meal Count"}</h1>
           <a href="/meal-count/help" target="_blank"
             style={{ fontSize: 12, color: '#1a5c3f', textDecoration: 'none', fontWeight: 600, padding: '6px 12px', borderRadius: 8, background: '#f0f7f4', border: '1px solid #d1fae5', display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 12 }}>
             ❓ Help

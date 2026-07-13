@@ -27,7 +27,8 @@ export const MODULE_ROUTE: Record<string, string> = {
   purchases:        '/purchases',
   kitchen_stock:    '/kitchen-stock',
   inventory:        '/inventory',
-  meal_count:       '/meal-count',
+  meal_count:          '/meal-count',            // Kitchen door (cook/admin)
+  meal_count_director: '/meal-count-director',   // Director door (director/office_manager/admin)
   documents:        '/documents',
   // People — these codes exist in menumaker.app_modules and MUST be mapped, else
   // the pages are silently ungated by the permission system (and staff_time_log
@@ -52,7 +53,7 @@ export const MODULE_ROUTE: Record<string, string> = {
 export const MODULE_ICON_FALLBACK: Record<string, string> = {
   dashboard: '⊞', menu_planner: '📅', recipes: '🍳', kitchen_view: '👨‍🍳',
   delivery: '🚐', purchases: '🛒', kitchen_stock: '🏪', inventory: '📦',
-  meal_count: '🍽️', documents: '📁', dispatch: '📨', custom_export: '📤',
+  meal_count: '🍽️', meal_count_director: '📋', documents: '📁', dispatch: '📨', custom_export: '📤',
   messages: '📨', site_claim: '📋', cacfp_reports: '📊', receipt_review: '🧾',
   kitchen_report: '👨‍🍳', form_submissions: '📨', finance: '💰', settings: '⚙️',
   children: '👶', staff: '🧑‍🏫', staff_time_log: '⏱️', staff_settings: '🪪',

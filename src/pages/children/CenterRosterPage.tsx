@@ -249,6 +249,19 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
   const [showAddRouter, setShowAddRouter] = useState(false)
   const [highlightId, setHighlightId] = useState<string|null>(null)  // just-added child → flash + scroll
   const [toast, setToast] = useState<string|null>(null)
+  // IA v2 — People block: page-level action strip. Pending count feeds the Enrollment badge.
+  const [pendingCount, setPendingCount] = useState<number>(0)
+  const [resumeHint, setResumeHint] = useState(false)
+
+  useEffect(() => {
+    if (!centerId) return
+    let cancelled = false
+    supabase.schema('menumaker').from('enrollment_submissions')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'pending').eq('center_id', centerId).neq('submission_type', 'staff')
+      .then(({ count }) => { if (!cancelled) setPendingCount(count ?? 0) })
+    return () => { cancelled = true }
+  }, [centerId])
   const [childSettingsId, setChildSettingsId] = useState<string|null>(null)
   const [settingsTab, setSettingsTab] = useState(0)
   const [focusField, setFocusField] = useState<string|null>(null)
@@ -362,6 +375,34 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
           <span>{listedShown} listed{searchActive ? ` (of ${listedTotal})` : ''}</span>
         </div>
       </div>
+
+      {/* IA v2 — page-level action strip: the sidebar names WHO, actions live here. */}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 16 }}>
+        <button onClick={() => setShowAddRouter(true)}
+          style={{ padding: '9px 16px', borderRadius: 9, background: '#0f4c35', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
+          ➕ Add Child
+        </button>
+        <button onClick={() => setResumeHint(v => !v)} title="Resume a started family packet (arrives with the Resume Family build)"
+          style={{ padding: '9px 15px', borderRadius: 9, background: '#f0f7f4', color: '#1a5c3f', border: '1px solid #d1fae5', cursor: 'pointer', fontWeight: 600, fontSize: 13, fontFamily: 'inherit' }}>
+          ↻ Resume a family
+        </button>
+        <button onClick={() => navigate('/enrollment-inbox?from=children')}
+          style={{ padding: '9px 15px', borderRadius: 9, background: '#f0f7f4', color: '#1a5c3f', border: '1px solid #d1fae5', cursor: 'pointer', fontWeight: 600, fontSize: 13, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8 }}>
+          📥 Enrollment
+          {pendingCount > 0 && (
+            <span style={{ minWidth: 19, height: 19, padding: '0 6px', borderRadius: 20, background: '#c62a1f', color: '#fff', fontSize: 11, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{pendingCount}</span>
+          )}
+        </button>
+        <button onClick={() => navigate('/children/import')}
+          style={{ padding: '9px 15px', borderRadius: 9, background: '#f0f7f4', color: '#1a5c3f', border: '1px solid #d1fae5', cursor: 'pointer', fontWeight: 600, fontSize: 13, fontFamily: 'inherit' }}>
+          ⇪ Import
+        </button>
+      </div>
+      {resumeHint && (
+        <div style={{ marginBottom: 16, fontSize: 12.5, color: '#6b7280', background: '#f9fafb', border: '1px solid #eef2ee', borderRadius: 8, padding: '8px 12px' }}>
+          Resume Family (search a started packet → personal link/QR) ships in its own build — this button is its home.
+        </div>
+      )}
 
       {loading ? (
         <div style={{ color: '#aaa', fontSize: 13 }}>Loading…</div>

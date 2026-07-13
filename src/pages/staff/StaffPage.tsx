@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
 import { useAuth } from '@/hooks/useAuth'
+import { SHOWCASE_ORIGIN } from '@/config/showcaseLinks'
 
 type Staff = {
   id: string
@@ -44,6 +45,16 @@ const selStyle: React.CSSProperties = {
 
 export default function StaffPage() {
   const { org, currentCenter, centers, setCurrentCenter } = useOrg()
+  const [pendingStaff, setPendingStaff] = useState<number>(0)  // IA v2: staff Enrollment badge
+  useEffect(() => {
+    if (!currentCenter?.id) { setPendingStaff(0); return }
+    let cancelled = false
+    supabase.schema('menumaker').from('enrollment_submissions')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'pending').eq('center_id', currentCenter.id).eq('submission_type', 'staff')
+      .then(({ count }) => { if (!cancelled) setPendingStaff(count ?? 0) })
+    return () => { cancelled = true }
+  }, [currentCenter?.id])
   const { roles } = useAuth()
   const navigate = useNavigate()
   const allowed = (roles as string[]).some(r => ['admin','director','office_manager'].includes(r))
@@ -129,6 +140,24 @@ export default function StaffPage() {
           <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 26, color: '#0a3320', marginBottom: 2 }}>Staff</div>
           <div style={{ fontSize: 12, color: '#888' }}>{currentCenter ? short(currentCenter.name) : 'Organization'} · {staff.length} staff</div>
         </div>
+        {/* IA v2 — Staff mirrors Children: page-level action strip. */}
+        {currentCenter && (
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <button onClick={() => window.open(`${SHOWCASE_ORIGIN}/forms/1-data-sources/Staff_Enrollment_v1.html?center=${encodeURIComponent(currentCenter.slug)}`, '_blank', 'noopener')}
+              style={{ padding: '9px 16px', borderRadius: 9, background: '#0f4c35', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13, fontFamily: 'inherit' }}>
+              ➕ Add Staff
+            </button>
+            <button onClick={() => navigate('/enrollment-inbox?from=staff')}
+              style={{ padding: '9px 15px', borderRadius: 9, background: '#f0f7f4', color: '#1a5c3f', border: '1px solid #d1fae5', cursor: 'pointer', fontWeight: 600, fontSize: 13, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8 }}>
+              📥 Enrollment
+              {pendingStaff > 0 && <span style={{ minWidth: 19, height: 19, padding: '0 6px', borderRadius: 20, background: '#c62a1f', color: '#fff', fontSize: 11, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{pendingStaff}</span>}
+            </button>
+            <button onClick={() => navigate('/staff/time-log')}
+              style={{ padding: '9px 15px', borderRadius: 9, background: '#f0f7f4', color: '#1a5c3f', border: '1px solid #d1fae5', cursor: 'pointer', fontWeight: 600, fontSize: 13, fontFamily: 'inherit' }}>
+              🕒 Daily Time Log
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Filters */}

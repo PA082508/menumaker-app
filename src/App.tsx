@@ -37,6 +37,7 @@ import ReceiptReviewPage from '@/pages/receipt-review/ReceiptReviewPage'
 import UserManagementPage from '@/pages/org/UserManagementPage'
 import ConsolidatedReport from '@/pages/org/ConsolidatedReport'
 import ChildrenPage from '@/pages/children/ChildrenPage'
+import ParentsPage from '@/pages/children/ParentsPage'
 import CenterRosterPage from '@/pages/children/CenterRosterPage'
 import StaffPage from '@/pages/staff/StaffPage'
 import InstructionsPage from '@/pages/instructions/InstructionsPage'
@@ -167,6 +168,7 @@ export default function App() {
               <Route path="kitchen-report"      element={<KitchenPlanningReport />} />
               <Route path="receipt-review"     element={<ReceiptReviewPage />} />
               <Route path="children"           element={<ChildrenPage />} />
+              <Route path="parents"            element={<ParentsPage />} />
               <Route path="enrollment-inbox"   element={<EnrollmentInboxPage />} />
               <Route path="issue-packet"       element={<ParentPacketPage />} />
               <Route path="center/:centerId"   element={<CenterRosterPage />} />

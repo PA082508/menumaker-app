@@ -37,7 +37,7 @@ export default function PortalPage() {
   const navigate = useNavigate()
   const { role: urlRole, center: urlCenter } = useParams<{ role: string; center?: string }>()
   const { session, signIn } = useAuth()
-  const { centers, setCurrentCenter } = useOrg()
+  const { centers, setCurrentCenter, isOrgAdmin } = useOrg()
   const [authReady, setAuthReady] = useState(false)
   const [authError, setAuthError] = useState('')
 
@@ -52,7 +52,10 @@ export default function PortalPage() {
 
   const roles = PORTAL_ROLES[portalRole]
   const centerName = CENTER_NAMES[centerCode] ?? null
-  const showCenterSwitcher = portalRole === 'cook'
+  // Center is fixed by the entry URL (teacher model): a cook scans "Cook — <Center>"
+  // → /portal/cook/<slug>, locked to that center with NO switcher. The center pills
+  // are for admin/org roles only (explicit gate) — a service-account cook never sees them.
+  const showCenterSwitcher = portalRole === 'cook' && isOrgAdmin
   const creds = CENTER_CREDENTIALS[centerCode]
 
   // Auto-login with service account if no active session

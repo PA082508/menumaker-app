@@ -166,3 +166,37 @@ date inputs (Add Child, staff, Settings, report filters, etc.) are native
 date field is introduced (in-app or in a GitHub-Pages packet form). Tests:
 [`src/lib/dateInput.test.ts`](../src/lib/dateInput.test.ts) (documented formats +
 century window + edges: `13/45/26` invalid, `2/29/24` valid, `2/29/26` invalid).
+
+---
+
+## Finding-closure rule (2026-07-14)
+
+A defect found on a specific **entry point** (surface + full URL) is **closed only
+by Nikolay's live sverka on that same entry point** — not by a passing headless
+render of the target URL.
+
+- A headless render of the resolved URL is **necessary** (proves the target is
+  healthy) but **NOT sufficient** — it does not exercise the surface that built
+  the link, the device, the cache, or the embed context.
+- A diagnostic must enumerate **every** surface that can open the artifact
+  (storefront default + `set=`/`only=`, AddChildPacketPanel, /issue-packet,
+  Library/DocumentHub, in-app embed) as a table: surface → slot → URL → what is
+  actually served → verdict. Covering one entry is not covering the finding.
+- Re-open, don't re-close, when a symptom recurs: the earlier "fixed" was scoped
+  to one entry; find the entry that still reproduces.
+
+---
+
+## form-kit versioning (kit-bust rule, 2026-07-14)
+
+Every `<script>` that loads `form-kit.js` from a kit form MUST carry a version
+query: `src="form-kit.js?v=<N>"`. **Any change to `form-kit.js` = bump `?v=<N>`
+in all kit-form includes in the same commit.**
+
+- Without the bump, returning devices (especially in-app webviews) serve a
+  **cached old kit**, which silently hides newly added functions — the feature
+  ships but users never see it. (Learned from the Consent stale-cache incident;
+  applied to the kit itself.)
+- Current: `?v=2` across all kit-form includes (Pages `pa082508.github.io`).
+- This is separate from the watchdog's dynamic `form-kit.js?r=<ts>` retry, which
+  cache-busts a *failed* load; `?v=<N>` cache-busts a *changed* file for everyone.

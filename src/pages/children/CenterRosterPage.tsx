@@ -415,14 +415,15 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
             ))}
           </div>
 
-          {/* Toolbar */}
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:12, padding:'8px 20px', borderBottom:'1px solid #f0f4f1' }}>
+          {/* Toolbar — view toggle and search sit together on the left (fix #3:
+              search flush against the Cards/List toggle, not pushed to the far right). */}
+          <div style={{ display:'flex', justifyContent:'flex-start', alignItems:'center', gap:12, padding:'8px 20px', borderBottom:'1px solid #f0f4f1' }}>
             {/* View mode */}
             <div style={{ display:'flex', gap:6, alignItems:'center' }}>
               <button onClick={() => setViewMode('cards')} style={{ padding:'6px 14px', borderRadius:8, border:'1.5px solid #c0d8c0', background: viewMode==='cards' ? '#0f4c35' : '#fff', color: viewMode==='cards' ? '#fff' : '#555', cursor:'pointer', fontFamily:'inherit', fontSize:13, fontWeight:600 }}>⊞ Cards</button>
               <button onClick={() => setViewMode('list')} style={{ padding:'6px 14px', borderRadius:8, border:'1.5px solid #c0d8c0', background: viewMode==='list' ? '#0f4c35' : '#fff', color: viewMode==='list' ? '#fff' : '#555', cursor:'pointer', fontFamily:'inherit', fontSize:13, fontWeight:600 }}>☰ List</button>
             </div>
-            {/* Search + Add Child — one group on the right. Search always spans active &
+            {/* Search — sits right next to the toggle. Always spans active &
                 inactive; inactive matches show dimmed with an Inactive badge. */}
             <div style={{ display:'flex', gap:10, alignItems:'center', flexShrink:0 }}>
               <div style={{ position:'relative', width:280, maxWidth:'40vw' }}>

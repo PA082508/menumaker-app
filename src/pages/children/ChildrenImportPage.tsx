@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { useOrg } from "@/contexts/OrgContext";
+import BackBar from "@/components/BackBar";
 
 interface TargetField {
   field_key: string; label: string; datatype: string;
@@ -163,6 +164,9 @@ export default function ChildrenImportPage() {
 
   return (
     <div style={{ padding: "1.5rem", fontFamily: "Calibri,Arial,sans-serif", maxWidth: 920 }}>
+      <div style={{ margin: "-1.5rem -1.5rem 1.25rem" }}>
+        <BackBar to="/children" label="Children" />
+      </div>
       <h2 style={{ margin: "0 0 1rem", fontSize: "1.1rem", fontWeight: 700, color: "#0f4c35" }}>
         👶 Import Children
       </h2>

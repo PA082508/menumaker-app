@@ -15,6 +15,7 @@ import {
   type ValidationResult, type ValStatus,
 } from '@/lib/enrollmentValidationRules'
 import EnrollmentReviewModal from './EnrollmentReviewModal'
+import BackBar from '@/components/BackBar'
 import { ocrFailed as isOcrFailed, reRunOcr } from '@/lib/enrollmentScan'
 import { scoreMatch, nameForms } from '@/lib/childSearch'
 
@@ -120,7 +121,10 @@ export default function EnrollmentInboxPage() {
         for (const [slug, c] of Object.entries(centersMap)) {
           if (c?.center_id) { ids.push(c.center_id); byId.set(c.center_id, slug) }
         }
-        const ef = reg?.forms?.enroll
+        // Context-aware: from Staff, "Open the enrollment form" must open the STAFF
+        // enrollment form — not the parent CACFP form (fix: staff inbox opened the parent form).
+        const which = new URLSearchParams(window.location.search).get('from') === 'staff' ? 'staff' : 'enroll'
+        const ef = reg?.forms?.[which]
         const url = (ef?.versions && ef.current && ef.versions[ef.current]) || ef?.fallbackUrl || null
         if (!cancelled) { setEnrollCenterIds(new Set(ids)); setSlugById(byId); setEnrollBaseUrl(url) }
       } catch { /* registry unreachable → picker stays empty, no leak */ }
@@ -225,12 +229,8 @@ export default function EnrollmentInboxPage() {
     <div style={{ padding: '28px 32px', fontFamily: "'DM Sans', sans-serif", maxWidth: 980 }}>
       {/* Entered by a button → leave by a button. Never rely on the browser back arrow. */}
       {from && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fbf3dc', border: '1px solid #e7dcc0', borderRadius: 10, padding: '8px 12px', marginBottom: 14, fontSize: 13, color: '#6a5320' }}>
-          <button onClick={() => navigate(from === 'staff' ? '/staff' : '/children')}
-            style={{ background: '#fff', border: '1px solid #e7dcc0', borderRadius: 8, padding: '5px 11px', color: '#1a5c3f', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>
-            ← Back to {from === 'staff' ? 'Staff' : 'Children'}
-          </button>
-          <span>showing {from === 'staff' ? 'staff' : 'children'} submissions</span>
+        <div style={{ margin: '-28px -32px 18px' }}>
+          <BackBar to={from === 'staff' ? '/staff' : '/children'} label={from === 'staff' ? 'Staff' : 'Children'} />
         </div>
       )}
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>

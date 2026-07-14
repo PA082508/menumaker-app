@@ -135,14 +135,13 @@ export default function StaffPage() {
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Serif+Display&display=swap" rel="stylesheet" />
 
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 18 }}>
-        <div>
-          <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 26, color: '#0a3320', marginBottom: 2 }}>Staff</div>
-          <div style={{ fontSize: 12, color: '#888' }}>{currentCenter ? short(currentCenter.name) : 'Organization'} · {staff.length} staff</div>
-        </div>
-        {/* IA v2 — Staff mirrors Children: page-level action strip. */}
-        {currentCenter && (
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 26, color: '#0a3320', marginBottom: 2 }}>Staff</div>
+        <div style={{ fontSize: 12, color: '#888' }}>{currentCenter ? short(currentCenter.name) : 'Organization'} · {staff.length} staff</div>
+      </div>
+      {/* IA v2 — Staff mirrors Children: action strip LEFT, under the header. */}
+      {currentCenter && (
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 18 }}>
             <button onClick={() => window.open(`${SHOWCASE_ORIGIN}/forms/1-data-sources/Staff_Enrollment_v1.html?center=${encodeURIComponent(currentCenter.slug)}`, '_blank', 'noopener')}
               style={{ padding: '9px 16px', borderRadius: 9, background: '#0f4c35', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13, fontFamily: 'inherit' }}>
               ➕ Add Staff
@@ -158,7 +157,6 @@ export default function StaffPage() {
             </button>
           </div>
         )}
-      </div>
 
       {/* Filters */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>

@@ -9,6 +9,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
+import BackBar from '@/components/BackBar'
 
 // ── types ────────────────────────────────────────────────────
 type StaffRow = {
@@ -246,6 +247,10 @@ export default function DailyTimeLogPage() {
     <div style={{ padding: '24px 32px', fontFamily: "'DM Sans', sans-serif", background: '#f4f6f4', minHeight: '100vh' }}>
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Serif+Display&display=swap" rel="stylesheet" />
       <style>{`@media print { .no-print { display: none !important; } body { background: white; } }`}</style>
+
+      <div className="no-print" style={{ margin: '-24px -32px 18px' }}>
+        <BackBar to="/staff" label="Staff" />
+      </div>
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>

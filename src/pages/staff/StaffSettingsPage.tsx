@@ -108,7 +108,7 @@ export default function StaffSettingsPage() {
   const [loading, setLoading]   = useState(true)
   const [saving, setSaving]     = useState(false)
   const [saved, setSaved]       = useState(false)
-  const [tab, setTab]           = useState<'personal'|'payroll'|'schedule'|'benefits'|'training'|'documents'|'emergency'>('personal')
+  const [tab, setTab]           = useState<'profile'|'work'|'docs'>('profile')
 
   // Training form
   const [showTrainingForm, setShowTrainingForm] = useState(false)
@@ -198,20 +198,20 @@ export default function StaffSettingsPage() {
   const hasBenefits = months >= 3
   const isFullTime = (data.contract_hours ?? 0) >= 32
 
+  // IA v2 — 7 tabs → 3 (approved mockup 5bf0f5e8): Profile (Personal + Emergency),
+  // Work (Position + Payroll + Schedule + Benefits), Docs (Education + Training + Documents).
   const tabs: { key: typeof tab; label: string }[] = [
-    { key: 'personal',  label: '👤 Personal' },
-    { key: 'payroll',   label: '💰 Payroll' },
-    { key: 'schedule',  label: '📅 Schedule' },
-    { key: 'benefits',  label: `🎁 Benefits${hasBenefits ? ' ✓' : ''}` },
-    { key: 'training',  label: `📚 Training${training.length > 0 ? ` (${training.length})` : ''}` },
-    { key: 'documents', label: `📋 Documents${docs.length > 0 ? ` (${docs.length})` : ''}` },
-    { key: 'emergency', label: '🚨 Emergency' },
+    { key: 'profile', label: '👤 Profile' },
+    { key: 'work',    label: `🗂 Work${hasBenefits ? ' · benefits ✓' : ''}` },
+    { key: 'docs',    label: `📋 Docs${(training.length + docs.length) > 0 ? ` (${training.length + docs.length})` : ''}` },
   ]
 
   return (
     <div style={{ padding: '24px 32px', fontFamily: "'DM Sans', sans-serif", background: '#f4f6f4', minHeight: '100vh' }}>
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Serif+Display&display=swap" rel="stylesheet" />
 
+      {/* Typography standard — 960px centered content over the full-bleed background. */}
+      <div style={{ maxWidth: 960, margin: '0 auto' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
         <button onClick={() => navigate('/staff')} style={{ ...btnSec, padding: '7px 14px', fontSize: 13 }}>← Staff</button>
@@ -265,9 +265,8 @@ export default function StaffSettingsPage() {
         ))}
       </div>
 
-      {/* ── PERSONAL ── */}
-      {tab === 'personal' && (
-        <>
+      {/* ── PROFILE: Personal + Emergency ── */}
+      {tab === 'profile' && (
           <div style={card}>
             <h3 style={h3}>Personal Information</h3>
             <div style={{ ...grid2, marginBottom: 16 }}>
@@ -284,7 +283,10 @@ export default function StaffSettingsPage() {
             </div>
             <div><label style={lbl}>Home Address</label><input style={inp} value={data.address ?? ''} onChange={e => set('address', e.target.value)} /></div>
           </div>
+      )}
 
+      {/* ── WORK: Position + Payroll + Schedule + Benefits ── */}
+      {tab === 'work' && (
           <div style={card}>
             <h3 style={h3}>Position & Assignment</h3>
             <div style={{ ...grid2, marginBottom: 16 }}>
@@ -311,7 +313,10 @@ export default function StaffSettingsPage() {
               <div><label style={lbl}>Hire Date</label><input style={inp} type="date" value={fmtDate(data.hire_date)} onChange={e => set('hire_date', e.target.value)} /></div>
             </div>
           </div>
+      )}
 
+      {/* ── DOCS: Education + Training + Documents ── */}
+      {tab === 'docs' && (
           <div style={card}>
             <h3 style={h3}>Education & Certifications</h3>
             <div style={{ ...grid2, marginBottom: 16 }}>
@@ -323,11 +328,10 @@ export default function StaffSettingsPage() {
               <div><label style={lbl}>Infant/Toddler Credits</label><input style={inp} value={data.infant_toddler_credits ?? ''} onChange={e => set('infant_toddler_credits', e.target.value)} /></div>
             </div>
           </div>
-        </>
       )}
 
-      {/* ── PAYROLL ── */}
-      {tab === 'payroll' && (
+      {/* ── WORK: Payroll ── */}
+      {tab === 'work' && (
         <div style={card}>
           <h3 style={h3}>Payroll Settings</h3>
 
@@ -444,8 +448,8 @@ export default function StaffSettingsPage() {
         </div>
       )}
 
-      {/* ── SCHEDULE ── */}
-      {tab === 'schedule' && (
+      {/* ── WORK: Schedule ── */}
+      {tab === 'work' && (
         <div style={card}>
           <h3 style={h3}>Work Schedule</h3>
           <div style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>
@@ -517,8 +521,8 @@ export default function StaffSettingsPage() {
         </div>
       )}
 
-      {/* ── BENEFITS ── */}
-      {tab === 'benefits' && (
+      {/* ── WORK: Benefits ── */}
+      {tab === 'work' && (
         <div style={card}>
           <h3 style={h3}>Benefits Eligibility</h3>
           {/* Status banner */}
@@ -592,8 +596,8 @@ export default function StaffSettingsPage() {
         </div>
       )}
 
-      {/* ── TRAINING ── */}
-      {tab === 'training' && (
+      {/* ── DOCS: Training ── */}
+      {tab === 'docs' && (
         <div style={card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, borderBottom: '1px solid #f0f0f0', paddingBottom: 10 }}>
             <h3 style={{ ...h3, margin: 0, border: 'none', padding: 0 }}>📚 Training Records</h3>
@@ -723,8 +727,8 @@ export default function StaffSettingsPage() {
         </div>
       )}
 
-      {/* ── DOCUMENTS ── */}
-      {tab === 'documents' && (
+      {/* ── DOCS: Documents ── */}
+      {tab === 'docs' && (
         <div style={card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, borderBottom: '1px solid #f0f0f0', paddingBottom: 10 }}>
             <h3 style={{ ...h3, margin: 0, border: 'none', padding: 0 }}>📋 Documents</h3>
@@ -784,8 +788,8 @@ export default function StaffSettingsPage() {
         </div>
       )}
 
-      {/* ── EMERGENCY ── */}
-      {tab === 'emergency' && (
+      {/* ── PROFILE: Emergency ── */}
+      {tab === 'profile' && (
         <>
           <div style={card}>
             <h3 style={h3}>Emergency Contact</h3>
@@ -815,6 +819,7 @@ export default function StaffSettingsPage() {
         <button onClick={save} disabled={saving} style={saving ? { ...btnPri, opacity: 0.7 } : saved ? { ...btnPri, background: '#0f7a4a' } : btnPri}>
           {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save Changes'}
         </button>
+      </div>
       </div>
     </div>
   )

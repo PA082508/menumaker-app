@@ -12,6 +12,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { displayChildName } from '@/lib/childName'
 import { isActiveOn } from '@/lib/childActive'
 import { classifyChild, type MatchKind } from '@/lib/childSearch'
+import AddChildPacketPanel from './AddChildPacketPanel'
 
 type Classroom = { id: string; name: string; sort_order: number; capacity_internal: number | null; is_roster?: boolean | null }
 
@@ -251,7 +252,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
   const [toast, setToast] = useState<string|null>(null)
   // IA v2 — People block: page-level action strip. Pending count feeds the Enrollment badge.
   const [pendingCount, setPendingCount] = useState<number>(0)
-  const [resumeHint, setResumeHint] = useState(false)
+  const [showPacket, setShowPacket] = useState(false)   // Add Child → packet Link + QR panel
 
   useEffect(() => {
     if (!centerId) return
@@ -378,13 +379,9 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
 
       {/* IA v2 — page-level action strip: the sidebar names WHO, actions live here. */}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 16 }}>
-        <button onClick={() => setShowAddRouter(true)}
+        <button onClick={() => setShowPacket(true)} title="Open the enrollment packet link + QR for a family to fill on-site or on their phone"
           style={{ padding: '9px 16px', borderRadius: 9, background: '#0f4c35', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
           ➕ Add Child
-        </button>
-        <button onClick={() => setResumeHint(v => !v)} title="Resume a started family packet (arrives with the Resume Family build)"
-          style={{ padding: '9px 15px', borderRadius: 9, background: '#f0f7f4', color: '#1a5c3f', border: '1px solid #d1fae5', cursor: 'pointer', fontWeight: 600, fontSize: 13, fontFamily: 'inherit' }}>
-          ↻ Resume a family
         </button>
         <button onClick={() => navigate('/enrollment-inbox?from=children')}
           style={{ padding: '9px 15px', borderRadius: 9, background: '#f0f7f4', color: '#1a5c3f', border: '1px solid #d1fae5', cursor: 'pointer', fontWeight: 600, fontSize: 13, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -398,11 +395,6 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
           ⇪ Import
         </button>
       </div>
-      {resumeHint && (
-        <div style={{ marginBottom: 16, fontSize: 12.5, color: '#6b7280', background: '#f9fafb', border: '1px solid #eef2ee', borderRadius: 8, padding: '8px 12px' }}>
-          Resume Family (search a started packet → personal link/QR) ships in its own build — this button is its home.
-        </div>
-      )}
 
       {loading ? (
         <div style={{ color: '#aaa', fontSize: 13 }}>Loading…</div>
@@ -448,15 +440,6 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                     style={{ position:'absolute', right:6, top:'50%', transform:'translateY(-50%)', border:'none', background:'transparent', cursor:'pointer', fontSize:14, color:'#999', lineHeight:1, padding:2 }}>✕</button>
                 )}
               </div>
-              {/* ADD CHILD 2.0 — search-first router for everyone: find a returning
-                  child (reactivate & admit) or start a new enrollment. Bare roster
-                  insert stays admin-only, surfaced inside the router's not-found branch. */}
-              <button
-                onClick={() => setShowAddRouter(true)}
-                title="Find a returning child or start a new enrollment"
-                style={{ padding:'8px 18px', borderRadius:9, background:'#0f4c35', color:'#fff', border:'none', cursor:'pointer', fontWeight:700, fontSize:13, fontFamily:'inherit', display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
-                ➕ Add Child
-              </button>
             </div>
           </div>
           {viewMode === 'list' && (() => {
@@ -858,6 +841,9 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
           onScan={() => { setShowAddRouter(false); navigate('/enrollment-inbox') }}
           onRawInsert={() => { setShowAddRouter(false); setShowAddChild(true) }}
         />
+      )}
+      {showPacket && center && (
+        <AddChildPacketPanel center={{ id: center.id, name: center.name, slug: center.slug }} onClose={() => setShowPacket(false)} />
       )}
       {showAddChild && currentCenter && isOrgAdmin && (
         <AddChildModal

@@ -71,14 +71,16 @@ export default function StaffJdOnboarding() {
 
   return (
     <div style={{ marginBottom: 20 }}>
-      <div style={{ background: 'linear-gradient(135deg,#0f4c35,#2d7a56)', borderRadius: 12, padding: '16px 20px', marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+      {/* Library palette (fix 9): muted band, not a loud gradient — matches the BYOD
+          band below and the storefront's single solid CTA is the one fill per screen. */}
+      <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: '16px 20px', marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <div style={{ color: '#fff', fontWeight: 700, fontSize: 15 }}>✍️ Staff Onboarding — Job Description Acknowledgments</div>
-          <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13, marginTop: 2 }}>
+          <div style={{ color: '#0a3320', fontWeight: 700, fontSize: 15.5, letterSpacing: '-0.01em' }}>✍️ Staff Onboarding — Job Description Acknowledgments</div>
+          <div style={{ color: '#6b7280', fontSize: 13, marginTop: 2 }}>
             New hire signs personally on this device. {pending !== null && <>· {pending} awaiting director approval</>}
           </div>
         </div>
-        <select value={role} onChange={e => setRole(e.target.value as StaffRole)} style={{ padding: '9px 12px', borderRadius: 8, border: 'none', fontSize: 14, fontFamily: 'inherit', minWidth: 200 }}>
+        <select value={role} onChange={e => setRole(e.target.value as StaffRole)} style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid #d1fae5', fontSize: 14, fontFamily: 'inherit', minWidth: 200, background: '#fff' }}>
           <option value="">Select role…</option>
           {ROLES_WITH_JD.map(r => <option key={r} value={r}>{r}</option>)}
         </select>

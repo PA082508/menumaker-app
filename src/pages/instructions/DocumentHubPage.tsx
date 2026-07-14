@@ -278,6 +278,13 @@ const pill = (bg: string, fg: string): React.CSSProperties => ({ fontSize: 10, f
 const cardS: React.CSSProperties = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10, minHeight: 96 }
 const openBtnS: React.CSSProperties = { flex: 1, padding: '8px 12px', borderRadius: 8, fontSize: 13, fontWeight: 600, background: '#0f4c35', color: '#fff', textDecoration: 'none', textAlign: 'center', fontFamily: 'inherit' }
 const ghostS: React.CSSProperties = { padding: '8px 12px', borderRadius: 8, fontSize: 13, background: '#f0f7f4', color: '#1a5c3f', border: '1px solid #d1fae5', cursor: 'pointer', fontFamily: 'inherit' }
+// Library palette: per-card Open is a GHOST (the ONE solid fill on screen is the
+// storefront "Open packet ↗" CTA); QR is a compact icon, not the word "QR".
+const openGhostS: React.CSSProperties = { flex: 1, padding: '8px 12px', borderRadius: 8, fontSize: 13, fontWeight: 600, background: '#f0f7f4', color: '#1a5c3f', border: '1px solid #d1fae5', textDecoration: 'none', textAlign: 'center', fontFamily: 'inherit' }
+const qrIconBtnS: React.CSSProperties = { padding: '6px 9px', borderRadius: 8, background: '#fff', color: '#1a5c3f', border: '1px solid #d1fae5', cursor: 'pointer', fontFamily: 'inherit', lineHeight: 0, display: 'inline-flex', alignItems: 'center', flex: '0 0 auto' }
+const QRGlyph = () => (
+  <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path fill="#1a5c3f" d="M1 1h5v5H1V1zm1 1v3h3V2H2zm8-1h5v5h-5V1zm1 1v3h3V2h-3zM1 10h5v5H1v-5zm1 1v3h3v-3H2zm7-1h2v2H9v-2zm4 0h2v2h-2v-2zm-4 3h2v2H9v-2zm2 1h2v2h-2v-2z"/></svg>
+)
 
 export default function DocumentHubPage() {
   const { org, currentCenter, isOrgAdmin } = useOrg()
@@ -311,7 +318,7 @@ export default function DocumentHubPage() {
     return (
       <div style={cardS}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 13.5, fontWeight: 700, color: '#0a3320' }}>{title}</span>
+          <span style={{ fontSize: 15.5, fontWeight: 700, color: '#0a3320', letterSpacing: '-0.01em' }}>{title}</span>
           {version && <span style={pill('#eef2ff', '#3730a3')}>{version}</span>}
           <span style={live ? pill('#dcfce7', '#166534') : pill('#fef3c7', '#92400e')}>{live ? '● live' : '○ dark'}</span>
           {futureFormKit && <span title="Signature form — planned as an online form-kit form later" style={pill('#f3e8ff', '#6b21a8')}>form-kit planned</span>}
@@ -319,8 +326,8 @@ export default function DocumentHubPage() {
         <div style={{ marginTop: 'auto', display: 'flex', gap: 8 }}>
           {scoped ? (
             <>
-              <a href={scoped} target="_blank" rel="noreferrer" style={openBtnS}>{isDoc ? 'Open / download ↗' : 'Open ↗'}</a>
-              <button style={ghostS} onClick={() => setQrShare({ url: scoped, title })}>QR</button>
+              <a href={scoped} target="_blank" rel="noreferrer" style={openGhostS}>{isDoc ? 'Open / download ↗' : 'Open ↗'}</a>
+              <button style={qrIconBtnS} title="Show QR code" aria-label="Show QR code" onClick={() => setQrShare({ url: scoped, title })}><QRGlyph /></button>
             </>
           ) : <span style={{ fontSize: 12, color: '#9ca3af', fontStyle: 'italic' }}>Coming soon</span>}
         </div>
@@ -387,7 +394,7 @@ export default function DocumentHubPage() {
               <div style={{ fontSize: 12, color: '#15803d' }}>All CACFP + enrollment forms for {currentCenter?.name ?? 'the selected center'}, pre-scoped. Best link to text or email.</div>
             </div>
             <a href={storefront} target="_blank" rel="noreferrer" style={{ ...openBtnS, flex: 'none', padding: '8px 16px' }}>Open packet ↗</a>
-            <button style={ghostS} onClick={() => setQrShare({ url: storefront, title: 'Parent packet' })}>QR</button>
+            <button style={qrIconBtnS} title="Show QR code" aria-label="Show QR code" onClick={() => setQrShare({ url: storefront, title: 'Parent packet' })}><QRGlyph /></button>
           </div>
           <div style={grid}>{SEC2.map(k => <FormCard key={k} keyId={k} />)}</div>
 
@@ -396,15 +403,15 @@ export default function DocumentHubPage() {
           <div style={grid}>
             {CLAIM_EXPORTS.map(x => (
               <Link key={x.label} to={x.to} style={{ ...cardS, textDecoration: 'none' }}>
-                <div style={{ fontSize: 13.5, fontWeight: 700, color: '#0a3320' }}>{x.label}</div>
+                <div style={{ fontSize: 15.5, fontWeight: 700, color: '#0a3320', letterSpacing: '-0.01em' }}>{x.label}</div>
                 {x.note && <div style={{ fontSize: 11, color: '#6b7280' }}>{x.note}</div>}
                 <div style={{ marginTop: 'auto', fontSize: 13, fontWeight: 600, color: '#0f4c35' }}>Open →</div>
               </Link>
             ))}
-            <Link to="/claim-report" style={{ ...cardS, textDecoration: 'none', background: 'linear-gradient(135deg,#0f4c35,#1a6b4a)' }}>
-              <div style={{ fontSize: 13.5, fontWeight: 700, color: '#fff' }}>📦 Month claim-packet</div>
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)' }}>Assemble the period's claim outputs.</div>
-              <div style={{ marginTop: 'auto', fontSize: 13, fontWeight: 600, color: '#fff' }}>Build →</div>
+            <Link to="/claim-report" style={{ ...cardS, textDecoration: 'none', background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+              <div style={{ fontSize: 15.5, fontWeight: 700, color: '#0a3320', letterSpacing: '-0.01em' }}>📦 Month claim-packet</div>
+              <div style={{ fontSize: 11, color: '#6b7280' }}>Assemble the period's claim outputs.</div>
+              <div style={{ marginTop: 'auto', fontSize: 13, fontWeight: 600, color: '#0f4c35' }}>Build →</div>
             </Link>
           </div>
 
@@ -413,21 +420,21 @@ export default function DocumentHubPage() {
           <div style={{ ...grid, marginBottom: 14 }}>
             {SEC4_FORMS.map(k => <FormCard key={k} keyId={k} />)}
             {OUR_DOCS.map(k => <FormCard key={k} keyId={k} />)}
-            <Link to="/instructions" style={{ ...cardS, textDecoration: 'none', background: 'linear-gradient(135deg,#0f4c35,#1a6b4a)' }}>
-              <div style={{ fontSize: 13.5, fontWeight: 700, color: '#fff' }}>📖 Instructions</div>
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)' }}>How every feature works — filtered by your role.</div>
-              <div style={{ marginTop: 'auto', fontSize: 13, fontWeight: 600, color: '#fff' }}>Open →</div>
+            <Link to="/instructions" style={{ ...cardS, textDecoration: 'none', background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+              <div style={{ fontSize: 15.5, fontWeight: 700, color: '#0a3320', letterSpacing: '-0.01em' }}>📖 Instructions</div>
+              <div style={{ fontSize: 11, color: '#6b7280' }}>How every feature works — filtered by your role.</div>
+              <div style={{ marginTop: 'auto', fontSize: 13, fontWeight: 600, color: '#0f4c35' }}>Open →</div>
             </Link>
           </div>
 
           {/* Staff onboarding (in-app sign surface) + legacy BYOD self-service */}
           <StaffJdOnboarding />
-          <div style={{ background: 'linear-gradient(135deg,#334155,#475569)', borderRadius: 12, padding: '14px 18px', margin: '16px 0 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 12, padding: '14px 18px', margin: '16px 0 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
             <div>
-              <div style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>📱 BYOD — existing staff self-service</div>
-              <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 2 }}>Temporarily unavailable. New hires: use <strong>Staff Onboarding</strong> above.{count !== null && ` · ${count} on file`}</div>
+              <div style={{ color: '#334155', fontWeight: 700, fontSize: 15.5, letterSpacing: '-0.01em' }}>📱 BYOD — existing staff self-service</div>
+              <div style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>Temporarily unavailable. New hires: use <strong>Staff Onboarding</strong> above.{count !== null && ` · ${count} on file`}</div>
             </div>
-            <button disabled title="Temporarily unavailable" style={{ padding: '9px 18px', background: 'rgba(255,255,255,0.35)', color: '#e5e7eb', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'not-allowed', fontFamily: 'inherit' }}>Temporarily unavailable</button>
+            <button disabled title="Temporarily unavailable" style={{ padding: '9px 18px', background: '#e2e8f0', color: '#94a3b8', border: '1px solid #cbd5e1', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'not-allowed', fontFamily: 'inherit' }}>Temporarily unavailable</button>
           </div>
 
           {/* Guides & portals — operational links (preserved from the flat hub) */}
@@ -439,7 +446,7 @@ export default function DocumentHubPage() {
                   <span style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' }}>{doc.category}</span>
                   <span style={pill('#f3f4f6', '#374151')}>{doc.audience}</span>
                 </div>
-                <div style={{ fontSize: 13.5, fontWeight: 700, color: '#0a3320' }}>{doc.title}</div>
+                <div style={{ fontSize: 15.5, fontWeight: 700, color: '#0a3320', letterSpacing: '-0.01em' }}>{doc.title}</div>
                 <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.45 }}>{doc.description}</div>
                 <div style={{ marginTop: 'auto' }}>
                   {(doc as any).canSign ? (
@@ -448,8 +455,8 @@ export default function DocumentHubPage() {
                     </div>
                   ) : (doc as any).driveUrl ? (
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <a href={(doc as any).driveUrl} target="_blank" rel="noreferrer" style={openBtnS}>↓ Open</a>
-                      <button style={ghostS} onClick={() => setQrShare({ url: (doc as any).driveUrl, title: doc.title })}>QR</button>
+                      <a href={(doc as any).driveUrl} target="_blank" rel="noreferrer" style={openGhostS}>↓ Open</a>
+                      <button style={qrIconBtnS} title="Show QR code" aria-label="Show QR code" onClick={() => setQrShare({ url: (doc as any).driveUrl, title: doc.title })}><QRGlyph /></button>
                     </div>
                   ) : <div style={{ fontSize: 12, color: '#9ca3af', fontStyle: 'italic' }}>Coming soon</div>}
                 </div>

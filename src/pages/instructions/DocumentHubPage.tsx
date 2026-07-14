@@ -255,11 +255,11 @@ const FORM_LABELS: Record<string, string> = {
   special_diet: 'Special Diet Statement', infant_meals: 'Infant Meals Preference',
   parent_consent: 'Parent Consent for E-Signatures', staff: 'Staff Enrollment',
 }
-const SEC1 = ['dcy_01234', 'dcy_01236', 'dcy_01217', 'dcy_01305', 'dcy_01218', 'dcy_01225', 'dcy_01226', 'center_parent_info']
+const SEC1 = ['dcy_01234', 'dcy_01236', 'dcy_01217', 'dcy_01305', 'dcy_01218', 'dcy_01225', 'dcy_01226', 'center_parent_information']
 const SUTQ_DOCS = ['sutq_family_needs_survey']
 const SEC2 = ['enroll', 'iea', 'usda_waiver', 'fluid_milk', 'special_diet', 'infant_meals']
 const SEC4_FORMS = ['parent_consent', 'staff']
-const OUR_DOCS = ['child_release_authorization', 'parent_responsibilities', 'topical_product_consent', 'transition_into_program', 'building_for_the_future', 'what_to_bring_infant']
+const OUR_DOCS = ['child_release_authorization', 'parent_responsibilities', 'topical_product_consent', 'transition_into_program', 'building_for_the_future', 'what_to_bring_infant', 'parents_book', 'wic_information', 'start_form']
 const CLAIM_EXPORTS = [
   { label: 'Meal counts / attendance (checkmarks)', to: '/reports', note: 'The checkmark export — protected till Oct 1.' },
   { label: 'Menu', to: '/menu/current' },
@@ -312,24 +312,37 @@ export default function DocumentHubPage() {
   }
 
   function FormCard({ keyId }: { keyId: string }) {
-    const { url, version, live, title, kind, futureFormKit } = resolve(keyId)
+    const { url: raw, version, live, title, kind, futureFormKit } = resolve(keyId)
+    const url = raw && raw !== 'PENDING' ? raw : null      // versions:{v1:'PENDING'} → no live asset yet
     const isDoc = kind === 'document'
-    const scoped = url ? (isDoc ? url : scopeToCenter(url, slug)) : null  // static docs aren't center-scoped
+    const isKeep = kind === 'keep'                          // Keep-doc: download/print, no signature
+    const fileUrl = url ? (isDoc || isKeep ? url : scopeToCenter(url, slug)) : null  // raw file for doc/keep; center-scoped form otherwise
+    // Library QR standard: the storefront only= card (never a raw file URL).
+    const onlyLink = `${SHOWCASE_ORIGIN}/parent-forms.html?${slug ? 'center=' + encodeURIComponent(slug) + '&' : ''}only=${encodeURIComponent(keyId)}`
     return (
       <div style={cardS}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 15.5, fontWeight: 700, color: '#0a3320', letterSpacing: '-0.01em' }}>{title}</span>
+          {isKeep && <span style={pill('#eaf5ef', '#0f4c35')}>Keep</span>}
           {version && <span style={pill('#eef2ff', '#3730a3')}>{version}</span>}
-          <span style={live ? pill('#dcfce7', '#166534') : pill('#fef3c7', '#92400e')}>{live ? '● live' : '○ dark'}</span>
+          {!isKeep && <span style={live ? pill('#dcfce7', '#166534') : pill('#fef3c7', '#92400e')}>{live ? '● live' : '○ dark'}</span>}
           {futureFormKit && <span title="Signature form — planned as an online form-kit form later" style={pill('#f3e8ff', '#6b21a8')}>form-kit planned</span>}
         </div>
         <div style={{ marginTop: 'auto', display: 'flex', gap: 8 }}>
-          {scoped ? (
+          {!fileUrl ? (
+            <span style={{ fontSize: 12, color: '#9ca3af', fontStyle: 'italic' }}>Coming soon</span>
+          ) : isKeep ? (
             <>
-              <a href={scoped} target="_blank" rel="noreferrer" style={openGhostS}>{isDoc ? 'Open / download ↗' : 'Open ↗'}</a>
-              <button style={qrIconBtnS} title="Show QR code" aria-label="Show QR code" onClick={() => setQrShare({ url: scoped, title })}><QRGlyph /></button>
+              <a href={fileUrl} download style={openGhostS}>↓ Download</a>
+              <a href={fileUrl} target="_blank" rel="noreferrer" style={ghostS}>Print</a>
+              <button style={qrIconBtnS} title="Show QR code" aria-label="Show QR code" onClick={() => setQrShare({ url: onlyLink, title })}><QRGlyph /></button>
             </>
-          ) : <span style={{ fontSize: 12, color: '#9ca3af', fontStyle: 'italic' }}>Coming soon</span>}
+          ) : (
+            <>
+              <a href={fileUrl} target="_blank" rel="noreferrer" style={openGhostS}>{isDoc ? 'Open / download ↗' : 'Open ↗'}</a>
+              <button style={qrIconBtnS} title="Show QR code" aria-label="Show QR code" onClick={() => setQrShare({ url: fileUrl, title })}><QRGlyph /></button>
+            </>
+          )}
         </div>
       </div>
     )

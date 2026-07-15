@@ -10,6 +10,8 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 
 <!-- newest on top -->
 
+- 2026-07-14 · 🏳️ · The Basic Infant Care Plan (DCY 01218) is now filled in online instead of printed: parents open it from the infant packet, answer feeding, sleep and comfort questions on a phone, and sign with one tap using the signature they already gave on the Consent form — no re-drawing. If they mark that the baby sleeps on their side or tummy, the form tells them right away that a physician-signed Sleep Position Waiver is needed. The completed plan lands in the center's Children inbox for review; the staff caregiver signature is still done at the center.
+
 - 2026-07-14 · 🔧 · Fixed an invisible Submit button on five parent forms (Special Diet, Fluid Milk, Infant Meal Preference, USDA Waiver, and the Basic Infant Care Plan): the button was there and worked, but was painted white on a white background, so parents could not see it and had no way to send the form. Now green and plainly visible on every form. Also added a standing check that measures Submit is visible — not merely present — on every form before any release.
 
 - 2026-07-14 · 🚀 · Sign once, reuse everywhere: after a family signs the Parent Consent, every other packet form shows a "✍️ Внести подпись" button that stamps that same signature in one tap — no more re-drawing it on each form. Drawing or typing by hand still works if they'd rather. (Signature stays on the device for the session; nothing new is stored server-side yet.)

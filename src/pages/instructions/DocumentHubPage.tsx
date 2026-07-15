@@ -316,7 +316,12 @@ export default function DocumentHubPage() {
     const url = raw && raw !== 'PENDING' ? raw : null      // versions:{v1:'PENDING'} → no live asset yet
     const isDoc = kind === 'document'
     const isKeep = kind === 'keep'                          // Keep-doc: download/print, no signature
-    const fileUrl = url ? (isDoc || isKeep ? url : scopeToCenter(url, slug)) : null  // raw file for doc/keep; center-scoped form otherwise
+    // Always center-scope, like the storefront's Keep card does (parent-forms.html
+    // uses scoped(url) for every kind). A ?center= is inert on a PDF/docx, but our own
+    // Keep documents are center-aware HTML: the WIC flyer resolves its per-center point
+    // of contact — an Ohio CACFP requirement — from ?center=, and Download/Print here
+    // was handing it a bare URL, so the card fell back to the org-level line.
+    const fileUrl = url ? scopeToCenter(url, slug) : null
     // Library QR standard: the storefront only= card (never a raw file URL).
     const onlyLink = `${SHOWCASE_ORIGIN}/parent-forms.html?${slug ? 'center=' + encodeURIComponent(slug) + '&' : ''}only=${encodeURIComponent(keyId)}`
     return (

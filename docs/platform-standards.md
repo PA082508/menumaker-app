@@ -197,7 +197,7 @@ in all kit-form includes in the same commit.**
   **cached old kit**, which silently hides newly added functions — the feature
   ships but users never see it. (Learned from the Consent stale-cache incident;
   applied to the kit itself.)
-- Current: `?v=3` across all kit-form includes (Pages `pa082508.github.io`).
+- Current: `?v=5` across all kit-form includes (Pages `pa082508.github.io`).
 - This is separate from the watchdog's dynamic `form-kit.js?r=<ts>` retry, which
   cache-busts a *failed* load; `?v=<N>` cache-busts a *changed* file for everyone.
 
@@ -294,3 +294,27 @@ written real `enrollment_submissions` rows. Unpublished in efb0576 (verified 404
 A "mechanical" bulk edit is exactly when this bites: the change is trivial, so the
 staging step gets no attention. Check `git status --short | grep '^??'` before any
 commit that touched more than one file.
+
+---
+
+## Signature samples are scoped per signer role (2026-07-14)
+
+Adopted-signature samples live on **per-role shelves**: `pa_sig_sample:<scope>`, where
+scope is the **value** of `data-fk-mint` / `data-fk-adopt`. A bare attribute means
+`parent`, so forms written before scoping are unaffected.
+
+**Why:** Staff Consent shipped `data-fk-mint="staff"` — which *looked* namespaced but
+was inert: the kit matched on attribute presence, ignored the value, and used a single
+shared key. Add-Staff runs on the director's **kiosk, the same tablet that just filled a
+family's packet**, so a staff pad would have offered the **parent's** signature. A JD
+acknowledgment signed that way is a forged signature.
+
+- A pad reads **only** its own scope's key. **Never** collapse the shelves back to one
+  key, and **never** let adopt fall back to another scope when its own is empty — an
+  empty shelf must degrade to draw/type.
+- The **name on a sample is declared, not guessed**: `data-fk-mint-name="<selector>"`
+  or `CFG.mintNameSelector`. The old hardcode (`#parent_name` / `#f_parent_name`)
+  silently produced an empty name on any non-parent form.
+- Smoke that must stay green, in all four directions: parent shelf → parent offers,
+  staff does not; staff shelf → staff offers, parent does not; both shelves → each pad
+  from its own; legacy unscoped key → parent honours it, staff ignores it.

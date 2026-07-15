@@ -27,13 +27,22 @@ export const PARENT_FORMS_URL = `${SHOWCASE_ORIGIN}/parent-forms.html`
 // Use for EVERY parent-facing QR and Copy-link. Director-facing Download/Print
 // may still hit the file directly — the director wants the artifact, not the
 // storefront.
-export function storefrontOnlyUrl(slug: string | null | undefined, formKey: string): string {
-  const c = slug ? `center=${encodeURIComponent(slug)}&` : ''
-  return `${SHOWCASE_ORIGIN}/parent-forms.html?${c}only=${encodeURIComponent(formKey)}`
+// The slug is REQUIRED. It used to be optional and the centre was silently dropped when
+// falsy, which produced ".../parent-forms.html?only=parents_book" — the storefront has
+// no centre to resolve, so it shows the gate ("Please open this packet from your
+// center's link or QR code") and the scan dead-ends. The owner scanned exactly that
+// from the Library in Organization mode, where there is no active centre (2026-07-15).
+// Second time this class shipped; the first was 8b620c0 (Library Keep downloads lost
+// their per-centre scope). A link with no centre is not a degraded link — it is a dead
+// one, so the type makes it unrepresentable: no centre → no QR, not a broken QR.
+export function storefrontOnlyUrl(slug: string, formKey: string): string {
+  if (!slug) throw new Error('storefrontOnlyUrl: center slug is required — a storefront URL without center= dead-ends at the packet gate')
+  return `${SHOWCASE_ORIGIN}/parent-forms.html?center=${encodeURIComponent(slug)}&only=${encodeURIComponent(formKey)}`
 }
 
 // Whole-packet storefront link (optionally a set + an explicit only= selection).
 export function storefrontPacketUrl(slug: string, setKey?: string, only?: string[]): string {
+  if (!slug) throw new Error('storefrontPacketUrl: center slug is required — a storefront URL without center= dead-ends at the packet gate')
   let u = `${SHOWCASE_ORIGIN}/parent-forms.html?center=${encodeURIComponent(slug)}`
   if (setKey) u += `&set=${encodeURIComponent(setKey)}`
   if (only?.length) u += `&only=${only.map(encodeURIComponent).join(',')}`

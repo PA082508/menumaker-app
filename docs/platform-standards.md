@@ -403,3 +403,42 @@ run for anyone who installed from scratch (`c945252`).
 
 Every dependency an assert imports is declared. The check is `npm ci` → assert, on a clean
 environment.
+
+## Every generated storefront URL carries `center=` (2026-07-15)
+
+A storefront URL is built **only** through `storefrontOnlyUrl(slug, key)` /
+`storefrontPacketUrl(slug, set?, only?)`. Both **require** the slug and throw without it.
+No surface hand-rolls the string.
+
+**No centre → no QR.** Not a QR without `center=`. The storefront has nothing to resolve
+and shows its gate, so the scan dead-ends — and a director hands the code to a family
+before anyone scans it. In Organization mode (no active centre) the QR button is simply
+not rendered.
+
+**Why:** second time this class shipped. First `8b620c0` — Library Keep downloads lost
+their per-centre scope and the WIC flyer fell back to the org-level contact. Then the
+owner scanned the Library's handbook QR in Organization mode and got
+`parent-forms.html?only=parents_book`: **the gate fired correctly, the link was built
+wrong.**
+
+It survived because **a test asserted it**: *"drops center= when no center is resolved,
+still a storefront URL"* — treating a dead link as an acceptable degradation. A test that
+pins the defect is worse than no test. It now asserts the throw, plus a sweep that every
+generated URL for every centre × every key contains `center=`.
+
+- The helper's **type** carries the rule: an optional slug makes the broken URL
+  representable, and anything representable ships eventually.
+- End-to-end, not just the string: QR(centre) → storefront → the card resolves **that
+  centre's** file (`parents_book` → each centre's own handbook, asserted for all three).
+
+## A registry version may be per-centre (2026-07-15)
+
+`versions.<v>` is either **one URL string** for everyone, or an **object keyed by centre
+slug** when the document genuinely differs — the Parent Handbook carries each centre's
+address, licence and administrator, so one shared file would hand an Alpha family Parma's
+handbook and ask them to sign a receipt for it.
+
+Every resolver must handle both. `formUrl()` in the Add Child / Add Staff panels tested
+`/^https?:/` against the value and returned **null** for the object form, so the handbook
+rendered as "no link" the moment the mirror carried per-centre files — a regression
+introduced by the mirror merge itself, in the same hour.

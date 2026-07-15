@@ -99,7 +99,9 @@ export default function ParentPacketPage() {
         url: url ? withCenter(url, activeSlug) : null,
         // QR/share ALWAYS points at the storefront only= card — a printed QR must
         // follow registry `current`, never freeze the version live when it printed.
-        qrUrl: url ? storefrontOnlyUrl(activeSlug, s.key) : null,
+        // No centre → no QR. A storefront URL without center= dead-ends at the packet
+        // gate, and a director hands the code to a family before anyone scans it.
+        qrUrl: url && activeSlug ? storefrontOnlyUrl(activeSlug, s.key) : null,
         live,
         condition,
         director,

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { QRCodeCanvas } from 'qrcode.react'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
-import { PARENT_FORMS_URL, SHOWCASE_ORIGIN } from '@/config/showcaseLinks'
+import { PARENT_FORMS_URL, SHOWCASE_ORIGIN, storefrontOnlyUrl } from '@/config/showcaseLinks'
 import StaffJdOnboarding from './StaffJdOnboarding'
 
 const DOCS = [
@@ -322,8 +322,12 @@ export default function DocumentHubPage() {
     // of contact — an Ohio CACFP requirement — from ?center=, and Download/Print here
     // was handing it a bare URL, so the card fell back to the org-level line.
     const fileUrl = url ? scopeToCenter(url, slug) : null
-    // Library QR standard: the storefront only= card (never a raw file URL).
-    const onlyLink = `${SHOWCASE_ORIGIN}/parent-forms.html?${slug ? 'center=' + encodeURIComponent(slug) + '&' : ''}only=${encodeURIComponent(keyId)}`
+    // Library QR standard: the storefront only= card (never a raw file URL), through the
+    // shared helper — this line used to build the URL itself and dropped `center=` when
+    // no centre was active (Organization mode), so the scan hit the storefront's gate.
+    // No centre → NO QR: a code that dead-ends is worse than no code, because a director
+    // hands it to a family before anyone scans it.
+    const onlyLink = slug ? storefrontOnlyUrl(slug, keyId) : null
     return (
       <div style={cardS}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
@@ -340,14 +344,14 @@ export default function DocumentHubPage() {
             <>
               <a href={fileUrl} download style={openGhostS}>↓ Download</a>
               <a href={fileUrl} target="_blank" rel="noreferrer" style={ghostS}>Print</a>
-              <button style={qrIconBtnS} title="Show QR code" aria-label="Show QR code" onClick={() => setQrShare({ url: onlyLink, title })}><QRGlyph /></button>
+              {onlyLink && <button style={qrIconBtnS} title="Show QR code" aria-label="Show QR code" onClick={() => setQrShare({ url: onlyLink, title })}><QRGlyph /></button>}
             </>
           ) : (
             <>
               <a href={fileUrl} target="_blank" rel="noreferrer" style={openGhostS}>{isDoc ? 'Open / download ↗' : 'Open ↗'}</a>
               {/* QR = the storefront only= card, same as the Keep branch above — a scan
                   must follow registry `current`, never the file live when it printed. */}
-              <button style={qrIconBtnS} title="Show QR code" aria-label="Show QR code" onClick={() => setQrShare({ url: onlyLink, title })}><QRGlyph /></button>
+              {onlyLink && <button style={qrIconBtnS} title="Show QR code" aria-label="Show QR code" onClick={() => setQrShare({ url: onlyLink, title })}><QRGlyph /></button>}
             </>
           )}
         </div>

@@ -20,15 +20,22 @@ const SETS: { key: string; label: string; sub: string }[] = [
 ]
 
 type Slot = { key: string; section?: 'mandatory' | 'if_applicable'; label?: string; note?: string; pending?: boolean; handout?: boolean; group?: string }
-type FormRec = { current?: string | null; versions?: Record<string, string>; fallbackUrl?: string | null; title?: string }
+type FormRec = { current?: string | null; versions?: Record<string, string | Record<string, string>>; fallbackUrl?: string | null; title?: string }
 type Registry = { forms?: Record<string, FormRec>; packets?: Record<string, { title?: string; mode?: string; slots?: Slot[] }> }
 
-function formUrl(reg: Registry | null, key: string): string | null {
+// A version is either ONE url for everyone (string) or an object keyed by center slug
+// when each center has its own copy — the Parent Handbook carries each center's address,
+// licence and administrator. Without the object case this returned null for it and the
+// panel showed the handbook as "no link".
+function formUrl(reg: Registry | null, key: string, slug: string): string | null {
   const f = reg?.forms?.[key]
   if (!f) return null
-  const pick = (v?: string | null) => (v && v !== 'PENDING' && /^https?:/.test(v) ? v : null)
-  return pick(f.current ? f.versions?.[f.current] : null) || pick(f.fallbackUrl) ||
-    (f.versions ? (Object.values(f.versions).map(pick).find(Boolean) ?? null) : null)
+  const pick = (v?: unknown): string | null =>
+    (typeof v === 'string' && v !== 'PENDING' && /^https?:/.test(v) ? v : null)
+  const resolve = (v?: unknown): string | null =>
+    (v && typeof v === 'object' ? pick((v as Record<string, string>)[slug]) : pick(v))
+  return resolve(f.current ? f.versions?.[f.current] : null) || pick(f.fallbackUrl) ||
+    (f.versions ? (Object.values(f.versions).map(resolve).find(Boolean) ?? null) : null)
 }
 function withCenter(url: string, slug: string): string {
   return url + (url.includes('?') ? '&' : '?') + 'center=' + encodeURIComponent(slug)
@@ -148,7 +155,7 @@ export default function AddChildPacketPanel({ center, onClose }: { center: { id:
                 {slots.map(s => {
                   const label = s.label || reg.forms?.[s.key]?.title || s.key
                   // The FILE (director-facing: Print a handout). Never QR-encoded.
-                  const fileLink = (() => { const u = formUrl(reg, s.key); return u ? withCenter(u, center.slug) : null })()
+                  const fileLink = (() => { const u = formUrl(reg, s.key, center.slug); return u ? withCenter(u, center.slug) : null })()
                   // The QR/share target: always the storefront only= card, so a scan
                   // follows registry `current` instead of freezing today's version.
                   const link = fileLink ? storefrontOnlyUrl(center.slug, s.key) : null

@@ -16,14 +16,19 @@ const GREEN = '#0f4c35'
 const SET_KEY = 'staff'
 
 type Slot = { key: string; section?: string; label?: string; note?: string; pending?: boolean }
-type FormRec = { current?: string | null; versions?: Record<string, string>; fallbackUrl?: string | null; title?: string }
+type FormRec = { current?: string | null; versions?: Record<string, string | Record<string, string>>; fallbackUrl?: string | null; title?: string }
 type Registry = { forms?: Record<string, FormRec>; packets?: Record<string, { title?: string; audience?: string; slots?: Slot[] }> }
 
-function formUrl(reg: Registry | null, key: string): string | null {
+// A version is either ONE url (string) or an object keyed by center slug for documents
+// that differ per center — see AddChildPacketPanel.formUrl.
+function formUrl(reg: Registry | null, key: string, slug: string): string | null {
   const f = reg?.forms?.[key]
   if (!f) return null
-  const pick = (v?: string | null) => (v && v !== 'PENDING' && /^https?:/.test(v) ? v : null)
-  return pick(f.current ? f.versions?.[f.current] : null) || pick(f.fallbackUrl)
+  const pick = (v?: unknown): string | null =>
+    (typeof v === 'string' && v !== 'PENDING' && /^https?:/.test(v) ? v : null)
+  const resolve = (v?: unknown): string | null =>
+    (v && typeof v === 'object' ? pick((v as Record<string, string>)[slug]) : pick(v))
+  return resolve(f.current ? f.versions?.[f.current] : null) || pick(f.fallbackUrl)
 }
 
 export default function AddStaffPacketPanel({ center, onClose }: { center: { id: string; name: string; slug: string }; onClose: () => void }) {
@@ -76,7 +81,7 @@ export default function AddStaffPacketPanel({ center, onClose }: { center: { id:
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {slots.map((s, i) => {
                   const label = s.label || reg.forms?.[s.key]?.title || s.key
-                  const url = formUrl(reg, s.key)
+                  const url = formUrl(reg, s.key, center.slug)
                   return (
                     <div key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 11, border: '1.5px solid #e6f2ec', borderRadius: 12, padding: '10px 12px', background: '#fff' }}>
                       <span style={{ width: 22, height: 22, borderRadius: '50%', background: GREEN, color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' }}>{i + 1}</span>

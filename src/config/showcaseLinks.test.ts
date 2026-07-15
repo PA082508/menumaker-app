@@ -52,10 +52,45 @@ describe('storefrontOnlyUrl — the QR/share target', () => {
     expect(storefrontOnlyUrl('a b&c', 'x/y')).toBe(`${SHOWCASE_ORIGIN}/parent-forms.html?center=a%20b%26c&only=x%2Fy`)
   })
 
-  it('drops center= when no center is resolved, still a storefront URL', () => {
-    const url = storefrontOnlyUrl(null, 'iea')
-    expect(url).toBe(`${SHOWCASE_ORIGIN}/parent-forms.html?only=iea`)
-    expect(isStorefront(url)).toBe(true)
+  // This used to assert the opposite — "drops center= when no center is resolved, still a
+  // storefront URL" — and so locked the defect in: the storefront has no centre to resolve
+  // and shows its gate, so the scan dead-ends. The owner scanned exactly
+  // `?only=parents_book` off a Library QR in Organization mode (2026-07-15). A link
+  // without a centre is not degraded, it is dead; callers must render no QR instead.
+  it('refuses to build a URL with no center rather than silently dropping it', () => {
+    // @ts-expect-error — the signature now forbids this; the guard is for JS callers
+    expect(() => storefrontOnlyUrl(null, 'iea')).toThrow(/center slug is required/)
+    // @ts-expect-error — same for undefined
+    expect(() => storefrontOnlyUrl(undefined, 'iea')).toThrow(/center slug is required/)
+    expect(() => storefrontOnlyUrl('', 'iea')).toThrow(/center slug is required/)
+  })
+})
+
+// Every storefront URL any surface hands a parent must carry center=. Two shipped
+// without it: 8b620c0 (Library Keep downloads) and the Library QR above.
+describe('every generated storefront URL carries center=', () => {
+  const hasCenter = (u: string) => /[?&]center=[^&]+/.test(u)
+
+  it('only= links carry it, for every center and key', () => {
+    for (const c of ['pearl', 'alpha', 'ridge']) {
+      for (const k of ['parents_book', 'parents_book_ack', 'start_form', 'iea', 'wic_information']) {
+        const u = storefrontOnlyUrl(c, k)
+        expect(hasCenter(u), `${c}/${k} lost center=`).toBe(true)
+        expect(u).toContain(`center=${c}`)
+      }
+    }
+  })
+
+  it('packet links carry it, with and without a set', () => {
+    for (const c of ['pearl', 'alpha', 'ridge']) {
+      expect(hasCenter(storefrontPacketUrl(c)), `${c} packet lost center=`).toBe(true)
+      expect(hasCenter(storefrontPacketUrl(c, 'staff')), `${c} staff packet lost center=`).toBe(true)
+      expect(hasCenter(storefrontPacketUrl(c, 'infant', ['iea', 'start_form'])), `${c} only-selection lost center=`).toBe(true)
+    }
+  })
+
+  it('packet links refuse an empty center too', () => {
+    expect(() => storefrontPacketUrl('', 'staff')).toThrow(/center slug is required/)
   })
 })
 

@@ -318,3 +318,88 @@ acknowledgment signed that way is a forged signature.
 - Smoke that must stay green, in all four directions: parent shelf → parent offers,
   staff does not; staff shelf → staff offers, parent does not; both shelves → each pad
   from its own; legacy unscoped key → parent honours it, staff ignores it.
+
+## The app registry mirror ships with the flip (2026-07-15)
+
+The app keeps its **own copy** of the registry at `public/enroll-registry.json`. The
+Library, the Add Child / Add Staff panels, the Inbox and the review modal all read
+**that copy**, not the one on Pages. A Pages flip therefore changes nothing a director
+sees until the mirror is merged.
+
+**A Pages marker without a mirror marker means the flip is NOT closed.** Put the mirror
+merge on the flip checklist next to the kit-bust.
+
+**Why:** twice in twenty-four hours. WIC v1 went live on Pages (`e7a715c`) and needed a
+separate mirror commit (`f085c74`). Then start_form and the Parent Handbook went live
+(`74e1c04`, `5967899`) while the app still described both as *"director provides"* — the
+storefront handed families a form the app told their director did not exist yet. The same
+merge revealed `conditions.sleep_position_waiver` had been missing from the mirror since
+the 01218 v2 flip, so the app never knew a non-back sleep position needs a waiver.
+
+- Mirror **forms / packets / conditions** wholesale — every other block is identical, and
+  hand-picking keys is how drift starts.
+- Read back from the deployed app (`/enroll-registry.json` on Vercel), not from the file
+  you just wrote.
+
+## Read-back of a surface is not a recompute of its data (2026-07-15)
+
+Deriving what a page *should* render from the data it reads is **not** a read-back. It
+proves the input, not the surface: not that the card rendered, that it is clickable, that
+it is legible, or that nothing above it swallowed the click.
+
+If a surface is behind auth and cannot be driven, **say so and hand it to a human** — do
+not publish the derivation as if it were the check. This is the [Finding-closure
+rule](#finding-closure-rule-2026-07-14) applied to our own reports: a finding closes on
+the same surface a person uses.
+
+## User-facing strings are English (2026-07-15)
+
+Every string a family or an employee can read is **English**. We spec in Russian; the
+product does not.
+
+**Why:** `form-kit.js` shipped `btn.textContent = '✍️ Внести подпись'` — hardcoded, next
+to an English hint. **12 forms** carry an adopt pad, including the whole parent packet, so
+every Ohio family that signed the Consent then met a button they could not read. It
+leaked straight out of the spec conversation into the product and no one saw it for a
+day; the dual-role smoke caught it while asserting something else entirely
+(`2961d1c`).
+
+- Assert it with **`scripts/assert-english.mjs`** — it renders every live form + packet
+  (`versions[current]` from the registry) and walks the **rendered DOM**: text nodes,
+  placeholders, aria-labels, titles. Comments and commit messages are exempt; the DOM is
+  not. A grep cannot tell a comment from a label and flags both — this can.
+  ```bash
+  node scripts/assert-english.mjs          # local Pages checkout
+  node scripts/assert-english.mjs --live   # pa082508.github.io
+  ```
+- It earned its keep on the first run: the **live** Income Eligibility Application was
+  rendering `иначе PAID. Foster или валидный 7-значный SNAP/OWF номер` in its on-screen
+  helper — the one line explaining the Free/Reduced/Paid determination, unreadable to the
+  family it explains it to (`19fef52`).
+- A Russian label in a spec is a **description of intent**, not the copy. Translate it at
+  the code boundary.
+
+## Smoke rows are tagged and swept (ZZSMOKE, 2026-07-15)
+
+A smoke that writes goes through the **real channel** the user's device uses — the public
+RPC with the anon key, not an elevated SQL insert — because that is the path that can be
+broken.
+
+- Tag every smoke row `form_data.smoke_tag = 'ZZSMOKE'`, then delete by that tag and
+  **read back the count as 0**, plus the table total and `max(created_at)`, to prove the
+  baseline is untouched.
+- **Prove the delete before the insert.** Write one row you fully control, delete it, see
+  0 — *then* smoke for real. `enrollment_submissions` is live and a director is looking
+  at it; discovering you cannot clean up afterwards is discovering it too late.
+- The tag lives in `form_data` and never renders. Give a demo row a **human name** — a
+  screencast or an Inbox showing "ZZSMOKE Parent" reads as test garbage to a director.
+
+## Assert scripts declare their dependencies (2026-07-15)
+
+An assert that cannot run is not a check. `scripts/assert-submit.mjs` — the mandatory
+per-run check — imported `playwright`, which was never in `package.json`. On any clean
+checkout `npm ci` succeeded and the assert failed at import, so the check silently did not
+run for anyone who installed from scratch (`c945252`).
+
+Every dependency an assert imports is declared. The check is `npm ci` → assert, on a clean
+environment.

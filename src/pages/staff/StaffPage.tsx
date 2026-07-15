@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
 import { useAuth } from '@/hooks/useAuth'
-import { SHOWCASE_ORIGIN } from '@/config/showcaseLinks'
+import AddStaffPacketPanel from './AddStaffPacketPanel'
 
 type Staff = {
   id: string
@@ -46,6 +46,7 @@ const selStyle: React.CSSProperties = {
 export default function StaffPage() {
   const { org, currentCenter, centers, setCurrentCenter } = useOrg()
   const [pendingStaff, setPendingStaff] = useState<number>(0)  // IA v2: staff Enrollment badge
+  const [showPacket, setShowPacket] = useState(false)
   useEffect(() => {
     if (!currentCenter?.id) { setPendingStaff(0); return }
     let cancelled = false
@@ -142,7 +143,11 @@ export default function StaffPage() {
       {/* IA v2 — Staff mirrors Children: action strip LEFT, under the header. */}
       {currentCenter && (
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 18 }}>
-            <button onClick={() => window.open(`${SHOWCASE_ORIGIN}/forms/1-data-sources/Staff_Enrollment_v1.html?center=${encodeURIComponent(currentCenter.slug)}`, '_blank', 'noopener')}
+            {/* Opens the onboarding PACKET, not Staff Enrollment on its own: the Consent
+                comes first and mints the signature the Enrollment then adopts. Linking
+                straight to Enrollment skipped the Consent, so there was nothing to adopt
+                and the employee had to draw again. */}
+            <button onClick={() => setShowPacket(true)}
               style={{ padding: '9px 16px', borderRadius: 9, background: '#0f4c35', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13, fontFamily: 'inherit' }}>
               ➕ Add Staff
             </button>
@@ -251,6 +256,13 @@ export default function StaffPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {showPacket && currentCenter && (
+        <AddStaffPacketPanel
+          center={{ id: currentCenter.id, name: currentCenter.name, slug: currentCenter.slug }}
+          onClose={() => setShowPacket(false)}
+        />
       )}
     </div>
   )

@@ -79,3 +79,22 @@ describe('PARENT_FORMS_URL', () => {
     expect(PARENT_FORMS_URL).toBe(`${SHOWCASE_ORIGIN}/parent-forms.html`)
   })
 })
+
+// Add Staff panel — Link + QR must both resolve through the storefront, never a file URL:
+// a printed QR that points at a file freezes the version live the day it was printed.
+describe('storefrontPacketUrl — staff onboarding packet', () => {
+  it('builds the staff packet link for a center', () => {
+    expect(storefrontPacketUrl('ridge', 'staff')).toBe(`${SHOWCASE_ORIGIN}/parent-forms.html?center=ridge&set=staff`)
+  })
+  it('is a storefront URL, not a form file', () => {
+    const u = storefrontPacketUrl('ridge', 'staff')
+    expect(u).toContain('/parent-forms.html')
+    expect(u).not.toContain('/forms/1-data-sources/')
+    expect(u).not.toMatch(/\.html\?center=[^&]*$/)
+  })
+  it('carries the center for every center', () => {
+    for (const c of ['pearl', 'alpha', 'ridge']) {
+      expect(storefrontPacketUrl(c, 'staff')).toContain(`center=${c}`)
+    }
+  })
+})

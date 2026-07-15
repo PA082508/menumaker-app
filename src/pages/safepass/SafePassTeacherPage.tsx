@@ -13,6 +13,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
 import { useAuth } from '@/hooks/useAuth'
+import Avatar from '@/components/Avatar'
 
 // org_id (3a9a290e-7e49-491e-946b-ad86f2399910) is stamped on INSERT by the
 // parent flow (Step 4); the teacher view only reads/confirms existing sessions.
@@ -29,7 +30,7 @@ const C = {
 
 // ─── types ─────────────────────────────────────────────────────────────────────
 type Classroom = { id: string; name: string; center_id: string }
-type Child = { roster_id: string; child_name: string }
+type Child = { roster_id: string; child_name: string; photo_url?: string | null }
 type Session = {
   id: string
   child_id: string
@@ -256,7 +257,7 @@ export default function SafePassTeacherPage() {
 
     ;(async () => {
       const { data: kids } = await supabase.schema('menumaker').from('v_meal_grid')
-        .select('roster_id,child_name').eq('classroom_id', classId).eq('is_active', true)
+        .select('roster_id,child_name,photo_url').eq('classroom_id', classId).eq('is_active', true)
         .order('child_name')
       if (!cancelled) setRoster((kids ?? []) as Child[])
 
@@ -517,6 +518,7 @@ export default function SafePassTeacherPage() {
               return (
                 <div key={child.roster_id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 10, marginBottom: 6 }}>
                   <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: inClass ? C.green : C.border }} />
+                  <Avatar name={child.child_name} path={child.photo_url} size={30} />
                   <div style={{ fontSize: 13, fontWeight: 500, flex: 1 }}>{child.child_name}</div>
                   <div style={{ fontSize: 11, color: C.muted }}>{label}</div>
                 </div>

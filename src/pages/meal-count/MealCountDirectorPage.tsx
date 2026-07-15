@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { notDepartedBefore } from "@/lib/childActive";
 import { useAuth } from "@/hooks/useAuth";
+import Avatar from "@/components/Avatar";
 import { format, startOfWeek, addDays, isWeekend } from "date-fns";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -26,6 +27,7 @@ interface Child {
   rate_oz: number;
   age_group_food: string;
   birthday: string | null;
+  photo_url?: string | null;
 }
 
 interface MilkRateRow {
@@ -194,7 +196,7 @@ export default function MealCountPage() {
       const mon = format(weekStart, "yyyy-MM-dd");
       const { data: kids } = await supabase
         .schema("menumaker").from("roster")
-        .select("id,child_name,milk_kind,substitute_milk,substitute_reimbursable,rate_oz,age_group_food,birthday")
+        .select("id,child_name,milk_kind,substitute_milk,substitute_reimbursable,rate_oz,age_group_food,birthday,photo_url")
         .eq("classroom_id", selectedClassId).eq("is_active", true)
         // Defense in depth: exclude children who departed before this week (date_out
         // < Monday) even if is_active wasn't flipped — a mid-week leaver stays for
@@ -507,6 +509,7 @@ function CurrentMode({ roster, records, activeSlots, selectedSlot, setSelectedSl
                   className={`mc-check-row ${checked?"checked":""} ${isPend?"pending":""}`}
                   onClick={() => toggle(child, day, selectedSlot)}>
                   <span className="mc-checkbox">{checked?"✓":""}</span>
+                  <Avatar name={child.child_name} path={child.photo_url} size={24} />
                   <span className="mc-child-name">{child.child_name}</span>
                   {(child.birthday ? calcAgeGroup(child.birthday) : child.age_group_food) === "infant"
                     ? <span className="mc-sub-badge">🍼 Formula</span>

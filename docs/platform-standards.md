@@ -240,3 +240,57 @@ link/QR" banner), never a picker fallback.
   (`FormKit.centerName()` → `#f_center` / `#p1_center` / `[data-fk-center-name]`).
   Removing the picker without this silently blanks the field — that is how enroll v9
   and IEA v6 printed an EMPTY Center for two days.
+
+---
+
+## The registry is never fetched cacheably (2026-07-14)
+
+`enroll-registry.json` **is** the flip mechanism — `current` is how a new version
+reaches parents. Every read of it, in the app and on the Pages storefront/forms,
+**must** be `fetch(url + '?t=' + Date.now(), { cache: 'no-store' })`.
+
+- `cache: 'no-cache'` is **not enough**: it revalidates, but GitHub Pages' edge TTL
+  can still return a stale registry, so a flip lands on one surface and not another.
+- All app fetches were covered by PR #25; five kit forms were still reading it bare
+  and were fixed in the same sweep (Pages f03b3b0).
+
+---
+
+## QR and share links point at the storefront, never a file (2026-07-14)
+
+**Any QR or copied link a PARENT receives must encode
+`parent-forms.html?center=<slug>&only=<formKey>`** — use `storefrontOnlyUrl()` /
+`storefrontPacketUrl()` from [`src/config/showcaseLinks.ts`](../src/config/showcaseLinks.ts).
+Never `versions[current]`, never `fallbackUrl`, never a raw file URL.
+
+**Why:** the storefront re-reads the registry on every open, so a flip reaches the
+parent instantly. A QR that encodes a file URL freezes that version **on paper**. The
+Add-Child panel QR for DCY 01218 encoded
+`.../3-library/ohio-dcy/Basic Infant 2026 DCY-01218.PDF?center=alpha`, so scanning it
+kept returning the flat PDF after v2 went live — a QR on a wall would have done that
+forever.
+
+- Director-facing **Download / Print may** hit the file directly — the director wants
+  the artifact, not the storefront. Only the parent-facing QR/link is constrained.
+- Surfaces under this rule: `AddChildPacketPanel`, `/issue-packet`
+  (`ParentPacketPage`), `DocumentHubPage`. Guarded by
+  [`src/config/showcaseLinks.test.ts`](../src/config/showcaseLinks.test.ts) — every
+  form × center must be a storefront URL and must not look like a file.
+
+---
+
+## Staging: `git add` only an explicit list of TRACKED files (2026-07-14)
+
+**Never `git add -A`, `git add <dir>`, or `git add $(grep -rl ...)` in a repo that
+holds dark work.** Use `git add -u` (tracked, modified) or name the files.
+
+**Why:** a kit-bust ran `git add $(grep -rl 'form-kit.js?v=3' .)`. grep walks the
+**working tree** and cannot know what is dark, so it swept in the untracked
+`Staff_Consent_v1.html` and published an unreviewed staff form to Pages (HTTP 200,
+commit 31027c2). No card linked it, but the URL was guessable and the form would have
+written real `enrollment_submissions` rows. Unpublished in efb0576 (verified 404);
+`enrollment_submissions` held **0** staff rows, so nothing was filed.
+
+A "mechanical" bulk edit is exactly when this bites: the change is trivial, so the
+staging step gets no attention. Check `git status --short | grep '^??'` before any
+commit that touched more than one file.

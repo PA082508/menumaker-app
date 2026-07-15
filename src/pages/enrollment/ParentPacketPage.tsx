@@ -17,7 +17,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { QRCodeCanvas } from 'qrcode.react'
 import { useOrg } from '@/contexts/OrgContext'
-import { SHOWCASE_ORIGIN } from '@/config/showcaseLinks'
+import { SHOWCASE_ORIGIN, storefrontOnlyUrl } from '@/config/showcaseLinks'
 
 const GREEN = '#0f4c35'
 
@@ -63,7 +63,7 @@ function downloadQR(wrapperId: string, filename: string) {
   a.click()
 }
 
-type ResolvedSlot = Slot & { label: string; note: string; url: string | null; live: boolean; condition?: string; director: boolean }
+type ResolvedSlot = Slot & { label: string; note: string; url: string | null; qrUrl: string | null; live: boolean; condition?: string; director: boolean }
 
 export default function ParentPacketPage() {
   const { currentCenter, centers, isOrgAdmin } = useOrg()
@@ -97,6 +97,9 @@ export default function ParentPacketPage() {
         label: s.label || f?.title || s.key,
         note: s.note || '',
         url: url ? withCenter(url, activeSlug) : null,
+        // QR/share ALWAYS points at the storefront only= card — a printed QR must
+        // follow registry `current`, never freeze the version live when it printed.
+        qrUrl: url ? storefrontOnlyUrl(activeSlug, s.key) : null,
         live,
         condition,
         director,
@@ -174,7 +177,7 @@ export default function ParentPacketPage() {
               {/* Compact QR icon — click to download the 256-res PNG. */}
               <div id={`qr-${s.key}`} title="Download QR" onClick={() => downloadQR(`qr-${s.key}`, `${s.key}-${activeSlug}.png`)}
                 style={{ flex: '0 0 auto', cursor: 'pointer', lineHeight: 0, border: '1px solid #e5e7eb', borderRadius: 6, padding: 3 }}>
-                <QRCodeCanvas value={s.url} size={256} level="M" marginSize={0} style={{ width: 36, height: 36, display: 'block' }} />
+                <QRCodeCanvas value={s.qrUrl ?? ''} size={256} level="M" marginSize={0} style={{ width: 36, height: 36, display: 'block' }} />
               </div>
             </>
           ) : (

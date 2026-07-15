@@ -340,7 +340,9 @@ export default function DocumentHubPage() {
           ) : (
             <>
               <a href={fileUrl} target="_blank" rel="noreferrer" style={openGhostS}>{isDoc ? 'Open / download ↗' : 'Open ↗'}</a>
-              <button style={qrIconBtnS} title="Show QR code" aria-label="Show QR code" onClick={() => setQrShare({ url: fileUrl, title })}><QRGlyph /></button>
+              {/* QR = the storefront only= card, same as the Keep branch above — a scan
+                  must follow registry `current`, never the file live when it printed. */}
+              <button style={qrIconBtnS} title="Show QR code" aria-label="Show QR code" onClick={() => setQrShare({ url: onlyLink, title })}><QRGlyph /></button>
             </>
           )}
         </div>

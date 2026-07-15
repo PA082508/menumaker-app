@@ -10,7 +10,7 @@
 // never included. QR = qrcode.react (client-side, no external calls).
 import { useEffect, useMemo, useState } from 'react'
 import { QRCodeCanvas } from 'qrcode.react'
-import { SHOWCASE_ORIGIN } from '@/config/showcaseLinks'
+import { SHOWCASE_ORIGIN, storefrontOnlyUrl } from '@/config/showcaseLinks'
 
 const GREEN = '#0f4c35'
 const SETS: { key: string; label: string; sub: string }[] = [
@@ -147,8 +147,11 @@ export default function AddChildPacketPanel({ center, onClose }: { center: { id:
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {slots.map(s => {
                   const label = s.label || reg.forms?.[s.key]?.title || s.key
-                  const url = formUrl(reg, s.key)
-                  const link = url ? withCenter(url, center.slug) : null
+                  // The FILE (director-facing: Print a handout). Never QR-encoded.
+                  const fileLink = (() => { const u = formUrl(reg, s.key); return u ? withCenter(u, center.slug) : null })()
+                  // The QR/share target: always the storefront only= card, so a scan
+                  // follows registry `current` instead of freezing today's version.
+                  const link = fileLink ? storefrontOnlyUrl(center.slug, s.key) : null
                   if (s.pending) return (
                     <div key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 12, border: '1px dashed #e5e7eb', borderRadius: 11, padding: '11px 14px', background: '#fafafa', opacity: 0.75 }}>
                       <span style={{ width: 19, height: 19, borderRadius: 5, border: '1.5px solid #d1d5db', flex: '0 0 auto' }} />
@@ -171,8 +174,8 @@ export default function AddChildPacketPanel({ center, onClose }: { center: { id:
                         </div>
                         {s.note && <div style={{ fontSize: 11.5, color: '#6b7280', marginTop: 2, lineHeight: 1.4 }}>{s.note}</div>}
                       </div>
-                      {s.handout && link ? (
-                        <a href={link} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 700, color: GREEN, textDecoration: 'none', flex: '0 0 auto' }}>🖨 Print</a>
+                      {s.handout && fileLink ? (
+                        <a href={fileLink} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 700, color: GREEN, textDecoration: 'none', flex: '0 0 auto' }}>🖨 Print</a>
                       ) : link ? miniQR(label, link, 40) : (
                         <span style={{ fontSize: 11, color: '#9ca3af', fontStyle: 'italic', flex: '0 0 auto' }}>no link</span>
                       )}

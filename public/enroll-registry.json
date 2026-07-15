@@ -413,11 +413,16 @@
       "title": "WIC Information",
       "requiringOrg": "ODH · HEA 4460-4466",
       "kind": "keep",
-      "current": null,
+      "current": "v1",
       "versions": {
-        "v1": "PENDING"
+        "v1": "https://pa082508.github.io/forms/1-data-sources/WIC_Information_Flyer_v1.html"
       },
-      "note": "Awaiting ODH WIC Application & Addendum (HEA 4460-4466)."
+      "note": "App mirror of Pages e7a715c. Keep-card WIC handout (EN/ES) linking to ODH; the ODH PDF is linked, never mirrored, so families get the current form.",
+      "fallbackUrl": "https://pa082508.github.io/forms/1-data-sources/WIC_Information_Flyer_v1.html",
+      "sourceUrls": {
+        "odhWic": "https://odh.ohio.gov/know-our-programs/women-infants-children/welcome-to-women-infants-and-children-wic",
+        "application": "https://odh.ohio.gov/wps/wcm/connect/gov/40990d64-2c2a-4bf7-b6dd-95c3416821a0/200+Appendix+HEA+4460-4466+WIC+Application&Addendum+Fillable.pdf?MOD=AJPERES"
+      }
     },
     "building_for_the_future": {
       "slug": "building_for_the_future",

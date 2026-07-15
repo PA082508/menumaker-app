@@ -224,3 +224,19 @@ ships for `.toolbar button` still cascades onto the kit's buttons. A form rule
   the kit must out-specify it. Add the form to the assert list and prove it.
 - Corollary to the finding-closure rule: a green assert is necessary, not
   sufficient. For anything the parent SEES, look at a screenshot before closing.
+
+### Center pickers are forbidden (finding #6, 2026-07-14)
+
+The center is authoritative from `?center=` / kiosk / embed **only**. No form may
+ship a reachable center `<select>`: a parent filing against the wrong center is a
+claim-integrity risk. The kit sweeps the whole document in `boot()`
+(`stripCenterPickers`) — position on the page must never decide, which is exactly
+how USDA's `.center-pick` block survived a strip that only walked toolbar children.
+An unresolved center is a dead end (Submit disabled + "open from your center's
+link/QR" banner), never a picker fallback.
+
+- The assert fails on any center picker in the DOM, visible or not.
+- If a picker fed a printed field, the kit must refill it from the resolved center
+  (`FormKit.centerName()` → `#f_center` / `#p1_center` / `[data-fk-center-name]`).
+  Removing the picker without this silently blanks the field — that is how enroll v9
+  and IEA v6 printed an EMPTY Center for two days.

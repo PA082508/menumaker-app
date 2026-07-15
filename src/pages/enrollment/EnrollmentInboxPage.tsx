@@ -11,7 +11,7 @@ import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
 import { useAuth } from '@/hooks/useAuth'
 import {
-  validateSubmission, submissionTypeLabel,
+  validateSubmission, submissionTypeLabel, isStaffType,
   type ValidationResult, type ValStatus,
 } from '@/lib/enrollmentValidationRules'
 import EnrollmentReviewModal from './EnrollmentReviewModal'
@@ -193,8 +193,8 @@ export default function EnrollmentInboxPage() {
   // Live validation per row (Phase 1 computes client-side; no trigger yet).
   const graded = useMemo(
     () => rows
-      .filter(r => from === 'staff' ? r.submission_type === 'staff'
-                 : from === 'children' ? r.submission_type !== 'staff'
+      .filter(r => from === 'staff' ? isStaffType(r.submission_type)
+                 : from === 'children' ? !isStaffType(r.submission_type)
                  : true)
       .map(r => ({
         row: r,

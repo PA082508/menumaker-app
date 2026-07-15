@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { validateSubmission, submissionTypeLabel } from './enrollmentValidationRules'
+import { validateSubmission, submissionTypeLabel, isStaffType, STAFF_TYPES } from './enrollmentValidationRules'
 
 // Minimal well-formed CACFP submission; `meals` uses the packet form's short
 // codes (b/as/l/ps/su/es). Override `mealsByDay` to exercise the slot rules.
@@ -126,5 +126,37 @@ describe('submissionTypeLabel', () => {
 
   it('falls back to the raw code for an unknown type rather than throwing', () => {
     expect(submissionTypeLabel('brand_new_form')).toBe('brand_new_form')
+  })
+})
+
+// ── STAFF_TYPES — the Inbox scopes its two doors by FAMILY, not exact equality ──
+// The Inbox filtered with `submission_type === 'staff'`, so staff_consent fell out of
+// the Staff tab and surfaced in Children: an employee's e-signature consent listed
+// among the children's submissions, in front of whoever reviews the child inbox.
+describe('isStaffType — employment submissions are a family', () => {
+  const staffTab = (t: string) => isStaffType(t)
+  const childrenTab = (t: string) => !isStaffType(t)
+
+  it('keeps staff_consent OUT of the children tab', () => {
+    expect(childrenTab('staff_consent')).toBe(false)
+  })
+
+  it('shows every employment type in the staff tab', () => {
+    for (const t of STAFF_TYPES) expect(staffTab(t), `${t} missing from Staff`).toBe(true)
+  })
+
+  it('leaves parent submissions in the children tab', () => {
+    for (const t of ['parent_consent', 'cacfp_enrollment', 'parents_book_ack', 'start_form', 'dcy_01234']) {
+      expect(childrenTab(t), `${t} vanished from Children`).toBe(true)
+      expect(staffTab(t), `${t} leaked into Staff`).toBe(false)
+    }
+  })
+
+  it('does not classify an unknown type as staff', () => {
+    expect(isStaffType('brand_new_form')).toBe(false)
+  })
+
+  it('every STAFF_TYPES member is labelled (a new employment form must do both)', () => {
+    for (const t of STAFF_TYPES) expect(submissionTypeLabel(t)).not.toBe(t)
   })
 })

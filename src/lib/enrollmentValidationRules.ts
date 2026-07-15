@@ -276,11 +276,22 @@ export const submissionTypeLabel = (t: string): string =>
     transition_into_program: 'Transition into the Program',
     usda_waiver: 'USDA Income Eligibility Waiver',
     start_form: 'Registration & Fee Agreement',
-    parents_book_ack: 'Parent Handbook Acknowledgment',
+    parents_book_ack: 'Parent Handbook Receipt',
     staff: 'Staff Enrollment',
     staff_consent: 'Staff Consent (E-Signature)',
     other: 'Other',
   }[t] ?? t)
+
+/**
+ * Employment submissions, as a FAMILY. The Inbox scopes its two doors by this —
+ * `submission_type === 'staff'` was exact-equality, so staff_consent fell out of the
+ * Staff tab AND surfaced in Children: an employee's consent listed among the kids.
+ * Every new employment form must be added here, not just to the label map above.
+ */
+export const STAFF_TYPES = ['staff', 'staff_consent'] as const
+
+export const isStaffType = (t: string): boolean =>
+  (STAFF_TYPES as readonly string[]).includes(t)
 
 /**
  * Validate a pending submission. Returns 'unknown' status for submission types

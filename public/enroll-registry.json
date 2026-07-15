@@ -236,7 +236,8 @@
       "intakeMode": "online",
       "signer": "staff",
       "perInstance": false,
-      "history": []
+      "history": [],
+      "audience": "staff"
     },
     "parent_consent": {
       "slug": "parent_consent",
@@ -271,7 +272,7 @@
       "history": [
         {
           "at": "2026-07-14",
-          "note": "FLIP v1(PDF)→v2 fillable — app mirror of Pages 3b5bc2e. Live smoke via storefront set=infant: Ref 673B49CD → children Inbox (basic_infant_care_plan, pending), cleaned + read-back."
+          "note": "FLIP v1(PDF)→v2 (DCY_01218_v2.html form-kit fillable): watchdog (15th form) + parent-sig adopt slot (sigParent; sigCaregiver=staff excluded) + kit ?v=4 (#5 toolbar specificity + #6 center pickers). submission_type=basic_infant_care_plan → children Inbox (advisory). Flipped on Nikolay's live '01218 ок'; re-run clean on ?v=4 (Submit visible contrast 193.6, 0 center pickers, adopt stamps sigParent, watchdog silent, 0 exceptions). sleep_position_waiver detector live: Side/Tummy → banner from reg.conditions; the waiver LINK stays hidden until dcy_01235 is published (note tells the parent to contact the center, so nothing misleads)."
         }
       ],
       "condition": "infant"
@@ -417,7 +418,7 @@
       "versions": {
         "v1": "https://pa082508.github.io/forms/1-data-sources/WIC_Information_Flyer_v1.html"
       },
-      "note": "App mirror of Pages e7a715c. Keep-card WIC handout (EN/ES) linking to ODH; the ODH PDF is linked, never mirrored, so families get the current form.",
+      "note": "Keep-for-your-records WIC handout (CACFP: WIC info goes to every family). Bilingual EN/ES, per-center POC from ?center=. Links out to ODH (WIC page + HEA 4460-4466 Application & Addendum, both verified live 2026-07-14); we do NOT mirror the ODH PDF, so families always get the current form. Caveat: the PDF sits on a WebSphere /wps/wcm/connect/<uuid> URL, which ODH can rotate on republish — the flyer also names the doc so it stays findable, and sourceUrls should be re-checked by the maintainer run.",
       "fallbackUrl": "https://pa082508.github.io/forms/1-data-sources/WIC_Information_Flyer_v1.html",
       "sourceUrls": {
         "odhWic": "https://odh.ohio.gov/know-our-programs/women-infants-children/welcome-to-women-infants-and-children-wic",
@@ -467,20 +468,79 @@
     "start_form": {
       "slug": "start_form",
       "title": "Registration Start Form",
-      "kind": "director",
-      "current": null,
+      "kind": "signature",
+      "current": "v1",
       "versions": {
-        "v1": "PENDING"
-      }
+        "v1": "https://pa082508.github.io/forms/1-data-sources/Start_Form_v1.html"
+      },
+      "fallbackUrl": "https://pa082508.github.io/forms/1-data-sources/Start_Form_v1.html",
+      "intakeMode": "online|kiosk",
+      "signer": "parent",
+      "history": [
+        {
+          "at": "2026-07-15",
+          "note": "FLIP → v1 on Nikolay's «поля ок». Mockup taken into the kit (2ee96b7/48e90bb): centre tabs removed (finding #6), Ridge-hardcoded header replaced by ?center= with blank honest degradation, logo → shared pa-logo.png (161KB→24KB). 9 required; OFFICE SETUP badged, never required, director-prefilled via session packet. Channel submit_enrollment_form, submission_type=start_form. OPEN (not blockers): Alpha e-mail unconfirmed, pearl/alpha fax empty."
+        }
+      ]
     },
     "parents_book": {
       "slug": "parents_book",
-      "title": "Parents Book",
-      "kind": "director",
-      "current": null,
+      "title": "Parent Handbook",
+      "kind": "keep",
+      "current": "v1",
       "versions": {
-        "v1": "PENDING"
-      }
+        "v1": {
+          "pearl": "https://pa082508.github.io/forms/3-library/our-documents/ParentHandbook_pearl_v1.pdf",
+          "alpha": "https://pa082508.github.io/forms/3-library/our-documents/ParentHandbook_alpha_v1.pdf",
+          "ridge": "https://pa082508.github.io/forms/3-library/our-documents/ParentHandbook_ridge_v1.pdf"
+        }
+      },
+      "note": "Keep-for-your-records booklet, 43pp, effective 1/1/2025. Built per center from the Parma/Pearl source (PH25handbookP.pdf): running header, page-5 contact block (address / licence / phone) and the ADMINISTRATOR line are the centre's own; every other page is byte-identical. APPROVED BY: Tatiana Kogan is org-wide and untouched, as are EFFECTIVE DATE / POLICY NO. Licences: pearl 300629, alpha 307982 (6-digit legacy scheme), ridge 2190020475 (10-digit scheme, confirmed off the wall by the owner 2026-07-15). Alpha/Ridge fax + e-mail are not held anywhere, so those lines are dropped rather than carrying Pearl's.",
+      "history": [
+        {
+          "at": "2026-07-15",
+          "note": "v1 per-center build on owner's «ок пара» + attribution ruling: POLICY COUNCIL (Cinthya Patsko, Carmen Santiago) → ADMINISTRATOR: <centre head> ×26; Carmen Santiago removed throughout; name spelling corrected per owner (Cynthia, not the source booklet's Cinthya)."
+        }
+      ]
+    },
+    "parents_book_ack": {
+      "slug": "parents_book_ack",
+      "title": "Parent Handbook Receipt",
+      "kind": "signature",
+      "current": "v1",
+      "versions": {
+        "v1": "https://pa082508.github.io/forms/1-data-sources/Parents_Book_Ack_v1.html"
+      },
+      "fallbackUrl": "https://pa082508.github.io/forms/1-data-sources/Parents_Book_Ack_v1.html",
+      "intakeMode": "online|kiosk",
+      "signer": "parent",
+      "note": "Mini fill-and-sign receipt for the Parent Handbook. Body is VERBATIM from the handbook's own signature page (p.43) — the handbook makes enrolment contingent on a \"signed Parent Handbook receipt\", so the receipt carries its words, not a paraphrase. Signature 1 required (adopts the parent shelf sample); signature 2 optional with the P2 N/A pattern. Channel submit_enrollment_form, submission_type=parents_book_ack.",
+      "history": [
+        {
+          "at": "2026-07-15",
+          "note": "v1 — verbatim ack text confirmed by owner over the shorter paraphrase."
+        }
+      ]
+    },
+    "staff_consent": {
+      "slug": "staff_consent",
+      "title": "Staff Consent for Electronic Signatures",
+      "kind": "signature",
+      "current": "v1",
+      "versions": {
+        "v1": "https://pa082508.github.io/forms/1-data-sources/Staff_Consent_v1.html"
+      },
+      "fallbackUrl": "https://pa082508.github.io/forms/1-data-sources/Staff_Consent_v1.html",
+      "intakeMode": "online|kiosk",
+      "signer": "staff",
+      "audience": "staff",
+      "note": "Employment-forms e-signature consent. Signed FIRST in the staff packet: it mints the staff-scoped signature sample (pa_sig_sample:staff) that Staff Enrollment then adopts, so an employee draws or types once. The staff shelf is never offered on a parent form and vice-versa. Channel submit_enrollment_form, submission_type=staff_consent.",
+      "history": [
+        {
+          "at": "2026-07-15",
+          "note": "v1 LIVE on Nikolay's «флип staff» after preview. Was dark since 2026-07-14 (efb0576 unpublished an accidental publish); gate was «staff-превью ПОСЛЕ фикса №5» — fix #5 shipped in 31027c2, preview seen 2026-07-15. Micro-edits into the kit standard: staff banner (data-fk-banner-msg), data-fk-mint-name=#employee_name, centre picker stripped (finding #6)."
+        }
+      ]
     }
   },
   "org": {
@@ -496,6 +556,17 @@
       "detect": [
         "child under 12 months"
       ]
+    },
+    "sleep_position_waiver": {
+      "title": "Non-back sleep position (side or tummy)",
+      "detectOn": "sleep_position",
+      "detect": [
+        "sleep position: side",
+        "sleep position: tummy"
+      ],
+      "issue": "director",
+      "waiverForm": "dcy_01235",
+      "note": "A DCY 01235 Sleep Position Waiver, signed by your child's physician, is required before your baby may sleep on their side or tummy. Please contact the center/provider."
     },
     "special_diet": {
       "title": "Special diet or milk substitution",
@@ -671,9 +742,8 @@
         {
           "key": "start_form",
           "section": "mandatory",
-          "pending": true,
           "label": "Registration Start Form",
-          "note": "Coming soon."
+          "note": "Start here — this begins your enrollment. Registration is confirmed when the fee is paid."
         },
         {
           "key": "dcy_01305",
@@ -775,18 +845,21 @@
         {
           "key": "start_form",
           "section": "mandatory",
-          "pending": true,
           "label": "Registration Start Form",
-          "tag": "Director provides",
-          "note": "Your director will start this with you — awaiting file."
+          "note": "Confirms your start date and fees. Your director can fill the amounts with you."
+        },
+        {
+          "key": "parents_book_ack",
+          "section": "mandatory",
+          "label": "Parent Handbook Receipt",
+          "note": "Sign that you received the handbook. Read it first — the Download card is right below."
         },
         {
           "key": "parents_book",
           "section": "mandatory",
-          "pending": true,
-          "label": "Parents Book",
-          "tag": "Coming soon",
-          "note": "Awaiting source — coming soon."
+          "keep": true,
+          "label": "Parent Handbook",
+          "note": "Your center’s handbook — download or print and keep it."
         }
       ]
     },
@@ -893,18 +966,41 @@
         {
           "key": "start_form",
           "section": "mandatory",
-          "pending": true,
           "label": "Registration Start Form",
-          "tag": "Director provides",
-          "note": "Your director will start this with you — awaiting file."
+          "note": "Confirms your start date and fees. Your director can fill the amounts with you."
+        },
+        {
+          "key": "parents_book_ack",
+          "section": "mandatory",
+          "label": "Parent Handbook Receipt",
+          "note": "Sign that you received the handbook. Read it first — the Download card is right below."
         },
         {
           "key": "parents_book",
           "section": "mandatory",
-          "pending": true,
-          "label": "Parents Book",
-          "tag": "Coming soon",
-          "note": "Awaiting source — coming soon."
+          "keep": true,
+          "label": "Parent Handbook",
+          "note": "Your center’s handbook — download or print and keep it."
+        }
+      ]
+    },
+    "staff": {
+      "title": "Staff onboarding",
+      "mode": "addressed",
+      "audience": "staff",
+      "_note": "Employee-facing packet. Consent FIRST (mints the staff signature sample), then Staff Enrollment (adopts it).",
+      "slots": [
+        {
+          "key": "staff_consent",
+          "section": "mandatory",
+          "label": "Staff Consent (E-Signature)",
+          "note": "Signed first — the rest reuses your signature."
+        },
+        {
+          "key": "staff",
+          "section": "mandatory",
+          "label": "Staff Enrollment",
+          "note": "Your details, position and availability."
         }
       ]
     }

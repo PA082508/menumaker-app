@@ -256,9 +256,31 @@ const VALIDATORS: Record<string, Validator> = {
   // dcy_01234: pending its field registry — see childFieldRegistry 'enrollment' tab.
 }
 
-/** Human label for a submission_type (falls back to the raw code). */
+/**
+ * Human label for a submission_type (falls back to the raw code).
+ *
+ * Every type that can reach the Inbox belongs here — the fallback is a safety net, not
+ * a plan. Only three were listed, so a director looking at the Inbox saw rows labelled
+ * `parent_consent` and would have seen `basic_infant_care_plan` the moment DCY 01218
+ * went live. Keep in step with the registry titles: a NEW form that submits through
+ * submit_enrollment_form adds its label in the same pass that flips it.
+ */
 export const submissionTypeLabel = (t: string): string =>
-  ({ cacfp_enrollment: 'CACFP Enrollment', iea: 'Income Eligibility (IEA)', dcy_01234: 'DCY 01234' }[t] ?? t)
+  ({
+    cacfp_enrollment: 'CACFP Enrollment',
+    iea: 'Income Eligibility (IEA)',
+    dcy_01234: 'DCY 01234',
+    parent_consent: 'Parent Consent (E-Signature)',
+    child_release_authorization: 'Child Release Authorization',
+    basic_infant_care_plan: 'Basic Infant Care Plan (DCY 01218)',
+    transition_into_program: 'Transition into the Program',
+    usda_waiver: 'USDA Income Eligibility Waiver',
+    start_form: 'Registration & Fee Agreement',
+    parents_book_ack: 'Parent Handbook Acknowledgment',
+    staff: 'Staff Enrollment',
+    staff_consent: 'Staff Consent (E-Signature)',
+    other: 'Other',
+  }[t] ?? t)
 
 /**
  * Validate a pending submission. Returns 'unknown' status for submission types

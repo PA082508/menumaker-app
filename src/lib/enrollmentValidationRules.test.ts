@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { validateSubmission } from './enrollmentValidationRules'
+import { validateSubmission, submissionTypeLabel } from './enrollmentValidationRules'
 
 // Minimal well-formed CACFP submission; `meals` uses the packet form's short
 // codes (b/as/l/ps/su/es). Override `mealsByDay` to exercise the slot rules.
@@ -100,5 +100,31 @@ describe('CACFP manual_entry softening', () => {
     const fd = manualMinimal(); delete fd.classroom_id; delete fd.frp; delete fd.date_in
     const r = manual(fd)
     expect(r.missing).toEqual(expect.arrayContaining(['Classroom', 'Meal status (FRP)', 'Date In']))
+  })
+})
+
+// ── submissionTypeLabel — every type that can reach the Inbox must read as a name ──
+// Regression: only 3 types were listed, so the Inbox showed rows labelled
+// `parent_consent`, and DCY 01218 would have arrived as `basic_infant_care_plan`.
+describe('submissionTypeLabel', () => {
+  // every type observed in menumaker.enrollment_submissions + every form that submits
+  // through submit_enrollment_form today or is dark-ready
+  const INBOX_TYPES = [
+    'cacfp_enrollment', 'iea', 'dcy_01234', 'other',
+    'parent_consent', 'child_release_authorization', 'basic_infant_care_plan',
+    'transition_into_program', 'usda_waiver', 'start_form', 'parents_book_ack',
+    'staff', 'staff_consent',
+  ]
+
+  it('never leaves a known type showing its raw snake_case code', () => {
+    for (const t of INBOX_TYPES) {
+      const label = submissionTypeLabel(t)
+      expect(label, `${t} has no label`).not.toBe(t)
+      expect(label, `${t} label still looks like a code`).not.toMatch(/_/)
+    }
+  })
+
+  it('falls back to the raw code for an unknown type rather than throwing', () => {
+    expect(submissionTypeLabel('brand_new_form')).toBe('brand_new_form')
   })
 })

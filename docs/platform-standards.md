@@ -197,6 +197,30 @@ in all kit-form includes in the same commit.**
   **cached old kit**, which silently hides newly added functions — the feature
   ships but users never see it. (Learned from the Consent stale-cache incident;
   applied to the kit itself.)
-- Current: `?v=2` across all kit-form includes (Pages `pa082508.github.io`).
+- Current: `?v=3` across all kit-form includes (Pages `pa082508.github.io`).
 - This is separate from the watchdog's dynamic `form-kit.js?r=<ts>` retry, which
   cache-busts a *failed* load; `?v=<N>` cache-busts a *changed* file for everyone.
+
+---
+
+## Submit assert — presence is not enough (2026-07-14)
+
+**Every kit form, every run, plus the daily health-check, MUST assert that Submit is
+PRESENT *and* ENABLED (with `?center=`) *and* VISIBLE, and that the page raised ZERO
+JS exceptions.** Run `scripts/assert-submit.mjs` (`--live` to hit Pages).
+
+Visible means measured, not assumed: compute `getComputedStyle` on the Submit button
+and require real contrast between `background-color` and `color`. A presence check
+(`querySelector` + `!disabled`) **passes a button that is white-on-white** — that is
+exactly how finding #5 escaped a headless matrix and reached a live parent surface.
+
+Why it happens: the kit **reuses the form's own toolbar div**, so any CSS the form
+ships for `.toolbar button` still cascades onto the kit's buttons. A form rule
+`.toolbar button{background:#fff}` (0,1,1) outranks a bare `.fk-tb-submit` (0,1,0).
+
+- Kit toolbar button rules MUST stay scoped `.fk-toolbar button.<cls>` (0,2,1).
+  **Never weaken these selectors** back to a bare class.
+- A new kit form that ships its own `.toolbar button` CSS is not a bug by itself —
+  the kit must out-specify it. Add the form to the assert list and prove it.
+- Corollary to the finding-closure rule: a green assert is necessary, not
+  sufficient. For anything the parent SEES, look at a screenshot before closing.

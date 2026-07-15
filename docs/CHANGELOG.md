@@ -10,6 +10,10 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 
 <!-- newest on top -->
 
+- 2026-07-15 · 🔧 · Sign-once now remembers *how* you signed. If a parent or staff member typed their name instead of drawing it, the saved signature was filed as "drawn" — and every later form that reused it carried that wrong record. It now records typed as typed and drawn as drawn.
+
+- 2026-07-15 · 🏳️ · The Registration Start Form is live: families now fill it in on a phone and sign it, instead of the packet showing "Coming soon" and waiting for the director to hand over paper. It's the first form in every packet — it opens the enrollment — and the Starter packet is now complete with nothing left pending.
+
 - 2026-07-14 · 🚀 · The WIC information sheet we hand every family is now a real card in the packet and the Library — English and Spanish side by side, with the center's own phone number filled in — instead of "coming soon". It now links straight to Ohio's official WIC page and to the state application form, which it did not before: the sheet had no links at all, so a family had to go find them. We link to the state's copy rather than keeping our own, so nobody fills in an out-of-date form.
 
 - 2026-07-14 · 🔧 · QR codes now always open the current version of a form. Before, a QR from the Add Child panel, Issue Packet, or the Library pointed straight at a file — so a printed QR kept handing parents whichever version was live the day it was printed, even after we published a newer one. Every QR and shared link now goes through the parent forms page, which looks up the current version each time it opens. (Download and Print buttons still give the director the file itself.)

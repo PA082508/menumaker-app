@@ -10,6 +10,8 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 
 <!-- newest on top -->
 
+- 2026-07-15 · 🔧 · Editing a staff member no longer says "Saved ✓" when the save was actually blocked. If the database refuses the change, the page now shows a clear error and tells you nothing was written — instead of silently reverting after you log back in.
+
 - 2026-07-15 · 🔧 · Sign-once now remembers *how* you signed. If a parent or staff member typed their name instead of drawing it, the saved signature was filed as "drawn" — and every later form that reused it carried that wrong record. It now records typed as typed and drawn as drawn.
 
 - 2026-07-15 · 🏳️ · The Registration Start Form is live: families now fill it in on a phone and sign it, instead of the packet showing "Coming soon" and waiting for the director to hand over paper. It's the first form in every packet — it opens the enrollment — and the Starter packet is now complete with nothing left pending.

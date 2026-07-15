@@ -108,6 +108,7 @@ export default function StaffSettingsPage() {
   const [loading, setLoading]   = useState(true)
   const [saving, setSaving]     = useState(false)
   const [saved, setSaved]       = useState(false)
+  const [saveErr, setSaveErr]   = useState<string | null>(null)
   const [tab, setTab]           = useState<'profile'|'work'|'docs'>('profile')
 
   // Training form
@@ -146,10 +147,14 @@ export default function StaffSettingsPage() {
 
   const save = async () => {
     if (!data || !staffId) return
-    setSaving(true)
+    setSaving(true); setSaveErr(null)
 
-    // Update staff
-    await supabase.schema('menumaker').from('staff').update({
+    // Update staff — and VERIFY it landed. A row-level-security denial returns
+    // zero rows and NO error, so `await` without inspecting the result reports
+    // "Saved ✓" over a write that never happened (silent 0-row update = an
+    // interface lie). `.select('id')` makes the affected rows observable:
+    // an error is an error, and an empty array means nothing was written.
+    const { data: updated, error: staffErr } = await supabase.schema('menumaker').from('staff').update({
       first_name: data.first_name, last_name: data.last_name,
       email: data.email, phone: data.phone, phone2: data.phone2,
       position: data.position, center_id: data.center_id,
@@ -169,9 +174,20 @@ export default function StaffSettingsPage() {
       doctor_name: data.doctor_name, doctor_phone: data.doctor_phone,
       bonus_eligible: data.bonus_eligible, bonus_type: data.bonus_type,
       bonus_amount: data.bonus_amount, bonus_notes: data.bonus_notes,
-    }).eq('id', staffId)
+    }).eq('id', staffId).select('id')
 
-    // Upsert schedule
+    if (staffErr) {
+      setSaving(false)
+      setSaveErr(`Not saved — the database rejected the change: ${staffErr.message}. Nothing was written.`)
+      return
+    }
+    if (!updated || updated.length === 0) {
+      setSaving(false)
+      setSaveErr('Not saved — 0 rows updated. You may not have permission to edit this staff member (the change was blocked, not written). Nothing has changed.')
+      return
+    }
+
+    // Upsert schedule — verified the same way.
     const schedRows = sched.filter(s => s.is_active && s.shift_start && s.shift_end).map(s => ({
       staff_id: staffId, org_id: org?.id, center_id: data.center_id,
       classroom_id: data.class_primary, // approximate
@@ -181,8 +197,13 @@ export default function StaffSettingsPage() {
       effective_from: new Date().toISOString().slice(0, 10),
     }))
     if (schedRows.length > 0) {
-      await supabase.schema('menumaker').from('staff_schedules')
-        .upsert(schedRows, { onConflict: 'staff_id,day_of_week,effective_from' })
+      const { error: schedErr } = await supabase.schema('menumaker').from('staff_schedules')
+        .upsert(schedRows, { onConflict: 'staff_id,day_of_week,effective_from' }).select('staff_id')
+      if (schedErr) {
+        setSaving(false)
+        setSaveErr(`Profile saved, but the schedule was not: ${schedErr.message}.`)
+        return
+      }
     }
 
     setSaving(false); setSaved(true)
@@ -250,6 +271,19 @@ export default function StaffSettingsPage() {
           </button>
         </div>
       </div>
+
+      {/* Save error — a blocked write must never look saved */}
+      {saveErr && (
+        <div role="alert" style={{
+          display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 20,
+          padding: '12px 16px', borderRadius: 10,
+          background: '#fef2f2', border: '1px solid #fca5a5', color: '#991b1b',
+          fontSize: 13, fontWeight: 500,
+        }}>
+          <span style={{ fontSize: 16, lineHeight: 1.2 }}>⚠</span>
+          <span>{saveErr}</span>
+        </div>
+      )}
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '2px solid #e0e8e0' }}>

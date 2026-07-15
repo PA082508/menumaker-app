@@ -442,3 +442,25 @@ Every resolver must handle both. `formUrl()` in the Add Child / Add Staff panels
 `/^https?:/` against the value and returned **null** for the object form, so the handbook
 rendered as "no link" the moment the mirror carried per-centre files — a regression
 introduced by the mirror merge itself, in the same hour.
+
+## A write is not saved until the database confirms rows (2026-07-15)
+
+Row-level security denies by returning **zero rows and no error**. So an
+`await supabase…update(…)` whose result is discarded reports success over a write
+that never happened. **A silent 0-row update is an interface lie** — the owner
+toggled a Ridge employee Inactive, saw "Saved ✓", logged back in, and the toggle
+was Active again; the same page's class transfer never stuck either. Nothing was
+wrong with the payload — the whole UPDATE hit 0 rows.
+
+Every mutation that a human is told "saved":
+
+- appends **`.select(...)`** so the affected rows are observable;
+- treats **`error`** as failure **and** an **empty result** as failure —
+  "no error" is not proof of a write under RLS;
+- shows the failure to the user (a blocked write must never render as saved),
+  and states plainly that **nothing was written**, not "try again";
+- never flips the success state on either branch.
+
+Found in `StaffSettingsPage.save()`: [src/pages/staff/StaffSettingsPage.tsx](../src/pages/staff/StaffSettingsPage.tsx).
+The proof of a fix is a **read-back across a session** — change the value, log out,
+log back in, and the new value is there — plus a `SELECT`, never the toast alone.

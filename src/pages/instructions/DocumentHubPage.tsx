@@ -12,6 +12,9 @@ const DOCS = [
   // in config/showcaseLinks.ts so a move off GitHub Pages is a one-line change.
   { id:'parent-forms', title:'Parent Forms', description:'CACFP enrollment & income-eligibility forms for families. Share the link or QR — opens on any device.', audience:'Parent', category:'Enrollment', parentForms:true, driveUrl:PARENT_FORMS_URL },
   { id:'staff-enrollment', title:'Staff Enrollment', description:'New-hire onboarding (§1–§5). Give the link or QR to a new employee — opens on any device; the office reviews & finalizes.', audience:'Staff', category:'Enrollment', parentForms:true, driveUrl:'https://pa082508.github.io/forms/1-data-sources/Staff_Enrollment_v1.html' },
+  // In-app guide (docs/instructions/director-eforms-guide.md), rendered on /instructions.
+  { id:'director-eforms-guide', title:'E-Forms — Director Guide', description:'How to send a packet, share a single form or QR, what the family sees, and how to review what comes in. Five minutes.', audience:'Director', category:'Enrollment', driveUrl:'https://menumaker-app.vercel.app/instructions?doc=director-eforms-guide' },
+  { id:'teacher-eforms-checklist', title:'E-Forms — Teacher Checklist', description:'Five things for when a parent asks at the door. You do not send packets — the office does.', audience:'Teacher', category:'Enrollment', driveUrl:'https://menumaker-app.vercel.app/instructions?doc=teacher-eforms-checklist' },
 
   // ── BYOD ─────────────────────────────────────────────────────────────────
   { id:'byod-agreement', title:'BYOD Device Use Agreement', description:'Sign online — saved securely. Director countersigns digitally.', audience:'Staff', category:'BYOD', canSign:true, highlight:true },

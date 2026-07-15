@@ -91,7 +91,9 @@ export default function InstructionsPage() {
       d.body.toLowerCase().includes(q)),
     [roleVisible, q])
 
-  const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
+  // ?doc=<slug> so a Document Hub card can land on ITS guide, not on whichever doc
+  // happens to sort first. Falls back to the first visible doc for a bare /instructions.
+  const [selectedSlug, setSelectedSlug] = useState<string | null>(params.get('doc'))
   const selected: InstructionDoc | undefined =
     shown.find(d => d.slug === selectedSlug) || shown[0]
 
@@ -131,7 +133,7 @@ export default function InstructionsPage() {
         <div style={{ fontSize: 10, fontWeight: 600, color: '#888', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Modules</div>
         {shown.length === 0 && <div style={{ fontSize: 12, color: '#aaa' }}>No guides for this role yet.</div>}
         {shown.map(d => (
-          <button key={d.slug} onClick={() => setSelectedSlug(d.slug)} style={{
+          <button key={d.slug} onClick={() => { setSelectedSlug(d.slug); params.set('doc', d.slug); setParams(params, { replace: true }) }} style={{
             display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', borderRadius: 8,
             border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, marginBottom: 2,
             background: selected?.slug === d.slug ? '#f0fff4' : 'transparent',

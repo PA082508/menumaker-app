@@ -464,3 +464,60 @@ Every mutation that a human is told "saved":
 Found in `StaffSettingsPage.save()`: [src/pages/staff/StaffSettingsPage.tsx](../src/pages/staff/StaffSettingsPage.tsx).
 The proof of a fix is a **read-back across a session** — change the value, log out,
 log back in, and the new value is there — plus a `SELECT`, never the toast alone.
+
+---
+
+## Push ≠ deploy — a push closes only on a confirmed deploy (2026-07-15)
+
+§4 already says "Done" is **committed ✓ · pushed ✓ · deployed ✓**. This is the missing
+half: **how you know the third tick is real.** `git push` reports success for reaching
+GitHub. It says nothing about whether the host built anything, and the trigger can
+silently not fire.
+
+**Why:** the Alpha canon rename (`55cb031`) pushed clean — `origin/main` held it, and
+"pushed" looked like done. Vercel created **no deployment at all**: 16 minutes later there
+were still 0 check-runs and 0 statuses on the commit, while the previous commit had
+deployed in ~6. The live bundle went on serving `alpha:"Mayfield Hills"` to every director
+— the exact string the commit existed to delete. An empty commit re-fired the trigger and
+it deployed in minutes. Nothing was wrong with the code, the push, or the build.
+
+A push is closed only when **one of these is observed**, never inferred from `git push`:
+
+- a **deployment record for that ref** reaching a terminal state —
+  `gh api repos/<owner>/<repo>/deployments --jq '.[0].ref'` then its
+  `/statuses` → `success`; or
+- the **live artefact** carrying the change — fetch the deployed bundle/page and grep for
+  the string the commit added or removed.
+
+Do not verify by asset hash: the host builds with its own env, so its hash legitimately
+differs from a local build's and proves nothing either way.
+
+**Mirror rule.** When a change spans two deploy targets (app + storefront), the operation
+is not closed until **both** markers are confirmed. One-sided is worse than neither: the
+storefront said "Highland Heights" while the app still said "Mayfield Hills", and each
+looked correct on its own screen.
+
+---
+
+## A signed record is never rewritten (2026-07-15)
+
+**Default: what a person signed stays as they signed it** — even when it is now known to be
+wrong, even when the correction is trivial and true.
+
+**Why:** the Alpha canon sweep found `form_data.center_name = 'Play Academy Mayfield Hills'`
+in **3 `enrollment_submissions`** — all `status='rejected'`, all carrying a real signature
+(one of them a *Ridge* submission that had picked up Alpha's name). A global rename would
+have "fixed" them in passing. It must not: `form_data` is the record of what was on screen
+when a parent signed. Editing it does not correct history, it fabricates a different one.
+The rows are rejected and reach no claim, so the wrong string is inert — while a rewrite
+would be permanent and invisible.
+
+The three rows stay as they are. Correcting the name at the source (registry, form-kit,
+storefront, `centers.name`) is what stops new records from carrying it.
+
+**Scope by the exact string, never the family of strings.** The same sweep had to remove
+"Mayfield Hills" (a place that does not exist) while leaving **"Mayfield Heights"**
+untouched — a real city in Cuyahoga County where **21 households, 8 children and 4 staff**
+actually live. A `%mayfield%` cleanup would have corrupted 33 live records of real
+families. Audit with the loose pattern to see the neighbourhood; act only on the exact one,
+and read back the count of what you deliberately left alone.

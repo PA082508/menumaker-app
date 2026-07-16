@@ -307,11 +307,24 @@ create table menumaker.campaign_issues (
 
 Побочная выгода: severity/snooze/dismiss уже есть — из этого блока родится Action Center.
 
-### 5.4. Реестр — два новых поля
+### 5.4. Реестр — два новых поля ✅ СДЕЛАНО 2026-07-16
 
-`auto_file: true` на `parent_consent` (+ `parents_book_ack`, см. оговорку в шапке);
-`requires_countersign: "director"` на `transition_into_program`, `dcy_01234`,
-`release_auth`. **Обе копии реестра** синхронно (app `public/` + Pages repo root).
+Обе копии пропатчены синхронно (app `public/enroll-registry.json` + Pages repo root)
+и посимвольно совпадают — по 5 вставок, ноль удалений:
+
+| поле | формы |
+|---|---|
+| `auto_file: true` | `parent_consent` · `parents_book_ack` |
+| `requires_countersign: "director"` | `transition_into_program` · `dcy_01234` · `child_release_authorization` |
+
+⚠️ **`release_auth` — такого ключа нет**, ни в реестре, ни в `submission_type`.
+Настоящий — **`child_release_authorization`** (в БД 2 строки). См.
+`renewal_countersign_types()`: список должен совпадать с реестром, и сегодня совпадает.
+
+**Флаги пока инертны** — их никто не читает: `grep auto_file|requires_countersign` по
+`src/` и `public/` даёт ноль попаданий вне самого реестра. Это и было целью: реестр
+готов раньше исполнителя, чтобы edge-функции было что спрашивать. Витрина и `embed.js`
+читают `versions[current]` и лишние ключи игнорируют — риска нет.
 
 ## 6. Остаточные вопросы
 

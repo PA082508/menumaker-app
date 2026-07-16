@@ -10,6 +10,8 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 
 <!-- newest on top -->
 
+- 2026-07-16 · 🔧 · Children's and teachers' photos on the class roster are now twice the size (72px, was 36px) — a face at 36px was a smudge, and the face is the point. Cards reflow to fit. Tapping any editable photo now offers "🔍 View photo" for a full-screen look — that's the one that matters at pick-up, when you need to be sure. The option is hidden for anyone without a photo yet.
+
 - 2026-07-16 · 🗄️ · Internal messages now work — they never had. The table was closed to everyone, so the messages panel failed silently for the director too, not just the kitchen. Directors can now write to a specific centre's kitchen or to every centre, and choose which: the message says "Kitchen · Wickliffe" or "Kitchen · all centres" so you can see what you sent. A cook only ever sees their own centre's messages — before, the screen would have shown another centre's. Unread counts now clear when the panel is opened, and the sender sees "✓ Seen by Wickliffe kitchen" — the place, not a name, because a kitchen iPad is shared.
 
 - 2026-07-16 · 🗄️ · Children's photos now appear in Meal Count and on the SafePass Teacher screen. They never actually did before — the screens asked for the photo from a place that didn't carry it, which is what emptied the kitchen earlier today. The meal grid now carries the photo properly. Only one child has a photo on file so far (Wickliffe, Orange 2); everyone else shows their coloured initials until a photo is taken.

@@ -20,7 +20,7 @@
 // DELETE policy on the bucket, and a delete would fail silently).
 import { useEffect, useRef, useState } from 'react'
 import Avatar from '@/components/Avatar'
-import { uploadAvatar, type AvatarEntity } from '@/lib/avatars'
+import { uploadAvatar, avatarSignedUrl, type AvatarEntity } from '@/lib/avatars'
 
 export default function AvatarUpload({
   entity,
@@ -48,17 +48,23 @@ export default function AvatarUpload({
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [sheet, setSheet] = useState(false)
+  // Full-size view. A 72px circle is enough to spot a child in a list; it is NOT enough
+  // to be sure at the door, which is where SafePass actually needs the face.
+  const [viewing, setViewing] = useState<string | null>(null)
   // Bump to force <Avatar> to re-fetch the signed URL after an overwrite (path
   // is stable — 'entity/id/avatar.webp' — so we cache-bust via a re-mount).
   const [nonce, setNonce] = useState(0)
 
   // Escape closes the sheet — a modal you can't dismiss with the keyboard is a trap.
   useEffect(() => {
-    if (!sheet) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setSheet(false) }
+    if (!sheet && !viewing) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      if (viewing) setViewing(null); else setSheet(false)
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [sheet])
+  }, [sheet, viewing])
 
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -77,6 +83,18 @@ export default function AvatarUpload({
       setErr(`Photo not saved — ${e?.message ?? 'unknown error'}`)
     } finally {
       setBusy(false)
+    }
+  }
+
+  const view = async () => {
+    if (!path) return
+    setSheet(false); setErr(null)
+    try {
+      const url = await avatarSignedUrl(path)
+      if (!url) { setErr('Photo could not be opened.'); return }
+      setViewing(url)
+    } catch (e: any) {
+      setErr(`Photo could not be opened — ${e?.message ?? 'unknown error'}`)
     }
   }
 
@@ -142,6 +160,26 @@ export default function AvatarUpload({
       <input ref={cameraRef} type="file" accept="image/*" capture={facing} onChange={onFile} style={{ display: 'none' }} />
       <input ref={libraryRef} type="file" accept="image/*" onChange={onFile} style={{ display: 'none' }} />
 
+      {viewing && (
+        <div
+          onClick={() => setViewing(null)}
+          role="dialog" aria-label={`Photo of ${name}`}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.88)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14,
+            padding: 'env(safe-area-inset-top) 16px env(safe-area-inset-bottom)',
+          }}>
+          <img src={viewing} alt={name}
+            style={{ maxWidth: '100%', maxHeight: '78vh', borderRadius: 12, objectFit: 'contain' }} />
+          <div style={{ color: '#fff', fontSize: 15, fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>{name}</div>
+          <button type="button" onClick={() => setViewing(null)}
+            style={{ padding: '10px 22px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.35)',
+                     background: 'transparent', color: '#fff', fontSize: 14, fontFamily: 'inherit', cursor: 'pointer' }}>
+            Close
+          </button>
+        </div>
+      )}
+
       {sheet && (
         <div
           onClick={() => setSheet(false)}
@@ -159,6 +197,7 @@ export default function AvatarUpload({
               paddingBottom: 'calc(12px + env(safe-area-inset-bottom))',
             }}>
             <div style={{ textAlign: 'center', fontSize: 12.5, color: '#6b7280', padding: '6px 0 10px' }}>{name}</div>
+            {path && <SheetBtn onClick={view}>🔍 View photo</SheetBtn>}
             <SheetBtn onClick={() => cameraRef.current?.click()}>📷 Take photo</SheetBtn>
             <SheetBtn onClick={() => libraryRef.current?.click()}>🖼 Choose from library</SheetBtn>
             {path && <SheetBtn onClick={remove} danger>🗑 Remove photo</SheetBtn>}

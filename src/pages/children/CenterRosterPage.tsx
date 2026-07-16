@@ -23,6 +23,18 @@ type Classroom = { id: string; name: string; sort_order: number; capacity_intern
 // takes the remainder.
 const SUMMARY_COLS = 'minmax(150px,210px) 84px 76px 72px 72px minmax(110px,1fr)'
 
+// Avatar sizing (2026-07-16). The owner's desktop screenshot: "the photo is tiny".
+// It was 36px — initials read fine at that size, a face does not, and the face is what a
+// teacher matches against a person at the door. One place, so the card, the presence dot
+// and the grid cannot drift apart.
+//
+// No mobile step-down, deliberately: the card grid is auto-fill minmax(CARD_MIN), so a
+// narrow screen collapses to one full-width column and 72px reads SMALLER there relative
+// to the card, not larger. Shrinking it on mobile would fight the reason it was enlarged.
+const AVATAR_CHILD = 72
+const AVATAR_STAFF = 56
+const CARD_MIN = 210        // was 160 — a 72px avatar + name needs the room
+
 // Fill% colour thresholds (percent of capacity used). ≥green → green,
 // ≥yellow → amber, otherwise red. Tune here.
 const FILL_THRESHOLDS = { green: 90, yellow: 70 }
@@ -672,7 +684,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                       {roomChildren.length === 0 ? (
                         <div style={{ color: '#bbb', fontSize: 13 }}>No children on roster.</div>
                       ) : (
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 8 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${CARD_MIN}px, 1fr))`, gap: 8 }}>
                           {roomChildren.map(child => {
                             const name = fullName(child)
                             const at   = attendMap[name.toLowerCase()]
@@ -693,12 +705,17 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                                   transition: 'box-shadow 0.3s, background 0.3s',
                                   overflow: 'hidden',
                                 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px' }}>
+                                  {/* AVATAR_CHILD (was 36) — a face at 36px is a smudge you
+                                      cannot identify a child by, and identification is the
+                                      whole point at drop-off/pick-up. The dot scales with it
+                                      so it stays a badge and not a blob. */}
                                   <div style={{ position: 'relative', flexShrink: 0 }}>
-                                    <Avatar name={name} size={36} path={child.photo_url} />
+                                    <Avatar name={name} size={AVATAR_CHILD} path={child.photo_url} />
                                     <div style={{
-                                      position: 'absolute', bottom: 0, right: 0,
-                                      width: 11, height: 11, borderRadius: '50%',
+                                      position: 'absolute', bottom: 1, right: 1,
+                                      width: Math.round(AVATAR_CHILD * 0.24), height: Math.round(AVATAR_CHILD * 0.24),
+                                      borderRadius: '50%',
                                       border: '2px solid #fff',
                                       background: isPresent ? '#22c55e' : isReleased ? '#f59e0b' : '#d1d5db',
                                     }} />

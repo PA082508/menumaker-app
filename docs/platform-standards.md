@@ -660,3 +660,24 @@ verdict belongs to a different surface, and the named one is still open.
 
 Corollary to the finding-closure rule: enumerate the surfaces, and check each verdict
 against the one it actually names.
+
+## A client filter that disagrees with the policy is a bug either way (2026-07-16)
+
+When RLS decides what a user may read, a second filter in the browser can only be wrong
+in one of two directions: **it either hides rows the database allows, or promises rows
+the database refuses.** Both are defects, and the second is worse — the UI advertises
+data the user will never receive, and the failure looks like "nothing here" rather than
+"not for you".
+
+So: **when a policy expresses the rule, delete the client filter.** Do not re-state the
+rule in TypeScript "for clarity" — a restatement is a second source of truth for one
+question, and the two drift the first time either changes.
+
+Live example (`PortalMessagesPanel`): the panel filtered `org + recipient_value in
+(uid, teacher, cook, all)` while the policy also enforced the CENTRE. The filter was
+simultaneously too loose (it would have shown another centre's messages if the policy
+had not caught them) and destined to go stale. It was removed; the policy stands alone.
+
+Keep in the client only what the policy cannot express: ordering, limits, and the
+narrowing a *screen* wants (this classroom, this week) — never the narrowing a *rule*
+requires.

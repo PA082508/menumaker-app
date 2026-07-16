@@ -75,7 +75,12 @@ export default function PortalMessagesPanel({ centerCode, portalRole }: { center
         sender_name: `${portalRole} (${centerCode})`,
         recipient_type: 'role',
         recipient_value: 'director',
-        recipient_label: '📊 Director',
+        // center_id above already narrows this to THIS centre's director — the RLS
+        // policy (20260717c) matches role AND centre, so the kitchen never writes to
+        // "all directors in the organisation". The label says so out loud.
+        recipient_label: currentCenter?.name
+          ? `📊 Director · ${currentCenter.name.replace(/^Play Academy\s+/i, '')}`
+          : '📊 Director',
         body: body.trim(),
         attachments: urls,
       })

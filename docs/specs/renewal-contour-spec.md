@@ -8,7 +8,7 @@
 
 | # | Вопрос | Решение |
 |---|---|---|
-| 1 | `requires_countersign: "director"` | **`transition_into_program`, `dcy_01234` (Program Ack), `release_auth` v2** |
+| 1 | `requires_countersign: "director"` | **`transition_into_program`, `dcy_01234` (Program Ack), `release_auth` v2** — ⚠️ `release_auth` не существует; реальный ключ **`child_release_authorization`**, см. §5.4 |
 | 2 | `auto_file` первая волна | **`parent_consent` + `parents_book_ack`** (чистые подписи). Расширение — по итогам живой кампании |
 | 3 | IEA | **ДА** — авто-файлится как «документ получен»; **определение F/R/P только руками**, под claim-мостом |
 | 4 | «Не отправлено» в красной цифре | **НЕ входит.** Красная = подписи + расхождения. «Кому послать» = **отдельная вкладка/счётчик** в трекере |

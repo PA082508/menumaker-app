@@ -11,6 +11,7 @@ import { useOrg } from '@/contexts/OrgContext'
 import { useAuth } from '@/hooks/useAuth'
 import { displayChildName } from '@/lib/childName'
 import Avatar from '@/components/Avatar'
+import Button, { ButtonRow } from '@/components/ui/Button'
 import { isActiveOn } from '@/lib/childActive'
 import { classifyChild, type MatchKind } from '@/lib/childSearch'
 import AddChildPacketPanel from './AddChildPacketPanel'
@@ -368,24 +369,18 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
         </div>
       </div>
 
-      {/* IA v2 — page-level action strip: the sidebar names WHO, actions live here. */}
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 16 }}>
-        <button onClick={() => setShowPacket(true)} title="Open the enrollment packet link + QR for a family to fill on-site or on their phone"
-          style={{ padding: '9px 16px', borderRadius: 9, background: '#0f4c35', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
+      {/* IA v2 — page-level action strip: the sidebar names WHO, actions live here.
+          Buttons come from components/ui/Button — see platform-standards §Buttons. */}
+      <ButtonRow style={{ marginBottom: 16 }}>
+        <Button variant="primary" onClick={() => setShowPacket(true)}
+          title="Open the enrollment packet link + QR for a family to fill on-site or on their phone">
           ➕ Add Child
-        </button>
-        <button onClick={() => navigate('/enrollment-inbox?from=children')}
-          style={{ padding: '9px 15px', borderRadius: 9, background: '#f0f7f4', color: '#1a5c3f', border: '1px solid #d1fae5', cursor: 'pointer', fontWeight: 600, fontSize: 13, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8 }}>
+        </Button>
+        <Button onClick={() => navigate('/enrollment-inbox?from=children')} badge={pendingCount}>
           📥 Enrollment
-          {pendingCount > 0 && (
-            <span style={{ minWidth: 19, height: 19, padding: '0 6px', borderRadius: 20, background: '#c62a1f', color: '#fff', fontSize: 11, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{pendingCount}</span>
-          )}
-        </button>
-        <button onClick={() => navigate('/children/import')}
-          style={{ padding: '9px 15px', borderRadius: 9, background: '#f0f7f4', color: '#1a5c3f', border: '1px solid #d1fae5', cursor: 'pointer', fontWeight: 600, fontSize: 13, fontFamily: 'inherit' }}>
-          ⇪ Import
-        </button>
-      </div>
+        </Button>
+        <Button onClick={() => navigate('/children/import')}>⇪ Import</Button>
+      </ButtonRow>
 
       {loading ? (
         <div style={{ color: '#aaa', fontSize: 13 }}>Loading…</div>

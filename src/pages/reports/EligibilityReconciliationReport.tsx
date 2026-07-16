@@ -7,6 +7,7 @@
 // exists, so a director (e.g. Carmen) can check each against the paper IEAs and
 // close the gap via the IEA Review modal. Printable / shareable as a clean sheet.
 import { useEffect, useMemo, useState } from 'react'
+import Button from '@/components/ui/Button'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
 import { parseIeaFiscalYear } from '@/lib/enrollmentApprove'
@@ -174,13 +175,9 @@ export default function EligibilityReconciliationReport() {
           <input type="checkbox" checked={onlyStale} onChange={e => setOnlyStale(e.target.checked)} />
           Show only unreconciled
         </label>
-        <button onClick={printSheet} disabled={!shown.length} style={{
-          marginLeft: 'auto', padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
-          background: '#0f4c35', color: '#fff', border: 'none', cursor: shown.length ? 'pointer' : 'default',
-          opacity: shown.length ? 1 : 0.5, fontFamily: 'inherit',
-        }}>
+        <Button variant="primary" onClick={printSheet} disabled={!shown.length} style={{ marginLeft: 'auto' }}>
           🖨 Print / Share
-        </button>
+        </Button>
       </div>
 
       {loading ? (

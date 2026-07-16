@@ -15,6 +15,7 @@
 // hiding the app with print CSS — same as SkeletonReconciliationReport.printSheet.
 // Everything interpolated from the DB goes through esc().
 import { useEffect, useMemo, useState } from 'react'
+import Button from '@/components/ui/Button'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
 import { displayChildName, byAgeOldestFirst } from '@/lib/childName'
@@ -213,11 +214,9 @@ export default function AttendanceBlankReport() {
           <span style={lbl}>Week starting (Monday)</span>
           <input type="date" value={monday} onChange={e => e.target.value && setMonday(mondayOf(addDays(e.target.value, 0)))} style={ctl} />
         </label>
-        <button onClick={printSheet} disabled={!ordered.length} style={{
-          marginLeft: 'auto', padding: '9px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600,
-          background: GREEN, color: '#fff', border: 'none', fontFamily: 'inherit',
-          cursor: ordered.length ? 'pointer' : 'default', opacity: ordered.length ? 1 : 0.5,
-        }}>🖨 Print blank</button>
+        <Button variant="primary" onClick={printSheet} disabled={!ordered.length} style={{ marginLeft: 'auto' }}>
+          🖨 Print blank
+        </Button>
       </div>
 
       {loadErr && (

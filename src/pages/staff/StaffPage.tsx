@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import Button, { ButtonRow } from '@/components/ui/Button'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
@@ -142,25 +143,15 @@ export default function StaffPage() {
       </div>
       {/* IA v2 — Staff mirrors Children: action strip LEFT, under the header. */}
       {currentCenter && (
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 18 }}>
+        <ButtonRow style={{ marginBottom: 18 }}>
             {/* Opens the onboarding PACKET, not Staff Enrollment on its own: the Consent
                 comes first and mints the signature the Enrollment then adopts. Linking
                 straight to Enrollment skipped the Consent, so there was nothing to adopt
                 and the employee had to draw again. */}
-            <button onClick={() => setShowPacket(true)}
-              style={{ padding: '9px 16px', borderRadius: 9, background: '#0f4c35', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13, fontFamily: 'inherit' }}>
-              ➕ Add Staff
-            </button>
-            <button onClick={() => navigate('/enrollment-inbox?from=staff')}
-              style={{ padding: '9px 15px', borderRadius: 9, background: '#f0f7f4', color: '#1a5c3f', border: '1px solid #d1fae5', cursor: 'pointer', fontWeight: 600, fontSize: 13, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8 }}>
-              📥 Enrollment
-              {pendingStaff > 0 && <span style={{ minWidth: 19, height: 19, padding: '0 6px', borderRadius: 20, background: '#c62a1f', color: '#fff', fontSize: 11, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{pendingStaff}</span>}
-            </button>
-            <button onClick={() => navigate('/staff/time-log')}
-              style={{ padding: '9px 15px', borderRadius: 9, background: '#f0f7f4', color: '#1a5c3f', border: '1px solid #d1fae5', cursor: 'pointer', fontWeight: 600, fontSize: 13, fontFamily: 'inherit' }}>
-              🕒 Daily Time Log
-            </button>
-          </div>
+            <Button variant="primary" onClick={() => setShowPacket(true)}>➕ Add Staff</Button>
+            <Button onClick={() => navigate('/enrollment-inbox?from=staff')} badge={pendingStaff}>📥 Enrollment</Button>
+            <Button onClick={() => navigate('/staff/time-log')}>🕒 Daily Time Log</Button>
+          </ButtonRow>
         )}
 
       {/* Filters */}

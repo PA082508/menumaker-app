@@ -6,6 +6,7 @@
 // yet — they mutate roster + income_eligibility on records that may back prior-FY
 // claims. See docs/skeleton-reconciliation-table-spec.md.
 import { useEffect, useMemo, useState } from 'react'
+import Button from '@/components/ui/Button'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
 import { fuzzyMatch, nameForms } from '@/lib/childSearch'
@@ -131,10 +132,9 @@ export default function SkeletonReconciliationReport() {
         <div style={{ background: '#fff3cd', border: '1px solid #ffc107', borderRadius: 8, padding: '6px 10px', fontSize: 12, color: '#856404' }}>
           ⚠️ Orphan stubs may back prior-FY claims — do not retire blindly.
         </div>
-        <button onClick={printSheet} disabled={!shown.length} style={{
-          marginLeft: 'auto', padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
-          background: '#0f4c35', color: '#fff', border: 'none', cursor: shown.length ? 'pointer' : 'default', opacity: shown.length ? 1 : 0.5, fontFamily: 'inherit',
-        }}>🖨 Print / Share</button>
+        <Button variant="primary" onClick={printSheet} disabled={!shown.length} style={{ marginLeft: 'auto' }}>
+          🖨 Print / Share
+        </Button>
       </div>
 
       {loading ? <div style={{ color: '#6b7280', padding: 24 }}>Loading…</div> : (

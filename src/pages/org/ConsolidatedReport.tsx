@@ -2,6 +2,7 @@
 // One row per center + an org-wide totals row. Each row comes from
 // menumaker.compute_monthly_claim(p_center_id, p_month). Export = window.print().
 import { useEffect, useMemo, useState } from 'react'
+import Button from '@/components/ui/Button'
 import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
@@ -89,10 +90,7 @@ export default function ConsolidatedReport() {
         <div className="no-print" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <input type="month" value={month} onChange={(e) => setMonth(e.target.value || month)}
             style={{ padding: '9px 12px', borderRadius: 9, border: '1.5px solid #e0e0e0', fontSize: 14, fontFamily: 'inherit', color: '#1a1a1a' }} />
-          <button onClick={() => window.print()} style={{
-            padding: '9px 16px', borderRadius: 9, border: 'none', background: '#0f4c35', color: '#fff',
-            fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-          }}>🖨️ Export PDF</button>
+          <Button variant="primary" onClick={() => window.print()}>🖨️ Export PDF</Button>
         </div>
       </div>
 

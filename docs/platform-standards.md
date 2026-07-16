@@ -681,3 +681,43 @@ had not caught them) and destined to go stale. It was removed; the policy stands
 Keep in the client only what the policy cannot express: ordering, limits, and the
 narrowing a *screen* wants (this classroom, this week) — never the narrowing a *rule*
 requires.
+
+## §Buttons — top action rows use one component (2026-07-16)
+
+**Use `src/components/ui/Button.tsx`.** New pages inherit the row for free; do not
+hand-roll a button in a top action row, and do not copy a style const into a new file.
+
+```tsx
+import Button, { ButtonRow } from '@/components/ui/Button'
+
+<ButtonRow style={{ marginBottom: 16 }}>
+  <Button variant="primary" onClick={addChild}>➕ Add Child</Button>
+  <Button onClick={openInbox} badge={pendingCount}>📥 Enrollment</Button>
+  <Button onClick={openImport}>⇪ Import</Button>
+</ButtonRow>
+```
+
+**Shape:** outlined, rounded (radius 9), **one height (38px)**, one typography (13/600).
+Height is fixed, not padding-derived — padding-derived heights are exactly how a row ends
+up with buttons a pixel apart.
+
+**Colour is the platform green `#0f4c35`.** The sample this was specced from is indigo;
+the platform is not. Override only on the owner's explicit word.
+
+**Variants:** `default` (outlined green on white — the ordinary action) · `primary`
+(filled — the one action the row is FOR, **at most one per row**) · `onDark` (outlined
+white, for a row on the green header strip).
+**`disabled` is pale, not merely faded** — a dimmed-but-live button still invites the tap.
+**`badge`** carries the counter pill (the red Enrollment count); it keeps its existing
+look and was never the problem.
+
+**Why this exists.** Before it: ~9 button styles and no component. `BTN_PRI`/`BTN_SEC`
+existed as **five byte-identical copies** in five files; `btnPri`/`btnSec` in four more;
+then one-offs. Nothing was *wrong* in any single file — the rows had simply drifted in the
+ways only visible side by side: fontWeight 700 here and 600 there, padding 8 vs 9, radius
+8 vs 9, rem vs px, one row with a border no other row had. **A copied style const is a
+fork with no merge.** The fix is not to tidy the copies; it is to stop having them.
+
+**Hover lives in the component**, via listeners, not a `:hover` rule in `index.css` —
+these styles are inline, and a stylesheet rule would be a second place the row can drift
+from. One question, one answer, one file.

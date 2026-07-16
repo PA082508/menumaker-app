@@ -10,6 +10,8 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 
 <!-- newest on top -->
 
+- 2026-07-16 · 🔧 · The action buttons at the top of pages (Add Child, Enrollment, Import, Print…) now all look like one set: same outline, same height, same lettering, platform green. They had quietly drifted apart — four buttons in one row could be four slightly different shapes. The button that a page is really for is the filled one; the rest are outlined. A button you can't use now looks unusable rather than just faint. Counters (the red Enrollment number) are unchanged.
+
 - 2026-07-16 · 🔧 · Tapping a photo now does what you meant: a child who HAS a photo opens full-screen straight away (Change and Remove are inside that view), and a child who has none opens the camera straight away. No menu in between. Long names are no longer cut off — a double surname like "Rodriguez-Texidor Izabella" wraps onto two lines and shows in full, with the whole name on hover as a backstop.
 
 - 2026-07-16 · 🔧 · Children's and teachers' photos on the class roster are now twice the size (72px, was 36px) — a face at 36px was a smudge, and the face is the point. Cards reflow to fit. Tapping any editable photo now offers "🔍 View photo" for a full-screen look — that's the one that matters at pick-up, when you need to be sure. The option is hidden for anyone without a photo yet.

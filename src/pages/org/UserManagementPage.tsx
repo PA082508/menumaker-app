@@ -3,6 +3,7 @@
 // guarded server-side to admin/office_manager callers. Editing (roles, access,
 // invites) is a planned follow-up.
 import { useEffect, useState, type CSSProperties } from 'react'
+import Button from '@/components/ui/Button'
 import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useOrg, type Center } from '@/contexts/OrgContext'
@@ -84,14 +85,7 @@ export default function UserManagementPage() {
             {loading ? 'Loading…' : `${users.length} user${users.length !== 1 ? 's' : ''} in ${org?.name ?? 'organization'}`}
           </div>
         </div>
-        <button
-          onClick={() => setShowAdd(true)}
-          style={{
-            marginTop: 8, padding: '9px 16px', borderRadius: 9, border: 'none', cursor: 'pointer',
-            background: '#0f4c35', color: '#fff', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
-          }}>
-          ＋ Add director / cook
-        </button>
+        <Button variant="primary" onClick={() => setShowAdd(true)} style={{ marginTop: 8 }}>＋ Add director / cook</Button>
       </div>
 
       {showAdd && (

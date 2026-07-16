@@ -561,7 +561,21 @@ audience that has no camera surface yet (teacher, until Attendance ships and the
 policy is applied) is worse than no card: it documents a button the reader cannot find,
 and the reader concludes the app is broken rather than that the feature is pending.
 
-## Never destructure `data` without `error` from a Supabase call (2026-07-16)
+## An interface never claims a fact it did not establish — reads AND writes (2026-07-16)
+
+**This supersedes and generalises the write-side rule.** The Staff save fix taught the
+write half: a silent 0-row UPDATE reported as "Saved ✓" is a lie. 2026-07-16 taught the
+read half, twice, and it is the same lie pointing the other way: a failed SELECT
+rendered as "nothing here". **Silent emptiness is an interface lie in both directions** —
+one invents a success, the other invents an absence. Both assert a fact the code never
+established.
+
+So the rule is one rule, and it covers every Supabase call:
+
+> **Bind `error`. Always. On reads exactly as on writes.**
+> `const { data, error } = await ...` — never `const { data } = await ...`.
+> On a write, also inspect the affected rows (`.select('id')`, then check `length === 0`).
+> A call that binds only `data` is a bug whether or not it works today.
 
 Twice in one day the same bug took out a live screen, and both times it looked like
 "there is no data" rather than "the query failed":
@@ -591,3 +605,42 @@ One wrong field name empties a whole page, silently, and looks exactly like a qu
 5. **`[BRANCH — do not deploy]` in a commit subject stops nothing.** `bc07e18` said
    exactly that and shipped via merge `f4e549e`. Intent in a message is not a gate — if
    something must not deploy, it must not be mergeable.
+
+## A migration that touches columns owns everything that reads them (2026-07-16)
+
+`20260715b_avatars.sql` added `roster.photo_url`, shipped, and was correct. It still
+took the live kitchen down a day later — because a column added to a **table** does not
+appear in **views** over that table, and two screens were already selecting it from
+`v_meal_grid`. PostgREST rejected the whole select and the kitchen rendered as a class
+with no children (see the rule above).
+
+A column change is not done when the `ALTER` succeeds. It is done when everything that
+reads that column still reads it. **Checklist — run it inside the migration pass, not
+after:**
+
+1. **Dependent views.** Every view over the table must be re-created if it should carry
+   the new column. Find them, don't recall them:
+   ```sql
+   select distinct dependent_ns.nspname||'.'||dependent_view.relname as view
+   from pg_depend d
+     join pg_rewrite rw           on rw.oid = d.objid
+     join pg_class dependent_view on dependent_view.oid = rw.ev_class
+     join pg_namespace dependent_ns on dependent_ns.oid = dependent_view.relnamespace
+     join pg_class source_table   on source_table.oid = d.refobjid
+   where source_table.relname = '<the table>' and dependent_view.relkind = 'v';
+   ```
+2. **grep the select strings.** `grep -rn "<column>" src/ --include=*.ts --include=*.tsx`
+   — then check, for **each hit**, whether the relation it selects from actually has the
+   column. The table having it proves nothing about the view.
+3. **RPCs and edge functions** that build their own column lists (`get_prefill` was one).
+4. **Say what you did NOT update, and why.** A view deliberately left alone is a
+   decision; a view forgotten is an outage.
+
+Re-creating a view is itself a migration and goes through prepare+go. When the view and
+the code must both change, **the view lands first** — code that asks for a column before
+the view has it empties the screen, which is exactly the failure being fixed.
+
+Build the new view body by `replace()`-ing `pg_get_viewdef()` output **inside the
+transaction** and assert `after = before || ',<newcol>'` on the column list. That makes
+column-order drift structurally impossible instead of merely watched for — a positional
+consumer breaks silently otherwise.

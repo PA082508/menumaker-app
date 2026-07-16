@@ -150,3 +150,18 @@ under-2½ / total, edited in Capacity & Ratio). `license_total_max` vs legacy
 Decide the single source of truth and retire/migrate the rest.
 Per-room `capacity_ohio` is kept in the DB but hidden in the UI (per-room numbers
 are inspection facts on a date, not limits).
+
+## 403 `rest/v1/internal_messages` on the cook door (2026-07-16, do NOT fix now)
+
+Seen in the console on `/portal/cook/<slug>` during the Meal Count outage read-back.
+**Unrelated to that outage** and pre-existing: the cook service account has no access to
+`menumaker.internal_messages`, so the messages panel 403s on every kitchen load. Nothing
+visible breaks — but it means "console clean" is not literally true on that door, which
+costs a real signal the next time something IS wrong there.
+
+Two ways out, decision deferred:
+- **hide the messages panel on the cook door** — it is a director/office surface anyway; or
+- **a deliberate grant** — if a cook is genuinely meant to receive internal messages.
+
+Do not "fix" by broadening the grant reflexively: that is a read-access decision about
+who sees internal messages, not a console-noise cleanup.

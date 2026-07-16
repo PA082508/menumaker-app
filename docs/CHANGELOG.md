@@ -10,6 +10,8 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 
 <!-- newest on top -->
 
+- 2026-07-15 · 🚀 · Changing a staff member's status or classroom now actually sticks. Until today the database quietly refused the save: you'd change someone to Inactive, see it accepted, then log back in and find them Active again — the same for classroom transfers. Staff and children can now also have a photo, shown in the roster and on SafePass so a teacher sees a face instead of initials; photos are stored privately and are visible only to signed-in staff, never to the public. Along the way we closed a gap that let the staff list — pay rates included — be read publicly.
+
 - 2026-07-15 · 🔧 · Editing a staff member no longer says "Saved ✓" when the save was actually blocked. If the database refuses the change, the page now shows a clear error and tells you nothing was written — instead of silently reverting after you log back in.
 
 - 2026-07-15 · 🔧 · Sign-once now remembers *how* you signed. If a parent or staff member typed their name instead of drawing it, the saved signature was filed as "drawn" — and every later form that reused it carried that wrong record. It now records typed as typed and drawn as drawn.

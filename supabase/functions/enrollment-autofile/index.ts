@@ -1,7 +1,7 @@
 // enrollment-autofile — the runtime the auto-file rule never had.
 //
-// ⚠️ NOT DEPLOYED. Built on Nikolay's go to write it; deploying is a separate word.
-// Spec: docs/specs/renewal-contour-spec.md §2a.
+// ✅ DEPLOYED 2026-07-16 in DRY-RUN posture. `commit:true` is NOT to be used until the
+//    first token-bearing issues exist — Nikolay's word. Spec: docs/specs/renewal-contour-spec.md §2a/§2e.
 //
 // WHY THIS EXISTS
 // ───────────────
@@ -35,10 +35,13 @@
 // submission — so we do not need to work out who it is, we already know. That is what
 // makes it a renewal in the first place.
 //   · token present  → child_id comes from campaign_issues. No guessing. THIS is the
-//                      auto-file path.
-//   · token absent   → a walk-in. Try the name only as a courtesy; anything but exactly
-//                      one hit goes to a person, and for a walk-in that is the right
-//                      answer anyway.
+//                      ONLY auto-file path.
+//   · token absent   → a walk-in. NEVER auto-filed, not even on a single exact name hit
+//                      (Nikolay, 2026-07-16). The name is still matched, but only to put
+//                      a useful reason on the queue row. Why: across 332 active children,
+//                      14 names have exactly ONE active row while a namesake exists —
+//                      so "one hit" is an accident of who is active today, not an
+//                      identity. And consent carries no DOB to corroborate with.
 //
 // NEVER auto-filed regardless of flags: the F/R/P determination (roster.frp +
 // income_eligibility). IEA may auto-file as *document received*; the determination stays
@@ -188,7 +191,7 @@ async function loadRegistryFlags(): Promise<Record<string, FormEntry>> {
 }
 
 // ── the pass ─────────────────────────────────────────────────────────────────
-type Outcome = { id: string; decision: 'received' | 'pending'; reason: string }
+type Outcome = { id: string; type: string; decision: 'received' | 'pending'; reason: string }
 
 async function run(orgId?: string, dryRun = true): Promise<{ dry_run: boolean; scanned: number; would_file: number; outcomes: Outcome[] }> {
   const flags = await loadRegistryFlags()
@@ -205,19 +208,24 @@ async function run(orgId?: string, dryRun = true): Promise<{ dry_run: boolean; s
 
   for (const s of subs ?? []) {
     const f = flags[s.submission_type]
+    const push = (decision: 'received' | 'pending', reason: string) =>
+      outcomes.push({ id: s.id, type: s.submission_type, decision, reason })
 
-    if (!f?.auto_file) { outcomes.push({ id: s.id, decision: 'pending', reason: 'form is not auto_file' }); continue }
-    if (f.requires_countersign) { outcomes.push({ id: s.id, decision: 'pending', reason: `needs ${f.requires_countersign} countersign` }); continue }
+    // Countersign is checked FIRST even though auto_file alone would already stop the
+    // row: "needs director countersign" is the useful truth for a human reading the
+    // queue, and "not auto_file" would have hidden it. The reason string IS the product.
+    if (f?.requires_countersign) { push('pending', `needs ${f.requires_countersign} countersign`); continue }
+    if (!f?.auto_file) { push('pending', 'form is not auto_file'); continue }
 
     const val = validate(s.submission_type, s.form_data, s.signatures, s.signature_date)
     if (val.status !== 'ready') {
       // Record the verdict even when we don't file: the Inbox can show WHY it waits.
       if (!dryRun) await db.from('enrollment_submissions').update({ validation: val }).eq('id', s.id)
-      outcomes.push({ id: s.id, decision: 'pending', reason: `validation ${val.status}: ${[...val.errors, ...val.missing].join('; ')}` })
+      push('pending', `validation ${val.status}: ${[...val.errors, ...val.missing].join('; ')}`)
       continue
     }
 
-    if (!s.center_id) { outcomes.push({ id: s.id, decision: 'pending', reason: 'no centre on the submission' }); continue }
+    if (!s.center_id) { push('pending', 'no centre on the submission'); continue }
 
     // ── identity, preferred path: the issue token we handed the family ──────────
     // A renewal is not matched, it is RECOGNISED. This is the whole point of
@@ -227,16 +235,16 @@ async function run(orgId?: string, dryRun = true): Promise<{ dry_run: boolean; s
       const { data: iss } = await db.from('campaign_issues')
         .select('child_id,form_key,center_id')
         .eq('issue_token', token).is('revoked_at', null).maybeSingle()
-      if (!iss) { outcomes.push({ id: s.id, decision: 'pending', reason: `issue token not found or revoked: ${token}` }); continue }
-      if (!iss.child_id) { outcomes.push({ id: s.id, decision: 'pending', reason: 'issue was addressed to a family, not a child' }); continue }
-      if (iss.center_id !== s.center_id) { outcomes.push({ id: s.id, decision: 'pending', reason: 'issue centre ≠ submission centre' }); continue }
-      if (dryRun) { outcomes.push({ id: s.id, decision: 'received', reason: `WOULD file by token → ${iss.child_id}` }); continue }
+      if (!iss) { push('pending', `issue token not found or revoked: ${token}`); continue }
+      if (!iss.child_id) { push('pending', 'issue was addressed to a family, not a child'); continue }
+      if (iss.center_id !== s.center_id) { push('pending', 'issue centre ≠ submission centre'); continue }
+      if (dryRun) { push('received', `WOULD file by token → ${iss.child_id}`); continue }
       const { data: up, error: e2 } = await db.from('enrollment_submissions')
         .update({ status: 'received', child_id: iss.child_id, validation: val, reviewed_at: new Date().toISOString() })
         .eq('id', s.id).eq('status', 'pending').select('id')
-      if (e2) { outcomes.push({ id: s.id, decision: 'pending', reason: `write failed: ${e2.message}` }); continue }
-      if (!up?.length) { outcomes.push({ id: s.id, decision: 'pending', reason: 'someone else took it first' }); continue }
-      outcomes.push({ id: s.id, decision: 'received', reason: `filed by issue token → ${iss.child_id}` })
+      if (e2) { push('pending', `write failed: ${e2.message}`); continue }
+      if (!up?.length) { push('pending', 'someone else took it first'); continue }
+      push('received', `filed by issue token → ${iss.child_id}`)
       continue
     }
 
@@ -249,28 +257,23 @@ async function run(orgId?: string, dryRun = true): Promise<{ dry_run: boolean; s
     }
     const hits = matchRoster(rosterCache.get(s.center_id)!, s.form_data?.child_name, s.form_data?.birthdate ?? s.form_data?.child_dob)
 
-    // A renewal is a submission that lands on EXACTLY ONE active child. Zero = a new
-    // enrolment. Two or more = ambiguous. Both wait for a person: a wrong auto-match
-    // files a document silently into another child's record, which is worse than a
-    // queue entry.
-    if (hits.length !== 1) {
-      outcomes.push({ id: s.id, decision: 'pending', reason: hits.length === 0 ? 'no issue token and no roster match — new enrolment / walk-in' : `no issue token; ambiguous name: ${hits.length} candidates` })
-      continue
-    }
-
-    if (dryRun) {
-      outcomes.push({ id: s.id, decision: 'received', reason: `WOULD file → ${hits[0].child_name ?? hits[0].id}` })
-      continue
-    }
-
-    const { data: updated, error: upErr } = await db.from('enrollment_submissions')
-      .update({ status: 'received', child_id: hits[0].id, validation: val, reviewed_at: new Date().toISOString() })
-      .eq('id', s.id).eq('status', 'pending')   // guard: a human may have taken it meanwhile
-      .select('id')
-    if (upErr) { outcomes.push({ id: s.id, decision: 'pending', reason: `write failed: ${upErr.message}` }); continue }
-    if (!updated?.length) { outcomes.push({ id: s.id, decision: 'pending', reason: 'someone else took it first' }); continue }
-
-    outcomes.push({ id: s.id, decision: 'received', reason: `matched ${hits[0].child_name ?? hits[0].id}` })
+    // ── WALK-IN NEVER AUTO-FILES. ───────────────────────────────────────────────
+    // Nikolay's proposal, and the roster agrees. "Exactly one ACTIVE hit" is NOT the
+    // same as "this name identifies one child": measured 2026-07-16 across 332 active
+    // children, 30 names repeat inside a centre, 16 of them on two ACTIVE rows (those
+    // already go to a human), and **14 more have exactly ONE active row while a namesake
+    // exists** — allen zaiden ×2, green dominic ×2, singleton daryl ×2, rakhmanov erulan
+    // ×2, wynn devyn ×2. A single active hit there is an accident of who is active today,
+    // not proof of identity. And consent carries NO DOB (0 of the submissions do), so
+    // there is nothing to corroborate with.
+    //
+    // A walk-in is by definition someone we did NOT issue to, so the prior that "this is
+    // a renewal" is weak to begin with. Cost of being wrong: a signed document filed into
+    // another child's record. Cost of being right but manual: one queue row.
+    const why = hits.length === 0 ? 'no issue token and no roster match — new enrolment / walk-in'
+      : hits.length === 1 ? `no issue token; single name hit "${hits[0].child_name ?? hits[0].id}" — a name is not an identity, sent to a person`
+      : `no issue token; ambiguous name: ${hits.length} candidates`
+    push('pending', why)
   }
 
   return {

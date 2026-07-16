@@ -12,6 +12,7 @@ import {
 import { displayChildName } from '@/lib/childName'
 import Avatar from '@/components/Avatar'
 import AvatarUpload from '@/components/AvatarUpload'
+import ScheduleEditor from '@/components/ScheduleEditor'
 import { useAuth } from '@/hooks/useAuth'
 import { parseIeaFiscalYear, frpExpiryDefault, recordDetermination } from '@/lib/enrollmentApprove'
 import ChildExportPanel from './ChildExportPanel'
@@ -486,7 +487,24 @@ export default function ChildSettingsPage({
           )}
 
           {/* ── TAB 2: Enrollment (registry-driven) ── */}
-          {tab === 2 && renderFieldsTab('enrollment')}
+          {tab === 2 && (
+            <>
+              {/* Schedule saves on its own verified path (see ScheduleEditor) — it does
+                  NOT ride doSaveRoster, which inspects nothing after its update. */}
+              <ScheduleEditor
+                childId={child.id}
+                value={{
+                  sched_days: (child as any).sched_days ?? null,
+                  sched_in: (child as any).sched_in ?? null,
+                  sched_out: (child as any).sched_out ?? null,
+                  sched_source: (child as any).sched_source ?? null,
+                  sched_updated_at: (child as any).sched_updated_at ?? null,
+                }}
+                onSaved={s => setChild(c => c ? ({ ...c, ...s } as Child) : c)}
+              />
+              {renderFieldsTab('enrollment')}
+            </>
+          )}
 
           {/* ── TAB 3: Health (registry-driven; DCY 01236 detail auto-reveals when has_health_condition) ── */}
           {tab === 3 && renderFieldsTab('health')}

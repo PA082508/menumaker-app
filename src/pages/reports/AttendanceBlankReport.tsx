@@ -3,11 +3,13 @@
 // Canon is the OWNER'S form (the one inspectors passed without remark), not DCY 01208 —
 // 01208 is a compliance reference, not a template. See docs/specs/attendance-module-spec.md.
 //
-// v1 prints a blank: #, Child's Name and DOB come from the roster; in/out are empty
-// boxes; Schedule Hours is an EMPTY column until schedule data exists (menumaker.roster
-// carries no hours/schedule column at all today — only `birthday`). That is deliberate,
-// not a stub: the owner's sheet was hand-filled anyway, so a blank Hours column costs
-// nothing and unblocks paper this week.
+// Prints a blank: #, Child's Name, DOB and Schedule Hours come from the roster; the
+// Mon–Fri in/out boxes are empty for the room to write by hand.
+//
+// Hours fills from roster.sched_in/sched_out (20260716c). A child with no schedule on
+// file prints an empty Hours cell — that is the honest state, not a placeholder, and it
+// is exactly how the sheet was filled before. On screen, days outside a child's
+// sched_days are dimmed; the PRINT stays a faithful replica and dims nothing.
 //
 // Paper-on-demand pattern (2-reports): build the document in a new window rather than
 // hiding the app with print CSS — same as SkeletonReconciliationReport.printSheet.
@@ -16,6 +18,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
 import { displayChildName, byEnrollmentName } from '@/lib/childName'
+import { DAY_BITS, hoursLabel, type Sched } from '@/components/ScheduleEditor'
 
 const S = () => supabase.schema('menumaker')
 const GREEN = '#0f4c35'
@@ -24,7 +27,10 @@ const GREEN = '#0f4c35'
 // is not — we keep the five-day grid and print the words correctly.
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'] as const
 
-type Kid = { id: string; first_name: string | null; last_name: string | null; child_name: string | null; birthday: string | null }
+type Kid = {
+  id: string; first_name: string | null; last_name: string | null
+  child_name: string | null; birthday: string | null
+} & Sched
 type Room = { id: string; name: string }
 
 /** Monday of the week containing `d`, as yyyy-mm-dd. Local date — no UTC rollover. */
@@ -83,7 +89,7 @@ export default function AttendanceBlankReport() {
       setLoading(true); setLoadErr(null)
       try {
         const { data, error } = await S().from('roster')
-          .select('id,first_name,last_name,child_name,birthday')
+          .select('id,first_name,last_name,child_name,birthday,sched_days,sched_in,sched_out,sched_source,sched_updated_at')
           .eq('classroom_id', roomId).eq('is_active', true)
         if (error) throw error
         if (!cancelled) setKids((data ?? []) as Kid[])
@@ -112,6 +118,7 @@ export default function AttendanceBlankReport() {
   // a teacher looking someone up. NOT byAgeOldestFirst — that rule is for CACFP meal
   // forms; this is the licensing attendance sheet.
   const ordered = useMemo(() => [...kids].sort(byEnrollmentName), [kids])
+  const withoutSched = useMemo(() => ordered.filter(k => k.sched_days == null).length, [ordered])
   const room = rooms.find(r => r.id === roomId)
   const monthLabel = addDays(monday, 0).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 
@@ -125,6 +132,8 @@ export default function AttendanceBlankReport() {
       return `<th colspan="2" class="day">${d}<div class="dnum">${dt.getMonth() + 1}/${dt.getDate()}</div></th>`
     }).join('')
     const inOutHeads = DAYS.map(() => `<th class="io">in</th><th class="io">out</th>`).join('')
+    // The blank stays a blank: in/out boxes are empty on every day, exactly as the
+    // owner's sheet is filled by hand. Only Hours is prefilled, from the schedule.
     const cells = DAYS.map(() => `<td class="io"></td><td class="io"></td>`).join('')
 
     const body = ordered.map((k, i) => `
@@ -133,7 +142,7 @@ export default function AttendanceBlankReport() {
         <td class="nm">${esc(displayChildName(k))}</td>
         <td class="dob">${esc(usDate(k.birthday))}</td>
         ${cells}
-        <td class="hrs"></td>
+        <td class="hrs">${esc(hoursLabel(k))}</td>
       </tr>`).join('')
 
     w.document.write(`<!doctype html><html><head><meta charset="utf-8">
@@ -155,8 +164,8 @@ export default function AttendanceBlankReport() {
   .num { width:22px; text-align:center }
   .nm  { width:150px; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
   .dob { width:66px; text-align:center }
-  .hrs { width:56px }
-  th.hrs-h { width:56px }
+  .hrs { width:74px; text-align:center; font-size:9.5px; white-space:nowrap }
+  th.hrs-h { width:74px }
   .foot { margin-top:8px; font-size:9px; color:#444; display:flex; justify-content:space-between }
   @media print { button { display:none } }
 </style></head><body>
@@ -188,7 +197,7 @@ export default function AttendanceBlankReport() {
       <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#6b7280', marginBottom: 6 }}>REPORTS</div>
       <h1 style={{ fontSize: 26, fontWeight: 700, color: '#0a3320', margin: 0, fontFamily: "'DM Serif Display', serif" }}>Weekly Attendance Report</h1>
       <p style={{ margin: '6px 0 16px', color: '#6b7280', fontSize: 14 }}>
-        {currentCenter?.name} · a printable blank for the week: numbers, names and DOB are filled in — in/out are left empty for the room to write by hand.
+        {currentCenter?.name} · a printable blank for the week: numbers, names, DOB and scheduled hours are filled in — in/out are left empty for the room to write by hand.
       </p>
 
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
@@ -215,9 +224,11 @@ export default function AttendanceBlankReport() {
         </div>
       )}
 
-      <div style={{ background: '#f0f7f4', border: '1px solid #d1fae5', borderRadius: 9, padding: '9px 12px', fontSize: 12.5, color: '#1a2e1a', marginBottom: 14 }}>
-        <b>Schedule Hours prints empty.</b> There is no schedule anywhere in the roster yet, so the column is left for hand-filling — exactly as the sheet was filled before. It fills itself once schedules are imported.
-      </div>
+      {ordered.length > 0 && withoutSched > 0 && (
+        <div style={{ background: '#fff8e1', border: '1px solid #ffc107', borderRadius: 9, padding: '9px 12px', fontSize: 12.5, color: '#856404', marginBottom: 14 }}>
+          <b>{withoutSched} of {ordered.length} children have no schedule on file</b> — their Hours cell prints empty for hand-filling. Add a schedule on the child's <b>Enrollment</b> tab.
+        </div>
+      )}
 
       {loading ? <div style={{ color: '#6b7280', padding: 24 }}>Loading…</div> : ordered.length === 0 ? (
         <div style={{ padding: '28px 22px', textAlign: 'center', color: '#9ca3af', fontSize: 14, background: '#fafafa', borderRadius: 12, border: '1px dashed #e5e7eb' }}>
@@ -242,8 +253,15 @@ export default function AttendanceBlankReport() {
                   <td style={{ ...td, textAlign: 'center', color: '#6b7280' }}>{i + 1}</td>
                   <td style={td}>{displayChildName(k)}</td>
                   <td style={{ ...td, textAlign: 'center' }}>{usDate(k.birthday)}</td>
-                  {DAYS.map(d => <td key={d} style={{ ...td, background: '#fcfcfc' }} />)}
-                  <td style={{ ...td, background: '#fcfcfc' }} />
+                  {DAYS.map((d, di) => {
+                    // Dimmed = this child is not scheduled that day. No schedule on
+                    // file → nothing is dimmed (we don't know, so we don't imply).
+                    const off = k.sched_days != null && !(k.sched_days & DAY_BITS[di].bit)
+                    return <td key={d} style={{ ...td, background: off ? '#f1f3f1' : '#fcfcfc' }} />
+                  })}
+                  <td style={{ ...td, textAlign: 'center', fontSize: 11.5, color: hoursLabel(k) ? '#374151' : '#c9cdc9' }}>
+                    {hoursLabel(k) || '—'}
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -67,8 +67,15 @@ and **writes** its own fields back, so form N sees everything from forms 0..N-1.
 
 ## Decisions — LOCKED (Nikolay 2026-07-08)
 
-1. **Token store:** extend `form_links` — add `purpose` (`prefill` | `submit`), `child_id`, `expires_at`,
-   `batch_id`, `status`. No new table. (Doubles as the Stage-3 groundwork.)
+1. **Token store:** ~~extend `form_links`~~ → **SETTLED 2026-07-19: the store is
+   `menumaker.prefill_tokens`.** `form_links` was never built; `prefill_tokens` was, and it
+   already satisfies decisions 2–5: `mint_prefill_token` is an authenticated RPC, `get_prefill`
+   is anon SECURITY DEFINER with the whitelist fixed in the RPC, `expires_at = now() + 30 days`,
+   `on conflict (child_id) do update` gives exactly **one live token per child** (a new portion
+   reissues and invalidates the old), and `batch_id` carries the portion.
+   **The rule "no new table" stands and was violated once:** `campaign_issues.issue_token`
+   (2026-07-16) was a second token store, built without reading this spec — dropped in
+   `20260719_one_token_store.sql`. If a third is ever proposed, this line is the answer.
 2. **Mint surface:** minting is privileged → **authenticated RPC** called from the app library session
    (`verify_jwt`, director/office). No edge fn required. Reading `get_prefill(token)` stays **anon
    SECURITY DEFINER**.
@@ -78,8 +85,8 @@ and **writes** its own fields back, so form N sees everything from forms 0..N-1.
 4. **Expiry / reissue:** 30 days; re-openable until expiry (parent may return); **one active token per
    child** — a new portion reissues and **invalidates the old**; **Approve of the form invalidates the
    token**.
-5. **`portion_batch`** (thin): `batch(batch_id, center_id, form_set, size, created_at)`; `form_links.batch_id`
-   FK. Statuses = **event timestamps** (sent / opened / submitted / approved); dashboard counters are
+5. **`portion_batch`** (thin) = **`menumaker.campaigns`** (built 2026-07-16): `form_keys` is the
+   `form_set`. `prefill_tokens.batch_id` FK → `campaigns.id`. Statuses = **event timestamps** (sent / opened / submitted / approved); dashboard counters are
    **derived** from events. Drives per-batch / per-center tracking + re-portion lists.
 6. **Delivery v1:** email-only + "Form N of M" from the portion's `form_set`. **Families without email:**
    NOT a shared QR carrying a token (leak risk) — the director opens the family's personal link on a

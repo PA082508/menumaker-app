@@ -31,11 +31,17 @@
 //   wrong child's record, which is the one outcome worse than a queue.
 //
 // The contour already answers this and I missed it when writing the rule: a renewal is
-// ISSUED. campaign_issues.issue_token rides in the prefill link and comes back with the
+// ISSUED. prefill_tokens.token rides out in the link (?t=) and comes back with the
 // submission — so we do not need to work out who it is, we already know. That is what
 // makes it a renewal in the first place.
-//   · token present  → child_id comes from campaign_issues. No guessing. THIS is the
-//                      ONLY auto-file path.
+//
+// ONE token store: `prefill_tokens` (prefill-engine-spec, decision 1, settled 2026-07-19).
+// It already carries child_id + center_id + batch_id + a 30-day expiry, and
+// mint_prefill_token upserts on child_id, so a child has exactly one live token. I briefly
+// built a SECOND store (campaign_issues.issue_token) without reading that spec — dropped
+// in 20260719.
+//   · token present  → child_id comes from prefill_tokens. No guessing. THIS is the
+//                      ONLY auto-file path. Filing deletes the token (decision 4).
 //   · token absent   → a walk-in. NEVER auto-filed, not even on a single exact name hit
 //                      (Nikolay, 2026-07-16). The name is still matched, but only to put
 //                      a useful reason on the queue row. Why: across 332 active children,
@@ -227,24 +233,31 @@ async function run(orgId?: string, dryRun = true): Promise<{ dry_run: boolean; s
 
     if (!s.center_id) { push('pending', 'no centre on the submission'); continue }
 
-    // ── identity, preferred path: the issue token we handed the family ──────────
-    // A renewal is not matched, it is RECOGNISED. This is the whole point of
-    // campaign_issues.issue_token: it went out in the prefill link and came back.
-    const token = s.form_data?.issue_token ?? s.form_data?.t ?? null
+    // ── identity: the prefill token we handed the family ───────────────────────
+    // A renewal is not matched, it is RECOGNISED. mint_prefill_token put this token in the
+    // link; get_prefill filled the form with it; it came back with the submission.
+    const token = s.form_data?.t ?? s.form_data?.issue_token ?? s.form_data?.prefill_token ?? null
     if (token) {
-      const { data: iss } = await db.from('campaign_issues')
-        .select('child_id,form_key,center_id')
-        .eq('issue_token', token).is('revoked_at', null).maybeSingle()
-      if (!iss) { push('pending', `issue token not found or revoked: ${token}`); continue }
-      if (!iss.child_id) { push('pending', 'issue was addressed to a family, not a child'); continue }
-      if (iss.center_id !== s.center_id) { push('pending', 'issue centre ≠ submission centre'); continue }
-      if (dryRun) { push('received', `WOULD file by token → ${iss.child_id}`); continue }
+      const { data: pt } = await db.from('prefill_tokens')
+        .select('child_id,center_id,expires_at')
+        .eq('token', token).maybeSingle()
+      if (!pt) { push('pending', `prefill token not found: ${String(token).slice(0, 12)}…`); continue }
+      // Expired is NOT "file it anyway": the token IS the identity claim, and an expired
+      // claim is not evidence. It goes to a person — who can still see who it was.
+      if (pt.expires_at && new Date(pt.expires_at) < new Date()) {
+        push('pending', `prefill token expired ${String(pt.expires_at).slice(0, 10)} — needs a person`); continue
+      }
+      if (pt.center_id !== s.center_id) { push('pending', 'token centre != submission centre'); continue }
+      if (dryRun) { push('received', `WOULD file by prefill token -> ${pt.child_id}`); continue }
       const { data: up, error: e2 } = await db.from('enrollment_submissions')
-        .update({ status: 'received', child_id: iss.child_id, validation: val, reviewed_at: new Date().toISOString() })
+        .update({ status: 'received', child_id: pt.child_id, validation: val, reviewed_at: new Date().toISOString() })
         .eq('id', s.id).eq('status', 'pending').select('id')
       if (e2) { push('pending', `write failed: ${e2.message}`); continue }
       if (!up?.length) { push('pending', 'someone else took it first'); continue }
-      push('received', `filed by issue token → ${iss.child_id}`)
+      // Decision 4 (locked): approving/filing the form invalidates the token. Otherwise the
+      // link stays live for 30 days and a second submit re-files over a settled record.
+      await db.from('prefill_tokens').delete().eq('token', token)
+      push('received', `filed by prefill token -> ${pt.child_id}`)
       continue
     }
 

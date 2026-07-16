@@ -453,7 +453,8 @@ export default function ChildSettingsPage({
             <>
               <div style={{ marginBottom:18, paddingBottom:16, borderBottom:'1px solid #f0f0f0' }}>
                 <div style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.05em', color:'#888', marginBottom:8 }}>Photo</div>
-                <AvatarUpload entity="child" id={child.id} name={fullName} path={child.photo_url}
+                {/* facing="environment" — rear camera: you photograph a child, not yourself. */}
+                <AvatarUpload entity="child" id={child.id} name={fullName} path={child.photo_url} facing="environment"
                   onChange={p => setChild(c => c ? { ...c, photo_url: p } : c)} />
               </div>
               {renderFieldsTab('profile')}

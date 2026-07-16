@@ -15,6 +15,12 @@ const DOCS = [
   // In-app guide (docs/instructions/director-eforms-guide.md), rendered on /instructions.
   { id:'director-eforms-guide', title:'E-Forms — Director Guide', description:'How to send a packet, share a single form or QR, what the family sees, and how to review what comes in. Five minutes.', audience:'Director', category:'Enrollment', driveUrl:'https://menumaker-app.vercel.app/instructions?doc=director-eforms-guide' },
   { id:'teacher-eforms-checklist', title:'E-Forms — Teacher Checklist', description:'Five things for when a parent asks at the door. You do not send packets — the office does.', audience:'Teacher', category:'Enrollment', driveUrl:'https://menumaker-app.vercel.app/instructions?doc=teacher-eforms-checklist' },
+  // In-app guide (docs/instructions/photos-guide.md). Director-only for now: the
+  // camera lives on the Children and Staff settings cards, which are office surfaces.
+  // The Teacher card is deliberately NOT here yet — a teacher has no camera surface
+  // until the Attendance module ships and the cook write policy is applied, and a card
+  // promising a button that isn't there is worse than no card.
+  { id:'photos-guide', title:'Photos — Children & Staff', description:'Take a photo with the iPad camera. One photo per person, shown everywhere — roster, Meal Count, SafePass. Tips and privacy.', audience:'Director', category:'Enrollment', driveUrl:'https://menumaker-app.vercel.app/instructions?doc=photos' },
 
   // ── BYOD ─────────────────────────────────────────────────────────────────
   { id:'byod-agreement', title:'BYOD Device Use Agreement', description:'Sign online — saved securely. Director countersigns digitally.', audience:'Staff', category:'BYOD', canSign:true, highlight:true },

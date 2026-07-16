@@ -297,7 +297,8 @@ export default function StaffSettingsPage() {
             <h3 style={h3}>Personal Information</h3>
             <div style={{ marginBottom: 18 }}>
               <label style={lbl}>Photo</label>
-              <AvatarUpload entity="staff" id={data.id} name={name} path={data.photo_url}
+              {/* facing="user" — a staff photo is usually a selfie on the iPad. */}
+              <AvatarUpload entity="staff" id={data.id} name={name} path={data.photo_url} facing="user"
                 onChange={p => set('photo_url', p)} />
             </div>
             <div style={{ ...grid2, marginBottom: 16 }}>

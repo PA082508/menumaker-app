@@ -10,6 +10,8 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 
 <!-- newest on top -->
 
+- 2026-07-19 · 🔧 · The Weekly Attendance Report now has its guide (Document Hub → Weekly Attendance Report): how to print a week's sheet, where the hours come from, and how to fix a child whose Hours cell prints empty. The sheet shipped last week without one — that was our own rule broken.
+
 - 2026-07-19 · 🚀 · Renewals can now be issued: **People → Issue Renewal**. Pick a portion, tick the children, and each one gets their own private link that already knows who they are — what comes back files itself, with no review. The list shows each family's email from the file and flags the ones without one, so the director hands those a link on the tablet at drop-off instead. These links are personal: never post one, never put one on a QR — it opens a named child's details. A link lasts 30 days, ends when the form is filed, and re-issuing replaces it.
 
 - 2026-07-16 · 🔧 · Enrollment now has two shelves instead of one list: **Needs a person** (the work) and **Filed automatically** (documents that matched the link we issued, checked out, and filed themselves — no review needed). Auto-filed rows show a green ✓ and say "on file · no action needed" instead of offering Approve, so nobody files the same document twice. This had to land BEFORE auto-filing is switched on: until now a filed document would have disappeared from every screen, which reads as a lost form, not as work saved.

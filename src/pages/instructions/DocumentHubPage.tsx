@@ -20,6 +20,7 @@ const DOCS = [
   // The Teacher card is deliberately NOT here yet — a teacher has no camera surface
   // until the Attendance module ships and the cook write policy is applied, and a card
   // promising a button that isn't there is worse than no card.
+  { id:'attendance-guide', title:'Weekly Attendance Report', description:'Print the week\u2019s attendance sheet for a classroom — names, DOB and scheduled hours filled in, in/out left for the room to write.', audience:'Director', category:'Enrollment', driveUrl:'https://menumaker-app.vercel.app/instructions?doc=attendance' },
   { id:'photos-guide', title:'Photos — Children & Staff', description:'Take a photo with the iPad camera. One photo per person, shown everywhere — roster, Meal Count, SafePass. Tips and privacy.', audience:'Director', category:'Enrollment', driveUrl:'https://menumaker-app.vercel.app/instructions?doc=photos' },
 
   // ── BYOD ─────────────────────────────────────────────────────────────────

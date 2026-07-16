@@ -27,6 +27,7 @@ import SiteClaimReport from './pages/reports/SiteClaimReport'
 import EligibilityReconciliationReport from './pages/reports/EligibilityReconciliationReport'
 import SkeletonReconciliationReport from './pages/reports/SkeletonReconciliationReport'
 import AttendanceBlankReport from './pages/reports/AttendanceBlankReport'
+import IssueRenewalPage from './pages/enrollment/IssueRenewalPage'
 import ReimbursementPreview from './pages/reports/ReimbursementPreview'
 import CACFPChecklistPage from './pages/cacfp-reports/CACFPChecklistPage'
 import SafePassTeacherPage from './pages/safepass/SafePassTeacherPage'
@@ -173,6 +174,7 @@ export default function App() {
               <Route path="parents"            element={<ParentsPage />} />
               <Route path="enrollment-inbox"   element={<EnrollmentInboxPage />} />
               <Route path="issue-packet"       element={<ParentPacketPage />} />
+              <Route path="issue-renewal"      element={<IssueRenewalPage />} />
               <Route path="center/:centerId"   element={<CenterRosterPage />} />
               <Route path="staff"              element={<StaffPage />} />
               <Route path="staff/:staffId/settings" element={<StaffSettingsPage />} />

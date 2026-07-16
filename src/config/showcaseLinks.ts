@@ -48,3 +48,23 @@ export function storefrontPacketUrl(slug: string, setKey?: string, only?: string
   if (only?.length) u += `&only=${only.map(encodeURIComponent).join(',')}`
   return u
 }
+
+// ── Personal (tokenized) link — the prefill engine ───────────────────────────
+// A RENEWAL is not matched by name, it is RECOGNISED by this token: mint_prefill_token
+// put it in prefill_tokens (child + centre + batch + 30-day expiry), get_prefill(t)
+// fills the form from it, and it comes back with the submission so enrollment-autofile
+// knows exactly whose document this is. See docs/prefill-engine-spec.md.
+//
+// ⚠️ NEVER QR THIS, and never print it on anything shared. Locked decision 6: a shared
+// QR carrying a token is a leak — anyone who photographs the wall gets a link that
+// prefills a named child's data. This link goes to ONE family, through a controlled
+// channel: the email on file, or the director opening it on a kiosk at drop-off.
+// The centre-scoped, token-FREE QR on the Issue Packet page stays fine — it carries no
+// identity.
+export function storefrontTokenUrl(slug: string, token: string, formKeys?: string[]): string {
+  if (!slug) throw new Error('storefrontTokenUrl: center slug is required')
+  if (!token) throw new Error('storefrontTokenUrl: token is required — a personal link without ?t= prefills nothing and cannot be auto-filed')
+  let u = `${SHOWCASE_ORIGIN}/parent-forms.html?center=${encodeURIComponent(slug)}`
+  if (formKeys?.length) u += `&only=${formKeys.map(encodeURIComponent).join(',')}`
+  return `${u}&t=${encodeURIComponent(token)}`
+}

@@ -10,6 +10,8 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 
 <!-- newest on top -->
 
+- 2026-07-16 · 🗄️ · Attendance schedules imported for 273 children (Wickliffe 136, Highland Heights 83, Parma Heights 54) from the centres' own books — planned days Mon–Fri and arrival/departure hours. The Weekly Attendance Report blank now prints each child's hours. Children still without a schedule are almost all staff records or the five leavers; the only two real gaps (Aubrey Phillippone, Stephanie Vaccarino) had an empty Hours cell in the original book too, so nothing was invented — the office can fill them in on the child's Enrollment tab.
+
 - 2026-07-16 · 🗄️🚀 · Attendance schedules: every child can now carry planned days and hours. Set them on the child's Enrollment tab (tap the weekdays, enter arrival and departure) — the Weekly Attendance Report blank then prints those hours in its Schedule Hours column, and the on-screen week dims the days a child doesn't attend. A child with no schedule prints an empty cell, as before. Every change is dated and records who made it, and sheets already printed are never altered — a printed sheet keeps the schedule it was printed with.
 
 - 2026-07-16 · 🚀 · Weekly Attendance Report blanks can now be printed from the app (Reports → Attendance Blank). Pick a classroom and a week; the sheet comes out as a replica of the form the centre already uses — numbers, children's names and dates of birth filled in, Mon–Fri in/out boxes empty for the room to write by hand. Schedule Hours prints empty for now: there are no schedules in the system yet, so the column is left exactly as it was always filled — by hand. It will fill itself once schedules are imported. Names are listed alphabetically.

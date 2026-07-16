@@ -560,3 +560,34 @@ fight at 36px.
 audience that has no camera surface yet (teacher, until Attendance ships and the write
 policy is applied) is worse than no card: it documents a button the reader cannot find,
 and the reader concludes the app is broken rather than that the feature is pending.
+
+## Never destructure `data` without `error` from a Supabase call (2026-07-16)
+
+Twice in one day the same bug took out a live screen, and both times it looked like
+"there is no data" rather than "the query failed":
+
+- **Parents** — selected `relationship` off `guardian` (it lives on `child_guardian`).
+  360 real families rendered as *"No family records on file yet."*
+- **Meal Count + SafePass Teacher** — selected `photo_url` off `v_meal_grid` (the view
+  never got the column `20260715b` added to `roster`). The **live kitchen** rendered
+  as a class with no children in it, on the screen that IS the claim record.
+
+The mechanism is always identical and worth naming: **PostgREST rejects the ENTIRE
+select on one unknown column.** `const { data } = await ...` then yields `null`, the
+error is never bound to a variable, and `setState([])` paints a confident empty state.
+One wrong field name empties a whole page, silently, and looks exactly like a quiet day.
+
+**Rules:**
+1. **Always bind `error`.** `const { data, error } = await ...` — then `throw` it,
+   banner it, or handle it. A call that binds only `data` is a bug regardless of
+   whether it works today.
+2. **A failed load must SHOUT.** Render a distinguishable failure state that says the
+   list is *not* empty, it failed. Never let a failure share a code path with "no rows".
+3. **A view is not its table.** Adding a column to a table does NOT add it to views
+   over that table. When a migration adds a column, grep for views selecting from it.
+4. **Verify column names against the live catalog**, not against the table you think
+   you're reading. `information_schema.columns` costs one query; a silent outage costs
+   a day of meal counts.
+5. **`[BRANCH — do not deploy]` in a commit subject stops nothing.** `bc07e18` said
+   exactly that and shipped via merge `f4e549e`. Intent in a message is not a gate — if
+   something must not deploy, it must not be mergeable.

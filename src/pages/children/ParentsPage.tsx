@@ -114,7 +114,10 @@ export default function ParentsPage() {
         // (Phase 2/4) lands. De-duped against guardian families by email/name.
         const seen = new Set(list.map(f => (f.guardian.email || `${f.guardian.first_name ?? ''} ${f.guardian.last_name ?? ''}`).toLowerCase().trim()))
         const { data: subs } = await supabase.schema('menumaker').from('enrollment_submissions')
-          .select('form_data').eq('center_id', centerId).in('status', ['pending', 'approved'])
+          // 'received' belongs here: an auto-filed submission is MORE settled than a
+          // pending one, so excluding it while including pending would drop a family
+          // from this hub the moment their consent filed itself.
+          .select('form_data').eq('center_id', centerId).in('status', ['pending', 'approved', 'received'])
         const fromSubs = new Map<string, Family>()
         for (const s of subs ?? []) {
           const fd = (s.form_data ?? {}) as Record<string, string>

@@ -10,6 +10,8 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 
 <!-- newest on top -->
 
+- 2026-07-16 · 🔧 · Enrollment now has two shelves instead of one list: **Needs a person** (the work) and **Filed automatically** (documents that matched the link we issued, checked out, and filed themselves — no review needed). Auto-filed rows show a green ✓ and say "on file · no action needed" instead of offering Approve, so nobody files the same document twice. This had to land BEFORE auto-filing is switched on: until now a filed document would have disappeared from every screen, which reads as a lost form, not as work saved.
+
 - 2026-07-16 · 🔧 · The action buttons at the top of pages (Add Child, Enrollment, Import, Print…) now all look like one set: same outline, same height, same lettering, platform green. They had quietly drifted apart — four buttons in one row could be four slightly different shapes. The button that a page is really for is the filled one; the rest are outlined. A button you can't use now looks unusable rather than just faint. Counters (the red Enrollment number) are unchanged.
 
 - 2026-07-16 · 🔧 · Tapping a photo now does what you meant: a child who HAS a photo opens full-screen straight away (Change and Remove are inside that view), and a child who has none opens the camera straight away. No menu in between. Long names are no longer cut off — a double surname like "Rodriguez-Texidor Izabella" wraps onto two lines and shows in full, with the whole name on hover as a backstop.

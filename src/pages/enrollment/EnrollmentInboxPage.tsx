@@ -88,6 +88,9 @@ export default function EnrollmentInboxPage() {
   const [toast, setToast] = useState<{ msg: string; undo?: () => Promise<void> } | null>(null)
   const [rerunning, setRerunning] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  // The queue defaults to what needs a person. Auto-filed rows are a FACT to look up,
+  // not a task — "видно ≠ actionable" (spec §1.1).
+  const [view, setView] = useState<'todo' | 'auto' | 'all'>('todo')
   // Enrollment-enabled center_ids, from the embed registry's `centers` map. Null
   // until loaded — the "Open the enrollment form" picker offers only these
   // (intersection), so Kitchen / future non-enrollment centers never appear.
@@ -140,7 +143,11 @@ export default function EnrollmentInboxPage() {
       setLoading(true); setErr(null)
       let q = supabase.schema('menumaker').from('enrollment_submissions')
         .select('id,org_id,center_id,child_id,submission_type,form_data,signatures,signature_date,status,source,created_at')
-        .eq('status', 'pending')
+        // pending AND received. `received` = auto-filed by enrollment-autofile (no human
+        // Approve). It must be VISIBLE — a row that vanished from every screen the moment
+        // it was filed would read as a lost document, not as work saved. It is kept OUT
+        // of the work list by the view toggle below, not by hiding it from the query.
+        .in('status', ['pending', 'received'])
         .order('created_at', { ascending: false })
       // Scope: active center, or org-wide in Organization view.
       q = currentCenter?.id ? q.eq('center_id', currentCenter.id) : q.eq('org_id', org.id)
@@ -191,16 +198,24 @@ export default function EnrollmentInboxPage() {
   const from = searchParams.get('from')  // 'children' | 'staff' | null
 
   // Live validation per row (Phase 1 computes client-side; no trigger yet).
+  const counts = useMemo(() => ({
+    todo: rows.filter(r => r.status === 'pending').length,
+    auto: rows.filter(r => r.status === 'received').length,
+  }), [rows])
+
   const graded = useMemo(
     () => rows
       .filter(r => from === 'staff' ? isStaffType(r.submission_type)
                  : from === 'children' ? !isStaffType(r.submission_type)
                  : true)
+      .filter(r => view === 'all' ? true
+                 : view === 'auto' ? r.status === 'received'
+                 : r.status === 'pending')
       .map(r => ({
         row: r,
         v: validateSubmission(r.submission_type, r.form_data, { signatureDate: r.signature_date, source: r.source }),
       })),
-    [rows, from],
+    [rows, from, view],
   )
 
   // search-v2: filter the pending list by child name (scoreMatch), ranked when set.
@@ -287,6 +302,22 @@ export default function EnrollmentInboxPage() {
           {search.trim() && (
             <span style={{ fontSize: 12.5, color: '#6b7280' }}>{visible.length} of {rows.length}</span>
           )}
+
+          {/* The queue is what needs a person; auto-filed is a separate shelf. Splitting
+              them here is what keeps the signal from becoming "150" again. */}
+          <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
+            {([['todo', `Needs a person${counts.todo ? ` · ${counts.todo}` : ''}`],
+               ['auto', `Filed automatically${counts.auto ? ` · ${counts.auto}` : ''}`],
+               ['all',  'All']] as const).map(([k, label]) => (
+              <button key={k} onClick={() => setView(k)} style={{
+                padding: '6px 12px', borderRadius: 20, fontSize: 12.5, fontWeight: 600,
+                fontFamily: 'inherit', cursor: 'pointer',
+                border: `1.5px solid ${view === k ? '#0f4c35' : '#e5e7eb'}`,
+                background: view === k ? '#0f4c35' : '#fff',
+                color: view === k ? '#fff' : '#6b7280',
+              }}>{label}</button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -298,7 +329,9 @@ export default function EnrollmentInboxPage() {
           padding: '40px 24px', textAlign: 'center', color: '#9ca3af', fontSize: 14,
           background: '#fafafa', borderRadius: 12, border: '1px dashed #e5e7eb',
         }}>
-          No pending submissions.
+          {view === 'auto' ? 'Nothing has been filed automatically yet.'
+           : view === 'all' ? 'No submissions.'
+           : 'Nothing needs a person right now.'}
         </div>
       )}
       {!loading && !orgLoading && !err && graded.length > 0 && visible.length === 0 && (
@@ -306,13 +339,16 @@ export default function EnrollmentInboxPage() {
           padding: '32px 24px', textAlign: 'center', color: '#9ca3af', fontSize: 14,
           background: '#fafafa', borderRadius: 12, border: '1px dashed #e5e7eb',
         }}>
-          No pending submissions match “{search.trim()}”.
+          Nothing here matches “{search.trim()}”.
         </div>
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {visible.map(({ row, v }) => {
-          const isNew = !row.child_id
+          // Already filed by the auto-file pass. It must not offer Approve: approving it
+          // again would re-run the roster write on a row that is already done.
+          const filed = row.status === 'received'
+          const isNew = !row.child_id && !filed
           const childName = row.form_data?.child_name || '(no name)'
           const details = [...v.missing.map(m => ({ kind: 'missing', text: m })),
                            ...v.errors.map(m => ({ kind: 'error', text: m })),
@@ -320,7 +356,8 @@ export default function EnrollmentInboxPage() {
           const open = expanded === row.id
           return (
             <div key={row.id} style={{
-              border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff',
+              border: `1px solid ${filed ? '#d1fae5' : '#e5e7eb'}`, borderRadius: 12,
+              background: filed ? '#f6fdf9' : '#fff',
               boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
             }}>
               <div
@@ -336,6 +373,12 @@ export default function EnrollmentInboxPage() {
                     {isNew && (
                       <span style={{ fontSize: 11, fontWeight: 700, color: '#0f4c35', background: '#f0fff4', padding: '1px 7px', borderRadius: 6 }}>
                         NEW
+                      </span>
+                    )}
+                    {filed && (
+                      <span title="Matched to this child by the link we issued, validated, and filed — no review needed"
+                        style={{ fontSize: 11, fontWeight: 700, color: '#166534', background: '#dcfce7', padding: '1px 7px', borderRadius: 6 }}>
+                        ✓ FILED AUTOMATICALLY
                       </span>
                     )}
                   </div>
@@ -375,15 +418,22 @@ export default function EnrollmentInboxPage() {
                 )}
                 <SourceTag source={row.source} />
                 <StatusBadge v={v} />
-                <button
-                  onClick={e => { e.stopPropagation(); setReviewing(row) }}
-                  style={{
-                    padding: '6px 14px', borderRadius: 8, border: 'none', background: '#0f4c35',
-                    color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
-                  }}
-                >
-                  Review
-                </button>
+                {filed ? (
+                  // No Approve: it is done. The row is here to be FOUND, not worked.
+                  <span style={{ fontSize: 12, color: '#166534', whiteSpace: 'nowrap', fontWeight: 600 }}>
+                    on file · no action needed
+                  </span>
+                ) : (
+                  <button
+                    onClick={e => { e.stopPropagation(); setReviewing(row) }}
+                    style={{
+                      padding: '6px 14px', borderRadius: 8, border: 'none', background: '#0f4c35',
+                      color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Review
+                  </button>
+                )}
                 {details.length > 0 && (
                   <span style={{ color: '#9ca3af', fontSize: 12, width: 14, textAlign: 'center' }}>{open ? '▾' : '▸'}</span>
                 )}

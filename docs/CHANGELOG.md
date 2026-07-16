@@ -10,6 +10,8 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 
 <!-- newest on top -->
 
+- 2026-07-16 · 🔧 · The Weekly Attendance Report blank now lists children oldest first, matching the sheet the centres already use (it was alphabetical). Same order as every other printed CACFP form.
+
 - 2026-07-16 · 🗄️ · Attendance schedules imported for 273 children (Wickliffe 136, Highland Heights 83, Parma Heights 54) from the centres' own books — planned days Mon–Fri and arrival/departure hours. The Weekly Attendance Report blank now prints each child's hours. Children still without a schedule are almost all staff records or the five leavers; the only two real gaps (Aubrey Phillippone, Stephanie Vaccarino) had an empty Hours cell in the original book too, so nothing was invented — the office can fill them in on the child's Enrollment tab.
 
 - 2026-07-16 · 🗄️🚀 · Attendance schedules: every child can now carry planned days and hours. Set them on the child's Enrollment tab (tap the weekdays, enter arrival and departure) — the Weekly Attendance Report blank then prints those hours in its Schedule Hours column, and the on-screen week dims the days a child doesn't attend. A child with no schedule prints an empty cell, as before. Every change is dated and records who made it, and sheets already printed are never altered — a printed sheet keeps the schedule it was printed with.

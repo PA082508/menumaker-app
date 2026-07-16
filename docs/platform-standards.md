@@ -50,7 +50,15 @@ and every printed CACFP form. Children with no `birthday` sort to the **end**.
   tiebreak (`child_name` / `last_name`).
 - In-memory: `byAgeOldestFirst`.
 
-Wired: MealCountPage, MealCountDirectorPage, `utils/PrintMealCountForm.ts`.
+Wired: MealCountPage, MealCountDirectorPage, `utils/PrintMealCountForm.ts`,
+`AttendanceBlankReport`.
+
+**The Weekly Attendance Report blank is 2a, not 2b** (settled 2026-07-16). It looks
+like a class list, so alphabetical is the intuitive read — and it's wrong. The owner's
+sample sheet, the one inspectors passed unremarked, is age-ordered: Bates 9/2023 →
+Robinson 10/2023 → … → Kendzierski 4/2024. The blank is a **replica**, so it follows
+the sample. When a printed form is a replica of a form the centre already uses, the
+form decides its own order — check the sample before reasoning from the rule.
 
 ### 2b. Enrollment contexts → **alphabetical** (`last_name, first_name`)
 

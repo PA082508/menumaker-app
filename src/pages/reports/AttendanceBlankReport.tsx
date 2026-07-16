@@ -17,7 +17,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
-import { displayChildName, byEnrollmentName } from '@/lib/childName'
+import { displayChildName, byAgeOldestFirst } from '@/lib/childName'
 import { DAY_BITS, hoursLabel, type Sched } from '@/components/ScheduleEditor'
 
 const S = () => supabase.schema('menumaker')
@@ -114,10 +114,12 @@ export default function AttendanceBlankReport() {
     return () => { cancelled = true }
   }, [roomId, centerId, rooms])
 
-  // Enrollment context (platform-standards §2b): a class list is read alphabetically by
-  // a teacher looking someone up. NOT byAgeOldestFirst — that rule is for CACFP meal
-  // forms; this is the licensing attendance sheet.
-  const ordered = useMemo(() => [...kids].sort(byEnrollmentName), [kids])
+  // Oldest first (birthday ASC, no-birthday last) — the owner's sheet is age-ordered,
+  // confirmed against the sample: Bates 9/2023 → Robinson 10/2023 → … → Kendzierski
+  // 4/2024. The blank is a replica, so it follows the sample, not the alphabet.
+  // This is platform-standards §2a after all (byAgeOldestFirst), not §2b: the sheet
+  // sorts the way every other printed CACFP-era form at these centres does.
+  const ordered = useMemo(() => [...kids].sort(byAgeOldestFirst), [kids])
   const withoutSched = useMemo(() => ordered.filter(k => k.sched_days == null).length, [ordered])
   const room = rooms.find(r => r.id === roomId)
   const monthLabel = addDays(monday, 0).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })

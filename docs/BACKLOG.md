@@ -151,6 +151,15 @@ Decide the single source of truth and retire/migrate the rest.
 Per-room `capacity_ohio` is kept in the DB but hidden in the UI (per-room numbers
 are inspection facts on a date, not limits).
 
+## ~~403 `rest/v1/internal_messages` on the cook door~~ → SPEC'D (2026-07-16)
+
+**Superseded — and my diagnosis below was wrong.** Nikolay's decision: a deliberate
+grant. Spec + prepared SQL: `docs/specs/cook-messages-spec.md`,
+`20260717c_internal_messages_rls.sql`. The measurement that corrected me:
+`internal_messages` has RLS on, **0 policies and no authenticated grants at all** — so
+the 403 hits *everyone*, including the director on /messages, not just the cook.
+Messaging has never worked in the platform. Original (wrong) note kept below.
+
 ## 403 `rest/v1/internal_messages` on the cook door (2026-07-16, do NOT fix now)
 
 Seen in the console on `/portal/cook/<slug>` during the Meal Count outage read-back.

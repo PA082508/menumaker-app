@@ -83,6 +83,7 @@ const SECTIONS: Section[] = [
       { path: '/eligibility-reconciliation', label: 'Eligibility Recon', icon: 'ti-checklist' },
       { path: '/skeleton-reconciliation', label: 'Skeleton Recon', icon: 'ti-git-merge' },
       { path: '/reports',               label: 'Meal Count Summary', icon: 'ti-chart-bar' },
+      { path: '/attendance-blank',      label: 'Attendance Blank',   icon: 'ti-printer' },
       { path: '/staff/time-log',        label: 'Time Log Summary',   icon: 'ti-clock' },
       { path: '/submissions',           label: 'Income Eligibility', icon: 'ti-forms' },
       { path: '/export',                label: 'Custom Export',      icon: 'ti-download' },

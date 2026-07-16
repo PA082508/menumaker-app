@@ -521,3 +521,34 @@ untouched — a real city in Cuyahoga County where **21 households, 8 children a
 actually live. A `%mayfield%` cleanup would have corrupted 33 live records of real
 families. Audit with the loose pattern to see the neighbourhood; act only on the exact one,
 and read back the count of what you deliberately left alone.
+
+## An avatar's tap follows what the avatar already does (2026-07-16)
+
+An avatar is never *only* a photo — on most screens it already stands for a person you can
+open. So the camera does not get to claim the tap by default. Two cases, and which one
+applies is decided by the surface, not by the component:
+
+**Free avatar → the tap IS the camera.** Where the avatar carries no existing action —
+a child in the Attendance grid, a face in a class list that opens nothing — tapping it
+opens the three-action sheet directly (Take photo / Choose from library / Remove photo).
+Nothing is lost, and the fastest path to "photograph this child" is one tap.
+
+**Avatar with an existing action → that action wins.** Where tapping already opens
+something — a staff card, a child's record — the tap keeps doing that. The photo editor
+lives *inside* the card that opens: the large avatar in its header carries the 📷 badge
+and opens the sheet there. A teacher's profile modal is the canonical example.
+
+**Why:** the collision is not hypothetical. Stealing the tap from an existing action to
+give it to the camera means a person who wants the record gets the camera instead — and
+they will not discover the record's new entry point by being surprised. A photo is a
+detail of a person; the person is the subject. The detail does not get the front door.
+
+The badge is the tell: 📷 on an avatar promises the sheet. Never render it on an avatar
+whose tap does something else. Note also that a roster child card already spends its
+bottom-right corner on the presence dot — a second overlay goes top-right, or the two
+fight at 36px.
+
+**A camera surface and its Hub card ship together, and not before.** A guide card for an
+audience that has no camera surface yet (teacher, until Attendance ships and the write
+policy is applied) is worse than no card: it documents a button the reader cannot find,
+and the reader concludes the app is broken rather than that the feature is pending.

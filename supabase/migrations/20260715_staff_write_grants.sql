@@ -98,6 +98,23 @@ grant select, insert, update on menumaker.staff_schedules to authenticated;
 --     closed via the API) and urgent_alerts (auth SELECT, no policies).
 --     Separate decision — deliberately out of scope for this package.
 --
+--     ⚠️ CORRECTION (2026-07-16, verified against the live catalog):
+--     the parenthetical above is WRONG for two of those tables.
+--     safepass_parent_sessions and safepass_sms_otp each carried the FULL anon
+--     grant set (SELECT/INSERT/UPDATE/DELETE/TRUNCATE/REFERENCES/TRIGGER) with
+--     RLS off — safepass_sms_otp holds an `otp_code` column, so the parent app's
+--     whole authentication secret sat behind the public anon key. They were NOT
+--     "closed via the API"; they were wide open and merely unused.
+--     Closed by 20260716_safepass_close_anon_tables.sql (applied 2026-07-16).
+--     ohio_ratio_rules / safepass_transport_children / urgent_alerts were checked
+--     and do match the description.
+--
+--     HOW THE ERROR HAPPENED — worth more than the fix: this line was written
+--     from a reading of what the tables were *meant* to be, not from a query of
+--     what they *were*. A migration comment is not evidence. When a security
+--     claim matters, read pg_class.relrowsecurity + information_schema
+--     .role_table_grants at the moment you make the claim, and paste the result.
+--
 -- READ-BACK AFTER APPLYING: change status/class → Save → logout/login → new
 -- value persists, no red banner. Plus re-run check (1): both tables true.
 -- ============================================================================

@@ -1,8 +1,27 @@
 # RENEWAL-КОНТУР — спека
 
-**Статус:** на утверждение Николаю. Кода нет. Дата: 2026-07-16.
+**Статус:** §5 закрыт решениями Николая 2026-07-16. Кода нет — ждёт отмашки на Волну 1.
 **Дедлайн кампании:** 31.07.2026.
 **Правило:** реестрово, без хардкода «кампании июля». Кампания — это **штатный режим**, а не спецслучай.
+
+## Решено (2026-07-16) — §5 закрыт
+
+| # | Вопрос | Решение |
+|---|---|---|
+| 1 | `requires_countersign: "director"` | **`transition_into_program`, `dcy_01234` (Program Ack), `release_auth` v2** |
+| 2 | `auto_file` первая волна | **`parent_consent` + `parents_book_ack`** (чистые подписи). Расширение — по итогам живой кампании |
+| 3 | IEA | **ДА** — авто-файлится как «документ получен»; **определение F/R/P только руками**, под claim-мостом |
+| 4 | «Не отправлено» в красной цифре | **НЕ входит.** Красная = подписи + расхождения. «Кому послать» = **отдельная вкладка/счётчик** в трекере |
+| 5 | Красная цифра | через **`refresh_action_items`** (severity/snooze) — единый примитив, из него позже родится Action Center ([[menumaker-action-center-standard]]) |
+| 6 | Кампания | **минимальная сущность в БД**: `id`, издание форм, даты, статус. Prefill-выдача несёт `campaign_id` |
+| — | Таблица фиксации выдачи prefill | **ДА — первая миграция контура** (prepare + go) |
+
+⚠️ **Сверка решения 2 с реестром — нужна перед кодом.** `parents_book_ack` в
+`enroll-registry.json` присутствует, но **`parents_book` ещё не подтверждён**: файл
+буклета не выбран (`PH25handbookP.pdf` — кандидат, неподтверждён), пара стоит в
+очереди на «ок пара» ([[menumaker-parents-book-pair]]). Авто-файл подтверждения к
+буклету, которого нет, — пустая петля. **Либо пара выпускается до кампании, либо
+первая волна auto_file = только `parent_consent`.**
 
 ---
 
@@ -221,11 +240,68 @@ queued-спекой «period-effective references».
 
 ---
 
-## 5. Открытые вопросы Николаю
+## 5. Волна 1 — что строим по утверждённым решениям
 
-1. **Список форм с `requires_countersign: "director"`** — какие именно? (кандидаты: Transition, Release Auth v2)
-2. **`auto_file: true`** — на каких формах включаем в первой волне? Предлагаю начать узко: 1–2 формы, посмотреть на живой кампании, потом расширять.
-3. **IEA:** подтверждаете границу — документ авто-филится как *получен*, но **определение F/R/P остаётся ручным** (claim-мост)?
-4. **«Не отправлено» в красной цифре** — включаем или нет? (опция в заказе)
-5. **Красная цифра:** сводим через `refresh_action_items` (есть severity/snooze) или оставляем прямой счётчик?
-6. **Кампания как сущность** — храним в БД (таблица `campaigns`) или пока выводим из реестра + дат?
+Порядок фиксирован критическим путём: без таблицы выдачи нет трекера.
+
+### 5.1. Миграция №1 контура — выдача prefill + кампания
+
+```sql
+-- Кампания = минимальная сущность (решение 6). НЕ «июль» — сущность.
+create table menumaker.campaigns (
+  id          uuid primary key default gen_random_uuid(),
+  org_id      uuid not null,
+  center_id   uuid,                      -- null = вся организация
+  title       text not null,
+  form_keys   text[] not null,           -- ключи реестра + издание берётся из current
+  starts_on   date, due_on date,
+  status      text not null default 'draft',  -- draft|active|closed
+  created_at  timestamptz not null default now()
+);
+
+-- Факт выдачи prefill. Единственный источник стадии «отправлено»
+-- и колонки «кому ещё послать».
+create table menumaker.campaign_issues (
+  id          uuid primary key default gen_random_uuid(),
+  org_id      uuid not null,
+  campaign_id uuid not null references menumaker.campaigns(id),
+  center_id   uuid not null,
+  child_id    uuid,                      -- → roster(id); null = адресат-семья без матча
+  guardian_id uuid,
+  form_key    text not null,
+  issued_at   timestamptz not null default now(),
+  issued_by   uuid,
+  channel     text,                      -- link|qr|email|paper
+  unique (campaign_id, child_id, form_key)
+);
+```
+
+`campaign_id` едет в prefill-ссылке и возвращается в сабмите — так «заполнено»
+смыкается с «отправлено» без гадания.
+
+### 5.2. `received` — миграция статуса
+
+`status` прибит CHECK-ом к `('pending','approved','rejected')`. Добавить `received` +
+обновить **три** места чтения: `.eq('status','pending')` в
+[EnrollmentInboxPage.tsx:143](../../src/pages/enrollment/EnrollmentInboxPage.tsx#L143) и оба ad-hoc счётчика
+([CenterRosterPage.tsx:239](../../src/pages/children/CenterRosterPage.tsx#L239), [StaffPage.tsx:53](../../src/pages/staff/StaffPage.tsx#L53)).
+
+### 5.3. Красная цифра → `refresh_action_items` (решение 5)
+
+Новый блок в `refresh_action_items`, а не четвёртый ad-hoc счётчик. Считает **только**:
+подписи директора + расхождения/несматченные. **`received` в цифру не входит.**
+«Не отправлено» — **отдельный счётчик на своей вкладке**, не в красной цифре.
+
+Побочная выгода: severity/snooze/dismiss уже есть — из этого блока родится Action Center.
+
+### 5.4. Реестр — два новых поля
+
+`auto_file: true` на `parent_consent` (+ `parents_book_ack`, см. оговорку в шапке);
+`requires_countersign: "director"` на `transition_into_program`, `dcy_01234`,
+`release_auth`. **Обе копии реестра** синхронно (app `public/` + Pages repo root).
+
+## 6. Остаточные вопросы
+
+1. **`parents_book_ack`** — выпускаем пару до кампании, или первая волна auto_file = только `parent_consent`? (см. оговорку в шапке)
+2. **`release_auth` v2** — в реестре ключ `child_release_authorization`; подтвердить, что речь о нём.
+3. **Кто «директор» для контрподписи** — любой `director` центра, или именованный? Влияет на фильтр «Awaiting director signature».

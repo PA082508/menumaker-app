@@ -7,6 +7,8 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
+import Avatar from '@/components/Avatar'
+import AvatarUpload from '@/components/AvatarUpload'
 
 // ── styles ────────────────────────────────────────────────────
 const card: React.CSSProperties = { background: '#fff', border: '1px solid #e8e8e8', borderRadius: 14, padding: 24, marginBottom: 20 }
@@ -30,6 +32,7 @@ type StaffData = {
   class_primary: string | null; class_secondary: string | null
   hire_date: string | null; birthday: string | null
   address: string | null
+  photo_url: string | null
   is_active: boolean | null
   // payroll
   pay_type: 'hourly' | 'salary' | null
@@ -75,12 +78,6 @@ const fmtDateDisplay = (d: string | null) => {
   const [y,m,day] = d.slice(0,10).split('-')
   return `${Number(m)}/${Number(day)}/${y}`
 }
-const avatarColor = (name: string) => {
-  const colors = ['#0f4c35','#1a6b4a','#2d8f64','#4a7c6b','#5c4f7c','#7c4f4f','#4f6b7c']
-  let h = 0; for (const c of name) h = (h * 31 + c.charCodeAt(0)) & 0xffff
-  return colors[h % colors.length]
-}
-
 const TRAINING_TYPES = ['First Aid/CPR','Child Abuse Prevention','Health & Safety','Nutrition','Curriculum','Special Needs','CACFP','Fire Safety','Other']
 const DOC_TYPES: Record<string, string> = {
   contract: 'Contract', i9: 'I-9', w4: 'W-4',
@@ -160,7 +157,7 @@ export default function StaffSettingsPage() {
       position: data.position, center_id: data.center_id,
       class_primary: data.class_primary, class_secondary: data.class_secondary,
       hire_date: data.hire_date || null, birthday: data.birthday || null,
-      address: data.address, is_active: data.is_active,
+      address: data.address, photo_url: data.photo_url, is_active: data.is_active,
       hourly_rate: data.hourly_rate, contract_hours: data.contract_hours,
       overtime_eligible: data.overtime_eligible, overtime_rate: data.overtime_rate,
       max_weekly_hours: data.max_weekly_hours,
@@ -214,7 +211,6 @@ export default function StaffSettingsPage() {
   if (!data)   return <div style={{ padding: 40, fontFamily: "'DM Sans', sans-serif", color: '#aaa' }}>Staff member not found.</div>
 
   const name = [data.first_name, data.last_name].filter(Boolean).join(' ') || 'Staff'
-  const ini  = ((data.first_name?.[0] ?? '') + (data.last_name?.[0] ?? '')).toUpperCase() || '?'
   const months = monthsWorked(data.hire_date)
   const hasBenefits = months >= 3
   const isFullTime = (data.contract_hours ?? 0) >= 32
@@ -236,11 +232,7 @@ export default function StaffSettingsPage() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
         <button onClick={() => navigate('/staff')} style={{ ...btnSec, padding: '7px 14px', fontSize: 13 }}>← Staff</button>
-        <div style={{
-          width: 52, height: 52, borderRadius: '50%', background: avatarColor(name),
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: '#fff', fontWeight: 700, fontSize: 20, flexShrink: 0,
-        }}>{ini}</div>
+        <Avatar name={name} path={data.photo_url} size={52} fontSize={20} />
         <div>
           <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 24, color: '#0a3320' }}>{name}</div>
           <div style={{ fontSize: 12, color: '#888' }}>
@@ -303,6 +295,11 @@ export default function StaffSettingsPage() {
       {tab === 'profile' && (
           <div style={card}>
             <h3 style={h3}>Personal Information</h3>
+            <div style={{ marginBottom: 18 }}>
+              <label style={lbl}>Photo</label>
+              <AvatarUpload entity="staff" id={data.id} name={name} path={data.photo_url}
+                onChange={p => set('photo_url', p)} />
+            </div>
             <div style={{ ...grid2, marginBottom: 16 }}>
               <div><label style={lbl}>First Name</label><input style={inp} value={data.first_name ?? ''} onChange={e => set('first_name', e.target.value)} /></div>
               <div><label style={lbl}>Last Name</label><input style={inp} value={data.last_name ?? ''} onChange={e => set('last_name', e.target.value)} /></div>

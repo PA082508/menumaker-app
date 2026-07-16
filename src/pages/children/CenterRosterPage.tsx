@@ -10,6 +10,7 @@ import AddChildRouterModal from './AddChildRouter'
 import { useOrg } from '@/contexts/OrgContext'
 import { useAuth } from '@/hooks/useAuth'
 import { displayChildName } from '@/lib/childName'
+import Avatar from '@/components/Avatar'
 import { isActiveOn } from '@/lib/childActive'
 import { classifyChild, type MatchKind } from '@/lib/childSearch'
 import AddChildPacketPanel from './AddChildPacketPanel'
@@ -41,6 +42,7 @@ type Child = {
   date_in: string | null; date_out: string | null; birthday: string | null
   milk_kind: string | null; classroom_id: string | null
   is_active?: boolean | null
+  photo_url?: string | null
 }
 type StaffRow = {
   id: string; first_name: string | null; last_name: string | null
@@ -92,33 +94,10 @@ function childMatchesSearch(c: Child, q: string): boolean {
 
 const staffName = (s: StaffRow) =>
   [s.first_name, s.last_name].filter(Boolean).join(' ').trim() || '—'
-const avatarColor = (name: string) => {
-  const colors = ['#0f4c35','#1a6b4a','#2d8f64','#4a7c6b','#5c4f7c','#7c4f4f','#4f6b7c']
-  let h = 0; for (const c of name) h = (h * 31 + c.charCodeAt(0)) & 0xffff
-  return colors[h % colors.length]
-}
-
-function Avatar({ name, size = 40, photo }: { name: string; size?: number; photo?: string | null }) {
-  const [err, setErr] = useState(false)
-  const bg = avatarColor(name)
-  const ini = name.split(' ').map(w => w[0]).filter(Boolean).slice(0,2).join('').toUpperCase()
-  if (photo && !err) return (
-    <img src={photo} alt={name} onError={() => setErr(true)}
-      style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
-  )
-  return (
-    <div style={{
-      width: size, height: size, borderRadius: '50%', background: bg,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      color: '#fff', fontWeight: 700, fontSize: size * 0.35, flexShrink: 0,
-    }}>{ini || '?'}</div>
-  )
-}
-
 function DetailPopup({ data, onClose, classrooms, onChanged }: { data: PopupData; onClose: () => void; classrooms: Classroom[]; onChanged: () => void }) {
   const [mode, setMode] = useState<'view'|'edit'|'transfer'>('view')
   const name = data.kind === 'child' ? fullName(data.child) : staffName(data.staff)
-  const photo = data.kind === 'child' ? null : data.staff.photo_url
+  const photo = data.kind === 'child' ? (data.child.photo_url ?? null) : data.staff.photo_url
   return (
     <div onClick={onClose} style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)',
@@ -131,7 +110,7 @@ function DetailPopup({ data, onClose, classrooms, onChanged }: { data: PopupData
         fontFamily: "'DM Sans', sans-serif",
       }}>
         <div style={{ background: '#0f4c35', padding: '24px 24px 20px', display: 'flex', gap: 16, alignItems: 'center' }}>
-          <Avatar name={name} size={60} photo={photo} />
+          <Avatar name={name} size={60} path={photo} />
           <div style={{ flex: 1 }}>
             <div style={{ color: '#fff', fontWeight: 700, fontSize: 17 }}>{name}</div>
             {data.kind === 'child' && (
@@ -296,7 +275,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
       supabase.schema('menumaker').from('classrooms')
         .select('id,name,sort_order,capacity_internal,is_roster').eq('center_id', centerId).eq('is_active', true).order('sort_order'),
       supabase.schema('menumaker').from('roster')
-        .select('id,first_name,last_name,child_name,age_group_food,frp,date_in,date_out,birthday,milk_kind,classroom_id,is_active')
+        .select('id,first_name,last_name,child_name,age_group_food,frp,date_in,date_out,birthday,milk_kind,classroom_id,is_active,photo_url')
         .eq('center_id', centerId)
         .order('last_name', { nullsFirst: false }).order('first_name'),
       supabase.schema('menumaker').from('staff')
@@ -668,7 +647,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                               onMouseLeave={e => (e.currentTarget.style.background = '#fff')}
                             >
                               <div style={{ position: 'relative', flexShrink: 0 }}>
-                                <Avatar name={staffName(s)} size={36} photo={s.photo_url} />
+                                <Avatar name={staffName(s)} size={36} path={s.photo_url} />
                                 <div style={{
                                   position: 'absolute', bottom: 0, right: 0,
                                   width: 11, height: 11, borderRadius: '50%',
@@ -716,7 +695,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                                 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px' }}>
                                   <div style={{ position: 'relative', flexShrink: 0 }}>
-                                    <Avatar name={name} size={36} />
+                                    <Avatar name={name} size={36} path={child.photo_url} />
                                     <div style={{
                                       position: 'absolute', bottom: 0, right: 0,
                                       width: 11, height: 11, borderRadius: '50%',
@@ -1036,7 +1015,7 @@ function AddChildModal({ centerId, orgId, classrooms, onDone, onClose }: {
         date_in: form.date_in, frp: form.frp,
         is_active: true,
       })
-      .select('id,first_name,last_name,child_name,age_group_food,frp,date_in,date_out,birthday,milk_kind,classroom_id')
+      .select('id,first_name,last_name,child_name,age_group_food,frp,date_in,date_out,birthday,milk_kind,classroom_id,photo_url')
       .single()
       if (err) throw err
       onDone(data as Child)

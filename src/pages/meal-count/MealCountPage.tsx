@@ -15,6 +15,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrg } from "@/contexts/OrgContext";
+import Avatar from "@/components/Avatar";
 import { format, startOfWeek, addDays, isWeekend } from "date-fns";
 import { displayChildName } from "@/lib/childName";
 import { enqueueMark, cellKey } from "@/lib/mealMarkQueue";
@@ -39,6 +40,7 @@ interface Child {
   allergies: string | null;
   age_group_food: string | null;
   is_active: boolean;
+  photo_url?: string | null;
 }
 
 interface Classroom {
@@ -304,7 +306,7 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
 
       let gridQ = supabase
         .schema("menumaker").from("v_meal_grid")
-        .select("roster_id,child_name,first_name,last_name,birthday,classroom_id,center_id,milk_label,oz,allergies,age_group_food,is_active")
+        .select("roster_id,child_name,first_name,last_name,birthday,classroom_id,center_id,milk_label,oz,allergies,age_group_food,is_active,photo_url")
         .eq("classroom_id", selectedClassId)
         .eq("is_active", true);
       if (cls?.center_id) gridQ = gridQ.eq("center_id", cls.center_id);
@@ -720,6 +722,7 @@ function CurrentMode({ roster, records, activeSlots, selectedSlot, setSelectedSl
                   onClick={() => toggle(child, day, selectedSlot)}>
                   <span className="mc-checkbox">{checked ? "✓" : ""}</span>
                   {queued && <span className="mc-queue-flag" title="Waiting to send">◷</span>}
+                  <Avatar name={displayName(child)} path={child.photo_url} size={24} />
                   <span className="mc-child-name">{displayName(child)}</span>
                   {child.allergies && <span className="mc-sub-badge" title={child.allergies}>⚠ {child.allergies}</span>}
                   {child.milk_label && <span className="mc-milk-tag">{child.milk_label}</span>}

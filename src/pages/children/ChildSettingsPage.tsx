@@ -10,6 +10,8 @@ import {
   type TabKey, type RecordCtx, type FieldDef,
 } from '@/lib/childFieldRegistry'
 import { displayChildName } from '@/lib/childName'
+import Avatar from '@/components/Avatar'
+import AvatarUpload from '@/components/AvatarUpload'
 import { useAuth } from '@/hooks/useAuth'
 import { parseIeaFiscalYear, frpExpiryDefault, recordDetermination } from '@/lib/enrollmentApprove'
 import ChildExportPanel from './ChildExportPanel'
@@ -35,6 +37,7 @@ interface Child {
   development_notes: string | null; accommodations: string | null
   specialized_services: string | null; emergency_transport_auth: boolean | null
   enrollment_reviewed_at: string | null; age_group_food: string | null
+  photo_url: string | null
 }
 
 interface Guardian {
@@ -215,6 +218,7 @@ export default function ChildSettingsPage({
       specialized_services: child.specialized_services,
       emergency_transport_auth: child.emergency_transport_auth,
       enrollment_reviewed_at: child.enrollment_reviewed_at,
+      photo_url: child.photo_url,
       // child_name canonical = "Last First" (see docs/platform-standards.md)
       child_name: `${child.last_name ?? ''} ${child.first_name ?? ''}`.trim()
     }).eq('id', childId)
@@ -400,9 +404,7 @@ export default function ChildSettingsPage({
 
         {/* Header */}
         <div style={{ background:'#0f4c35', padding:'16px 20px', display:'flex', alignItems:'center', gap:14, flexShrink:0 }}>
-          <div style={{ width:44, height:44, borderRadius:'50%', background:'rgba(255,255,255,0.15)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:17, fontWeight:700, color:'#7ee8b0' }}>
-            {(child.first_name?.[0]??'')}{(child.last_name?.[0]??'')}
-          </div>
+          <Avatar name={fullName} path={child.photo_url} size={44} fontSize={17} />
           <div style={{ flex:1 }}>
             <div style={{ color:'#fff', fontWeight:700, fontSize:17, display:'flex', alignItems:'center', gap:8 }}>
               {fullName}
@@ -447,7 +449,16 @@ export default function ChildSettingsPage({
         <div style={{ flex:1, overflowY:'auto', padding:20 }}>
 
           {/* ── TAB 0: Profile (registry-driven) ── */}
-          {tab === 0 && renderFieldsTab('profile')}
+          {tab === 0 && (
+            <>
+              <div style={{ marginBottom:18, paddingBottom:16, borderBottom:'1px solid #f0f0f0' }}>
+                <div style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.05em', color:'#888', marginBottom:8 }}>Photo</div>
+                <AvatarUpload entity="child" id={child.id} name={fullName} path={child.photo_url}
+                  onChange={p => setChild(c => c ? { ...c, photo_url: p } : c)} />
+              </div>
+              {renderFieldsTab('profile')}
+            </>
+          )}
 
           {/* ── TAB 1: Family ── */}
           {tab === 1 && (

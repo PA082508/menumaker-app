@@ -1,7 +1,20 @@
 -- 20260717_renewal_wave1.sql — RENEWAL КОНТУР, ВОЛНА 1
 --
--- ⚠️ PREPARED — NOT APPLIED. Awaiting Nikolay's go.
--- Spec: docs/specs/renewal-contour-spec.md (§5, decisions of 2026-07-16).
+-- ✅ APPLIED 2026-07-16 on Nikolay's go. Spec: docs/specs/renewal-contour-spec.md §5.
+--
+-- READ-BACK (actual): refresh_action_items(<org>) now returns ELEVEN keys —
+--   pre-existing, all survived: licenses 2 · claims 3 · documents 4 · eligibility 3
+--     · substitutions 0 · approvals 2 · licenses_no_date 1 · duplicates 16
+--     · duplicates_fuzzy 0
+--   new: renewal_signatures 1 · renewal_unmatched 3
+-- Nine out of nine old keys present = no block was dropped by the rewrite.
+--
+-- HOW THE WIRING WAS DONE — better than the plan below, so recording it:
+--   the two edits were applied to pg_get_functiondef() output INSIDE the same
+--   transaction, via a DO block that replace()s three anchors (each asserted to
+--   exist exactly once, aborting if not) and EXECUTEs the result. The 13KB body was
+--   never copied into this file or through my hands, so the drift this file warned
+--   about was made structurally impossible rather than merely watched for.
 --
 -- DRY RUN 2026-07-16 — весь пакет выполнен на ЖИВОЙ базе внутри транзакции и
 -- откачен. Не «должно скомпилироваться», а скомпилировалось и отработало:

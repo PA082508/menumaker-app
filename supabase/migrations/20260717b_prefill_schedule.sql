@@ -1,6 +1,16 @@
 -- 20260717b_prefill_schedule.sql — расписание в prefill-whitelist (заказ §5a)
 --
--- ⚠️ PREPARED — NOT APPLIED. Awaiting Nikolay's go.
+-- ✅ APPLIED 2026-07-16 on Nikolay's go, in the same DB pass as 20260717_renewal_wave1.
+--
+-- READ-BACK (actual, in a rolled-back tx so no live prefill link was invalidated):
+--   Zya Ware → {child_id, center_id, child_name:'Zya Ware', child_first_name,
+--               child_last_name, child_dob:'2023-11-20',
+--               schedule_days:'Mon,Tue,Wed,Thu,Fri', schedule_in:'07:45',
+--               schedule_out:'16:45'}
+--   FRP leaked? → no ✓
+--   NOTE the read-back used a synthetic token row rather than mint_prefill_token:
+--   minting upserts by child_id and REISSUES the token, which would have silently
+--   killed any prefill link already handed to that family.
 --
 -- DRY RUN 2026-07-16 — выполнено на ЖИВОЙ базе в транзакции и откачено:
 --   WITH schedule (Zya Ware):

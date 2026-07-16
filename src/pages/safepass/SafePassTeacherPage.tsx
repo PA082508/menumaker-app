@@ -257,7 +257,7 @@ export default function SafePassTeacherPage() {
 
     ;(async () => {
       const { data: kids } = await supabase.schema('menumaker').from('v_meal_grid')
-        .select('roster_id,child_name').eq('classroom_id', classId).eq('is_active', true)  // no photo_url: v_meal_grid doesn't expose it — asking rejects the whole select
+        .select('roster_id,child_name,photo_url').eq('classroom_id', classId).eq('is_active', true)  // photo_url: v_meal_grid carries it as of 20260716d
         .order('child_name')
       if (!cancelled) setRoster((kids ?? []) as Child[])
 

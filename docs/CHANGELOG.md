@@ -10,6 +10,8 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 
 <!-- newest on top -->
 
+- 2026-07-16 · 🗄️ · Children's photos now appear in Meal Count and on the SafePass Teacher screen. They never actually did before — the screens asked for the photo from a place that didn't carry it, which is what emptied the kitchen earlier today. The meal grid now carries the photo properly. Only one child has a photo on file so far (Wickliffe, Orange 2); everyone else shows their coloured initials until a photo is taken.
+
 - 2026-07-16 · 🔧 · URGENT: Meal Count showed no children at all (Highland Heights Green Room and every other class) and the SafePass Teacher screen was empty the same way. Both are fixed. The screens were asking the database for a child-photo field the meal grid does not carry, so the database refused the whole request and the screens quietly showed an empty class — no error, nothing to tell the cook something was wrong. Meal Count now shows a red warning if the roster ever fails to load, saying plainly not to record meals from that screen. No meal data was ever lost or altered — the records were intact the whole time; only the display was blank.
 
 - 2026-07-16 · 🔧 · The Weekly Attendance Report blank now lists children oldest first, matching the sheet the centres already use (it was alphabetical). Same order as every other printed CACFP form.

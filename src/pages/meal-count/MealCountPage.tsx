@@ -309,11 +309,12 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
 
       let gridQ = supabase
         .schema("menumaker").from("v_meal_grid")
-        // NO photo_url here — v_meal_grid does not expose it (roster.photo_url exists,
-        // the view was never updated). Asking for it makes PostgREST reject the WHOLE
-        // select, and this grid then renders empty with no error. That is what emptied
-        // the kitchen. Re-add only together with the view migration that adds it.
-        .select("roster_id,child_name,first_name,last_name,birthday,classroom_id,center_id,milk_label,oz,allergies,age_group_food,is_active")
+        // photo_url is back: v_meal_grid carries it as of 20260716d. It was removed in
+        // adb2454 because the view did NOT have it and asking made PostgREST reject the
+        // WHOLE select — which rendered the kitchen as a class with no children. If this
+        // column ever disappears from the view again, this select empties the grid, not
+        // just the avatars: `error` is bound below and the red banner is the safety net.
+        .select("roster_id,child_name,first_name,last_name,birthday,classroom_id,center_id,milk_label,oz,allergies,age_group_food,is_active,photo_url")
         .eq("classroom_id", selectedClassId)
         .eq("is_active", true);
       if (cls?.center_id) gridQ = gridQ.eq("center_id", cls.center_id);

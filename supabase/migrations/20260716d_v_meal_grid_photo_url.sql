@@ -1,6 +1,29 @@
 -- 20260716d_v_meal_grid_photo_url.sql — вернуть фото в meal grid ПО-НАСТОЯЩЕМУ
 --
--- ⚠️ PREPARED — NOT APPLIED. Awaiting Nikolay's go.
+-- ✅ APPLIED 2026-07-16 on Nikolay's go. Order honoured: VIEW first, code second.
+--
+-- STANDARD 0bebc3f APPLIED TO THIS MIGRATION ITSELF:
+--   pg_depend found THREE views over `roster`, none of which had photo_url:
+--     · menumaker.v_meal_grid        → UPDATED here (the two broken screens read it)
+--     · menumaker.v_child_age_profile→ LEFT ALONE ON PURPOSE: it serves age/milk
+--       read-only fields (childFieldRegistry table:'view'); a photo has no business there.
+--     · menumaker.v_roster_export    → LEFT ALONE ON PURPOSE: it is a CSV export
+--       (ChildrenExportPage). A Storage object PATH in an exported roster is noise at
+--       best and an internal-path leak at worst.
+--   Built by replace()-ing pg_get_viewdef() INSIDE the transaction and asserting
+--   after = before || ',photo_url' — column drift aborts instead of shipping.
+--
+-- READ-BACK (actual, from an authenticated seat):
+--   19 columns, first 18 in their original order, photo_url last:
+--     roster_id,org_id,center_id,center,classroom_id,child_name,age_group_food,
+--     age_group_milk,milk_kind,substitute_milk,substitute_reimbursable,is_active,
+--     allergies,oz,milk_label,first_name,last_name,birthday,photo_url
+--   alpha/Green Room: 10 children · ridge/Red: 9 children — grid still alive.
+--
+-- ⚠️ ONLY ONE CHILD IN THE WHOLE ORG HAS A PHOTO ON FILE:
+--   Rodriguez-Texidor Izabella — Ridge / **Orange 2**. Staff photos: 0.
+--   So "photos render" can ONLY be proven on Ridge/Orange 2. Green Room and Red have
+--   no photos and show initials — a screenshot of those would look like a failed fix.
 --
 -- КОНТЕКСТ. 2026-07-16 кухня показывала ноль детей. Причина: экраны просили у
 -- `v_meal_grid` колонку `photo_url`, которой у вьюхи НЕТ — `20260715b_avatars.sql`

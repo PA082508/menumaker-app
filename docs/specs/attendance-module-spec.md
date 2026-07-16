@@ -299,7 +299,9 @@ create table menumaker.attendance_records (
   -- ── Решения 2026-07-16 переписали форму таблицы ──
   -- (1) множественные пары in/out за день → НЕТ unique(child_id, on_date);
   -- (2) append-only → строка НИКОГДА не UPDATE-ится; коррекция = новая строка.
-  kind         text not null,              -- check (kind in ('in','out'))
+  -- Решение 2026-07-16: CHECK сразу ТРЁХЗНАЧНЫЙ. safepass_sessions.action_type
+  -- имеет три значения, и добавить третий смысл потом = миграция, а не правка кода.
+  kind         text not null check (kind in ('in','out','transfer')),
   occurred_at  timestamptz not null,       -- время события (из handoff или ручное)
   source       text not null,              -- check (source in ('safepass','manual'))
   -- PROVENANCE: строка — ПРОИЗВОДНАЯ handoff-события, не независимый ввод (§3.3).
@@ -404,7 +406,7 @@ Billing / PFCC-часы считаются из `attendance_records`. Не в п
 §5 закрыт целиком — решения ушли в шапку и в схему §4.2. Осталось одно, и оно
 пришло из пилота:
 
-1. **`transfer`.** Решения покрыли `drop_off`→in и `pick_up`→out, но `safepass_sessions.action_type` имеет **три** значения. Перевод ребёнка в другую комнату — это `out` из старой + `in` в новую, одно событие смены `classroom_id`, или для attendance он невидим? Спрашиваю сейчас, потому что `kind text check (kind in ('in','out'))` — это CHECK, и третий смысл потом добавляется миграцией, а не кодом.
+1. **`transfer` — CHECK расширен, семантика ещё нет.** По решению 2026-07-16 колонка сразу `check (kind in ('in','out','transfer'))`, так что миграции задним числом не потребуется. Но **что `transfer` значит для бланка**, пока не решено: перевод в другую комнату — это `out` из старой + `in` в новую (тогда ребёнок в обеих сетках), одно событие смены `classroom_id` (тогда в одной), или для attendance невидим? Ответ нужен к Волне 2, не раньше — колонка уже готова его принять.
 
 **Судьба Волны 3 — в [safepass-pilot-inventory.md](safepass-pilot-inventory.md).** Производить из handoff сегодня не из чего
 (0 устройств / 0 PIN / 0 сессий), и путь родителя не замыкается на комнату. Пилот

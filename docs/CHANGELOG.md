@@ -10,6 +10,8 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 
 <!-- newest on top -->
 
+- 2026-07-16 · 🔧 · URGENT: Meal Count showed no children at all (Highland Heights Green Room and every other class) and the SafePass Teacher screen was empty the same way. Both are fixed. The screens were asking the database for a child-photo field the meal grid does not carry, so the database refused the whole request and the screens quietly showed an empty class — no error, nothing to tell the cook something was wrong. Meal Count now shows a red warning if the roster ever fails to load, saying plainly not to record meals from that screen. No meal data was ever lost or altered — the records were intact the whole time; only the display was blank.
+
 - 2026-07-16 · 🔧 · The Weekly Attendance Report blank now lists children oldest first, matching the sheet the centres already use (it was alphabetical). Same order as every other printed CACFP form.
 
 - 2026-07-16 · 🗄️ · Attendance schedules imported for 273 children (Wickliffe 136, Highland Heights 83, Parma Heights 54) from the centres' own books — planned days Mon–Fri and arrival/departure hours. The Weekly Attendance Report blank now prints each child's hours. Children still without a schedule are almost all staff records or the five leavers; the only two real gaps (Aubrey Phillippone, Stephanie Vaccarino) had an empty Hours cell in the original book too, so nothing was invented — the office can fill them in on the child's Enrollment tab.

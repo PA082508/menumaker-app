@@ -209,6 +209,9 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
     return mon;
   });
   const [loading, setLoading] = useState(true);
+  // Standard (platform-standards): a failed load must SHOUT, never render as empty.
+  // This grid is the claim record — a silent empty kitchen reads as "no children today".
+  const [loadErr, setLoadErr] = useState<string | null>(null);
 
   // Offline meal-count queue — badge count, error state, and per-cell "queued"
   // (unsynced) styling. Marks tapped without a network survive here until sync.
@@ -306,15 +309,28 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
 
       let gridQ = supabase
         .schema("menumaker").from("v_meal_grid")
-        .select("roster_id,child_name,first_name,last_name,birthday,classroom_id,center_id,milk_label,oz,allergies,age_group_food,is_active,photo_url")
+        // NO photo_url here — v_meal_grid does not expose it (roster.photo_url exists,
+        // the view was never updated). Asking for it makes PostgREST reject the WHOLE
+        // select, and this grid then renders empty with no error. That is what emptied
+        // the kitchen. Re-add only together with the view migration that adds it.
+        .select("roster_id,child_name,first_name,last_name,birthday,classroom_id,center_id,milk_label,oz,allergies,age_group_food,is_active")
         .eq("classroom_id", selectedClassId)
         .eq("is_active", true);
       if (cls?.center_id) gridQ = gridQ.eq("center_id", cls.center_id);
       // CACFP standard: oldest children first → ORDER BY birthday ASC.
-      const { data: kids } = await gridQ
+      const { data: kids, error: gridErr } = await gridQ
         .order("birthday", { ascending: true, nullsFirst: false })
         .order("last_name")
         .order("first_name");
+      // A failed load must never render as "no children". This grid IS the claim
+      // record — a silently empty kitchen looks like a day with no children in it.
+      if (gridErr) {
+        setLoadErr(gridErr.message);
+        setRoster([]);
+        setLoading(false);
+        return;
+      }
+      setLoadErr(null);
       // v_meal_grid doesn't expose date_out, so filter departed children (date_out
       // < this week's Monday) via a companion query — defense in depth against a
       // stale is_active row being claimed. A mid-week leaver (date_out >= Monday)
@@ -603,6 +619,21 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
           </button>
         ))}
       </div>
+
+      {loadErr && (
+        <div role="alert" style={{
+          display: "flex", alignItems: "flex-start", gap: 10, margin: "0 0 14px",
+          padding: "12px 16px", borderRadius: 10,
+          background: "#fef2f2", border: "1px solid #fca5a5", color: "#991b1b",
+          fontSize: 13, fontWeight: 500,
+        }}>
+          <span style={{ fontSize: 16, lineHeight: 1.2 }}>⚠</span>
+          <span>
+            The roster could not be loaded — this class is <b>not</b> empty, the load failed.
+            Do not record meals from this screen until it is fixed. Tell the office: {loadErr}
+          </span>
+        </div>
+      )}
 
       {loading ? <div className="mc-loading">Loading roster…</div>
         : mode === "current" ? (

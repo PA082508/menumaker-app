@@ -1,6 +1,21 @@
 -- 20260717c_internal_messages_rls.sql — открыть internal_messages, скоуп центра
 --
--- ⚠️ PREPARED — NOT APPLIED. Awaiting Nikolay's go.
+-- ✅ APPLIED 2026-07-16 on Nikolay's go.
+--
+-- ⚠️ A DEFECT WAS FOUND AFTER THE FIRST APPLY AND FIXED IN THE SAME GO.
+--    The first cut keyed visibility purely on the RECIPIENT. Consequence: a director
+--    who sent a message to the cooks could NOT read it back — their own message
+--    vanished from their own feed. Proven by running the actual flow (director sends →
+--    director looks: 0 rows), not by re-reading the rule. can_see_message now takes
+--    p_sender and short-circuits on `p_sender = auth.uid()` — you can always see what
+--    you sent. The 3-arg overload was dropped so no caller can reach the old answer.
+--
+-- READ-BACK AFTER FIX (from each seat; postgres bypasses RLS and proves nothing):
+--   RIDGE COOK sees 2 — 'org-wide cook' ✅ · 'ridge cook' ✅ · 'pearl cook' ⛔ · 'director' ⛔
+--   DIRECTOR   sees 2 — 'org-wide director' ✅ · own 'director-sent-to-cooks' ✅ (was 0)
+--   mark_message_read → true; read_by contains the caller; idempotent on re-call.
+--   UPDATE grant on the table: none ✓ (receipts only via RPC)
+--   ZZSMOKE rows swept: 0 left.
 -- Spec: docs/specs/cook-messages-spec.md
 --
 -- DRY RUN 2026-07-16 — policy exercised on the LIVE db in a transaction, rolled back.

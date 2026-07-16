@@ -17,23 +17,52 @@ type Message = {
   attachments: string[]
   created_at: string
   recipient_label: string
+  read_by?: string[] | null
+  sender_id?: string | null
+  center_id?: string | null
 }
 
 const ROLE_GROUPS = [
-  { value: 'teacher', label: '👩‍🏫 All Teachers' },
-  { value: 'cook',    label: '👨‍🍳 All Cooks' },
-  { value: 'director',label: '📊 All Directors' },
+  { value: 'teacher', label: '👩‍🏫 Teachers' },
+  { value: 'cook',    label: '👨‍🍳 Kitchen' },
+  { value: 'director',label: '📊 Directors' },
   { value: 'all',     label: '📢 Everyone' },
 ]
 
+// Scope decides center_id, and center_id is what makes "Wickliffe's kitchen" different
+// from "every cook in the organisation". It used to be inherited SILENTLY from the
+// centre switcher, so a director sitting in a centre could not address the whole org at
+// all, and never saw which of the two they had just done. Now it is a choice.
+type Scope = 'center' | 'org'
+
+/** Who has opened a message. A door is a shared account, so this names the PLACE, never
+ *  a person — "Seen by Wickliffe kitchen" is true; "Seen by Anna" would not be. */
+function seenLabel(m: any, centers: { id: string; name: string }[]): string {
+  const centre = centers.find(c => c.id === m.center_id)?.name?.replace(/^Play Academy\s+/i, '')
+  const who = m.recipient_value === 'cook' ? 'kitchen'
+    : m.recipient_value === 'teacher' ? 'teachers'
+    : m.recipient_value === 'director' ? 'directors' : 'recipients'
+  const n = m.read_by?.length ?? 0
+  return centre ? `${centre} ${who}` : `${who} · ${n} ${n === 1 ? 'reader' : 'readers'}`
+}
+
+/** What the recipient chip should SAY, so the feed shows who actually got it. */
+function scopedLabel(recipient: any, scope: Scope, centerName?: string): string {
+  const base = recipient?.label ?? ''
+  if (recipient?.type === 'user') return base
+  if (scope === 'org') return `${base} · all centres`
+  return centerName ? `${base} · ${centerName.replace(/^Play Academy\s+/i, '')}` : base
+}
+
 export default function MessagesPage() {
   const { user } = useAuth()
-  const { org, currentCenter } = useOrg()
+  const { org, currentCenter, centers } = useOrg()
   const [messages, setMessages] = useState<Message[]>([])
   const [staffUsers, setStaffUsers] = useState<StaffUser[]>([])
   const [showIndividual, setShowIndividual] = useState(false)
   const [body, setBody] = useState('')
   const [recipient, setRecipient] = useState<Recipient>(ROLE_GROUPS[3] as any)
+  const [scope, setScope] = useState<Scope>('center')
   const [files, setFiles] = useState<File[]>([])
   const [sending, setSending] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -95,12 +124,14 @@ export default function MessagesPage() {
       // Save message
       await supabase.schema('menumaker').from('internal_messages').insert({
         org_id: org?.id,
-        center_id: currentCenter?.id ?? null,
+        // Explicit, not inherited: 'center' → only that centre's people see it;
+        // 'org' → null = everyone in that role, org-wide. The RLS policy reads this.
+        center_id: scope === 'center' ? (currentCenter?.id ?? null) : null,
         sender_id: user?.id,
         sender_name: user?.email,
         recipient_type: (recipient as any).type || 'role',
         recipient_value: (recipient as any).value,
-        recipient_label: (recipient as any).label,
+        recipient_label: scopedLabel(recipient, scope, currentCenter?.name),
         body: body.trim(),
         attachments: urls,
       })
@@ -157,6 +188,28 @@ export default function MessagesPage() {
                 {g.label}
               </button>
             ))}
+          </div>
+
+          {/* Scope — decides center_id. Hidden for a direct-to-person message, where
+              a centre is meaningless. */}
+          {!showIndividual && (recipient as any).value !== 'all' && (
+            <div style={{ display:'flex', gap:8, marginTop:10, alignItems:'center', flexWrap:'wrap' }}>
+              <span style={{ fontSize:11, color:C.muted }}>Where:</span>
+              {([['center', currentCenter?.name ? `📍 ${currentCenter.name.replace(/^Play Academy\s+/i,'')} only` : '📍 This centre only'],
+                 ['org',    '🏢 All centres']] as [Scope,string][]).map(([v,lbl]) => (
+                <button key={v} onClick={() => setScope(v)} disabled={v==='center' && !currentCenter}
+                  style={{ padding:'5px 12px', borderRadius:20, fontSize:12.5, fontWeight:600, fontFamily:'inherit',
+                    cursor: v==='center' && !currentCenter ? 'default' : 'pointer',
+                    opacity: v==='center' && !currentCenter ? 0.4 : 1,
+                    border:`1.5px solid ${scope===v ? C.green : C.border}`,
+                    background: scope===v ? C.green : C.surface,
+                    color: scope===v ? '#fff' : C.muted }}>
+                  {lbl}
+                </button>
+              ))}
+            </div>
+          )}
+          <div style={{ display:'none' }}>
             <button onClick={() => setShowIndividual(v => !v)}
               style={{ padding:'6px 14px', borderRadius:20, fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'inherit',
                 border:`1.5px solid ${showIndividual ? C.green : C.border}`,
@@ -235,6 +288,16 @@ export default function MessagesPage() {
               <span style={{ fontSize:11, color:C.muted }}>{new Date(m.created_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span>
             </div>
             <div style={{ fontSize:11, color:C.muted, marginBottom:6 }}>→ {m.recipient_label}</div>
+            {/* Read receipt. Deliberately NOT a person's name: a door logs in as a
+                shared service account, so read_by records that SOMEONE at that centre's
+                device opened the panel. Saying "Seen by Anna" would be an invention.
+                Per-person receipts arrive with identity/PIN — see
+                docs/specs/identity-teacher-spec.md. */}
+            {m.sender_id === user?.id && (m.read_by?.length ?? 0) > 0 && (
+              <div style={{ fontSize:11, color:C.green, marginBottom:6 }}>
+                ✓ Seen by {seenLabel(m, centers)}
+              </div>
+            )}
             <div style={{ fontSize:14, color:'#1a2e1a', lineHeight:1.6 }}>{m.body}</div>
           </div>
         ))}

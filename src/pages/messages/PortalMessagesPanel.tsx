@@ -16,6 +16,7 @@ export default function PortalMessagesPanel({ centerCode, portalRole }: { center
   const [body, setBody] = useState('')
   const [files, setFiles] = useState<File[]>([])
   const [sending, setSending] = useState(false)
+  const [loadErr, setLoadErr] = useState<string | null>(null)
   const [unread, setUnread] = useState(0)
   const fileRef = useRef<HTMLInputElement>(null)
   const cameraRef = useRef<HTMLInputElement>(null)
@@ -24,15 +25,35 @@ export default function PortalMessagesPanel({ centerCode, portalRole }: { center
     if (org?.id) loadMessages()
   }, [org?.id, open])
 
+  // read_by has always been READ (the unread count below) and never WRITTEN, so the
+  // badge could never clear. Opening the panel marks what is on screen as seen — via
+  // the RPC, because UPDATE is deliberately not granted on the table (a write grant for
+  // read_by would also permit editing `body`).
+  useEffect(() => {
+    if (!open || !messages.length || !user?.id) return
+    const unseen = messages.filter((m: any) => !m.read_by?.includes(user.id))
+    if (!unseen.length) return
+    ;(async () => {
+      await Promise.all(unseen.map((m: any) =>
+        supabase.schema('menumaker').rpc('mark_message_read', { p_message: m.id })))
+      await loadMessages()
+    })()
+  }, [open, messages.length, user?.id])
+
   async function loadMessages() {
     if (!org?.id) return
-    const { data } = await supabase.schema('menumaker')
+    // No role/centre filter here on purpose: RLS (20260717c) already returns exactly
+    // what this door may see — addressed to my role, in my centre, or org-wide, plus
+    // anything I sent. A client filter that disagreed with the policy would either hide
+    // messages the database allows or promise ones it refuses.
+    const { data, error } = await supabase.schema('menumaker')
       .from('internal_messages')
       .select('*')
       .eq('org_id', org.id)
-      .or(`recipient_value.eq.${user?.id},recipient_value.eq.teacher,recipient_value.eq.cook,recipient_value.eq.all`)
       .order('created_at', { ascending: false })
       .limit(20)
+    if (error) { setLoadErr(error.message); setMessages([]); setUnread(0); return }
+    setLoadErr(null)
     setMessages(data || [])
     setUnread((data || []).filter((m: any) => !m.read_by?.includes(user?.id)).length)
   }

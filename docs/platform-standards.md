@@ -644,3 +644,19 @@ Build the new view body by `replace()`-ing `pg_get_viewdef()` output **inside th
 transaction** and assert `after = before || ',<newcol>'` on the column list. That makes
 column-order drift structurally impossible instead of merely watched for — a positional
 consumer breaks silently otherwise.
+
+## A verdict binds to a surface that could physically have shown the result (2026-07-16)
+
+"Photo ✓ — the owner's screenshot shows a child photo on SafePassTeacherPage" was
+recorded as a verified verdict. It could not have been true: that screen's roster select
+was rejected whole (it asked v_meal_grid for photo_url), so it rendered NO children at
+all; after the emergency fix it rendered initials. The photo the owner saw was almost
+certainly the Children roster, which reads raw `roster` and always worked.
+
+**A ✓ on a surface that cannot express the result closes nothing** — it retires the
+question while the defect lives. Before accepting a verdict, ask: *could this screen have
+shown this, given the code that was deployed when the screenshot was taken?* If not, the
+verdict belongs to a different surface, and the named one is still open.
+
+Corollary to the finding-closure rule: enumerate the surfaces, and check each verdict
+against the one it actually names.

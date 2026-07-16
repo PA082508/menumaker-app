@@ -33,7 +33,7 @@ const SUMMARY_COLS = 'minmax(150px,210px) 84px 76px 72px 72px minmax(110px,1fr)'
 // to the card, not larger. Shrinking it on mobile would fight the reason it was enlarged.
 const AVATAR_CHILD = 72
 const AVATAR_STAFF = 56
-const CARD_MIN = 210        // was 160 — a 72px avatar + name needs the room
+const CARD_MIN = 240        // 160 → 210 → 240: a 72px avatar + a two-line double surname
 
 // Fill% colour thresholds (percent of capacity used). ≥green → green,
 // ≥yellow → amber, otherwise red. Tune here.
@@ -721,8 +721,15 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                                     }} />
                                   </div>
                                   <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontSize: 12, fontWeight: 600, color: '#1a2e1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display:'flex', alignItems:'center', gap:5 }}>
-                                      <span style={{ overflow:'hidden', textOverflow:'ellipsis' }}>{name}</span>
+                                    {/* Two lines, not an ellipsis: a double surname that
+                                        reads "Rodriguez-Texidor Iza…" is not a name you can
+                                        match a child by, and matching is what this card is
+                                        for. title= is the safety net for a third line. */}
+                                    <div title={name} style={{ fontSize: 12, fontWeight: 600, color: '#1a2e1a', display:'flex', alignItems:'flex-start', gap:5, flexWrap:'wrap' }}>
+                                      <span style={{
+                                        display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                                        overflow: 'hidden', wordBreak: 'break-word', lineHeight: 1.25,
+                                      }}>{name}</span>
                                       {!childActive && <span style={{ flexShrink:0, fontSize:8, fontWeight:700, color:'#6b7280', background:'#f3f4f6', padding:'1px 5px', borderRadius:4, textTransform:'uppercase', letterSpacing:'0.04em' }}>inactive</span>}
                                       {searchActive && childSearchKind(child, debSearch) === 'similar' && <span style={{ flexShrink:0, fontSize:8, fontWeight:700, color:'#92400e', background:'#fef3c7', padding:'1px 5px', borderRadius:4, letterSpacing:'0.02em' }}>similar</span>}
                                     </div>

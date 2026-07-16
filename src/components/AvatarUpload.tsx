@@ -1,9 +1,11 @@
 // AvatarUpload.tsx — editable avatar (settings pages + teacher surfaces).
 //
-// v2 (2026-07-16): tap the avatar → a three-action sheet.
-//   • Take photo        — opens the camera straight from Safari on iPad
-//   • Choose from library
-//   • Remove photo
+// v3 (2026-07-16): the tap goes where the person is going.
+//   • avatar WITH a photo → straight to the full-screen viewer. Looking is the common
+//     act (identify a child at the door); Change/Remove live inside the viewer.
+//   • avatar WITHOUT a photo → straight to the camera sheet. There is nothing to look
+//     at, so the only sensible intent is "add one".
+//   No double-click anywhere: it collides with touch zoom and nobody discovers it.
 //
 // Pipeline is unchanged: client-side resize → ~512px square webp → private
 // `avatars` bucket → signed URL. The DB stores the PATH, never a URL.
@@ -104,13 +106,16 @@ export default function AvatarUpload({
     onChange(null)
   }
 
+  // One rule, so the keyboard and the tap can never disagree.
+  const primary = () => { if (busy) return; if (path) view(); else setSheet(true) }
+
   const avatar = (
     <div
       style={{ position: 'relative', cursor: busy ? 'default' : 'pointer', flexShrink: 0 }}
-      onClick={() => !busy && setSheet(true)}
+      onClick={primary}
       role="button" tabIndex={0}
-      aria-label={path ? `Change photo for ${name}` : `Add photo for ${name}`}
-      onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && !busy) { e.preventDefault(); setSheet(true) } }}
+      aria-label={path ? `View photo of ${name}` : `Add photo for ${name}`}
+      onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && !busy) { e.preventDefault(); primary() } }}
     >
       <Avatar key={nonce} name={name} path={path} size={size} />
       {busy && (
@@ -127,7 +132,7 @@ export default function AvatarUpload({
           borderRadius: '50%', background: '#0f4c35', color: '#fff',
           border: '2px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: Math.max(8, size * 0.15), lineHeight: 1,
-        }}>📷</div>
+        }}>{path ? '🔍' : '📷'}</div>
       )}
     </div>
   )
@@ -169,14 +174,17 @@ export default function AvatarUpload({
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14,
             padding: 'env(safe-area-inset-top) 16px env(safe-area-inset-bottom)',
           }}>
-          <img src={viewing} alt={name}
-            style={{ maxWidth: '100%', maxHeight: '78vh', borderRadius: 12, objectFit: 'contain' }} />
+          <img src={viewing} alt={name} onClick={e => e.stopPropagation()}
+            style={{ maxWidth: '100%', maxHeight: '72vh', borderRadius: 12, objectFit: 'contain' }} />
           <div style={{ color: '#fff', fontSize: 15, fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>{name}</div>
-          <button type="button" onClick={() => setViewing(null)}
-            style={{ padding: '10px 22px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.35)',
-                     background: 'transparent', color: '#fff', fontSize: 14, fontFamily: 'inherit', cursor: 'pointer' }}>
-            Close
-          </button>
+          {/* Change/Remove live HERE: you are already looking at the photo, which is
+              exactly when you decide it is the wrong one. */}
+          <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+            <button type="button" onClick={() => { setViewing(null); setSheet(true) }} style={viewerBtn}>📷 Change photo</button>
+            <button type="button" onClick={() => { setViewing(null); remove() }}
+              style={{ ...viewerBtn, borderColor: 'rgba(248,113,113,0.55)', color: '#fca5a5' }}>🗑 Remove</button>
+            <button type="button" onClick={() => setViewing(null)} style={viewerBtn}>Close</button>
+          </div>
         </div>
       )}
 
@@ -197,7 +205,6 @@ export default function AvatarUpload({
               paddingBottom: 'calc(12px + env(safe-area-inset-bottom))',
             }}>
             <div style={{ textAlign: 'center', fontSize: 12.5, color: '#6b7280', padding: '6px 0 10px' }}>{name}</div>
-            {path && <SheetBtn onClick={view}>🔍 View photo</SheetBtn>}
             <SheetBtn onClick={() => cameraRef.current?.click()}>📷 Take photo</SheetBtn>
             <SheetBtn onClick={() => libraryRef.current?.click()}>🖼 Choose from library</SheetBtn>
             {path && <SheetBtn onClick={remove} danger>🗑 Remove photo</SheetBtn>}
@@ -209,6 +216,12 @@ export default function AvatarUpload({
       )}
     </div>
   )
+}
+
+const viewerBtn: React.CSSProperties = {
+  padding: '10px 18px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.35)',
+  background: 'transparent', color: '#fff', fontSize: 14, fontWeight: 600,
+  fontFamily: "'DM Sans', sans-serif", cursor: 'pointer',
 }
 
 function SheetBtn({ children, onClick, danger, plain }: { children: React.ReactNode; onClick: () => void; danger?: boolean; plain?: boolean }) {

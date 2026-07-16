@@ -32,13 +32,13 @@ const DOCS = [
   // ── Meal Count ────────────────────────────────────────────────────────────
   { id:'mc-wickliffe-teacher', title:'Meal Count — Wickliffe Teacher', description:'Wickliffe teachers: record daily meals for your classroom.', audience:'Teacher', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/portal/teacher/ridge' },
   { id:'mc-parma-teacher', title:'Meal Count — Parma Heights Teacher', description:'Parma Heights teachers: record daily meals for your classroom.', audience:'Teacher', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/portal/teacher/pearl' },
-  { id:'mc-mayfield-teacher', title:'Meal Count — Mayfield Hills Teacher', description:'Mayfield Hills teachers: record daily meals for your classroom.', audience:'Teacher', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/portal/teacher/alpha' },
+  { id:'mc-highland-teacher', title:'Meal Count — Highland Heights Teacher', description:'Highland Heights teachers: record daily meals for your classroom.', audience:'Teacher', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/portal/teacher/alpha' },
   { id:'mc-cook-ridge', title:'Meal Count — Cook (Wickliffe)', description:'Wickliffe cook: Current Meal and Week View with CACFP export.', audience:'Staff', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/portal/cook/ridge', helpUrl:'https://menumaker-app.vercel.app/meal-count/help?role=cook' },
   { id:'mc-cook-pearl', title:'Meal Count — Cook (Parma Heights)', description:'Parma Heights cook: Current Meal and Week View with CACFP export.', audience:'Staff', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/portal/cook/pearl', helpUrl:'https://menumaker-app.vercel.app/meal-count/help?role=cook' },
-  { id:'mc-cook-alpha', title:'Meal Count — Cook (Mayfield Hills)', description:'Mayfield Hills cook: Current Meal and Week View with CACFP export.', audience:'Staff', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/portal/cook/alpha', helpUrl:'https://menumaker-app.vercel.app/meal-count/help?role=cook' },
+  { id:'mc-cook-alpha', title:'Meal Count — Cook (Highland Heights)', description:'Highland Heights cook: Current Meal and Week View with CACFP export.', audience:'Staff', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/portal/cook/alpha', helpUrl:'https://menumaker-app.vercel.app/meal-count/help?role=cook' },
   { id:'mc-director-ridge', title:'Meal Count — Director View (Wickliffe)', description:'Review all classroom counts and approve weekly records.', audience:'Director', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/portal/director/ridge' },
   { id:'mc-director-pearl', title:'Meal Count — Director View (Parma Heights)', description:'Review all classroom counts and approve weekly records.', audience:'Director', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/portal/director/pearl' },
-  { id:'mc-director-alpha', title:'Meal Count — Director View (Mayfield Hills)', description:'Review all classroom counts and approve weekly records.', audience:'Director', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/portal/director/alpha' },
+  { id:'mc-director-alpha', title:'Meal Count — Director View (Highland Heights)', description:'Review all classroom counts and approve weekly records.', audience:'Director', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/portal/director/alpha' },
   { id:'mc-help', title:'Meal Count — Help', description:'Full guide: teachers, cooks, directors and CACFP rules.', audience:'All', category:'Meal Count', driveUrl:'https://menumaker-app.vercel.app/meal-count/help' },
 
   // ── Purchases ─────────────────────────────────────────────────────────────
@@ -116,7 +116,7 @@ function SignModal({ onClose }: { onClose: ()=>void }) {
                 <option value="">Select...</option>
                 <option>Play Academy Wickliffe</option>
                 <option>Play Academy Parma Heights</option>
-                <option>Play Academy Mayfield Hills</option>
+                <option>Play Academy Highland Heights</option>
               </select>
             </div>
             <button onClick={()=>{if(!f.name||!f.position||!f.center||!f.device||!f.phone){alert('Fill all fields');return}setStep(2)}} style={pb(true)}>Continue →</button>

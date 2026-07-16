@@ -17,7 +17,7 @@ import PortalMessagesPanel from '@/pages/messages/PortalMessagesPanel'
 const CENTER_NAMES: Record<string, string> = {
   ridge: 'Wickliffe',
   pearl: 'Parma Heights',
-  alpha: 'Mayfield Hills',
+  alpha: 'Highland Heights',
 }
 
 // Service accounts per center — auto-login, invisible to user

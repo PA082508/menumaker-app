@@ -21,7 +21,7 @@ const INSTALL_STEPS = [
 ]
 
 const TEACHER_STEPS = [
-  {icon:'1️⃣', title:'Select Your Center and Classroom', desc:'At the top of the screen, make sure your center (Wickliffe, Parma Heights, or Mayfield Hills) is selected. Then choose your classroom tab.'},
+  {icon:'1️⃣', title:'Select Your Center and Classroom', desc:'At the top of the screen, make sure your center (Wickliffe, Parma Heights, or Highland Heights) is selected. Then choose your classroom tab.'},
   {icon:'2️⃣', title:'Select the Meal', desc:'Choose the meal: Breakfast, AM Snack, Lunch, or Supper. The current meal is highlighted automatically based on the time of day.'},
   {icon:'3️⃣', title:'Select the Day', desc:'Click the day column for today. Monday through Friday are shown for the current week.'},
   {icon:'4️⃣', title:'Check Each Child Present', desc:'You will see your class roster. Check the box next to each child who is present AND eating this meal. Do NOT check absent children or children who brought their own food.'},

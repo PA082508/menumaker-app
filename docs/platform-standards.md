@@ -2,6 +2,12 @@
 
 Canonical, cross-cutting rules every feature must follow. Owner: Nikolay.
 
+**Before building anything, read [`DECISIONS.md`](./DECISIONS.md)** — the index of every locked
+decision across all 25 specs: what already exists, and what re-building it would look like.
+Search it by the **noun of the function**, not by the word of your task. That mistake is why
+`campaign_issues` became a second token store while the decision sat in `prefill-engine-spec.md`.
+A new locked decision is written into that index **in the same commit as the code**.
+
 ---
 
 ## 1. Child name display — "Last First" (CACFP canonical)

@@ -10,6 +10,8 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 
 <!-- newest on top -->
 
+- 2026-07-17 · 🔧 · Saving a staff member's Work Schedule now actually sticks. The Save was quietly dropping the schedule — it tried to write a "classroom" field the schedule table does not have, so the database rejected the whole schedule (the profile still saved). A red banner already warned when it happened, so nothing was ever silently lost; now the schedule saves. Merged straight to production because the Red-room teachers' schedules are needed for Monday's SafePass rehearsal.
+
 - 2026-07-17 · 🚀 · The "kept on this device for 24 hours" note now greets a family once, right at the top of their packet page — before they open the first form — instead of on each form. It's the same message and shows only once; open a form after reading it and it stays out of the way. Fixed two leftover claims that still said "90 minutes" after the change to a full day.
 
 - 2026-07-17 · 🏳️ · Parent forms now hold your answers and signature on your own phone for a full day, not just 90 minutes — so a family can start the packet, put the phone down, and finish it later the same day without redrawing anything. When you first open a form, a yellow note explains plainly what this means: nothing is sent to the center until you press Submit, a different phone or browser starts fresh, and it clears after a day. (Kept on the device, not on our servers — that comes next.)

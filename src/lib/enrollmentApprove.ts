@@ -36,6 +36,79 @@ export function splitChildName(full: any): { first: string; last: string; roster
 
 export type RosterPatch = Record<string, any>
 
+// ─── schedule: CACFP form → roster ───────────────────────────────────────────
+// The CACFP form is the ONLY place a parent states days and hours of care, and
+// roster.sched_* is what the Weekly Attendance Report prints. Porting it on
+// Approve is what keeps a director from retyping it.
+//
+// This port REFUSES far more than it accepts, on purpose. The roster model
+// (Nikolay's order) is one arrival + one departure + a Mon–Fri bitmask; the form
+// is richer, and the OLD form took times as FREE TEXT. Measured across the live
+// submissions carrying a schedule: `10`/`5`, `6:30`/`6:00`, `6:45`/`15:30`,
+// `8:00`/`4:00pm`, and one in-care day with both times empty. A departure of
+// "6:00" means 18:00 — a parser that reads it as 06:00 sends the child home
+// before they arrived and prints that on an attendance sheet.
+//
+// So: accept only what is unambiguous, refuse the rest to a human (the rule is
+// «при любой неоднозначности — человек»), and never guess a meridiem. The
+// current form (registry `enroll` v9) emits `8:00 am` / `5:30 pm` for 100% of
+// values, so the honest path is fix-forward: new submissions port cleanly, the
+// free-text history stays where it is. Back-filling it would also overwrite the
+// authoritative CSV import (20260716c) with guesses.
+const DAY_BIT: Record<string, number> = { mon: 1, tue: 2, wed: 4, thu: 8, fri: 16 }
+
+/** Parse a form time. Requires an EXPLICIT meridiem — `8:00 am`, `4:30 PM`.
+ *  Anything else (bare `9`, `17:30`, `6:00`) is refused rather than guessed. */
+export function parseFormTime(v: any): string | null {
+  const m = String(v ?? '').trim().toLowerCase().match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/)
+  if (!m) return null
+  let h = Number(m[1])
+  const min = m[2] ?? '00'
+  if (h < 1 || h > 12) return null
+  if (m[3] === 'pm' && h !== 12) h += 12
+  if (m[3] === 'am' && h === 12) h = 0
+  return `${String(h).padStart(2, '0')}:${min}`
+}
+
+export type SchedulePort =
+  | { ok: true; sched_days: number; sched_in: string; sched_out: string }
+  | { ok: false; reason: string }
+
+export function buildSchedulePort(fd: any): SchedulePort {
+  const sch = fd?.schedule
+  if (!sch || typeof sch !== 'object' || Array.isArray(sch)) return { ok: false, reason: 'no schedule on the form' }
+
+  // Day keys arrive as `mon` (current form) or `Mon` (older submissions).
+  const inCare = Object.entries(sch as Record<string, any>)
+    .map(([k, v]) => [k.toLowerCase(), v] as const)
+    .filter(([, v]) => v && v.in_care === true)
+  if (inCare.length === 0) return { ok: false, reason: 'no days marked in care' }
+
+  // The mask is Mon–Fri (CHECK 1..31). A weekend child is not representable —
+  // refuse rather than silently drop the day.
+  const weekend = inCare.filter(([d]) => d === 'sat' || d === 'sun').map(([d]) => d)
+  if (weekend.length) return { ok: false, reason: `in care on ${weekend.join('/')} — the roster schedule is Mon–Fri only` }
+  const unknown = inCare.filter(([d]) => !(d in DAY_BIT)).map(([d]) => d)
+  if (unknown.length) return { ok: false, reason: `unrecognized day: ${unknown.join(', ')}` }
+
+  // The roster holds ONE arrival/departure. A split day (arr2/dep2) or times
+  // that differ by day cannot be stored without losing the difference.
+  if (inCare.some(([, v]) => String(v.arr2 ?? '').trim() || String(v.dep2 ?? '').trim()))
+    return { ok: false, reason: 'a split day (second drop-off/pick-up) — the roster holds one pair of times' }
+
+  const arrs = new Set(inCare.map(([, v]) => String(v.arr1 ?? '').trim()))
+  const deps = new Set(inCare.map(([, v]) => String(v.dep1 ?? '').trim()))
+  if (arrs.size > 1 || deps.size > 1) return { ok: false, reason: 'times differ by day — the roster holds one pair of times' }
+
+  const sched_in = parseFormTime([...arrs][0])
+  const sched_out = parseFormTime([...deps][0])
+  if (!sched_in || !sched_out)
+    return { ok: false, reason: `times are not stated unambiguously ("${[...arrs][0]}" → "${[...deps][0]}") — am/pm required` }
+  if (sched_out <= sched_in) return { ok: false, reason: `departure ${sched_out} is not after arrival ${sched_in}` }
+
+  return { ok: true, sched_days: inCare.reduce((m, [d]) => m | DAY_BIT[d], 0), sched_in, sched_out }
+}
+
 // Build the roster patch for a CACFP submission. `dateIn` is the director's
 // optional Date In from the review panel.
 export function buildCacfpPatch(fd: any, dateIn?: string | null): RosterPatch {
@@ -56,6 +129,19 @@ export function buildCacfpPatch(fd: any, dateIn?: string | null): RosterPatch {
   // submissions omit these → behaviour unchanged.
   if (!blank(fd?.classroom_id)) patch.classroom_id = fd.classroom_id
   if (!blank(fd?.frp)) patch.frp = fd.frp
+  // Days and hours of care, when the form states them unambiguously. A refusal
+  // leaves the roster's schedule untouched — an existing one (the CSV import,
+  // or the director's own edit) is never overwritten by a partial read, and a
+  // missing one keeps printing an empty Hours cell, which the blank already
+  // counts out loud ("3 of 10 children have no schedule on file").
+  const port = buildSchedulePort(fd)
+  if (port.ok) {
+    patch.sched_days = port.sched_days
+    patch.sched_in = port.sched_in
+    patch.sched_out = port.sched_out
+    patch.sched_source = 'enrollment_form'
+    patch.sched_updated_at = nowIso()
+  }
   return patch
 }
 

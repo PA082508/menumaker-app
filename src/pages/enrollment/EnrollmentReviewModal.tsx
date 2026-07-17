@@ -12,11 +12,14 @@ import { validateSubmission, submissionTypeLabel, type ValStatus } from '@/lib/e
 import { resolveScanUrl, lowConfidenceSet, ocrMeta, hasScan } from '@/lib/enrollmentScan'
 import ReturnWindow from '@/pages/children/ReturnWindow'
 import {
-  buildCacfpPatch, buildIeaFrp, loadCenterRoster, matchRoster,
+  buildCacfpPatch, buildSchedulePort, buildIeaFrp, loadCenterRoster, matchRoster,
   approveCacfpInsert, approveCacfpUpdate, approveIea, rejectSubmission,
   parseIeaFiscalYear, frpExpiryDefault,
   type RosterLite, type ApproveResult,
 } from '@/lib/enrollmentApprove'
+
+// roster.sched_days bitmask — Mon=1 Tue=2 Wed=4 Thu=8 Fri=16 (20260716c)
+const SCHED_DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
 
 type Submission = {
   id: string; org_id: string; center_id: string; child_id: string | null
@@ -206,6 +209,10 @@ export default function EnrollmentReviewModal({
 
   // A chosen match that is still inactive must be reactivated & admitted first.
   const chosenMatchObj = chosenMatch && chosenMatch !== 'new' ? candidates.find(c => c.id === chosenMatch) ?? null : null
+  // What Approve will do with days/hours — computed from the same function the
+  // patch uses, so the panel cannot promise something the write won't do.
+  const schedulePort = useMemo(() => buildSchedulePort(fd), [fd])
+
   const chosenInactive = isCacfp && !!chosenMatchObj && chosenMatchObj.is_active === false
 
   // Approve gating: 🔴 blocks; unresolved CACFP duplicate blocks; a chosen
@@ -415,6 +422,25 @@ export default function EnrollmentReviewModal({
                 style={{ padding: '4px 8px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13, fontFamily: 'inherit' }} />
               <span style={{ color: '#9ca3af', fontSize: 11 }}>optional — director sets the enrollment start</span>
             </label>
+          )}
+
+          {/* Days and hours: say what Approve will do with them, either way. A
+              silent refusal would read as "ported" and print an empty Hours cell
+              weeks later, with nobody knowing why. */}
+          {isCacfp && fd?.schedule && (
+            schedulePort.ok ? (
+              <div style={{ fontSize: 12.5, color: '#166534' }}>
+                ✓ Schedule ported — {SCHED_DAY_LABELS.filter((_, i) => schedulePort.sched_days & (1 << i)).join(' ')}
+                {' · '}{schedulePort.sched_in}–{schedulePort.sched_out}
+              </div>
+            ) : (
+              <div style={{ fontSize: 12.5, color: '#92400e' }}>
+                ⚠︎ Schedule not ported — {schedulePort.reason}.{' '}
+                <span style={{ color: '#6b7280' }}>
+                  Nothing is overwritten. Set it on the child’s Enrollment tab and the next sheet prints it.
+                </span>
+              </div>
+            )
           )}
 
           {isCacfp && !resolvedChildId && cacfpMatches.length > 0 && (

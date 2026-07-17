@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { matchRoster, parseIeaFiscalYear, frpExpiryDefault, isoDate, type RosterLite } from './enrollmentApprove'
+import {
+  matchRoster, parseIeaFiscalYear, frpExpiryDefault, isoDate,
+  parseFormTime, buildSchedulePort, buildCacfpPatch, type RosterLite,
+} from './enrollmentApprove'
 
 const kid = (o: Partial<RosterLite>): RosterLite => ({
   id: o.id ?? 'x', first_name: null, last_name: null, child_name: null,
@@ -72,5 +75,118 @@ describe('frpExpiryDefault', () => {
     expect(frpExpiryDefault('2026-07-07', null)).toBe('2027-07-07')
     expect(frpExpiryDefault('2026-07-07', '')).toBe('2027-07-07')
     expect(frpExpiryDefault('2026-07-07', undefined)).toBe('2027-07-07')
+  })
+})
+
+// ─── schedule port: CACFP form → roster.sched_* ──────────────────────────────
+// Every fixture below is a REAL shape measured in the live submissions.
+describe('parseFormTime — refuses to guess a meridiem', () => {
+  it('parses the current form (100% of live v9 values carry am/pm)', () => {
+    expect(parseFormTime('8:00 am')).toBe('08:00')
+    expect(parseFormTime('5:30 pm')).toBe('17:30')
+    expect(parseFormTime('4:30 PM')).toBe('16:30')
+    expect(parseFormTime('12:00 am')).toBe('00:00')
+    expect(parseFormTime('12:30 pm')).toBe('12:30')
+  })
+
+  it('refuses the old free-text forms rather than guessing', () => {
+    // "6:00" in a DEPARTURE column means 18:00. Reading it as 06:00 would send
+    // the child home before they arrived — and print it on an attendance sheet.
+    expect(parseFormTime('6:00')).toBeNull()
+    expect(parseFormTime('10')).toBeNull()
+    expect(parseFormTime('5')).toBeNull()
+    expect(parseFormTime('15:30')).toBeNull()   // unambiguous, but never emitted — stay strict
+    expect(parseFormTime('')).toBeNull()
+    expect(parseFormTime(null)).toBeNull()
+    expect(parseFormTime('13:00 pm')).toBeNull()
+  })
+})
+
+const day = (arr: string, dep: string, extra: any = {}) =>
+  ({ in_care: true, arr1: arr, dep1: dep, arr2: '', dep2: '', ...extra })
+const off = { in_care: false, arr1: '', dep1: '', arr2: '', dep2: '' }
+
+describe('buildSchedulePort', () => {
+  it('ports a clean current-form week (Lidia, live)', () => {
+    const fd = { schedule: {
+      mon: day('8:45 am', '4:30 pm'), tue: day('8:45 am', '4:30 pm'), wed: day('8:45 am', '4:30 pm'),
+      thu: day('8:45 am', '4:30 pm'), fri: day('8:45 am', '4:30 pm'), sat: off, sun: off,
+    } }
+    expect(buildSchedulePort(fd)).toEqual({ ok: true, sched_days: 31, sched_in: '08:45', sched_out: '16:30' })
+  })
+
+  it('accepts capitalized day keys (older submissions)', () => {
+    const fd = { schedule: { Mon: day('7:00 am', '5:30 pm'), Wed: day('7:00 am', '5:30 pm') } }
+    expect(buildSchedulePort(fd)).toEqual({ ok: true, sched_days: 1 | 4, sched_in: '07:00', sched_out: '17:30' })
+  })
+
+  it('refuses free-text times instead of guessing (Aaron Broadwater, live)', () => {
+    const fd = { schedule: { Mon: day('9:00', '5:00'), Tue: day('9:00', '5:00') } }
+    const r = buildSchedulePort(fd)
+    expect(r.ok).toBe(false)
+    expect((r as any).reason).toMatch(/am\/pm required/)
+  })
+
+  it('refuses a weekend child — the mask is Mon–Fri', () => {
+    const fd = { schedule: { mon: day('8:00 am', '5:00 pm'), sat: day('8:00 am', '5:00 pm') } }
+    const r = buildSchedulePort(fd)
+    expect(r.ok).toBe(false)
+    expect((r as any).reason).toMatch(/sat/)
+  })
+
+  it('refuses times that differ by day — the roster holds one pair', () => {
+    const fd = { schedule: { mon: day('8:00 am', '5:00 pm'), tue: day('9:00 am', '5:00 pm') } }
+    expect(buildSchedulePort(fd)).toEqual({ ok: false, reason: 'times differ by day — the roster holds one pair of times' })
+  })
+
+  it('refuses a split day (arr2/dep2)', () => {
+    const fd = { schedule: { mon: day('8:00 am', '5:00 pm', { dep2: '1:00 pm' }) } }
+    const r = buildSchedulePort(fd)
+    expect(r.ok).toBe(false)
+    expect((r as any).reason).toMatch(/split day/)
+  })
+
+  it('refuses an in-care day with empty times (live: one approved row)', () => {
+    const fd = { schedule: { Mon: day('', '') } }
+    expect(buildSchedulePort(fd).ok).toBe(false)
+  })
+
+  it('refuses a departure that is not after the arrival', () => {
+    const fd = { schedule: { mon: day('5:00 pm', '8:00 am') } }
+    const r = buildSchedulePort(fd)
+    expect(r.ok).toBe(false)
+    expect((r as any).reason).toMatch(/not after/)
+  })
+
+  it('refuses when nothing is stated', () => {
+    expect(buildSchedulePort({}).ok).toBe(false)
+    expect(buildSchedulePort({ schedule: {} }).ok).toBe(false)
+    expect(buildSchedulePort({ schedule: { mon: off, sat: off } }).ok).toBe(false)
+  })
+})
+
+describe('buildCacfpPatch — schedule', () => {
+  const week = (arr: string, dep: string) => ({
+    mon: day(arr, dep), tue: day(arr, dep), wed: day(arr, dep), thu: day(arr, dep), fri: day(arr, dep),
+  })
+
+  it('carries a clean schedule into the roster patch', () => {
+    const p = buildCacfpPatch({ child_name: 'Aaron Broadwater', schedule: week('8:00 am', '5:30 pm') })
+    expect(p.sched_days).toBe(31)
+    expect(p.sched_in).toBe('08:00')
+    expect(p.sched_out).toBe('17:30')
+    expect(p.sched_source).toBe('enrollment_form')
+  })
+
+  it('leaves the roster schedule untouched when the form is ambiguous', () => {
+    // No sched_* keys at all → approveCacfpUpdate never snapshots or writes
+    // them → an existing schedule (CSV import / director edit) survives.
+    const p = buildCacfpPatch({ child_name: 'Aaron Broadwater', schedule: week('9:00', '5:00') })
+    expect(Object.keys(p).some(k => k.startsWith('sched_'))).toBe(false)
+  })
+
+  it('does not invent a schedule when the form carries none', () => {
+    const p = buildCacfpPatch({ child_name: 'Aaron Broadwater' })
+    expect(Object.keys(p).some(k => k.startsWith('sched_'))).toBe(false)
   })
 })

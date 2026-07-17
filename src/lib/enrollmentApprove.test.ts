@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   matchRoster, parseIeaFiscalYear, frpExpiryDefault, isoDate,
-  parseFormTime, buildSchedulePort, buildCacfpPatch, type RosterLite,
+  parseFormTime, buildSchedulePort, buildCacfpPatch, decideSchedule, scheduleIsStale, formAsOf,
+  type RosterLite,
 } from './enrollmentApprove'
 
 const kid = (o: Partial<RosterLite>): RosterLite => ({
@@ -188,5 +189,66 @@ describe('buildCacfpPatch — schedule', () => {
   it('does not invent a schedule when the form carries none', () => {
     const p = buildCacfpPatch({ child_name: 'Aaron Broadwater' })
     expect(Object.keys(p).some(k => k.startsWith('sched_'))).toBe(false)
+  })
+})
+
+// ─── recency rule: on disagreement the LATER date wins (Nikolay, 2026-07-16) ──
+describe('scheduleIsStale', () => {
+  it('roster set later than the form → form loses', () => {
+    expect(scheduleIsStale('2026-07-06', '2026-07-16T15:34:14Z')).toBe(true)
+  })
+  it('form later than the roster → form wins', () => {
+    expect(scheduleIsStale('2026-07-20', '2026-07-16T15:34:14Z')).toBe(false)
+  })
+  it('same day → the form wins, it is the signed document', () => {
+    expect(scheduleIsStale('2026-07-16', '2026-07-16T15:34:14Z')).toBe(false)
+  })
+  it('roster has no schedule → nothing to lose', () => {
+    expect(scheduleIsStale('2026-07-06', null)).toBe(false)
+  })
+  it('an undated form never beats a dated roster', () => {
+    expect(scheduleIsStale(null, '2026-07-16T15:34:14Z')).toBe(true)
+  })
+})
+
+describe('formAsOf', () => {
+  it('prefers the parent signature date', () => {
+    expect(formAsOf({ signature_date: '2026-07-06', created_at: '2026-07-08T10:00:00Z' })).toBe('2026-07-06')
+  })
+  it('falls back to arrival', () => {
+    expect(formAsOf({ signature_date: null, created_at: '2026-07-08T10:00:00Z' })).toBe('2026-07-08')
+  })
+})
+
+describe('Izabella Rodriguez-Texidor — the live case', () => {
+  // Her real CACFP form, approved 06.07: Mon–Fri 8:00 am → 5:30 pm.
+  const fd = { child_name: 'Izabella Rodriguez Texidor ', schedule: {
+    mon: day('8:00 am','5:30 pm'), tue: day('8:00 am','5:30 pm'), wed: day('8:00 am','5:30 pm'),
+    thu: day('8:00 am','5:30 pm'), fri: day('8:00 am','5:30 pm'), sat: off, sun: off } }
+  // Her real roster row: 08:00–17:00, sched_source 'import', set 16.07.
+  const roster = { sched_updated_at: '2026-07-16T15:34:14.983485+00', sched_in: '08:00:00', sched_out: '17:00:00' }
+
+  it('the form parses cleanly — 17:30, half an hour past the CSV', () => {
+    expect(buildSchedulePort(fd)).toEqual({ ok: true, sched_days: 31, sched_in: '08:00', sched_out: '17:30' })
+  })
+
+  it('but the CSV is later, so the CSV stands', () => {
+    const d = decideSchedule(fd, '2026-07-06', roster)
+    expect(d.write).toBe(false)
+    expect((d as any).reason).toMatch(/later date wins/)
+  })
+
+  it('a form she signs tomorrow would win', () => {
+    expect(decideSchedule(fd, '2026-07-17', roster)).toEqual({ write: true, sched_days: 31, sched_in: '08:00', sched_out: '17:30' })
+  })
+
+  it('Approve today writes no sched_* key at all — her 17:00 is untouched', () => {
+    const p = buildCacfpPatch(fd, null, { formDate: '2026-07-06', existing: roster })
+    expect(Object.keys(p).some(k => k.startsWith('sched_'))).toBe(false)
+    expect(p.child_name).toBe('Texidor Izabella Rodriguez')
+  })
+
+  it('a NEW child with no roster schedule always ports', () => {
+    expect(buildCacfpPatch(fd, null, { formDate: '2026-07-06', existing: null }).sched_out).toBe('17:30')
   })
 })

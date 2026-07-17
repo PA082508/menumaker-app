@@ -74,6 +74,23 @@ export type SchedulePort =
   | { ok: true; sched_days: number; sched_in: string; sched_out: string }
   | { ok: false; reason: string }
 
+/** The date the form speaks for: the parent's signature, else when it arrived. */
+export function formAsOf(sub: { signature_date?: string | null; created_at?: string | null }): string | null {
+  const d = sub?.signature_date ?? sub?.created_at
+  return blank(d) ? null : String(d).slice(0, 10)
+}
+
+/** Recency rule (Nikolay, 2026-07-16): on disagreement the LATER date wins.
+ *  The roster's schedule carries its own `sched_updated_at`; a form older than
+ *  it is a statement that has already been superseded — by the owner's CSV, or
+ *  by a director who edited the child since. Equal dates go to the form: it is
+ *  the signed document. Forms stay editable, so a correction re-dates itself. */
+export function scheduleIsStale(formDate: string | null, rosterUpdatedAt: any): boolean {
+  if (blank(rosterUpdatedAt)) return false     // roster has no schedule → nothing to lose
+  if (!formDate) return true                   // undated form never beats a dated roster
+  return String(rosterUpdatedAt).slice(0, 10) > formDate
+}
+
 export function buildSchedulePort(fd: any): SchedulePort {
   const sch = fd?.schedule
   if (!sch || typeof sch !== 'object' || Array.isArray(sch)) return { ok: false, reason: 'no schedule on the form' }
@@ -109,9 +126,34 @@ export function buildSchedulePort(fd: any): SchedulePort {
   return { ok: true, sched_days: inCare.reduce((m, [d]) => m | DAY_BIT[d], 0), sched_in, sched_out }
 }
 
+// What Approve will do with the form's days/hours — one answer, used by both the
+// patch and the panel, so the screen cannot promise what the write won't do.
+export type ScheduleDecision =
+  | { write: true; sched_days: number; sched_in: string; sched_out: string }
+  | { write: false; reason: string }
+
+export function decideSchedule(
+  fd: any,
+  formDate: string | null,
+  existing?: { sched_updated_at?: any; sched_in?: any; sched_out?: any } | null,
+): ScheduleDecision {
+  const port = buildSchedulePort(fd)
+  if (!port.ok) return { write: false, reason: port.reason }
+  if (scheduleIsStale(formDate, existing?.sched_updated_at)) {
+    const cur = `${String(existing?.sched_in ?? '').slice(0, 5)}–${String(existing?.sched_out ?? '').slice(0, 5)}`
+    return { write: false, reason: `the roster’s schedule (${cur}) was set later than this form — the later date wins` }
+  }
+  return { write: true, sched_days: port.sched_days, sched_in: port.sched_in, sched_out: port.sched_out }
+}
+
 // Build the roster patch for a CACFP submission. `dateIn` is the director's
-// optional Date In from the review panel.
-export function buildCacfpPatch(fd: any, dateIn?: string | null): RosterPatch {
+// optional Date In from the review panel. `opts.formDate` + `opts.existing` feed
+// the recency rule; omit them and the schedule ports whenever it parses (correct
+// for a NEW child, who has no roster schedule to lose).
+export function buildCacfpPatch(
+  fd: any, dateIn?: string | null,
+  opts?: { formDate?: string | null; existing?: { sched_updated_at?: any; sched_in?: any; sched_out?: any } | null },
+): RosterPatch {
   const { first, last, rosterChildName } = splitChildName(fd?.child_name)
   const m = fd?.mailing ?? {}
   const addr = [m.street, [m.city, m.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ')
@@ -134,11 +176,11 @@ export function buildCacfpPatch(fd: any, dateIn?: string | null): RosterPatch {
   // or the director's own edit) is never overwritten by a partial read, and a
   // missing one keeps printing an empty Hours cell, which the blank already
   // counts out loud ("3 of 10 children have no schedule on file").
-  const port = buildSchedulePort(fd)
-  if (port.ok) {
-    patch.sched_days = port.sched_days
-    patch.sched_in = port.sched_in
-    patch.sched_out = port.sched_out
+  const d = decideSchedule(fd, opts?.formDate ?? null, opts?.existing ?? null)
+  if (d.write) {
+    patch.sched_days = d.sched_days
+    patch.sched_in = d.sched_in
+    patch.sched_out = d.sched_out
     patch.sched_source = 'enrollment_form'
     patch.sched_updated_at = nowIso()
   }
@@ -191,7 +233,13 @@ export function frpExpiryDefault(determinationDate: string, paperExpiration: str
 }
 
 // ─── duplicate / child matching ──────────────────────────────────────────────
-export type RosterLite = { id: string; first_name: string | null; last_name: string | null; child_name: string | null; birthday: string | null; is_active: boolean }
+export type RosterLite = {
+  id: string; first_name: string | null; last_name: string | null; child_name: string | null
+  birthday: string | null; is_active: boolean
+  // Carried so the recency rule can be decided for a MATCHED child too — the
+  // review panel resolves ctx only for an already-linked child.
+  sched_updated_at?: string | null; sched_in?: string | null; sched_out?: string | null
+}
 
 // Gate detector (enrollment dup prevention): load the WHOLE center roster,
 // including inactive/departed children, so matchRoster can surface a returning
@@ -199,7 +247,7 @@ export type RosterLite = { id: string; first_name: string | null; last_name: str
 // duplicate skeleton. Active first so exact live matches sort ahead of inactive.
 export async function loadCenterRoster(centerId: string): Promise<RosterLite[]> {
   const { data } = await S().from('roster')
-    .select('id,first_name,last_name,child_name,birthday,is_active')
+    .select('id,first_name,last_name,child_name,birthday,is_active,sched_updated_at,sched_in,sched_out')
     .eq('center_id', centerId)
     .order('is_active', { ascending: false })
   return (data ?? []) as RosterLite[]

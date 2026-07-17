@@ -12,7 +12,7 @@ import { validateSubmission, submissionTypeLabel, type ValStatus } from '@/lib/e
 import { resolveScanUrl, lowConfidenceSet, ocrMeta, hasScan } from '@/lib/enrollmentScan'
 import ReturnWindow from '@/pages/children/ReturnWindow'
 import {
-  buildCacfpPatch, buildSchedulePort, buildIeaFrp, loadCenterRoster, matchRoster,
+  buildCacfpPatch, decideSchedule, formAsOf, buildIeaFrp, loadCenterRoster, matchRoster,
   approveCacfpInsert, approveCacfpUpdate, approveIea, rejectSubmission,
   parseIeaFiscalYear, frpExpiryDefault,
   type RosterLite, type ApproveResult,
@@ -210,8 +210,18 @@ export default function EnrollmentReviewModal({
   // A chosen match that is still inactive must be reactivated & admitted first.
   const chosenMatchObj = chosenMatch && chosenMatch !== 'new' ? candidates.find(c => c.id === chosenMatch) ?? null : null
   // What Approve will do with days/hours — computed from the same function the
-  // patch uses, so the panel cannot promise something the write won't do.
-  const schedulePort = useMemo(() => buildSchedulePort(fd), [fd])
+  // patch uses, so the panel cannot promise something the write won't do. The
+  // recency rule needs the row we're about to write: the resolved child's own
+  // record, else the chosen match from the roster list.
+  const schedTarget = useMemo(() => {
+    if (ctx?.roster) return ctx.roster
+    if (chosenMatch && chosenMatch !== 'new') return candidates.find(c => c.id === chosenMatch) ?? null
+    return null
+  }, [ctx, chosenMatch, candidates])
+  const schedulePort = useMemo(
+    () => decideSchedule(fd, formAsOf(submission), schedTarget),
+    [fd, submission, schedTarget],
+  )
 
   const chosenInactive = isCacfp && !!chosenMatchObj && chosenMatchObj.is_active === false
 
@@ -239,7 +249,7 @@ export default function EnrollmentReviewModal({
     try {
       let result: ApproveResult
       if (isCacfp) {
-        const patch = buildCacfpPatch(fd, dateIn)
+        const patch = buildCacfpPatch(fd, dateIn, { formDate: formAsOf(submission), existing: schedTarget })
         const target = resolvedChildId ?? (chosenMatch && chosenMatch !== 'new' ? chosenMatch : null)
         // Reactivate when the chosen match is a departed (inactive) child.
         const reactivate = !!target && candidates.find(c => c.id === target)?.is_active === false
@@ -428,7 +438,7 @@ export default function EnrollmentReviewModal({
               silent refusal would read as "ported" and print an empty Hours cell
               weeks later, with nobody knowing why. */}
           {isCacfp && fd?.schedule && (
-            schedulePort.ok ? (
+            schedulePort.write ? (
               <div style={{ fontSize: 12.5, color: '#166534' }}>
                 ✓ Schedule ported — {SCHED_DAY_LABELS.filter((_, i) => schedulePort.sched_days & (1 << i)).join(' ')}
                 {' · '}{schedulePort.sched_in}–{schedulePort.sched_out}

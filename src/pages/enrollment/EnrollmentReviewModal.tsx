@@ -395,6 +395,7 @@ export default function EnrollmentReviewModal({
                   <div style={{ fontSize: 12.5, color: r.missing ? '#991b1b' : '#6b7280', display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
                     <span>{r.label}{r.required && <span title="Required" style={{ color: '#ef4444', fontWeight: 700 }}> ★</span>}</span>
                     {verify && <span title="OCR was unsure — check this value against the scan" style={{ fontSize: 9, fontWeight: 700, color: '#92400e', background: '#fef3c7', padding: '1px 5px', borderRadius: 4, textTransform: 'uppercase', letterSpacing: '0.04em' }}>🔍 verify</span>}
+                    {r.rateLocked && <span title="This value decides reimbursement, so only the signed form may state it. To change it, ask the parent for a corrected form — they sign it, and it supersedes this one." style={{ fontSize: 9, fontWeight: 700, color: '#0f4c35', background: '#dcfce7', padding: '1px 5px', borderRadius: 4, textTransform: 'uppercase', letterSpacing: '0.04em' }}>🔒 signed</span>}
                   </div>
                   <div style={{ fontSize: 13 }}>
                     {r.editPath ? (
@@ -409,7 +410,9 @@ export default function EnrollmentReviewModal({
                       />
                     ) : (
                       <span style={{ color: r.formValue ? '#111827' : r.missing ? '#ef4444' : '#d1d5db' }}>
-                        {r.formValue || (r.missing ? 'required — edit on original form' : '—')}
+                        {r.formValue || (r.missing
+                          ? (r.rateLocked ? 'required — only a signed form may state this' : 'required — edit on original form')
+                          : '—')}
                       </span>
                     )}
                   </div>

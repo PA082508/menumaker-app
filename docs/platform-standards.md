@@ -311,6 +311,31 @@ commit that touched more than one file.
 
 ---
 
+## Only a signed document may state what decides money (2026-07-16)
+
+Nikolay's rule: **trust only the signed document where it bears on reimbursement; a
+director may change only what does not affect rate determination** — phone, e-mail,
+address and the like.
+
+A director sitting with a parent will always be able to *say* the right birthday. That
+is not the point. The claim is evidence, and its evidence is the parent's signature. The
+only honest way to change what the parent stated is a **corrected form they sign again**,
+which supersedes the first — never a click in the review panel.
+
+- The list is `RATE_CRITICAL` in `src/lib/enrollmentFieldMap.ts`, enforced in the shared
+  `row()` builder, not at call sites — a row added later cannot forget the lock. Dropping
+  `editPath` is what forbids the write; `rateLocked` only lets the panel say why.
+- Locked today: **`birthdate`** (age → meal pattern *and* the reimbursement age band) and
+  **`signature_date`** (the document's own fact — and it decides which schedule wins in
+  `scheduleIsStale`, so an editable date would let a click flip that outcome).
+- A locked field that arrives **empty stays empty**. The panel says *"only a signed form
+  may state this"*. Filling it in would be exactly the substitution the rule forbids.
+- Days, hours and meals were already read-only: one summary row, no `editPath`, and they
+  reach the roster only through `buildSchedulePort`.
+- The F/R/P determination in IEA Review is **not** an exception to this. There the
+  director signs as the **sponsor** — it is their own signed statement, not an edit to
+  the parent's.
+
 ## Signature samples are scoped per signer role (2026-07-14)
 
 Adopted-signature samples live on **per-role shelves**: `pa_sig_sample:<scope>`, where

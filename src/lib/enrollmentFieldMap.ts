@@ -26,7 +26,29 @@ export interface DiffRow {
   missing?: boolean      // required AND empty → highlight + editable
   editPath?: string      // dot-path into form_data, if editable
   registryKey?: string   // childFieldRegistry target (current col + Approve)
+  rateLocked?: boolean   // reimbursement-critical → read-only, see RATE_CRITICAL
 }
+
+// ─── what only a signed document may say (Nikolay, 2026-07-16) ───────────────
+// «доверять только подписанному документу связанным с возмещением; допускается
+//  изменения директором только не влияющие на определение рейтов».
+//
+// A director may fix what does not decide money — phone, e-mail, address. What
+// DOES decide money is the parent's signed statement, and the only honest way to
+// change it is a corrected form the parent signs again.
+//
+//   birthdate      → age → meal pattern AND the reimbursement age band.
+//   signature_date → the document's own fact. It also decides which schedule
+//                    wins (scheduleIsStale): editable, it would let a click
+//                    re-date a signed form and flip that outcome.
+//
+// Days/hours/meals are already read-only here — they render as one summary row
+// with no editPath, and reach the roster only through buildSchedulePort.
+//
+// NOT locked: child_name. It says WHO is claimed, not at what rate, and a typo
+// fix is what lets matchRoster find a returning child instead of duplicating
+// them. Flagged for Nikolay rather than decided here.
+export const RATE_CRITICAL: ReadonlySet<string> = new Set(['birthdate', 'signature_date'])
 
 // ─── dot-path get/set on a plain object (mailing.street etc.) ────────────────
 export function getPath(obj: any, path: string): any {
@@ -58,13 +80,19 @@ const row = (
   r: Omit<DiffRow, 'changed' | 'currentValue' | 'missing'> & { currentValue?: string; ctx: RecordCtx | null },
 ): DiffRow => {
   const currentValue = r.currentValue ?? currentOf(r.registryKey, r.ctx)
+  // The lock lives here, not at each call site: a row added later cannot forget
+  // it. Dropping editPath is what actually forbids the write — `rateLocked` only
+  // lets the panel say why.
+  const rateLocked = !!r.editPath && RATE_CRITICAL.has(r.editPath)
   return {
     key: r.key, section: r.section, label: r.label,
     formValue: r.formValue, currentValue,
     changed: !!currentValue && norm(currentValue) !== norm(r.formValue),
     required: r.required,
     missing: !!r.required && norm(r.formValue) === '',
-    editPath: r.editPath, registryKey: r.registryKey,
+    editPath: rateLocked ? undefined : r.editPath,
+    registryKey: r.registryKey,
+    rateLocked: rateLocked || undefined,
   }
 }
 

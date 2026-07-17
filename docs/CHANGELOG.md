@@ -10,6 +10,10 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 
 <!-- newest on top -->
 
+- 2026-07-17 · 🏳️ · Parent forms now hold your answers and signature on your own phone for a full day, not just 90 minutes — so a family can start the packet, put the phone down, and finish it later the same day without redrawing anything. When you first open a form, a yellow note explains plainly what this means: nothing is sent to the center until you press Submit, a different phone or browser starts fresh, and it clears after a day. (Kept on the device, not on our servers — that comes next.)
+
+- 2026-07-17 · 🔧 · The Registration Start Form can now be signed by the administrator inside the app, the same way the Enrollment (DCY 01234) and Income Eligibility forms already were. The signing pad was on the form and the signature was already being saved, but the review screen never showed the director a place to sign it — now it does.
+
 - 2026-07-19 · 🔧 · The Weekly Attendance Report now has its guide (Document Hub → Weekly Attendance Report): how to print a week's sheet, where the hours come from, and how to fix a child whose Hours cell prints empty. The sheet shipped last week without one — that was our own rule broken.
 
 - 2026-07-19 · 🚀 · Renewals can now be issued: **People → Issue Renewal**. Pick a portion, tick the children, and each one gets their own private link that already knows who they are — what comes back files itself, with no review. The list shows each family's email from the file and flags the ones without one, so the director hands those a link on the tablet at drop-off instead. These links are personal: never post one, never put one on a QR — it opens a named child's details. A link lasts 30 days, ends when the form is filed, and re-issuing replaces it.

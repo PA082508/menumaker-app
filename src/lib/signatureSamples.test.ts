@@ -4,9 +4,12 @@ import { isProspect } from './enrollmentApprove'
 
 // Slots are MEASURED from the live submissions, never invented.
 describe('countersignSlot — fill the slot the form declares, mint none', () => {
-  it('knows the two slots that exist in live data', () => {
+  it('knows the slots that exist in live data', () => {
     expect(countersignSlot('dcy_01234')).toBe('program_sig')
     expect(countersignSlot('iea')).toBe('sponsor_sig')
+    // start_form: the form ships a director pad (id="sig-admin") and submits it
+    // under admin_sig — confirmed in the live form's submit block 2026-07-17.
+    expect(countersignSlot('start_form')).toBe('admin_sig')
   })
 
   it('refuses to invent a slot for a form that has none', () => {
@@ -21,7 +24,7 @@ describe('countersignSlot — fill the slot the form declares, mint none', () =>
   })
 
   it('the map holds only measured slots', () => {
-    expect(Object.keys(COUNTERSIGN_SLOT).sort()).toEqual(['dcy_01234', 'iea'])
+    expect(Object.keys(COUNTERSIGN_SLOT).sort()).toEqual(['dcy_01234', 'iea', 'start_form'])
   })
 })
 

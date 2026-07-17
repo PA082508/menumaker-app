@@ -143,9 +143,16 @@ export async function revokeSample(id: string, by: string): Promise<void> {
 //                                 registry marks it requires_countersign:director.
 //                                 Flagged for Nikolay; not invented here.
 //   transition_into_program     → no submissions yet, slot unknown.
+//   start_form                  → admin_sig. The pad EXISTS on the form
+//                                 (id="sig-admin", "Play Academy Administration")
+//                                 and the form already submits it under this key;
+//                                 the map simply forgot to name it, so the Inbox
+//                                 never drew the director's pad. Confirmed against
+//                                 the live form's submit block, 2026-07-17.
 export const COUNTERSIGN_SLOT: Readonly<Record<string, string>> = {
   dcy_01234: 'program_sig',
   iea: 'sponsor_sig',
+  start_form: 'admin_sig',
 }
 
 export const countersignSlot = (submissionType: string): string | null =>

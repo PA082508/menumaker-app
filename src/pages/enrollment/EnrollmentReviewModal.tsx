@@ -13,10 +13,13 @@ import { resolveScanUrl, lowConfidenceSet, ocrMeta, hasScan } from '@/lib/enroll
 import ReturnWindow from '@/pages/children/ReturnWindow'
 import {
   buildCacfpPatch, decideSchedule, formAsOf, buildIeaFrp, loadCenterRoster, matchRoster,
-  approveCacfpInsert, approveCacfpUpdate, approveIea, rejectSubmission,
+  approveCacfpInsert, approveCacfpUpdate, approveIea, approveDocument, rejectSubmission,
+  setFeeReceived, isProspect,
   parseIeaFiscalYear, frpExpiryDefault,
   type RosterLite, type ApproveResult,
 } from '@/lib/enrollmentApprove'
+import { countersignSlot, loadSample, adoptSample, type SignatureSample } from '@/lib/signatureSamples'
+import SignaturePad from '@/components/signing/SignaturePad'
 
 // roster.sched_days bitmask — Mon=1 Tue=2 Wed=4 Thu=8 Fri=16 (20260716c)
 const SCHED_DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
@@ -25,6 +28,8 @@ type Submission = {
   id: string; org_id: string; center_id: string; child_id: string | null
   submission_type: string; form_data: any; signature_date: string | null
   status: string; source: string; created_at: string
+  signatures?: Record<string, any> | null
+  fee_received_at?: string | null
 }
 
 const isUuid = (v: any): v is string =>
@@ -67,6 +72,41 @@ export default function EnrollmentReviewModal({
   // Reactivate-from-Review: a chosen inactive match must go through the return
   // window (reactivate & admit → admission_log) BEFORE Approve attaches the scan.
   const [readmitOpen, setReadmitOpen] = useState(false)
+
+  // ─── documents (Consent, DCY 01234, Release Auth…) ─────────────────────────
+  // Until now the panel threw «This submission type cannot be approved yet» on
+  // every one of them. Izabella's consent and DCY 01234 have sat pending since
+  // 15.07 for exactly that reason.
+  const isDocument = !isCacfp && !isIea
+  const slot = countersignSlot(submission.submission_type)
+  const alreadyCountersigned = !!slot && !!submission.form_data && !!submission.signatures?.[slot]
+  const [docChild, setDocChild] = useState<string | ''>('')      // manual link — no token, no guessing
+  const [sigDraw, setSigDraw] = useState<string | null>(null)     // this session's stroke
+  const [mySample, setMySample] = useState<SignatureSample | null>(null)
+  const [useSample, setUseSample] = useState(true)
+  const [adoptMine, setAdoptMine] = useState(false)               // remember it as my shelf
+  const [feeOn, setFeeOn] = useState(!!submission.fee_received_at)
+
+  // The director's OWN shelf — read under their login, never from a form on the
+  // shared kiosk. A pad reads only its own scope and never falls back.
+  useEffect(() => {
+    if (!slot) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const s = await loadSample({ scope: 'director', authId: reviewerId })
+        if (!cancelled) { setMySample(s); setUseSample(!!s) }
+      } catch { /* no sample is a fact, not a failure — the pad still draws */ }
+    })()
+    return () => { cancelled = true }
+  }, [slot, reviewerId])
+
+  const prospect = isProspect({
+    submission_type: submission.submission_type,
+    status: submission.status,
+    fee_received_at: submission.fee_received_at,
+  })
+  const countersignImage = useSample && mySample ? mySample.signature_image : sigDraw
 
   // Resolve the existing child (matched by child_id column, or a uuid inside
   // form_data). New applicants have neither → right column stays empty.
@@ -135,7 +175,7 @@ export default function EnrollmentReviewModal({
 
   // Load center roster for duplicate / child matching (new CACFP applicant, or IEA).
   useEffect(() => {
-    const need = isIea || (isCacfp && !resolvedChildId)
+    const need = isIea || ((isCacfp || isDocument) && !resolvedChildId)
     if (!need) return
     let cancelled = false
     ;(async () => {
@@ -143,7 +183,7 @@ export default function EnrollmentReviewModal({
       if (!cancelled) setCandidates(list)
     })()
     return () => { cancelled = true }
-  }, [submission.center_id, resolvedChildId, isCacfp, isIea])
+  }, [submission.center_id, resolvedChildId, isCacfp, isIea, isDocument])
 
   // CACFP new-applicant duplicate matches (name + DOB).
   const cacfpMatches = useMemo(
@@ -228,8 +268,11 @@ export default function EnrollmentReviewModal({
   // Approve gating: 🔴 blocks; unresolved CACFP duplicate blocks; a chosen
   // inactive match blocks until it's reactivated & admitted via the return window.
   const dupUnresolved = isCacfp && !resolvedChildId && cacfpMatches.length > 0 && !chosenMatch
+  const docNeedsChild = isDocument && !resolvedChildId && !docChild
+  const docNeedsSig = isDocument && !!slot && !alreadyCountersigned && !countersignImage
   const approveBlocked = v.status === 'errors' || dupUnresolved || chosenInactive || busy
     || (isIea && (!frpChoice || !ieaFiscalYear || ieaMatchedIds.length === 0))
+    || docNeedsChild || docNeedsSig
 
   async function doApprove() {
     if (v.status === 'errors') return
@@ -237,7 +280,10 @@ export default function EnrollmentReviewModal({
     if (v.status === 'warnings') { setShowWarnings(true); return }
     // Anti-misclick: if the reviewer never edited the diff, confirm the roster
     // write first. Editing (dirty) already signals a deliberate review.
-    if (!dirty && !window.confirm(`Approve ${childName}? This creates or updates the roster.`)) return
+    const what = isDocument
+      ? `File ${childName}'s ${submissionTypeLabel(submission.submission_type)}${slot ? ', countersigned by you' : ''}?`
+      : `Approve ${childName}? This creates or updates the roster.`
+    if (!dirty && !window.confirm(what)) return
     runApprove()
   }
 
@@ -269,7 +315,32 @@ export default function EnrollmentReviewModal({
           ieaMatchedIds, reviewerId, paperSigned,
         )
       } else {
-        throw new Error('This submission type cannot be approved yet')
+        // A document: file it against a child, optionally countersigned. No
+        // roster write — that is the CACFP/IEA path.
+        const target = resolvedChildId ?? (docChild || null)
+        const cs = slot && countersignImage
+          ? { slot, image: countersignImage, signedBy: reviewerId, signedName: reviewerName }
+          : null
+        result = await approveDocument(submission, target, reviewerId, paperSigned, cs)
+
+        // Remember it as MY shelf, if asked. Adoption is deliberate: the sample
+        // is what later forms will apply without redrawing, so it is never a
+        // side effect of one signature.
+        if (cs && adoptMine && !useSample && sigDraw) {
+          try {
+            await adoptSample({
+              owner: { scope: 'director', authId: reviewerId },
+              orgId: submission.org_id, centerId: submission.center_id,
+              ownerName: reviewerName, image: sigDraw, method: 'drawn',
+              sourceSubmissionId: null,   // a director mints under their login, not from a form
+              adoptedBy: reviewerId,
+            })
+          } catch (e: any) {
+            // The form IS countersigned and filed; only remembering failed. Say
+            // so — swallowing it would leave the shelf silently empty next time.
+            setErr(`Filed and countersigned, but your signature was not saved for next time: ${e?.message ?? e}`)
+          }
+        }
       }
       onDone(result)
     } catch (e: any) { setErr(e?.message ?? String(e)); setBusy(false) }
@@ -454,6 +525,88 @@ export default function EnrollmentReviewModal({
                 </span>
               </div>
             )
+          )}
+
+          {/* ── Prospect: signed packet #1, the fee was never recorded ─────── */}
+          {prospect && (
+            <div style={{ fontSize: 12.5, padding: '8px 10px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8 }}>
+              <div style={{ fontWeight: 600, color: '#92400e', marginBottom: 4 }}>◷ Potential family</div>
+              <span style={{ color: '#6b7280' }}>
+                Signed packet #1, but the registration fee is not recorded. Packet #2/#3 is not issued yet.
+              </span>
+            </div>
+          )}
+
+          {(submission.submission_type === 'start_form' || submission.submission_type === 'parent_consent') && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, color: '#374151' }}>
+              <input type="checkbox" checked={feeOn} disabled={busy}
+                onChange={async e => {
+                  const on = e.target.checked
+                  setFeeOn(on)                       // optimistic — reverted below if the write is refused
+                  try { await setFeeReceived(submission.id, on, reviewerId) }
+                  catch (er: any) { setFeeOn(!on); setErr(er?.message ?? String(er)) }
+                }} />
+              <span>Registration fee received</span>
+              <span style={{ color: '#9ca3af', fontSize: 11 }}>
+                a fact you record — payments are a later feature
+              </span>
+            </label>
+          )}
+
+          {/* ── Documents: link to a child, then countersign ────────────────── */}
+          {isDocument && !resolvedChildId && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, color: '#374151' }}>
+              <span style={{ width: 130, color: '#6b7280' }}>Child</span>
+              <select value={docChild} onChange={e => setDocChild(e.target.value)}
+                style={{ flex: 1, padding: '4px 8px', border: `1px solid ${docChild ? '#e5e7eb' : '#fca5a5'}`, borderRadius: 6, fontSize: 13, fontFamily: 'inherit' }}>
+                <option value="">— choose the child this document belongs to —</option>
+                {candidates.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.child_name}{c.birthday ? ` · ${c.birthday}` : ''}{c.is_active ? '' : ' · departed'}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {isDocument && !resolvedChildId && (
+            <div style={{ fontSize: 11, color: '#9ca3af', marginTop: -4 }}>
+              This form arrived without a personal link, so nobody can tell whose it is —
+              {' '}the name on it does not match the roster on its own. Choose the child by hand.
+            </div>
+          )}
+
+          {isDocument && slot && !alreadyCountersigned && (
+            <div style={{ fontSize: 12.5 }}>
+              <div style={{ fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+                Your signature <span style={{ color: '#9ca3af', fontWeight: 400 }}>— this form has a director's slot ({slot})</span>
+              </div>
+              {mySample && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <input type="checkbox" checked={useSample} onChange={e => setUseSample(e.target.checked)} />
+                  <span>Apply my signature</span>
+                  <img src={mySample.signature_image} alt="" style={{ height: 28, background: '#fafff9', border: '1px solid #e5e7eb', borderRadius: 4 }} />
+                </label>
+              )}
+              {!useSample && (
+                <>
+                  <SignaturePad onChange={setSigDraw} hint={`Sign as ${reviewerName}`} disabled={busy} />
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                    <input type="checkbox" checked={adoptMine} onChange={e => setAdoptMine(e.target.checked)} />
+                    <span style={{ color: '#6b7280' }}>Remember this as my signature — apply it with one tap next time</span>
+                  </label>
+                </>
+              )}
+            </div>
+          )}
+
+          {isDocument && slot && alreadyCountersigned && (
+            <div style={{ fontSize: 12.5, color: '#0f4c35' }}>✓ Already countersigned — a signature is never written twice.</div>
+          )}
+
+          {isDocument && !slot && (
+            <div style={{ fontSize: 12.5, color: '#6b7280' }}>
+              Filing only — this form declares no director's signature slot, so none is written into it.
+            </div>
           )}
 
           {isCacfp && !resolvedChildId && cacfpMatches.length > 0 && (

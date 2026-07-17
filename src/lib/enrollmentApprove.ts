@@ -486,3 +486,100 @@ export async function rejectSubmission(
     },
   }
 }
+
+// ─── documents: approve a form that does not write the roster ────────────────
+// Consent, DCY 01234, Release Auth, Parents Book ack… Until now the panel threw
+// «This submission type cannot be approved yet» on every one of them: it knew
+// only CACFP and IEA. Izabella's consent and DCY 01234 have sat pending since
+// 15.07 for exactly that reason — the online path works right up to the Inbox
+// and stops there.
+//
+// Approving a document files it: it is linked to a child and marked approved.
+// Nothing is written to the roster — that stays the CACFP/IEA path («ничего не
+// пишется в roster до Approve» concerns the roster; a document is not one).
+//
+// The countersignature is ADDED to the signature block, never a rewrite of what
+// the parent signed: we merge into `signatures`, keeping every existing key. A
+// signed record is never rewritten (platform-standards) — and a countersignature
+// is not an edit of the parent's statement, it is the director's own, in the
+// slot the form already declares for it.
+
+export interface Countersign {
+  /** The slot the FORM declares — measured, never invented. See countersignSlot(). */
+  slot: string
+  image: string
+  signedBy: string
+  signedName: string
+}
+
+export async function approveDocument(
+  sub: { id: string; child_id: string | null; submission_type: string },
+  childId: string | null,
+  reviewerId: string,
+  paperSigned: boolean,
+  countersign?: Countersign | null,
+): Promise<ApproveResult> {
+  // Snapshot what we are about to touch, so undo restores it exactly — including
+  // the signature block, which must come back byte-for-byte.
+  const { data: prev, error: readErr } = await S().from('enrollment_submissions')
+    .select('signatures,status,child_id,reviewed_by,reviewed_at,paper_signed_at,paper_signed_by')
+    .eq('id', sub.id).single()
+  if (readErr) throw readErr
+
+  const patch: Record<string, any> = {
+    status: 'approved', child_id: childId, reviewed_by: reviewerId, reviewed_at: nowIso(),
+    ...(paperSigned ? { paper_signed_at: nowIso(), paper_signed_by: reviewerId } : {}),
+  }
+
+  if (countersign) {
+    if (!countersign.image?.startsWith('data:image/')) throw new Error('The countersignature must be an image')
+    const before = ((prev as any)?.signatures ?? {}) as Record<string, any>
+    if (before[countersign.slot]) throw new Error(`This form is already countersigned in ${countersign.slot}`)
+    // Merge, never replace: the parent's signature keeps its exact bytes.
+    patch.signatures = { ...before, [countersign.slot]: countersign.image }
+  }
+
+  const { data, error } = await S().from('enrollment_submissions')
+    .update(patch).eq('id', sub.id).select('id')
+  if (error) throw error
+  if (!data?.length) throw new Error('Nothing was written — the submission was not filed')
+
+  return {
+    message: countersign
+      ? `Filed and countersigned by ${countersign.signedName}`
+      : 'Filed — on file, no action needed',
+    undo: async () => {
+      await S().from('enrollment_submissions').update({
+        signatures: (prev as any)?.signatures ?? {},
+        status: (prev as any)?.status ?? 'pending',
+        child_id: sub.child_id,
+        reviewed_by: (prev as any)?.reviewed_by ?? null,
+        reviewed_at: (prev as any)?.reviewed_at ?? null,
+        paper_signed_at: (prev as any)?.paper_signed_at ?? null,
+        paper_signed_by: (prev as any)?.paper_signed_by ?? null,
+      }).eq('id', sub.id)
+    },
+  }
+}
+
+// ─── the registration fee (20260723) ─────────────────────────────────────────
+// A FACT the director records by hand — not a payment system, which Nikolay
+// froze until the food program is at a working level. On a start_form, no fee =
+// ПОТЕНЦИАЛЬНЫЙ: filled packet #1 but never started, so packet #2/#3 is not
+// issued. Orthogonal to status: "paid but not yet reviewed" must be expressible.
+
+export async function setFeeReceived(subId: string, received: boolean, by: string): Promise<void> {
+  const { data, error } = await S().from('enrollment_submissions')
+    .update(received
+      ? { fee_received_at: nowIso(), fee_received_by: by }
+      : { fee_received_at: null, fee_received_by: null })
+    .eq('id', subId).select('id')
+  if (error) throw error
+  if (!data?.length) throw new Error('Nothing was written — the fee was not recorded')
+}
+
+/** A prospect: signed packet #1, the registration fee was never recorded. */
+export const isProspect = (sub: { submission_type: string; status: string; fee_received_at?: any }): boolean =>
+  (sub.submission_type === 'start_form' || sub.submission_type === 'parent_consent')
+  && sub.status === 'pending'
+  && blank(sub.fee_received_at)

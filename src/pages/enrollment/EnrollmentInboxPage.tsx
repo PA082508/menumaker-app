@@ -142,7 +142,9 @@ export default function EnrollmentInboxPage() {
     ;(async () => {
       setLoading(true); setErr(null)
       let q = supabase.schema('menumaker').from('enrollment_submissions')
-        .select('id,org_id,center_id,child_id,submission_type,form_data,signatures,signature_date,status,source,created_at')
+        // fee_received_at rides along: it is what tells a POTENTIAL family (signed
+        // packet #1, fee never recorded) from one that is actually enrolling.
+        .select('id,org_id,center_id,child_id,submission_type,form_data,signatures,signature_date,status,source,created_at,fee_received_at')
         // pending AND received. `received` = auto-filed by enrollment-autofile (no human
         // Approve). It must be VISIBLE — a row that vanished from every screen the moment
         // it was filed would read as a lost document, not as work saved. It is kept OUT

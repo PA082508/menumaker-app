@@ -185,9 +185,13 @@ export default function StaffSettingsPage() {
     }
 
     // Upsert schedule — verified the same way.
+    // staff_schedules has no classroom_id column — a schedule is keyed by staff_id,
+    // not by room. The old payload sent classroom_id: data.class_primary (a room
+    // NAME text into an FK slot, "// approximate"), and PostgREST rejected the whole
+    // upsert ("Could not find the 'classroom_id' column of 'staff_schedules'"), so the
+    // schedule never saved. Room lives on staff.class_primary / staff.classroom_id.
     const schedRows = sched.filter(s => s.is_active && s.shift_start && s.shift_end).map(s => ({
       staff_id: staffId, org_id: org?.id, center_id: data.center_id,
-      classroom_id: data.class_primary, // approximate
       day_of_week: s.day_of_week,
       shift_start: s.shift_start, shift_end: s.shift_end,
       break_minutes: s.break_minutes, is_active: true,

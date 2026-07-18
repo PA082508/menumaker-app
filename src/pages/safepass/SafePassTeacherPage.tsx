@@ -14,6 +14,11 @@ import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
 import { useAuth } from '@/hooks/useAuth'
 import Avatar from '@/components/Avatar'
+import PinPad from './shared/PinPad'
+import {
+  getDeviceToken, fetchDeviceContext, confirmHandoff,
+  type DeviceContext, type HandoffResult,
+} from '@/lib/safepassDevice'
 
 // org_id (3a9a290e-7e49-491e-946b-ad86f2399910) is stamped on INSERT by the
 // parent flow (Step 4); the teacher view only reads/confirms existing sessions.
@@ -212,6 +217,13 @@ export default function SafePassTeacherPage() {
   const [transportRuns, setTransportRuns] = useState<TransportRun[]>([])
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Device identity. The pad authenticates against the centre the DEVICE is
+  // bound to, never the centre picker above — the picker is a viewing control.
+  const [deviceToken] = useState<string | null>(() => getDeviceToken())
+  const [deviceCtx, setDeviceCtx] = useState<DeviceContext | null>(null)
+  const [deviceError, setDeviceError] = useState<string | null>(null)
+  const [pending, setPending] = useState<Session | null>(null)
+
   const className = classrooms.find(c => c.id === classId)?.name ?? '—'
 
   // tick (clock + timers)
@@ -299,21 +311,48 @@ export default function SafePassTeacherPage() {
     return () => { cancelled = true; supabase.removeChannel(channel) }
   }, [classId])
 
+  // Resolve the device once. A missing/revoked token is not a silent condition:
+  // Accept/Release stay disabled and the banner says why.
+  useEffect(() => {
+    if (!deviceToken) { setDeviceError('This tablet is not registered as a SafePass device.'); return }
+    let cancelled = false
+    fetchDeviceContext(deviceToken)
+      .then(ctx => { if (!cancelled) { setDeviceCtx(ctx); setDeviceError(null) } })
+      .catch(e => { if (!cancelled) setDeviceError(e?.message ?? 'device not registered') })
+    return () => { cancelled = true }
+  }, [deviceToken])
+
   function flashToast(text: string, amber = false) {
     setToast({ text, amber })
     if (toastTimer.current) clearTimeout(toastTimer.current)
     toastTimer.current = setTimeout(() => setToast(null), 2600)
   }
 
-  async function confirm(s: Session) {
+  // A handoff is confirmed ONLY through safepass_confirm_handoff: device token
+  // + staff PIN. The direct .from('safepass_sessions').update(...) this function
+  // used to do is gone — it bypassed both, and stamped every handoff with the
+  // shared service account instead of the person who actually took the child.
+  function confirm(s: Session) {
+    if (!deviceToken || !deviceCtx) { flashToast('Device not registered', true); return }
+    setPending(s)
+  }
+
+  async function verifyHandoff(hash: string): Promise<HandoffResult> {
+    return confirmHandoff(deviceToken!, pending!.id, hash)
+  }
+
+  function onHandoffConfirmed(r: HandoffResult) {
+    const s = pending!
     const ts = new Date().toISOString()
-    const { error } = await supabase.schema('menumaker').from('safepass_sessions')
-      .update({ status: 'confirmed', teacher_confirmed_at: ts, teacher_id: teacherId, teacher_name: teacherName })
-      .eq('id', s.id)
-    if (error) { flashToast('Error — try again', true); return }
+    setPending(null)
     setQueue(q => q.filter(x => x.id !== s.id))
-    setConfirmed(c => [{ ...s, status: 'confirmed', teacher_confirmed_at: ts }, ...c])
-    flashToast(s.action_type === 'drop_off' ? `✓ ${s.child_name} accepted` : `✓ ${s.child_name} released`,
+    setConfirmed(c => c.some(x => x.id === s.id)
+      ? c
+      : [{ ...s, status: 'confirmed', teacher_confirmed_at: ts, teacher_name: r.staff_name }, ...c])
+    flashToast(
+      s.action_type === 'drop_off'
+        ? `✓ ${s.child_name} accepted — ${r.staff_name}`
+        : `✓ ${s.child_name} released — ${r.staff_name}`,
       s.action_type !== 'drop_off')
   }
 
@@ -396,6 +435,30 @@ export default function SafePassTeacherPage() {
         </div>
       )}
 
+      {/* Device gate — visible, not silent: without it nothing can be confirmed */}
+      {deviceError && (
+        <div style={{ background: '#3a1420', borderBottom: `1px solid ${C.border}`, padding: '10px 20px', color: '#ff4d6a', fontSize: 13, fontWeight: 600 }}>
+          ⚠️ {deviceError} Accept / Release are disabled until it is registered.
+        </div>
+      )}
+      {deviceCtx && (
+        <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: '6px 20px', fontSize: 11, color: C.muted }}>
+          Device: {deviceCtx.classroom_name}
+        </div>
+      )}
+
+      {/* PIN gate for a single pending handoff */}
+      {pending && deviceCtx && (
+        <PinPad
+          centerId={deviceCtx.center_id}
+          title={pending.action_type === 'drop_off' ? `Accept ${pending.child_name}` : `Release ${pending.child_name}`}
+          subtitle="Enter your 4-digit staff PIN"
+          onVerify={verifyHandoff}
+          onSuccess={onHandoffConfirmed}
+          onCancel={() => setPending(null)}
+        />
+      )}
+
       {/* Help link */}
       <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: '6px 20px', display: 'flex', justifyContent: 'flex-end' }}>
         <a href="/safepass/help" target="_blank"
@@ -454,7 +517,7 @@ export default function SafePassTeacherPage() {
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, borderTop: `1px solid ${C.border}`, background: C.border }}>
                   <button onClick={() => skip(s.id)} style={{ padding: 15, fontSize: 14, fontWeight: 700, border: 'none', cursor: 'pointer', background: C.surface2, color: C.muted, borderRadius: '0 0 0 16px', fontFamily: 'inherit' }}>Skip</button>
-                  <button onClick={() => confirm(s)} style={{ padding: 15, fontSize: 14, fontWeight: 700, border: 'none', cursor: 'pointer', background: drop ? C.blue : C.amber, color: drop ? '#fff' : C.bg, borderRadius: '0 0 16px 0', fontFamily: 'inherit' }}>{drop ? '✓ Accept' : '✓ Release'}</button>
+                  <button onClick={() => confirm(s)} disabled={!deviceCtx} style={{ padding: 15, fontSize: 14, fontWeight: 700, border: 'none', cursor: deviceCtx ? 'pointer' : 'not-allowed', background: !deviceCtx ? C.surface2 : (drop ? C.blue : C.amber), color: !deviceCtx ? C.muted : (drop ? '#fff' : C.bg), borderRadius: '0 0 16px 0', fontFamily: 'inherit' }}>{drop ? '✓ Accept' : '✓ Release'}</button>
                 </div>
               </div>
             )

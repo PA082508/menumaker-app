@@ -781,3 +781,129 @@ Before building on it, measure the artefact it describes:
 
 Cheap to check, and both cases cost a day. When a claim and a measurement
 disagree, the measurement wins and the claim gets corrected in place.
+
+### The mirror case: the tree is not the database (2026-07-18)
+
+Same class, opposite sign. Case 2 was a file claiming applied when the database
+said no. **Case 3 is the database saying yes while the file says nothing at all.**
+
+On 2026-07-18 five prepare-scripts were applied to live — `20260717e`,
+`20260718` door_scope, `20260718b`, `20260718c` (corrected version, after a
+P0001 rollback), `20260718d` — each with its own read-back. In git they stayed
+`??` untracked or ` M` modified. A status report built from `git status` listed
+all five as "waiting for go", and was wrong about every one of them.
+
+**The rule: the state of a change is read from the database, never from the
+working tree.** `git status`, a filename, a `.DRAFT` suffix, an untracked marker
+— none of them are evidence about live. They describe what a text file did, not
+what the schema is. Both directions of this error are now confirmed, so treat
+the tree and the header as equally non-authoritative: **query the objects.**
+
+**Marking applied prepare-files.** Since neither the header nor the tree can be
+trusted alone, the marker's job is only to point at the evidence — the read-back
+that was actually run — so the next person re-measures cheaply instead of
+believing prose. Proposed form, one commit per apply-wave:
+
+```
+docs(prepare): mark <n> scripts applied — read-back <date>
+```
+
+and at the top of each applied file, a three-line block:
+
+```sql
+-- APPLIED: 2026-07-18  (claim — verify before building on it)
+-- READ-BACK: 1·t·t·f          <- the counts/booleans actually observed
+-- VERIFY:   select ... ;      <- the query that re-measures it today
+```
+
+The `VERIFY` line is the load-bearing one: it makes re-measuring a copy-paste,
+which is what turns the standard from a habit into the cheap default. `APPLIED`
+stays explicitly labelled a claim, because that is what Case 2 proved it is.
+
+## A read-back never writes (2026-07-18)
+
+**Read-back = только чтение, ЛИБО явная транзакция с `rollback`. Третьего вида не
+бывает.**
+
+Пойман в `20260718_door_scope_and_deny_teacher.sql`: чтобы доказать, что дверь Ridge
+больше не пишет в чужой центр, read-back-блок предлагал `update ... set first_name =
+first_name` по живому ребёнку — «пробу», которая на самом деле пишет. На репетиции она
+шла внутри `begin/rollback`, но в текст файла откат не попал, и следующий человек
+выполнил бы её на живой строке: `updated_at`, триггеры, аудит.
+
+Проба, меняющая состояние, — законный инструмент: иногда единственный способ проверить
+RLS — попробовать написать. Незаконно другое — оставить её без отката. Если блок
+содержит хоть один `insert`/`update`/`delete`, он открывается `begin;` и закрывается
+`rollback;` — и это видно глазом в самом файле, а не держится в голове у того, кто
+проводил репетицию.
+
+Смежное: разметочные шаги, которые в транзакцию НЕ входят (пометить сервис-аккаунты,
+проставить признак), пишутся в файл отдельным блоком с явным «делается один раз, до
+замера, откатом не снимается» — иначе `rollback` в конце читается как «я ничего не
+менял», что неверно.
+
+## Замерная конструкция годна только после прогона в том же редакторе (2026-07-18)
+
+Замер прав — это код, и он ломается по своим причинам, отдельно от того, что он
+измеряет. Годной считается только та конструкция, которая **пережила живой прогон в
+том самом клиенте**, где её будут выполнять. Стройность SQL ничего не гарантирует.
+
+Две ловушки, пойманные в один вечер на шаге (2) применяй-серии 18.07:
+
+**1. Редактор показывает только последний result set.** Многостейтментный замер из
+пяти проверок вернул одно число; четыре молча исчезли. Лечится накоплением во
+временную таблицу и одним финальным `select` — либо, надёжнее, разбиением на
+самостоятельные блоки, у каждого ровно один результат.
+
+**2. Temp-таблица, созданная ДО смены сиденья, невидима после неё.** Порядок
+`create temp table` → `grant ... to authenticated` → `set local role authenticated` →
+`insert into _probe` упал с `42P01: relation "_probe" does not exist`, хотя грант был
+выдан. Рабочий порядок — обратный: сменить сиденье, и только потом создавать temp
+(владелец — само сиденье, грант не нужен), обращаться schema-qualified `pg_temp._probe`,
+а финальный `select` держать ДО `reset role`.
+
+Отсюда общее правило: **чем меньше состояния переживает границу между стейтментами,
+тем надёжнее замер.** Одиночная самодостаточная проба — одна транзакция, один
+результат, свой `rollback` — всегда предпочтительнее накопителя, если выбор есть.
+
+Смежное: отказ RLS — это ошибка, а ошибка обрывает транзакцию. Пробу, которая ДОЛЖНА
+упасть (`insert` под запрещающей политикой), нельзя ставить в середину замера: всё
+после неё вернёт «current transaction is aborted». Она живёт отдельным блоком. И
+хороший отказ — **именной**: `42501 policy "door_no_insert"` доказывает, какая именно
+политика сработала, а безымянный `42501` — только то, что что-то запретило.
+
+## Формат нормализации не хардкодится в проверках (2026-07-18)
+
+Страховка в `20260718c` сравнивала `menumaker.norm_name(...) = 'yabborova sofiya'` —
+то есть проверяла не факт, а **догадку автора о том, что функция вернёт**. Измерено:
+`norm_name` переставляет токены и отдаёт `'sofiya yabborova'`. Условие не выполнилось бы
+никогда, заход откатился бы с «ожидалась 1 живая строка, получено 0», и разбирались бы
+не с данными, а с фантомом.
+
+Правило: **сверка либо по `id`, либо через саму функцию с ОБЕИХ сторон сравнения** —
+`norm_name(a) = norm_name(b)`. Литерал в правой части допустим только если он получен
+измерением в этой же сессии и рядом стоит комментарий, откуда он взят.
+
+Общий класс: проверка, воспроизводящая внутреннюю логику проверяемого кода, доказывает
+совпадение двух реализаций, а не корректность. Родня «read-back ≠ пересчёт того, что
+страница должна была отрисовать» — та же ошибка с другой стороны.
+
+Отдельно стоит отметить, что здесь сработала защита: страховка была ЗАПРЕЩАЮЩЕЙ, поэтому
+ошибка проверки означала откат, а не тихую порчу. Проверки нужно писать так, чтобы их
+собственная поломка вела к остановке, а не к ложному «успеху».
+
+### Канонический пример (18.07, измерено)
+
+```sql
+select id, child_name,
+       menumaker.norm_name(child_name) as norm
+  from menumaker.roster
+ where id in ('18312be2-…','0a3e36ab-…');
+--  Yabborova Sofiya → 'sofiya yabborova'
+--  Yabborova Sofiya → 'sofiya yabborova'
+```
+
+Автор проверки предполагал `'yabborova sofiya'` — «как написано в карточке». Функция
+сортирует токены и отдаёт `'sofiya yabborova'`. Разница в одном пробеле и порядке двух
+слов остановила бы весь заход. Ни одно рассуждение об «очевидном» формате не заменяет
+этого `select`.

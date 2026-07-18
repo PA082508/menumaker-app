@@ -60,13 +60,34 @@
 `safepass_set_staff_pin` применена, **вызывающих в UI ноль**. `staff.pin_hash` — **0** во всей БД.
 Живая `SafePassTeacherPage` **не знает слова PIN**. `shared/PinPad.tsx` — сирота.
 
+**Состав Red подтверждён Николаем 2026-07-18: Maureen Minadeo + Carolyn Hercik**
+(оба действующие учителя Red). **Резервный PIN — Maureen.**
+
+**Находка 2026-07-18 (read-only срез) — это НЕ «реактивация», а раздвоение поколений.**
+У обоих по ДВЕ строки `staff` (ridge, `class_primary='Red'`):
+- поколение **B** (25.06): `is_active=true`, `classroom_id=NULL` — Maureen `d98ebb4e`, Carolyn `84401340`;
+- поколение **A** (21.06): `is_active=false`, `classroom_id`=Red FK (`a93a2e02`) — Maureen `6bba6661`, Carolyn `a8709c0d`.
+
+Инвентарь фильтрует Red по `classroom_id` → активные (B) невидимы, видимые (A) неактивны → «Red пуст».
+Для `confirm_handoff` (center-scoped: `center=ridge AND is_active AND pin_hash`) активные keeper'ы **B
+уже годятся** — им нужен ТОЛЬКО PIN; `classroom_id`=Red нужен инвентарю/Teacher-View, не петле передачи.
+
+**Prepare (руки Николая → read-back):**
+```sql
+update menumaker.staff set classroom_id='a93a2e02-477c-4deb-8554-37ec2823bf98'
+ where id in ('d98ebb4e-b375-4814-9c5a-dc0844f66042',   -- Maureen (keeper B)
+              '84401340-0e5f-4bc8-bc90-fbfbfddac6c7');  -- Carolyn (keeper B)
+-- read-back: обе строки active + class_primary Red + classroom_id Red; затем PIN обоим.
+```
+Неактивные дубли A (`6bba6661`, `a8709c0d`) — на отдельный дедуп-заход, не блокер.
+
 **Нужно:**
-1. реактивировать Carolyn (§0);
+1. `classroom_id`=Red + PIN обоим keeper'ам B (см. prepare выше);
 2. UI выдачи PIN у директора (`safepass_set_staff_pin`);
 3. PIN-пад на приёме (подключить сироту);
 4. `pin_hash = sha256(center_id || ':' || pin)` — считает клиент, RPC сверяет.
 
-**Часть ревью (A).** В Ridge 36 активных сотрудников — кому ещё PIN, кроме Carolyn, решает Николай.
+**Часть ревью (A).** В Ridge 36 активных сотрудников — PIN сверх пары Red решает Николай.
 
 ### 2.3. Путь родителя — три блокера
 
@@ -148,6 +169,6 @@ trusted persons 9 детей (2.4) ──┘
 
 **Развилки, которые ещё ждут слова:**
 1. **Телефоны доверенных лиц** — брать из `guardian` на подтверждение директором? (§2.4)
-2. **Кому PIN**, кроме Carolyn? (в Ridge 36 активных сотрудников)
-3. **Реактивация Carolyn** — DB-write, жду go (§0).
+2. ~~Кому PIN, кроме Carolyn?~~ → **ЗАКРЫТО 2026-07-18: Red = Maureen + Carolyn, резерв Maureen.** PIN сверх пары — по слову Николая.
+3. ~~Реактивация Carolyn~~ → **ПЕРЕСМОТРЕНО 2026-07-18: не реактивация, а дубли-поколения (§2.2). Prepare = `classroom_id`=Red на активные keeper'ы B + PIN обоим — DB-write, жду go.**
 4. Репетиция 20.07 требует вставки тестовой сессии — DB-write, жду go (§1.3).

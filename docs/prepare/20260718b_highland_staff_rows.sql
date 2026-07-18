@@ -1,4 +1,13 @@
--- 20260718b — PREPARE, НЕ ПРИМЕНЁН. Ждёт «go» Николая.
+-- APPLIED: 2026-07-18  (claim — verify before building on it)
+-- READ-BACK: 0/15/19/0/0
+-- VERIFY:   select count(*) = 0 as no_adults_left_in_real_rooms
+--             from menumaker.roster r
+--             join menumaker.classrooms cl on cl.id = r.classroom_id
+--             join menumaker.centers ct on ct.id = r.center_id
+--            where ct.name ilike '%highland%' and r.is_active
+--              and cl.is_roster and r.birthday < current_date - interval '18 years';
+--
+-- 20260718b — ПРИМЕНЁН 18.07 (заголовок ниже сохранён как история заявки).
 -- Заход (4) применяй-серии 18.07. Решение «C сейчас, A позже, B нет».
 --
 -- ⚠️ ПОПРАВКА К ФОРМУЛИРОВКЕ ЗАДАЧИ. Просили «пометить 32 строки как не-ростерные
@@ -132,3 +141,39 @@ begin
 end $$;
 
 commit;
+
+-- ── SELF-CHECK (урок 18.07: do-блок не доехал при вставке) ──────────────────
+-- Чисто читающий. Оборвалась вставка → блок не вернёт 5 строк.
+select 'adults left in real Highland rooms' as what,
+       (count(*))::text as got, '0' as expect
+  from menumaker.roster r
+  join menumaker.centers c on c.id = r.center_id
+ where c.name = 'Play Academy Highland Heights'
+   and r.is_active
+   and r.birthday < current_date - interval '18 years'
+   and coalesce((select cl.is_roster from menumaker.classrooms cl
+                  where cl.id = r.classroom_id), true)
+union all
+select 'roster rows deactivated by 20260718b',
+       (count(*))::text, '15'
+  from menumaker.roster
+ where deactivation_reason = 'staff row, not a child (20260718b)'
+union all
+select 'their meal_week_records archived',
+       (count(*))::text, '19'
+  from menumaker.meal_week_records
+ where status = 'archived'
+   and roster_id in (select id from menumaker.roster
+                      where deactivation_reason = 'staff row, not a child (20260718b)')
+union all
+-- Непустой остаток = кто-то успел подписать meal-запись сотрудника: разбирать руками.
+select 'their meal rows left UNarchived',
+       (count(*))::text, '0'
+  from menumaker.meal_week_records
+ where status <> 'archived'
+   and roster_id in (select id from menumaker.roster
+                      where deactivation_reason = 'staff row, not a child (20260718b)')
+union all
+select 'monthly_claims (claim-bridge)',
+       (count(*))::text, '0'
+  from menumaker.monthly_claims;

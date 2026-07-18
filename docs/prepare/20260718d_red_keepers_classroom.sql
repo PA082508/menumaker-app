@@ -1,4 +1,12 @@
--- 20260718d — PREPARE, НЕ ПРИМЕНЁН. Ждёт «go» Николая.
+-- APPLIED: 2026-07-18  (claim — verify before building on it)
+-- READ-BACK: 2/2, 2/2
+-- VERIFY:   select count(*) = 2 as keepers_bound_to_red
+--             from menumaker.staff st
+--             join menumaker.classrooms cl on cl.id = st.classroom_id
+--            where st.is_active and cl.name = 'Red'
+--              and st.id::text like any (array['84401340%','d98ebb4e%']);
+--
+-- 20260718d — ПРИМЕНЁН 18.07 (заголовок ниже сохранён как история заявки).
 -- Шаг (3) применяй-серии 18.07 — ИДЁТ ПЕРЕД 20260718b.
 -- (Нумерация файла не равна порядку применения: серия задана Николаем как
 --  a → 20260717e → 20260718 → ЭТОТ → b → c.)
@@ -54,3 +62,18 @@ begin
 end $$;
 
 commit;
+
+-- ── SELF-CHECK (урок 18.07: do-блок не доехал при вставке) ──────────────────
+-- Чисто читающий. Оборвалась вставка → блок не вернёт 2 строки.
+select 'keepers on Red' as what,
+       (count(*))::text as got, '2' as expect
+  from menumaker.staff
+ where id in ('84401340-0e5f-4bc8-bc90-fbfbfddac6c7',
+              'd98ebb4e-b375-4814-9c5a-dc0844f66042')
+   and classroom_id = 'a93a2e02-477c-4deb-8554-37ec2823bf98'
+   and is_active
+union all
+select 'active staff in Red total',
+       (count(*))::text, '2'
+  from menumaker.staff
+ where classroom_id = 'a93a2e02-477c-4deb-8554-37ec2823bf98' and is_active;

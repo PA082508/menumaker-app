@@ -21,6 +21,7 @@ import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
 import { useAuth } from '@/hooks/useAuth'
 import { displayChildName, byEnrollmentName } from '@/lib/childName'
+import { notDepartedBefore, isoDay } from '@/lib/childActive'
 import { storefrontTokenUrl } from '@/config/showcaseLinks'
 import Button, { ButtonRow } from '@/components/ui/Button'
 
@@ -31,7 +32,7 @@ type Kid = {
   id: string; child_id: string | null
   first_name: string | null; last_name: string | null; child_name: string | null
 }
-type Row = Kid & { email: string | null; token: string | null; issuedAt: string | null }
+type Row = Kid & { email: string | null; token: string | null; issuedAt: string | null; dupWith: string | null }
 type Campaign = { id: string; title: string; form_keys: string[]; status: string }
 
 export default function IssueRenewalPage() {
@@ -79,15 +80,34 @@ export default function IssueRenewalPage() {
       const cid = campaignId || (cs?.[0]?.id ?? '')
       setCampaignId(cid)
 
+      // ONE activity criterion for the whole platform: src/lib/childActive.ts, the same
+      // predicate the door enforces (v_meal_grid + MealCountPage's date_out companion).
+      // Before this, the picker checked is_active ALONE — a child whose date_out had passed
+      // but whose flag was never flipped was invisible to the kitchen and still issuable a
+      // renewal here. No local variation: if the rule changes, it changes in childActive.
+      const today = isoDay(new Date())
       const { data: kids, error: kErr } = await S().from('roster')
-        .select('id,child_id,first_name,last_name,child_name')
+        .select('id,child_id,first_name,last_name,child_name,classroom_id')
         .eq('center_id', currentCenter.id).eq('is_active', true)
+        .or(notDepartedBefore(today))
+        .or(`date_in.is.null,date_in.lte.${today}`)
       if (kErr) throw kErr
+
+      // Staff pseudo-classes are not children. classrooms.is_roster=false is the platform's
+      // existing marker (see menumaker-staff-pseudoclass) — read it, don't guess from age.
+      // ⚠️ This removes only rows PARKED in a staff room. An adult mistakenly carrying a row
+      // in a REAL classroom still shows; that is a data defect, fixed in data, not here.
+      const { data: staffRooms, error: srErr } = await S().from('classrooms')
+        .select('id').eq('center_id', currentCenter.id).eq('is_roster', false)
+      if (srErr) throw srErr
+      const staffRoomIds = new Set((staffRooms ?? []).map(c => c.id as string))
+      const roster = ((kids ?? []) as (Kid & { classroom_id: string | null })[])
+        .filter(k => !(k.classroom_id && staffRoomIds.has(k.classroom_id)))
 
       // Guardian email travels roster.child_id → child_guardian.child_id, NOT roster.id.
       // I got this wrong once and measured "0 of 332 families have an email"; the bridge
       // column is the join. (ParentsPage does the same walk.)
-      const bridge = (kids ?? []).map(k => k.child_id).filter(Boolean) as string[]
+      const bridge = roster.map(k => k.child_id).filter(Boolean) as string[]
       const mailByBridge = new Map<string, string>()
       if (bridge.length) {
         const { data: links } = await S().from('child_guardian')
@@ -114,11 +134,27 @@ export default function IssueRenewalPage() {
         for (const t of toks ?? []) tokByChild.set(t.child_id as string, { token: t.token as string, at: t.created_at as string })
       }
 
-      setRows(((kids ?? []) as Kid[]).sort(byEnrollmentName).map(k => ({
+      // Duplicate signal. We do NOT re-derive "who is a duplicate" here — the detector is
+      // menumaker.refresh_action_items (20260707c exact / 20260708b fuzzy), whose key is
+      // norm_name + center_id. One detector, one answer; a second implementation in the UI
+      // would drift from the dedup queue the director works from.
+      // dedup_key shape: 'dup:<center>:<id_lo>:<id_hi>' (and 'dupf:' for the fuzzy arm).
+      const dupPartner = new Map<string, string>()
+      const { data: dupItems } = await S().from('action_items')
+        .select('dedup_key').eq('org_id', org.id).eq('source', 'duplicate_scan').eq('status', 'open')
+      for (const it of dupItems ?? []) {
+        const parts = String(it.dedup_key ?? '').split(':')
+        if (parts.length !== 4) continue
+        const [, , lo, hi] = parts
+        dupPartner.set(lo, hi); dupPartner.set(hi, lo)
+      }
+
+      setRows(roster.sort(byEnrollmentName).map(k => ({
         ...k,
         email: k.child_id ? (mailByBridge.get(k.child_id) ?? null) : null,
         token: tokByChild.get(k.id)?.token ?? null,
         issuedAt: tokByChild.get(k.id)?.at ?? null,
+        dupWith: dupPartner.get(k.id) ?? null,
       })))
     } catch (e: any) {
       // A failed load must never read as "nobody to issue to".
@@ -134,7 +170,13 @@ export default function IssueRenewalPage() {
     sent: rows.filter(r => r.token).length,
     todo: rows.filter(r => !r.token).length,
     noMail: rows.filter(r => !r.email).length,
+    dupes: rows.filter(r => r.dupWith).length,
   }), [rows])
+
+  // Issuing is BLOCKED on a row the dedup queue flags. Two live rows for one child mean two
+  // tokens and two prefilled packets for the same family — and after auto-file, two
+  // submissions the director must reconcile by hand. Cheaper to refuse than to unpick.
+  const issuable = (r: Row) => !r.token && !r.dupWith
 
   async function createCampaign() {
     const title = window.prompt('Name this portion (e.g. "Renewal 2026-27")')
@@ -159,6 +201,12 @@ export default function IssueRenewalPage() {
     setBusy(true); setErr(null); setNote(null)
     let ok = 0
     try {
+      // Defense in depth: the checkbox is already disabled for flagged rows, but a stale
+      // selection must never mint a token for one.
+      const blocked = rows.filter(r => sel.has(r.id) && r.dupWith)
+      if (blocked.length) {
+        throw new Error(`${blocked.length} selected ${blocked.length === 1 ? 'row is' : 'rows are'} flagged as a duplicate — resolve them in the dedup queue first.`)
+      }
       for (const rosterId of sel) {
         // mint_prefill_token upserts on child_id: a child has exactly ONE live token, and
         // re-issuing REPLACES the old one (locked decision 4). Re-issuing is therefore
@@ -214,6 +262,7 @@ export default function IssueRenewalPage() {
           Forms in this portion: <b>{campaign.form_keys.join(', ')}</b> · sent <b>{stats.sent}</b> ·
           not yet sent <b>{stats.todo}</b> of {stats.total}
           {stats.noMail > 0 && <> · <span style={{ color: '#92400e' }}>{stats.noMail} without an email on file → hand at drop-off</span></>}
+          {stats.dupes > 0 && <> · <span style={{ color: '#7f1d1d', fontWeight: 700 }}>{stats.dupes} blocked as duplicates</span></>}
         </div>
       )}
 
@@ -225,8 +274,8 @@ export default function IssueRenewalPage() {
             <tr>
               <th style={th}>
                 <input type="checkbox"
-                  checked={sel.size > 0 && sel.size === rows.filter(r => !r.token).length}
-                  onChange={e => setSel(e.target.checked ? new Set(rows.filter(r => !r.token).map(r => r.id)) : new Set())} />
+                  checked={sel.size > 0 && sel.size === rows.filter(issuable).length}
+                  onChange={e => setSel(e.target.checked ? new Set(rows.filter(issuable).map(r => r.id)) : new Set())} />
               </th>
               <th style={{ ...th, textAlign: 'left' }}>Child</th>
               <th style={{ ...th, textAlign: 'left' }}>Send to</th>
@@ -239,7 +288,8 @@ export default function IssueRenewalPage() {
               return (
                 <tr key={r.id} style={{ background: r.token ? '#f6fdf9' : '#fff' }}>
                   <td style={{ ...td, textAlign: 'center' }}>
-                    <input type="checkbox" checked={sel.has(r.id)}
+                    <input type="checkbox" checked={sel.has(r.id)} disabled={!!r.dupWith}
+                      title={r.dupWith ? 'Flagged as a duplicate — resolve it first' : undefined}
                       onChange={e => setSel(s => { const n = new Set(s); e.target.checked ? n.add(r.id) : n.delete(r.id); return n })} />
                   </td>
                   <td style={td}>
@@ -248,6 +298,12 @@ export default function IssueRenewalPage() {
                       <span title="This roster row has no link to a parent record, so there is no address on file"
                         style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#92400e', background: '#fef3c7', padding: '1px 5px', borderRadius: 4 }}>
                         no parent record
+                      </span>
+                    )}
+                    {r.dupWith && (
+                      <span title="The dedup queue has this child on two live roster rows. Issuing now would send the family two packets."
+                        style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#7f1d1d', background: '#fee2e2', padding: '1px 5px', borderRadius: 4 }}>
+                        resolve duplicates first
                       </span>
                     )}
                   </td>

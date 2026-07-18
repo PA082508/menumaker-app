@@ -752,3 +752,32 @@ fork with no merge.** The fix is not to tidy the copies; it is to stop having th
 **Hover lives in the component**, via listeners, not a `:hover` rule in `index.css` —
 these styles are inline, and a stylesheet rule would be a second place the row can drift
 from. One question, one answer, one file.
+
+## A label is not the content — verify the artefact, not its header (2026-07-18)
+
+Class of bug: **«ярлык ≠ содержание»**. A file, comment, or status field asserts a
+state; the state is assumed; the assertion is wrong. Second confirmed case, so it
+is a class and not an incident.
+
+**Case 1 (2026-07-16).** `20260715` carried a comment saying the anon tables were
+closed. They were open for a day. A migration comment is not evidence.
+
+**Case 2 (2026-07-18).** `20260717_renewal_wave1.sql` opens with `✅ APPLIED
+2026-07-16` and a full read-back transcript. Measured against the live database,
+three of its four sections were there and one was not: `campaign_issues` — the
+table the whole renewal tracker rests on — did not exist. The renewal page had
+been silently writing the issue fact to `prefill_tokens.batch_id` instead. The
+header was not lying about a detail; it was lying about the critical path.
+
+**The rule.** A header, comment, changelog line, or `status` column is a CLAIM.
+Before building on it, measure the artefact it describes:
+
+- migration applied → query `information_schema` / `pg_proc` for the objects it
+  creates, not the file and not the migrations list
+- a table is not its columns — `select` the specific column you need
+- a view is not its table (see §"A migration that touches columns…")
+- «applied» is per-object, never per-file: a partial apply looks exactly like a
+  full one from the outside
+
+Cheap to check, and both cases cost a day. When a claim and a measurement
+disagree, the measurement wins and the claim gets corrected in place.

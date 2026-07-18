@@ -19,11 +19,28 @@
 -- Строки НЕ удаляются: meal_week_records на них ссылаются, история сохраняется.
 --
 -- CLAIM-BRIDGE. Проверено 18.07: menumaker.monthly_claims = 0 строк, поданных
--- клеймов нет, гашение claim-безопасно. НО: на 11 паразитных строках висит
--- 19 записей meal_week_records — то есть взрослые СЧИТАЛИСЬ КАК ДЕТИ в превью
--- Highland. Это отдельная находка, гашение её не разгребает: записи остаются,
--- пересчёт превью — решение Николая. Не делаю молча.
--- checkmark export ✅ — экспорт галочек в Sheet эта правка не трогает.
+-- клеймов нет. На 11 паразитных строках висело 19 записей meal_week_records —
+-- взрослые считались как дети в превью Highland. По решению Николая 18.07 они
+-- гасятся ЭТИМ ЖЕ заходом (секция 2 ниже), превью Highland пересчитается само.
+--
+-- ПОЧЕМУ «19» — ТОЧНОЕ ЧИСЛО, И ЧТО ОСТАЁТСЯ. Измерено:
+--   menumaker.compute_monthly_claim читает ТОЛЬКО meal_week_records;
+--   meal_count_marks она НЕ читает (проверено по pg_get_functiondef).
+-- Поэтому claim-релевантных записей ровно 19, число Николая подтверждается.
+-- ⚠️ НО на тех же строках висит 273 записи meal_count_marks (на 10 строках из 15).
+-- Их НЕ трогаем: в клейм они не входят, а после гашения roster-строк из сетки
+-- (v_meal_grid фильтрует по is_active) человек пропадает, и отметки становятся
+-- висячими и безвредными. Число 273 фиксирую, чтобы оно не всплыло сюрпризом.
+--
+-- ГАСИМ, НЕ УДАЛЯЕМ: status='archived' уже разрешён CHECK-ограничением
+-- meal_week_records_status_check ('open','cook_signed','director_approved',
+-- 'archived') — схему менять не требуется, история сохраняется.
+-- Все 19 записей проверены: status='open', НИ ОДНОЙ подписи повара или
+-- директора, period_month и week_range пусты. Подписанное не трогается.
+--
+-- checkmark export ✅ — экспорт галочек в Sheet идёт по живым roster-строкам
+-- настоящих детей; ни одна из них этим заходом не затронута. Страховка на это
+-- зашита в секцию 3.
 --
 -- A (полный перенос roster→staff) — в бэклоге, отдельным заходом.
 --
@@ -37,9 +54,13 @@
 --                     where cl.id=r.classroom_id), true);              → 0
 --   select count(*) from menumaker.roster where deactivation_reason
 --     = 'staff row, not a child (20260718b)';                          → 15
+--   select status, count(*) from menumaker.meal_week_records
+--     where roster_id in (<те же 15>) group by 1;                      → archived | 19
+--   select count(*) from menumaker.monthly_claims;                     → 0 (не изменилось)
 
 begin;
 
+-- ── 1. Паразитные roster-строки ──────────────────────────────────────────────
 update menumaker.roster set
   is_active            = false,
   deactivated_at       = now(),
@@ -65,14 +86,48 @@ where id in (
   '9c47d962-bf24-417b-96aa-edf150831abf'   -- Volynska Svitlana         · 1970-10-18 · (нет группы)  · 0
 );
 
--- Страховка: ровно 15, иначе откат.
+-- ── 2. Их meal-записи: 19 штук, в архив ──────────────────────────────────────
+-- Условие status='open' — намеренно: если к моменту применения кто-то успел
+-- подписать запись, она НЕ гасится, и страховка ниже остановит заход.
+update menumaker.meal_week_records set
+  status     = 'archived',
+  updated_at = now()
+where status = 'open'
+  and roster_id in (select id from menumaker.roster
+                     where deactivation_reason = 'staff row, not a child (20260718b)');
+
+-- ── 3. Страховки: точные числа, иначе откат ─────────────────────────────────
 do $$
-declare n int;
+declare n_rows int; n_meals int; n_left int; n_claims int;
 begin
-  select count(*) into n from menumaker.roster
+  select count(*) into n_rows from menumaker.roster
    where deactivation_reason = 'staff row, not a child (20260718b)';
-  if n <> 15 then
-    raise exception 'ожидалось 15 погашенных строк, получено %, откат', n;
+  if n_rows <> 15 then
+    raise exception 'ожидалось 15 погашенных roster-строк, получено %, откат', n_rows;
+  end if;
+
+  select count(*) into n_meals from menumaker.meal_week_records
+   where status = 'archived'
+     and roster_id in (select id from menumaker.roster
+                        where deactivation_reason = 'staff row, not a child (20260718b)');
+  if n_meals <> 19 then
+    raise exception 'ожидалось 19 архивированных meal-записей, получено %, откат', n_meals;
+  end if;
+
+  -- Ничего не должно остаться неархивированным: непустой остаток = кто-то
+  -- подписал запись сотрудника, это разбирается руками, а не молча.
+  select count(*) into n_left from menumaker.meal_week_records
+   where status <> 'archived'
+     and roster_id in (select id from menumaker.roster
+                        where deactivation_reason = 'staff row, not a child (20260718b)');
+  if n_left <> 0 then
+    raise exception 'осталось % неархивированных meal-записей (подписаны?), откат', n_left;
+  end if;
+
+  -- checkmark export ✅ — поданных клеймов не было и не появилось.
+  select count(*) into n_claims from menumaker.monthly_claims;
+  if n_claims <> 0 then
+    raise exception 'monthly_claims стало % — заход рассчитан на 0, откат', n_claims;
   end if;
 end $$;
 

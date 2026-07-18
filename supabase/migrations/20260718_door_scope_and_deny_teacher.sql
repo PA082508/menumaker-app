@@ -1,6 +1,13 @@
 -- 20260718_door_scope_and_deny_teacher.sql
 --
--- ⚠️ PREPARED — NOT APPLIED. Live-DB protocol: применяю моими руками после go.
+-- APPLIED: 2026-07-18  (claim — verify before building on it)
+-- READ-BACK: 3/3/0 · дверь Ridge 272 roster / update Pearl 0 / update Ridge 1 /
+--            insert 42501 door_no_insert · директор 621 · кухня жива ×3
+-- VERIFY:   select (select count(*) from menumaker.classrooms where not is_roster) as doors,
+--                  (select count(*) from pg_policies where schemaname='menumaker'
+--                    and policyname like 'deny_teacher%') > 0 as deny_teacher_bound;
+--
+-- (заголовок ниже сохранён как история заявки)
 --
 -- DRY RUN 2026-07-16 — весь пакет выполнен на ЖИВОЙ базе в транзакции и откачен,
 -- проверки из СИДЕНИЙ (postgres обходит RLS и ничего не доказывает):
@@ -175,20 +182,88 @@ commit;
 -- ═══════════════════════════════════════════════════════════════════════════
 -- READ-BACK ПОСЛЕ ПРИМЕНЕНИЯ — из СИДЕНИЙ, не из postgres (он обходит RLS)
 -- ═══════════════════════════════════════════════════════════════════════════
--- 0. ПЕРЕД (а): пометить три двери (§A) и убедиться, что ровно 3.
--- 1. Дверь Ridge:
---      select count(*) from menumaker.roster;                    → 272 (был 621) ← (а) сработала
---        (272 = ВСЕ строки Ridge, активные и нет: политика скоупит по центру, не по is_active.
---         138 — это только активные; не перепутать, как перепутал я в первой редакции.)
---      update menumaker.roster set first_name=first_name
---       where id = <ребёнок Pearl>;                              → 0 rows ← дыра закрыта
---      update ... where id = <ребёнок Ridge>;                    → 1 row  ← кухня жива
--- 2. ЖИВОЙ повар (если появится) и директор: счётчики НЕ изменились.
--- 3. Meal Count на всех трёх дверях грузится (он читает v_meal_grid, не сырой roster —
---    проверить ПРОБОЙ, а не рассуждением: MealCountPage.tsx:9-11 утверждает, что сырой
---    roster под cook пуст, а замер 2026-07-16 показал 621 строку. Комментарий врёт.)
--- 4. (б) проверяется только созданием тестового membership role='teacher' в транзакции
---    с откатом: чтение своего центра ✅, чужого ⛔, любая запись ⛔, guardian ⛔.
+-- ⚠️ ИСПРАВЛЕНО 18.07. Прежняя редакция этого блока содержала «голые» UPDATE-пробы
+--    БЕЗ транзакции — то есть пишущий read-back, который на живой строке реально
+--    оставлял бы updated_at и дёргал триггеры. Стандарт (docs/platform-standards.md):
+--    read-back = только чтение, ЛИБО явная транзакция с rollback. Третьего не бывает.
+--
+-- ШАГ 0 — РАЗМЕТКА ДВЕРЕЙ. В транзакцию НЕ входит и делается ОДИН раз, ДО замера.
+--   Без неё is_door_account() = false у всех, все четыре door-политики — no-op,
+--   и замер покажет 621 вместо 272. Это «ничего не произошло», а не успех.
+--
+--   update core.memberships m set is_service_account = true
+--    from auth.users u
+--   where u.id = m.user_id
+--     and u.email in ('playacademyusa+ridge.cook@gmail.com',
+--                     'playacademyusa+pearl.cook@gmail.com',
+--                     'playacademyusa+alpha.cook@gmail.com');
+--   -- playacademy2@gmail.com (директор) НЕ метить.
+--   select count(*) from core.memberships where is_service_account;   → 3
+--
+-- ЗАМЕР — одной транзакцией, целиком, заканчивается ROLLBACK.
+--   rollback откатывает только пробы ниже; разметку из шага 0 он НЕ трогает.
+--
+--   ⚠️ Замеры НАКАПЛИВАЮТСЯ во временную таблицу и выдаются ОДНИМ финальным select.
+--      Причина: Supabase SQL Editor в ряде версий показывает только ПОСЛЕДНИЙ result
+--      set многостейтментного куска — четыре из пяти чисел молча исчезли бы.
+--
+--   begin;
+--     create temp table _probe(ord int, what text, got text, expect text) on commit drop;
+--     grant insert, select on _probe to authenticated;   -- до смены роли!
+--
+--     -- сиденье двери Ridge (eca1c4f1 = playacademyusa+ridge.cook@gmail.com)
+--     set local role authenticated;
+--     set local request.jwt.claims =
+--       '{"sub":"eca1c4f1-b384-48c5-9c8e-b519b3f0c060","role":"authenticated"}';
+--
+--     insert into _probe
+--     select 1, 'ridge_door_sees', count(*)::text, '272' from menumaker.roster;
+--       -- 272 = ВСЕ строки Ridge, активные и нет: политика скоупит по центру,
+--       -- не по is_active. 138 — только активные. Придёт 138 → что-то ещё фильтрует.
+--
+--     with u as (update menumaker.roster set first_name = first_name
+--                 where id = '0393cd89-f7f6-44c8-8bf2-32fb0fd570e8' returning 1)
+--     insert into _probe select 2, 'update Pearl child', count(*)::text, '0' from u;
+--
+--     with u as (update menumaker.roster set first_name = first_name
+--                 where id = '02e6b8a7-7df0-40f5-82ef-b2907b5e1ef6' returning 1)
+--     insert into _probe select 3, 'update Ridge child', count(*)::text, '1' from u;
+--
+--     -- сиденье директора (c3c31e35 = playacademy2@gmail.com)
+--     set local request.jwt.claims =
+--       '{"sub":"c3c31e35-f4b0-4a5d-b342-6d932ae18fce","role":"authenticated"}';
+--     insert into _probe
+--     select 4, 'director_sees', count(*)::text, '621' from menumaker.roster;
+--
+--     reset role;
+--     select ord, what, got, expect,
+--            case when got = expect then 'OK' else '⛔ MISMATCH' end as verdict
+--       from _probe order by ord;
+--   rollback;
+--
+-- ПРОБА НА INSERT — ОТДЕЛЬНОЙ транзакцией, и только ПОСЛЕ замера выше.
+--   Причина: отказ RLS — это ошибка, а ошибка ПРЕРЫВАЕТ транзакцию; поставь её
+--   в середину замера — и все следующие строки вернут «current transaction is
+--   aborted», то есть замер директора не состоится.
+--
+--   begin;
+--     set local role authenticated;
+--     set local request.jwt.claims =
+--       '{"sub":"eca1c4f1-b384-48c5-9c8e-b519b3f0c060","role":"authenticated"}';
+--     insert into menumaker.roster (org_id, center_id, child_name)
+--     values ('3a9a290e-7e49-491e-946b-ad86f2399910',
+--             '4aed7d5a-00d0-4a4c-ac99-311046ad2027', 'RLS probe');
+--       → ОШИБКА 42501 «new row violates row-level security policy» ← дверь детей не создаёт.
+--       -- Именно 42501. Ошибка про NOT NULL значила бы, что до RLS не дошло.
+--   rollback;
+--
+-- ПРОЧЕЕ, отдельно от замера:
+--   Meal Count на всех трёх дверях грузится (он читает v_meal_grid, не сырой roster —
+--   проверить ПРОБОЙ, а не рассуждением: MealCountPage.tsx:9-11 утверждает, что сырой
+--   roster под cook пуст, а замер 2026-07-16 показал 621 строку. Комментарий врёт.)
+--
+--   (б) проверяется только созданием тестового membership role='teacher' в транзакции
+--   с откатом: чтение своего центра ✅, чужого ⛔, любая запись ⛔, guardian ⛔.
 --
 -- ROLLBACK:
 --   drop policy if exists door_read_scope on menumaker.roster;

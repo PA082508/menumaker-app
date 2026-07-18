@@ -1,0 +1,81 @@
+-- ⛔ DRAFT — CANCELLED 2026-07-18. НЕ ПРИМЕНЯТЬ.
+-- Артефакт отменённого варианта 2 (переоткрыть дубль Yabborova перед дедупом).
+-- Николай отменил вариант 2; в применяй-серии 18.07 этого файла НЕТ.
+-- Следствие для шага c: пара Yabborova в дедуп-очереди остаётся 'dismissed',
+-- эталон 20260718c читается в ЭТОМ состоянии, статус триажа после гашения не трогаем.
+-- Оставлен только как след решения. Не выполнять ни строки ниже.
+
+-- 20260718c0 — PREPARE, НЕ ПРИМЕНЁН. Ждёт «go» Николая.
+-- Идёт НЕПОСРЕДСТВЕННО ПЕРЕД 20260718c. Серия:
+--   20260718a → 20260717e → 20260718 → 20260718d → 20260718b → ЭТОТ → 20260718c
+--
+-- ЗАЧЕМ: элемент дедуп-очереди по паре Yabborova Sofiya (Pearl) имеет
+-- status='dismissed'. Пикер продлений блокирует выдачу только по status='open',
+-- поэтому ОБЕ живые строки девочки сейчас доступны к выдаче — семья получила бы
+-- два пакета. Это единственный настоящий дубль ребёнка на платформе.
+--
+-- ПОЧЕМУ ПРАВКОЙ ДАННЫХ, А НЕ ЧЕРЕЗ UI (решение: вариант 2, дешёвый путь).
+-- Измерено 18.07 — re-open в интерфейсе НЕВОЗМОЖЕН:
+--   • ActionItemsWidget — единственная поверхность action_items; отдельного
+--     экрана дедуп-очереди нет
+--   • читает только menumaker.open_action_items → status='dismissed' не
+--     выбирается вообще, элемента просто не видно
+--   • кнопок ровно две: dismiss_action_item и snooze_action_item; re-open,
+--     undo и фильтра «показать отклонённые» нет
+--   • menumaker.raise_action_item при повторном скане делает
+--     status = case when action_items.status='dismissed' then 'dismissed' ...
+--     то есть dismissed ЗАЛИПАЕТ навсегда, пересканирование не воскрешает
+-- Отменить можно только SQL — отсюда этот файл.
+--
+-- Обратно в 'open' безопасно: та же ветка case при следующем refresh_action_items
+-- уходит в else → 'open' сохраняется. Правка не «на один скан».
+--
+-- ⚠️ ТРИ ОТКЛОНЁННЫХ ЭЛЕМЕНТА HIGHLAND НЕ ТРОГАЕМ (решение Николая):
+-- Ellis Kathryn, Rolf Theresa, Kalantarou Gunay — сотрудники, гаснут с 20260718b,
+-- перевороты не нужны.
+-- Семантика dismissed сохраняется: среди настоящих детей 30 повторов имён —
+-- живые тёзки, для них dismissed = легитимный вердикт «разные дети», и блокировать
+-- их выдачу означало бы запереть законные продления. Переворачивается ТОЧЕЧНО
+-- только ошибочный триаж — вот этот один.
+--
+-- READ-BACK ПОСЛЕ ПРИМЕНЕНИЯ (ожидаемо):
+--   select status, title from menumaker.action_items
+--    where dedup_key='dup:881ef4ce-1a27-4d3b-aa60-59d2a307bf2b:'
+--                  ||'0a3e36ab-43c4-428a-ae31-be482273fa50:'
+--                  ||'18312be2-372f-485f-b36e-cb398bcdfeb0';
+--     → open · Possible duplicate child: Yabborova Sofiya … (Play Academy Pearl)
+--   Пикер Pearl после перезагрузки: обе строки Yabborova с бейджем
+--   «resolve duplicates first», чекбоксы заблокированы, счётчик «2 blocked as
+--   duplicates». Держится до 20260718c, который гасит дубль.
+
+begin;
+
+update menumaker.action_items set
+  status      = 'open',
+  resolved_at = null,
+  updated_at  = now()
+where dedup_key = 'dup:881ef4ce-1a27-4d3b-aa60-59d2a307bf2b'
+                || ':0a3e36ab-43c4-428a-ae31-be482273fa50'
+                || ':18312be2-372f-485f-b36e-cb398bcdfeb0'
+  and source = 'duplicate_scan';
+
+-- Страховка: ровно один элемент, и ровно он. Заодно проверяем, что три
+-- отклонённых элемента Highland остались нетронутыми.
+do $$
+declare n_open int; n_dismissed int;
+begin
+  select count(*) into n_open from menumaker.action_items
+   where source='duplicate_scan' and status='open'
+     and title ilike '%Yabborova%';
+  if n_open <> 1 then
+    raise exception 'ожидался 1 открытый элемент Yabborova, получено %, откат', n_open;
+  end if;
+
+  select count(*) into n_dismissed from menumaker.action_items
+   where source='duplicate_scan' and status='dismissed';
+  if n_dismissed <> 3 then
+    raise exception 'ожидалось 3 оставшихся отклонённых элемента (Highland), получено %, откат', n_dismissed;
+  end if;
+end $$;
+
+commit;

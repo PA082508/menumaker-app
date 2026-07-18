@@ -115,24 +115,31 @@ end $$;
 -- ---------------------------------------------------------------------------
 -- §3 WHAT THIS STILL DOES NOT DO — read before calling Monday open.
 --
--- The token has no delivery mechanism, because nothing consumes it. Measured
--- against src/, not assumed:
+-- ⚠️ CORRECTION (same day). An earlier draft of this section claimed the three
+-- device RPCs had ZERO callers in src/. That was WRONG — the grep behind it ran
+-- in the wrong working directory and measured nothing. Re-measured from the
+-- repo root, the client half already exists and is complete:
+--   src/lib/safepassDevice.ts       — token store, pinHash (parity-tested),
+--                                     device_context / confirm_handoff /
+--                                     register_device wrappers
+--   src/pages/safepass/shared/PinPad.tsx — 4-digit pad + offline throttle
+--   src/lib/safepassDevice.test.ts  — pinHash vector against the DB function
+-- Recorded here rather than quietly deleted: this is Case 4 of the same class,
+-- and the assertion was mine.
 --
---   * SafePassTeacherPage.tsx stores ONLY localStorage['safepass_class']
---     (lines 204, 251). There is no device token in local storage, no
---     ?token= URL parameter, no token in any route.
---   * The page confirms a handoff by writing safepass_sessions DIRECTLY
---     (line 310, .from('safepass_sessions').update(...)). It never calls
---     safepass_confirm_handoff, safepass_device_context, or
---     safepass_register_device. Those three RPCs have ZERO callers in src/.
+-- What was actually missing was the WIRING: SafePassTeacherPage confirmed a
+-- handoff with a direct .from('safepass_sessions').update(...), bypassing both
+-- the device and the PIN. Fixed on feat/teacher-confirm-handoff (61edb80).
 --
--- So: inserting this row is necessary and not sufficient. Until the teacher
--- page is moved onto confirm_handoff — which is what "building the kiosk"
--- actually means — the pilot still runs through a path that bypasses both the
--- device and the PIN, and attributes the handoff to the shared service
--- account. The two PINs set today are not yet on the critical path of
--- anything the teacher touches.
+-- Token delivery, as built: `?device_token=<token>` on first open →
+-- localStorage['sp_kiosk_token'], URL stripped in the same tick.
 --
--- Also open: 4 staff rows sit in Red, 2 have PINs. The other 2 will fail
--- 'invalid PIN' at the pad.
+-- So: inserting this row is necessary and not sufficient — it needs the
+-- teacher-page deploy alongside it. Until both land, the pilot runs a path that
+-- attributes handoffs to the shared service account.
+--
+-- Also open: 4 staff rows sit in Red, but only 2 are live. The other two
+-- (a8709c0d Carolyn, 6bba6661 Maureen) are the extinguished 21.06 duplicate
+-- generation, is_active=false — confirm_handoff filters on is_active, so it
+-- can never match them and they need no PIN.
 -- ============================================================================

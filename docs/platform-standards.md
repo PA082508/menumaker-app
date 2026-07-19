@@ -873,6 +873,55 @@ If an entry ever has to be added after the fact, it is labelled `backfilled`
 explicitly. An honest late record is not a forgery; an undated one that pretends
 to be contemporaneous is.
 
+## Где живёт публикуемое: Pages/Storage — да, Drive — нет (2026-07-18)
+
+**Канон (Николай, 18.07).** Всё, что публикуется родителям или персоналу как
+документ, живёт **в Pages-репозитории или в Supabase Storage, с версией в
+реестре**. Google Drive — место для черновиков и исходников; **витрина на Drive
+не ссылается никогда**.
+
+**Почему это правило, а не вкусовщина.** Проверено в тот же день: три
+SafePass-карточки Doc Hub ведут на Drive-файлы, которых **нет**. Не «нет
+доступа» — нет:
+
+- Drive API под аккаунтом-владельцем (`playacademyusa@gmail.com`) на все три
+  ID → `Requested entity was not found`;
+- папка «Play Academy — SafePass Documents» в том же Drive — **пустая**;
+- поиск по `title contains 'SafePass' | 'Parent Letter'`, включая
+  `sharedWithMe` → ничего;
+- анонимный `curl` по всем четырём Drive-ссылкам витрины → **401**.
+
+То есть **живая витрина ведёт родителя в тупик**, и заметить это изнутри
+приложения нельзя: карточка выглядит целой, ссылка выглядит целой, ломается
+только клик. Файл на Drive может быть перемещён, удалён или перевыпущен с новым
+ID кем угодно и когда угодно — у ссылки нет ни версии, ни владельца в реестре,
+ни способа проверить её из CI.
+
+**Правило.**
+
+- публикуемый документ → Pages-репо (или Storage), URL резолвится анонимно,
+  версия записана в реестре, история флипов ведётся (см. §«A flip writes its
+  own history entry»);
+- Drive → черновики, исходники, внутренняя переписка. С витрины на него ссылок
+  нет;
+- ссылка на витрине обязана проверяться **анонимно** — авторизованный клик
+  автора ничего не доказывает, ровно как push не доказывает деплой.
+
+**Текущие кандидаты на переезд** (все — `driveUrl` в `DocumentHubPage.tsx`,
+захардкожены в странице, а НЕ в `src/config/showcaseLinks.ts`):
+
+| карточка | состояние |
+|---|---|
+| `safepass-parent-letter` | Drive, файл не найден · **родительская, приоритет** |
+| `safepass-teacher-guide` | Drive, файл не найден |
+| `safepass-concept` | Drive, файл не найден |
+| `byod-policy` | Drive, анонимно 401 — проверить отдельно |
+
+**Смежная находка, не про хранение:** `safepass-driver` и `safepass-director`
+ведут на `/safepass/teacher` — тот же роут, что и `safepass-teacher-app`, при
+том что карточки обещают «bus run checklist» и «Director Dashboard: monitor all
+classrooms». Ярлык ≠ содержание на живой витрине; отдельный кандидат на правку.
+
 ## A read-back never writes (2026-07-18)
 
 **Read-back = только чтение, ЛИБО явная транзакция с `rollback`. Третьего вида не

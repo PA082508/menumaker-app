@@ -1,6 +1,13 @@
 -- ============================================================================
 -- 20260719b — лицензионные тоталы центра: свести ДВЕ пары в одну
--- PREPARED 2026-07-18 · NOT APPLIED
+-- APPLIED: 2026-07-18  (claim — verify before building on it)
+-- READ-BACK: Ridge 215/215 · Pearl 158/158 · Highland 106/106 · under2_5 = NULL ×3
+-- VERIFY:   select count(*) = 0 as totals_agree
+--             from menumaker.centers
+--            where license_capacity is not null
+--              and license_total_max is distinct from license_capacity;
+-- ⚠️ «до 2½» НАМЕРЕННО пусто — ждёт трёх чисел с бумажных лицензий DCY.
+--    Старая пара НЕ снесена: пока она единственный носитель under-2.
 --
 -- ⚠️ ЗАКАЗ ИСПОЛНЕН НЕ БУКВАЛЬНО — прошу решение до применения.
 --

@@ -56,9 +56,15 @@ comment on column menumaker.safepass_sessions.teacher_id is
   'Пишется только safepass_confirm_handoff по PIN. Инвариант — CHECK ниже.';
 
 -- §2 гарантия на своём месте: подтверждено ⇒ учитель есть
+-- btrim(...) <> '' — не педантизм. Весь смысл §0 в том, что служебная пустышка
+-- в регулируемой записи хуже NULL: NULL честно говорит «учителя не было», а ''
+-- притворяется именем. Проверка только на IS NOT NULL оставила бы '' законным —
+-- то есть запрещала бы честное отсутствие и разрешала ложь.
 alter table menumaker.safepass_sessions
   add constraint safepass_confirmed_has_teacher
-  check (status <> 'confirmed' or (teacher_id is not null and teacher_name is not null))
+  check (status <> 'confirmed'
+         or (teacher_id   is not null and btrim(teacher_id)   <> ''
+         and teacher_name is not null and btrim(teacher_name) <> ''))
   not valid;
 
 -- not valid = проверяем только НОВЫЕ строки; существующие валидируем отдельно,

@@ -33,6 +33,7 @@ import CACFPChecklistPage from './pages/cacfp-reports/CACFPChecklistPage'
 import SafePassTeacherPage from './pages/safepass/SafePassTeacherPage'
 import SafePassParentPage from './pages/safepass/SafePassParentPage'
 import SafePassEnrollDevice from './pages/safepass/SafePassEnrollDevice'
+import SafePassIssueCode from './pages/safepass/SafePassIssueCode'
 import SafePassHelpPage from './pages/safepass/SafePassHelpPage'
 import MealCountHelpPage from './pages/meal-count/MealCountHelpPage'
 import KitchenPlanningReport from './pages/reports/KitchenPlanningReport'
@@ -133,6 +134,8 @@ export default function App() {
             <Route path="/t/:token" element={<SafePassEnrollDevice />} />
             <Route path="/portal/:role/:center" element={<PortalPage />} />
             <Route path="/portal/:role" element={<PortalPage />} />
+            {/* Staff issues a parent login code — authenticated, full-screen, no office chrome. */}
+            <Route path="/safepass/issue" element={<ProtectedRoute><SafePassIssueCode /></ProtectedRoute>} />
             <Route
               path="/"
               element={

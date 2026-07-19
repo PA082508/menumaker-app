@@ -35,7 +35,6 @@ export default function SafePassParentPage() {
   const [phone, setPhone] = useState('')
   const [otp, setOtp] = useState('')
   const [otpErr, setOtpErr] = useState('')
-  const [sending, setSending] = useState(false)
   const [verifying, setVerifying] = useState(false)
   const [personName, setPersonName] = useState('')
   const [children, setChildren] = useState<Child[]>([])
@@ -57,15 +56,13 @@ export default function SafePassParentPage() {
 
   const normPhone = (p:string) => '+1' + p.replace(/\D/g,'').slice(-10)
 
-  async function sendOTP() {
+  // The code is issued by staff (safepass_issue_login_code) and given to the parent
+  // out of band — never generated in this browser. So "Get Code" just advances to
+  // the entry screen; there is nothing to send from here. Real SMS, when it exists,
+  // will call the same issue RPC server-side and text the code.
+  function sendOTP() {
     if (phone.replace(/\D/g,'').length < 10) return
-    setSending(true)
-    const code = Math.floor(100000 + Math.random()*900000).toString()
-    const np = normPhone(phone)
-    sessionStorage.setItem('sp_otp_'+np, code)
-    sessionStorage.setItem('sp_otp_exp_'+np, String(Date.now()+600000))
-    console.log('SafePass OTP for', np, ':', code)
-    setSending(false)
+    setOtpErr('')
     setScreen('otp')
   }
 
@@ -73,11 +70,15 @@ export default function SafePassParentPage() {
     setVerifying(true); setOtpErr('')
     const np = normPhone(phone)
     const entered = otp.trim().replace(/\D/g,'')
-    const stored = sessionStorage.getItem('sp_otp_'+np)
-    const exp = parseInt(sessionStorage.getItem('sp_otp_exp_'+np) ?? '0')
-    const ok = stored && stored === entered && Date.now() < exp
-    if (!ok) { setOtpErr('Incorrect code or code expired.'); setVerifying(false); return }
-    sessionStorage.removeItem('sp_otp_'+np)
+    // Server-side check against the staff-issued code. The browser never holds the
+    // correct value to compare against — that is the whole point vs the old
+    // in-browser OTP. Unknown phone and wrong code return the same 'invalid'.
+    const { data:v, error:vErr } = await supabase.schema('menumaker')
+      .rpc('safepass_verify_login_code', { p_phone: np, p_code: entered })
+    if (vErr || !v?.ok) {
+      setOtpErr('Incorrect or expired code. Ask Play Academy staff for a new one.')
+      setVerifying(false); return
+    }
     setPersonId(np)
     // Via RPC, not the table: it resolves the real classroom from roster (anon has
     // no readable roster policy, which is why classroom was hardcoded here before).
@@ -264,10 +265,10 @@ export default function SafePassParentPage() {
         <div style={{fontSize:14,color:C.muted,marginTop:8}}>Enter your registered phone number</div>
       </div>
       <input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="(555) 000-0000" style={INP} onKeyDown={e=>e.key==='Enter'&&sendOTP()}/>
-      <div style={{fontSize:11,color:C.muted,textAlign:'center',margin:'8px 0 20px'}}>We will show you a 6-digit code to enter</div>
-      <button onClick={sendOTP} disabled={sending||phone.replace(/\D/g,'').length<10}
+      <div style={{fontSize:11,color:C.muted,textAlign:'center',margin:'8px 0 20px'}}>Play Academy staff will give you a 6-digit code</div>
+      <button onClick={sendOTP} disabled={phone.replace(/\D/g,'').length<10}
         style={BTN(C.bg,phone.replace(/\D/g,'').length>=10?C.green:C.border)}>
-        {sending?'Sending…':'Get Code →'}
+        I have a code →
       </button>
     </div></div>
   )
@@ -277,7 +278,7 @@ export default function SafePassParentPage() {
       <div style={{textAlign:'center',marginBottom:28,marginTop:20}}>
         <div style={{fontSize:48,marginBottom:12}}>💬</div>
         <div style={{fontSize:22,fontWeight:800}}>Enter Code</div>
-        <div style={{fontSize:14,color:C.muted,marginTop:8}}>Check your browser console for the 6-digit code<br/><span style={{fontSize:12}}>Valid for 10 minutes</span></div>
+        <div style={{fontSize:14,color:C.muted,marginTop:8}}>Enter the 6-digit code Play Academy gave you<br/><span style={{fontSize:12}}>Valid for 15 minutes</span></div>
       </div>
       <input type="number" value={otp} onChange={e=>setOtp(e.target.value)} placeholder="000000"
         style={{...INP,fontSize:32,letterSpacing:'0.3em'}} onKeyDown={e=>e.key==='Enter'&&verifyOTP()}/>

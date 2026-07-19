@@ -5,21 +5,15 @@ status: DRAFT — not for Doc Hub. Finalise Sunday evening against the ACTUAL
 audience: Carolyn Hercik (Lead Teacher), Maureen Minadeo (Assistant Teacher)
 ---
 
-# ⚠️ Draft — finalise Sunday evening
+# Финализирован под вариант 3A (решение Николая)
 
-Two versions of step 3 are written below. **Delete the one that does not
-match what is actually live on Sunday night**, print the rest, and hand it over
-Monday morning. Do not print both — a sheet that says "either this or that" is
-worse than no sheet.
+Путь с PIN идёт в вечерний деплой, поэтому вариант 3B удалён. **Одно условие:**
+если деплой в воскресенье вечером НЕ зелёный, этот лист печатать нельзя —
+понедельник тогда идёт по старому пути, и шаг 3 надо заменить на «нажать
+Accept/Release, PIN не спрашивается, инициалы на бумажный лист». Проверить перед
+печатью.
 
-- If `feat/teacher-confirm-handoff` is merged and deployed green → keep **3A**.
-- If it is not green by Sunday evening → keep **3B**, and Monday runs the old
-  path (logistics only, no PIN). That is the agreed fallback, not a failure.
-
-This is a rehearsal. Nothing you do on Monday goes to parents. If something
-looks wrong, stop and ask — that IS the point of the day.
-
----
+Печатать одну страницу, отдать в комнату утром.
 
 # SafePass — Red Room, Monday
 
@@ -47,7 +41,7 @@ Check the person in front of you first, the screen second. **The screen never
 overrides your eyes.** If you do not recognise the person, do not release the
 child — call Sonia.
 
-## 3A. Confirming — WITH PIN  *(keep this version if the new path is live)*
+## 3. Confirming
 
 1. Tap **✓ Accept** (drop-off) or **✓ Release** (pick-up) on that child's card.
 2. A keypad appears. **Type your own 4-digit PIN.** Yours, not a shared one —
@@ -58,15 +52,6 @@ child — call Sonia.
 Wait it out — it will unlock by itself. Do not keep tapping, and do not use the
 other teacher's PIN. If it still refuses after the lock clears, use the paper
 sheet and call Sonia.
-
-## 3B. Confirming — NO PIN  *(keep this version if the new path is not live)*
-
-1. Tap **✓ Accept** (drop-off) or **✓ Release** (pick-up) on that child's card.
-2. The card moves to today's log.
-
-There is no PIN step today. The system will not record which of you confirmed —
-so **write your initials on the paper sheet** for every child. That is the only
-record of who took the child today.
 
 ## 4. If something goes wrong
 

@@ -107,3 +107,43 @@ commit;
 --   · снос license_capacity / license_capacity_under2 — после заполнения 2½
 --   · заполнение license_under2_5_max — только с бумажной лицензии, руками
 -- ============================================================================
+
+-- ============================================================================
+-- §5 ПРОДОЛЖЕНИЕ (18.07, вечер) — имя колонки врало, значения верны
+--
+-- Николай перечитал БУМАЖНУЮ лицензию Pearl, дословно:
+--   «total capacity of 158; of this, 36 may be under 2 1/2 years»
+-- → license_capacity_under2 = 36 это under-2½, а НЕ under-2.
+--   Переименование 20260705b было верным; «третья семантика» из §0 снята
+--   владельцем. Врало ИМЯ колонки, содержимое всё это время было лицензионным.
+--
+-- ЧЕГО ЖДЁМ: Николай сверяет две оставшиеся бумаги —
+--   Ridge     215 / 57 ?
+--   Highland  106 / 42 ?
+--
+-- ПРИ ДВУХ ПОДТВЕРЖДЕНИЯХ выполняется §6. Ручной ввод трёх чисел ОТМЕНЯЕТСЯ.
+-- ЕСЛИ КАКАЯ-ТО БУМАГА РАЗОЙДЁТСЯ С БАЗОЙ — истина БУМАГА, точечная правка
+-- по слову Николая, и §6 не запускается целиком.
+-- ============================================================================
+
+-- §6 — НЕ ПРИМЕНЯТЬ до двух подтверждений с бумаги.
+-- begin;
+--   update menumaker.centers
+--      set license_under2_5_max = license_capacity_under2
+--    where license_under2_5_max is null
+--      and license_capacity_under2 is not null;
+--
+--   do $$
+--   declare n int;
+--   begin
+--     select count(*) into n from menumaker.centers
+--      where license_capacity_under2 is not null
+--        and license_under2_5_max is distinct from license_capacity_under2;
+--     if n <> 0 then raise exception 'под-2½ не сошлось у % центров, откат', n; end if;
+--   end $$;
+-- commit;
+--
+-- READ-BACK: Ridge 215/57 · Pearl 158/36 · Highland 106/42 в НОВОЙ паре.
+-- В историю версии колонки: «old column name lied; values verified against
+-- paper licenses by owner 2026-07-18».
+-- ПОСЛЕ этого — снос старой пары отдельным заходом, как и планировалось.

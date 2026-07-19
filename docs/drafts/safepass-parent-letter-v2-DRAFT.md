@@ -1,151 +1,173 @@
 ---
 title: SafePass — Parent Letter (Wickliffe) v2 — DRAFT
-status: DRAFT. Публикация ТОЛЬКО по слову Николая.
-target: Pages-репо (не Drive) + запись в реестре с версией — см. стандарт
-        «Где живёт публикуемое»
+status: DRAFT. Публикация ТОЛЬКО по слову Николая. Ждёт одного — ДАТ.
+based_on: v1 от 1 июля 2026 (полный текст получен 18.07). Это НАСТОЯЩЕЕ слияние;
+          предыдущая редакция писалась вслепую и заменена целиком.
+target: Pages-репо (не Drive) + карточка Hub одним заходом, анонимный curl-чек
 ---
 
-# ⚠️ Это НЕ правка оригинала — оригинал прочитать не удалось
+# Карта правок против v1
 
-Честно, чтобы не выдать сочинённое за отредактированное: **текст v1 я не
-видел.** Файл на Drive (`1pDFFpKA…`) не находится ни по API под аккаунтом
-владельца, ни поиском по названию; папка «Play Academy — SafePass Documents»
-пуста; анонимный `curl` даёт 401.
+| # | v1 | v2 | почему |
+|---|---|---|---|
+| 1 | July 1–14 / mandatory July 15 | **20–26 июля / с 27-го** | даты прошли; 20-е — внутренняя репетиция, родителей касается 27-е. **ЖДЁТ СЛОВА** |
+| 2 | «Play Academy Mayfield Hills» | **Highland Heights** | подтверждено Николаем |
+| 3 | «phone number is verified by SMS» | **confirmation code from Play Academy** | SMS-провайдера нет; вход по коду директора (`safepass_temp_codes`) |
+| 4 | «works ONLY on devices registered and authorized by administration» *(в родительской секции)* | ось **само-регистрации** | канон 18.07. Фраза остаётся только там, где она про **сотрудников** — BYOD |
+| 5 | Late Care: 15 / 30 / 45 + «система не даёт закрыть смену» | **операционная формулировка без таймеров** | измерено: `onEscalate` — всплывающая подсказка, ни звонка, ни записи; `🔒 Cannot close shift` — текстовый бейдж, ничего не блокирует |
+| 6 | School-Age Transportation + GPS | **секция удалена целиком** | геолокации в коде нет |
+| 7 | Field Trips and Special Activities | **секция удалена целиком** | не найдено в коде вовсе |
+| 8 | «a legal record available to you at any time» | смягчено до фактического | журнал есть; append-only и именных отказов — нет |
+| 9 | Early Care | **дословно, минус одна фраза** | текст = точное описание (а)-режима. Удалено: «Our system automatically routes your notification to the duty teacher on shift» — авто-роутинга нет: `duty_teacher_id` никем не пишется, `dutyChildren` не наполняется, маршрутизации уведомлений в коде не существует. Остальное слово в слово |
+| 10 | Authorized Persons через директора | **сохранено**, уточнена граница с телефоном | `trusted_persons` — работает |
 
-Черновик ниже написан **с нуля**, опираясь на то, что поддаётся проверке:
-
-- описание карточки Doc Hub: *«Pilot announcement. Registration July 1–14,
-  mandatory July 15.»* — единственный сохранившийся фрагмент обещанного;
-- канон 18.07: устройства = само-регистрация родителя, люди = утверждает
-  директор (`DECISIONS.md` §6);
-- фактическое состояние кода: вход по коду директора, полная само-регистрация
-  после пилота.
-
-**⚠️ Оригинал в чат НЕ пришёл.** Николай пишет «текст у меня в чате» — в этой
-переписке его нет (та же судьба, что у неотправленных блоков). Поэтому слияние
-v1↔v2 сделать нечем; ниже применены дельты по ЕГО ОПИСАНИЮ сверки, а не по
-исходному тексту. Пункты «сохранить дословно» (Early Care сценарий, Authorized
-Persons, «NOT in App Store») внесены по смыслу — **дословность не гарантирована,
-пока текст не окажется передо мной.**
-
-Публикация — только после того, как оригинал придёт и слияние станет настоящим.
+**Принцип отбора:** обещание без кода не уходит под «Coming next» — оно **не
+пишется**. Родителю обещание с оговоркой читается как обещание.
 
 ---
 
-# SafePass — Wickliffe
+# SafePass — Parent Letter (Wickliffe) v2
 
-**Что это.** SafePass — то, как мы записываем передачу вашего ребёнка: кто
-привёл, кто забрал, во сколько и кто из педагогов принял. Это делает момент
-передачи однозначным — и для вас, и для нас.
+**Play Academy Wickliffe** · Wickliffe, Ohio
+**Date:** _____ · **To:** Play Academy Wickliffe Families
+**From:** Play Academy Wickliffe Administration
+**Re:** SafePass — New Child Safety System — Pilot Program
 
-**Бумажный журнал остаётся официальным документом.** SafePass его не заменяет.
+Dear Play Academy Wickliffe Families,
 
-## Даты
+The safety of your child is at the heart of everything we do at Play Academy
+Wickliffe. We are proud to introduce **SafePass** — our new digital child safety
+system — exclusively at our Wickliffe location.
 
-*(⚠️ ЗАПОЛНИТЬ ПОСЛЕ РЕШЕНИЯ. В v1 стояло «Registration July 1–14, mandatory
-July 15» — эти даты прошли, а пилот сдвинулся на 20 и 27 июля. Публиковать
-старые даты нельзя: письмо объявляет обязательным то, что ещё не началось.)*
+Play Academy Wickliffe is the first center to launch this initiative. Your
+participation and feedback will shape how we bring SafePass to Play Academy
+Parma Heights and Play Academy Highland Heights.
 
-- **Знакомство и регистрация:** 20–26 июля
-- **Обязательное использование:** с 27 июля
+## Timeline
 
-*(ПРЕДЛОЖЕНИЕ на утверждение, не решение. Репетиция 20-го — внутренняя, она
-родителей не касается; родителей касается 27-е. Письмо не публикуется, пока
-Николай эти даты не подтвердит.)*
+> ⚠️ **ЖДЁТ СЛОВА НИКОЛАЯ.** Предложение: регистрация **20–26 июля**,
+> обязательное использование **с 27 июля**. Без подтверждения не публикуется.
 
-## Как вы получите доступ
+- **July 20–26, 2026:** Registration period. Set up the app and register your
+  phone. Families who register early may begin practicing immediately.
+- **July 27, 2026:** SafePass is mandatory for all pilot families for every
+  drop-off and pick-up.
 
-**SafePass нет в App Store и Google Play.** Он открывается только по
-**персональной ссылке-приглашению** от центра — искать его в магазине приложений
-не нужно и бесполезно.
+## How SafePass Works — Your Child is Protected at Every Moment
 
-Ссылка ваша: она привязана к вашей семье, и делиться ею не нужно.
+SafePass is built on one principle: your child is always in the documented,
+accountable care of a named Play Academy staff member. From the moment you drop
+off your child to the moment you pick them up, the system tracks every transfer
+of responsibility.
 
-1. Откройте ссылку **на том телефоне**, которым будете пользоваться каждый день.
-2. Введите **код подтверждения**, который вам назовут в Play Academy.
-3. Телефон становится вашим доверенным устройством. Больше ничего вводить не
-   потребуется.
+**Morning Drop-Off**
 
-**Регистрируете устройство вы сами** — директору не нужно ничего заносить за вас
-и не нужно передавать ему телефон.
+- You arrive and open the Play Academy app on your registered smartphone
+- Tap **Drop Off** and select your child
+- If your child arrives before their classroom teacher — they are received by
+  our Early Care duty staff
+- When the classroom teacher arrives, they formally accept your child's group
+- You receive confirmation at every step
 
-*(⚠️ ВНУТРЕННЕЕ, в письмо не идёт: в v1 стояла SMS-верификация. SMS-провайдера
-нет; к 27.07 вход идёт по коду, который выдаёт директор — `safepass_temp_codes`.
-Поэтому «confirmation code from Play Academy», а не «SMS». Обещать SMS нельзя.)*
+**Afternoon Pick-Up**
 
-## Сменили телефон?
+- Open the app and tap **Pick Up**
+- Your teacher is notified and prepares your child
+- Your child is released only to you or your registered authorized person
+- You both receive confirmation
 
-Откройте **ту же персональную ссылку** на новом телефоне и пройдите шаги
-заново. Старое устройство доступ потеряет. Отдельно ничего сообщать не нужно.
+## Early Care — Before Class Begins
 
-## Потеряли телефон
+Children who arrive before their classroom teacher begins their shift are
+received by our Early Care duty staff. When your child's classroom teacher
+arrives, they formally accept the class. You always receive confirmation that
+your child is in safe hands.
 
-**Сообщите центру сразу.** Доступ с этого устройства будет отозван — это
-делается немедленно и не ждёт конца дня. После этого зарегистрируйте новый
-телефон по той же ссылке.
+## Late Care — If You Are Running Late
 
-## Кто может забирать ребёнка
+If you are delayed at pick-up, your child remains under the care of our **Late
+Care duty staff** — a named member of our team who is responsible for your child
+until you arrive. We will call you if we have not heard from you, and we will
+keep you informed.
 
-Это **отдельный вопрос от телефона**, и решает его не приложение.
+Your child is never left without a named, responsible staff member.
 
-Список тех, кто вправе забирать вашего ребёнка, **ведёт и подтверждает
-директор** — по вашей просьбе, как и раньше. Наличие у человека телефона с
-приложением само по себе права забирать не даёт, а отсутствие приложения его не
-отнимает.
+## How We Protect Your Child — Security You Can Trust
 
-Если кого-то нужно добавить или убрать — говорите директору, не через
-приложение.
+**Private by Design.** The Play Academy app is **NOT available in the App Store
+or Google Play**. It can only be opened through a **personal invitation link**
+sent directly to you by Play Academy Wickliffe.
 
-## Что не изменится
+**Your Phone is Your Key.** You register your own phone: open your personal
+invitation link on the phone you use every day and enter the **confirmation
+code** we give you at Play Academy. That phone becomes your trusted device —
+nothing else to install, and no one else needs to handle your phone.
 
-- Педагог по-прежнему смотрит на человека перед собой. **Экран не отменяет
-  глаза.**
-- Незнакомого человека без подтверждения ребёнка не отдадут — с приложением или
-  без.
-- Бумажный журнал остаётся официальным документом.
+**Changing your phone?** Open the same personal link on the new one and register
+again. The old device loses access.
 
-## Вопросы
+**Lost your phone?** Tell us right away and we will revoke that device
+immediately. Then register the new one with the same link.
 
-**Sonia Texidor Rosa, Administrator** — (440) 520-0031.
+**Unregistered Contacts are Flagged Immediately.** If anyone attempts to pick up
+your child from an unregistered phone, your teacher receives an immediate alert.
+Your child is **NOT** released until our director confirms authorization.
+
+**Every Transfer is Recorded.** Every drop-off, pick-up, and staff transfer is
+digitally timestamped and stored securely.
+
+## Authorized Persons
+
+If someone other than a parent will drop off or pick up your child, please
+register their name and phone number **with Director Sonia Texidor**. Only
+registered phone numbers are recognized by SafePass.
+
+Who may collect your child is decided by you and recorded by our director — it
+is separate from registering your own phone, and it stays under our control
+rather than an app's.
+
+*Please note: for the safety of your child, teachers may request a photo ID from
+any authorized person they do not personally recognize.*
+
+## Our Staff and Their Devices
+
+Our teachers use **classroom iPads** as their primary SafePass device. On the
+playground and during outdoor activities, teachers may use their personal
+registered smartphone to ensure uninterrupted safety coverage for your child.
+**All staff devices are registered and authorized by Play Academy
+administration.** Teacher smartphone use is governed by our BYOD Policy
+HR-BYOD-001.
+
+## What You Need to Do
+
+- Open the Play Academy app using your **personal invitation link** (sent
+  separately)
+- Enter the **confirmation code** we give you
+- Confirm your registration with Director Sonia Texidor
+- Register any authorized persons — name and phone number — with the director
+- Practice the app before the mandatory date — early registrants may begin right
+  away
+
+Upon successful completion of this pilot, SafePass will be introduced at Play
+Academy Parma Heights and Play Academy Highland Heights.
+
+Thank you for your trust. SafePass is our commitment that your child's safety is
+protected at every moment of every day.
+
+Questions? Please contact **Director Sonia Texidor** at Play Academy Wickliffe.
+
+Warmly,
+**Play Academy Wickliffe Administration**
+Wickliffe, Ohio
 
 ---
 
 # Чек-лист публикации
 
-- [ ] найден v1 и сверен, либо подтверждено, что v1 утрачен
-- [ ] даты подтверждены Николаем и вписаны
-- [ ] текст переведён на EN (родителям уходит EN-версия)
+- [ ] **даты подтверждены Николаем** ← единственный блокер
 - [ ] публикация в **Pages-репо**, не Drive
 - [ ] запись в реестре с версией + history-запись тем же заходом
 - [ ] ссылка проверена **анонимным** curl → 200
-- [ ] карточка Hub `safepass-parent-letter` переведена с `driveUrl` на новый URL
-
----
-
-# Замер обещаний против кода — рамка «Available at pilot / Coming next»
-
-Все обещания v1, названные Николаем, измерены по `src/` 18.07. Ни одно не
-выброшено — но то, чего нет, должно стоять под честным заголовком, иначе письмо
-обещает родителю функцию, которой в день пилота не будет.
-
-| обещание v1 | что в коде на самом деле | рамка |
-|---|---|---|
-| приём/выдача с подтверждением педагога | `safepass_confirm_handoff` + PIN — работает | **Available at pilot** |
-| сценарий Early Care (сборная комната утром) | режим «Gathering room» построен 18.07 | **Available at pilot** |
-| Authorized Persons ведёт директор | `safepass_trusted_persons`, ввод директора | **Available at pilot** |
-| родитель видит журнал по своему ребёнку | `SafePassParentPage` читает `safepass_sessions` | **Available at pilot** |
-| эскалация 15 / 30 / 45 мин | пороги рисуются, но `onEscalate` = **всплывающая подсказка и ничего больше** — ни звонка, ни записи, ни уведомления | **Coming next** |
-| «смену нельзя закрыть, пока есть дети» | текстовый бейдж `🔒 Cannot close shift`; **запрета нет**, ничего не блокируется | **Coming next** |
-| Transfer to Class | `onTransfer` = подсказка, записи в БД нет | **Coming next** |
-| GPS-чеклист транспорта | слово «GPS» есть только в поясняющем тексте; **геолокации в коде нет** | **Coming next** |
-| field-trip BYOD | не найдено | **Coming next** |
-| «legal record available at any time» | журнал есть, но append-only и именных отказов пока нет | **Coming next** |
-
-**⚠️ Отдельно, крупно:** панели Early Care и Late Care сегодня **всегда пусты** —
-`dutyChildren` объявлен и ни разу не наполняется данными. Экран отрисован,
-источника у него нет. То есть даже те пороги, что видны, не на чем показать.
-
-**Следствие для письма:** секции про эскалацию, закрытие смены, GPS и «в любой
-момент юридическая запись» либо уходят под «Coming next», либо не пишутся вовсе
-до 27.07. Мой выбор — **не писать**: родителю обещание с оговоркой читается как
-обещание.
+- [ ] карточка Hub `safepass-parent-letter`: ссылка **и описание** обновлены тем
+      же заходом — описание сейчас обещает «Registration July 1–14, mandatory
+      July 15», витрина и файл не должны разъехаться

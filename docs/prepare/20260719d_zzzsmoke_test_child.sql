@@ -93,15 +93,30 @@ where r.child_name like 'ZZZSMOKE%';
 --     доверенное лицо, потом ребёнок — иначе останутся висячие ссылки.
 -- ============================================================================
 
--- 4a. ЧТО удаляем — посмотреть перед тем, как удалять
-select 'sessions' as what, count(*) from menumaker.safepass_sessions      where child_name like 'ZZZSMOKE%'
+-- 4a. ЧТО удаляем — посмотреть перед тем, как удалять.
+--     meal_week_records включён НЕ для полноты: его FK на roster объявлен БЕЗ
+--     on delete cascade. Если ZZZSMOKE кто-то отметил в Meal Count, DELETE из
+--     roster упрётся в foreign key violation и вся чистка встанет на середине —
+--     доверенное лицо уже удалено, ребёнок ещё нет. Поэтому смотрим ДО.
+select 'sessions'  as what, count(*) from menumaker.safepass_sessions        where child_name like 'ZZZSMOKE%'
 union all
-select 'trusted',          count(*) from menumaker.safepass_trusted_persons where child_name like 'ZZZSMOKE%'
+select 'trusted',           count(*) from menumaker.safepass_trusted_persons where child_name like 'ZZZSMOKE%'
 union all
-select 'roster',           count(*) from menumaker.roster                 where child_name like 'ZZZSMOKE%';
+select 'roster',            count(*) from menumaker.roster                   where child_name like 'ZZZSMOKE%'
+union all
+select 'meal_marks ⚠',      count(*) from menumaker.meal_week_records mwr
+                                     join menumaker.roster r on r.id = mwr.roster_id
+                                    where r.child_name like 'ZZZSMOKE%';
+-- ожидаем: 1 или больше sessions (по числу заявок теста) · 1 trusted · 1 roster · 0 meal_marks
+-- meal_marks > 0 → ребёнка отметили в Meal Count. Это тестовые данные о
+-- несуществующем ребёнке, удалять безопасно и НУЖНО — строкой в 4b ниже.
 
--- 4b. DELETE
+-- 4b. DELETE — порядок обратный вставке, зависимые строки первыми
 begin;
+  -- только если 4a показал meal_marks > 0; на нуле удалит 0 строк и не помешает
+  delete from menumaker.meal_week_records
+   where roster_id in (select id from menumaker.roster where child_name like 'ZZZSMOKE%');
+
   delete from menumaker.safepass_sessions        where child_name like 'ZZZSMOKE%';
   delete from menumaker.safepass_trusted_persons where child_name like 'ZZZSMOKE%';
   delete from menumaker.roster                   where child_name like 'ZZZSMOKE%';

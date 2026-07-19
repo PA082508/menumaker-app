@@ -820,6 +820,59 @@ The `VERIFY` line is the load-bearing one: it makes re-measuring a copy-paste,
 which is what turns the standard from a habit into the cheap default. `APPLIED`
 stays explicitly labelled a claim, because that is what Case 2 proved it is.
 
+### Case 4: the measurement that never ran — and the rule that caught it (2026-07-18)
+
+Cases 1–3 were about trusting someone else's label. Case 4 is mine, and it is
+worse, because it wore the costume of a measurement.
+
+I reported that `safepass_confirm_handoff` had **zero callers** in `src/`, and
+built a whole §3 of a prepare-file on it. The grep behind that claim had run
+from `src/pages`, so it searched `src/pages/src/` — a path that does not exist.
+It printed nothing. **I read "no output" as "no callers".** In reality
+`src/lib/safepassDevice.ts`, `PinPad.tsx` and a parity test were all sitting
+there, complete.
+
+Then I tried to `Write` my own thinner version of `safepassDevice.ts` over the
+real one. It was refused: **a file must be Read before it can be overwritten.**
+That rule — which exists for ordinary edit-safety, not for this — is the only
+thing between a bad measurement and destroyed working code.
+
+**Two rules, and they are a pair.**
+
+1. **An empty result is not a finding until the probe is proven to work.** A
+   search that finds nothing and a search that ran nowhere are indistinguishable
+   from the output alone. Before reporting absence, prove the probe: `pwd`, or
+   run it against something you know it must hit. Absence-claims are the ones
+   that most need a positive control, because they license deletion and
+   rebuilding.
+2. **Never overwrite what you have not read.** Not as a formality — as the last
+   catch. Every other check had already passed by the time this one fired.
+
+The second rule caught the first rule's failure. That is what defence in depth
+is supposed to look like, and it is why "the linter/tool is being annoying" is
+usually the wrong reading of a refusal.
+
+**Corollary, same day:** I also reported the v3 flip left no `history` entry in
+the registry. It had left one — I printed `history[-1]` on an array that is
+**newest-first**, so I read the oldest record and called it the latest. Same
+class again: the probe was wrong, the output was believed. Check the ordering of
+a list before indexing into its end.
+
+## A flip writes its own history entry, in the same pass (2026-07-18)
+
+`enroll-registry.json` is the source of truth about a form's state — not memory,
+not the changelog. A `current` that moves without a `history` entry leaves the
+registry saying **what** is live and nothing about **when or why**, which is
+exactly the state that makes the next person rebuild from guesswork.
+
+**Rule: the commit that moves `current` also appends the `history` entry, with
+the deploy markers (commit SHAs of both repos) once they exist.** Not a
+follow-up commit — the same pass, because the follow-up is what gets forgotten.
+
+If an entry ever has to be added after the fact, it is labelled `backfilled`
+explicitly. An honest late record is not a forgery; an undated one that pretends
+to be contemporaneous is.
+
 ## A read-back never writes (2026-07-18)
 
 **Read-back = только чтение, ЛИБО явная транзакция с `rollback`. Третьего вида не

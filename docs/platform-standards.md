@@ -932,6 +932,25 @@ The second rule caught the first rule's failure. That is what defence in depth
 is supposed to look like, and it is why "the linter/tool is being annoying" is
 usually the wrong reading of a refusal.
 
+**Case 5, same class, 2026-07-19 — `raise notice` is invisible, so it cannot
+carry a verdict.** A `do $$ … $$` block in prepare-file `20260718e` signalled its
+result three ways: `raise exception 'FAIL — …'`, `raise notice 'PASS — …'`, and
+`raise notice 'stopped at: %'`. Run in the Supabase SQL editor, it returned
+**"Success. No rows returned"** — the editor swallows notices entirely. PASS,
+"stopped at something else", and a block that did nothing at all are **the same
+output**. Only the FAIL branch was legible, and only because an exception is the
+one thing the editor cannot hide.
+
+The verdict was still recoverable here — no exception means the FAIL branch did
+not fire, so the gate was passed by construction — but that is reasoning about
+what *didn't* appear, which is precisely the shape of the earlier cases.
+
+**Rule: in a `do` block, encode success and failure ONLY as exception vs. no
+exception — never as a notice.** If a positive result needs to be visible, it is
+not a `do` block: make it a `select` returning a boolean column. Notices are for
+colour, never for verdicts. Same family as the swallowed-`error` cases: a channel
+that can silently drop the message cannot be the channel the answer travels on.
+
 **Corollary, same day:** I also reported the v3 flip left no `history` entry in
 the registry. It had left one — I printed `history[-1]` on an array that is
 **newest-first**, so I read the oldest record and called it the latest. Same

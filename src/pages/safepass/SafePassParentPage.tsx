@@ -29,6 +29,9 @@ const RULES = [
   "If the teacher doesn't respond within 30 seconds, I use the Remind button and remain present with my child.",
   'All SafePass records are legally valid documents.',
 ]
+// ⚠️ REMOVE THE EVENING OF 2026-07-19 — fixed codes on a PUBLIC route. Authorised
+// for the home test only (a phone has no console to read the generated OTP from).
+// Cleanup is a line in the evening checklist; VERIFY = grep finds no test phone left.
 const TEST_PHONES: Record<string,string> = { '+19999999999':'123456', '+14407155225':'888777' }
 
 export default function SafePassParentPage() {
@@ -51,6 +54,9 @@ export default function SafePassParentPage() {
   const [centerId, setCenterId] = useState(DEFAULT_CENTER_ID)
   const [activePolicy, setActivePolicy] = useState<{ version: string; title: string; body: string|null }|null>(null)
   const [signing, setSigning] = useState(false)
+  // A failed write must be LOUD. Silence used to mean "denied" here; now it means
+  // nothing at all, and this banner says what did not happen.
+  const [fatal, setFatal] = useState('')
   const waitTimer = useRef<ReturnType<typeof setInterval>|null>(null)
 
   const normPhone = (p:string) => '+1' + p.replace(/\D/g,'').slice(-10)
@@ -77,16 +83,28 @@ export default function SafePassParentPage() {
     if (!ok) { setOtpErr('Incorrect code or code expired.'); setVerifying(false); return }
     sessionStorage.removeItem('sp_otp_'+np)
     setPersonId(np)
-    const { data:persons } = await supabase.schema('menumaker')
-      .from('safepass_trusted_persons').select('child_id,child_name,person_name,center_id')
-      .eq('org_id', ORG_ID).eq('phone', np).eq('is_active', true)
-    setPersonName(persons?.[0]?.person_name ?? 'Parent')
-    if (persons?.[0]?.center_id) setCenterId(persons[0].center_id)
-    const kids: Child[] = persons?.map((p:any) => ({
+    // Via RPC, not the table: it resolves the real classroom from roster (anon has
+    // no readable roster policy, which is why classroom was hardcoded here before).
+    const { data:list, error:listErr } = await supabase.schema('menumaker')
+      .rpc('safepass_children_for_phone', { p_phone: np })
+    if (listErr || !list?.ok) {
+      setOtpErr('Could not load your children. Check your connection.')
+      setVerifying(false); return
+    }
+    setPersonName(list.person_name ?? 'Parent')
+    const kids: Child[] = (list.children ?? []).map((p:any) => ({
       child_id: p.child_id, child_name: p.child_name,
-      classroom_id:'', classroom_name:'Green Room', center_id:p.center_id||''
-    })) ?? []
-    const kidsFinal = kids.length > 0 ? kids : [{child_id:'test-1',child_name:'Test Child',classroom_id:'',classroom_name:'Green Room',center_id:''}]
+      classroom_id: p.classroom_id ?? '', classroom_name: p.classroom_name ?? '—',
+      center_id: p.center_id || '',
+    }))
+    if (kids[0]?.center_id) setCenterId(kids[0].center_id)
+    // No silent stand-in child. A phone with no children says so — the old
+    // 'Test Child' fallback made "you are not registered" look like success.
+    if (kids.length === 0) {
+      setOtpErr('This number is not registered for any child. Please see the office.')
+      setVerifying(false); return
+    }
+    const kidsFinal = kids
     setChildren(kidsFinal)
 
     // Policy gate: must have signed the CURRENT ACTIVE addendum version to proceed.
@@ -129,13 +147,18 @@ export default function SafePassParentPage() {
     proceedAfterAgreement(children)
   }
 
+  // Every write below goes through a SECURITY DEFINER RPC, not the table: anon has
+  // no INSERT/UPDATE on safepass_sessions and no readable policy on it. The old
+  // direct-table calls could never succeed — and, because none of them bound
+  // `error`, a hard permission denial looked exactly like a quiet no-op. Errors are
+  // bound here and surfaced in the red banner; a parent must never be left thinking
+  // the teacher was notified when nothing was written.
   async function loadSessions(child: Child) {
-    const start = new Date(); start.setHours(0,0,0,0)
-    const { data } = await supabase.schema('menumaker').from('safepass_sessions')
-      .select('id,action_type,status,teacher_name,teacher_confirmed_at')
-      .eq('child_id', child.child_id).gte('created_at', start.toISOString())
-      .order('created_at', {ascending:false})
-    setTodaySessions(data ?? [])
+    const { data, error } = await supabase.schema('menumaker')
+      .rpc('safepass_parent_sessions', { p_phone: personId, p_child_id: child.child_id })
+    if (error || !data?.ok) { setFatal('Could not load today’s record. Check your connection.'); return }
+    setFatal('')
+    setTodaySessions((data.sessions ?? []) as Session[])
   }
 
   async function selectChild(child: Child) {
@@ -145,30 +168,50 @@ export default function SafePassParentPage() {
   async function startAction(act: 'drop_off'|'pick_up') {
     if (!selectedChild) return
     setAction(act)
-    const { data } = await supabase.schema('menumaker').from('safepass_sessions')
-      .insert({ org_id:ORG_ID, center_id:selectedChild.center_id||ORG_ID,
-        classroom_id:selectedChild.classroom_id||ORG_ID,
-        child_id:selectedChild.child_id, child_name:selectedChild.child_name,
-        action_type:act, status:'waiting', auth_method:'app', parent_device_id:devId() })
-      .select('id').single()
-    if (!data) return
-    setSessionId(data.id); setWaitSecs(0); setScreen('waiting')
+    const { data, error } = await supabase.schema('menumaker')
+      .rpc('safepass_request_handoff', {
+        p_phone: personId, p_child_id: selectedChild.child_id,
+        p_action: act, p_device_id: devId(),
+      })
+    if (error || !data?.ok) {
+      setFatal(data?.error === 'no_classroom'
+        ? 'Your child is not assigned to a classroom yet. Please see the office.'
+        : 'Could not send your request — the teacher has NOT been notified. Try again, or go to the office.')
+      return
+    }
+    setFatal('')
+    setSessionId(data.session_id); setWaitSecs(0); setScreen('waiting')
     if (waitTimer.current) clearInterval(waitTimer.current)
     waitTimer.current = setInterval(() => setWaitSecs(s => s+1), 1000)
-    supabase.channel('sp:'+data.id).on('postgres_changes',
-      {event:'UPDATE', schema:'menumaker', table:'safepass_sessions', filter:'id=eq.'+data.id},
-      (p:any) => {
-        if (p.new.status === 'confirmed') {
-          if (waitTimer.current) clearInterval(waitTimer.current)
-          setConfirmedInfo({teacher:p.new.teacher_name||'Teacher', time:hhmm(p.new.teacher_confirmed_at), action:act})
-          loadSessions(selectedChild!); setScreen('confirmed')
-        }
-      }).subscribe()
   }
 
+  // Realtime is impossible for anon here — postgres_changes honours RLS and there is
+  // no anon policy on safepass_sessions, so the old channel never fired. Poll the
+  // read RPC instead, only while the parent is on the waiting screen.
+  useEffect(() => {
+    if (screen !== 'waiting' || !sessionId || !selectedChild) return
+    let stop = false
+    const t = setInterval(async () => {
+      const { data, error } = await supabase.schema('menumaker')
+        .rpc('safepass_parent_sessions', { p_phone: personId, p_child_id: selectedChild.child_id })
+      if (stop || error || !data?.ok) return
+      const s = (data.sessions ?? []).find((x: Session) => x.id === sessionId)
+      if (s?.status === 'confirmed') {
+        if (waitTimer.current) clearInterval(waitTimer.current)
+        setConfirmedInfo({ teacher: s.teacher_name || 'Teacher', time: hhmm(s.teacher_confirmed_at), action })
+        setTodaySessions((data.sessions ?? []) as Session[])
+        setScreen('confirmed')
+      }
+    }, 3000)
+    return () => { stop = true; clearInterval(t) }
+  }, [screen, sessionId, selectedChild, personId, action])
+
   async function remind() {
-    if (sessionId) await supabase.schema('menumaker').from('safepass_sessions')
-      .update({remind_count:1, reminded_at:new Date().toISOString()}).eq('id',sessionId)
+    if (!sessionId) return
+    const { data, error } = await supabase.schema('menumaker')
+      .rpc('safepass_remind', { p_phone: personId, p_session_id: sessionId })
+    if (error || !data?.ok) setFatal('Could not send the reminder. Stay with your child and go to the office.')
+    else setFatal('')
   }
 
   const W: React.CSSProperties = { minHeight:'100vh', background:C.bg, color:C.text, fontFamily:"'Inter',sans-serif", display:'flex', flexDirection:'column', alignItems:'center', padding:'0 0 40px' }
@@ -182,6 +225,11 @@ export default function SafePassParentPage() {
         <div style={{width:36,height:36,borderRadius:10,background:C.green,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>🔒</div>
         <div><div style={{fontWeight:800,fontSize:16}}>SafePass</div><div style={{fontSize:11,color:C.muted}}>Play Academy Wickliffe</div></div>
       </div>
+      {fatal && (
+        <div role="alert" style={{marginTop:12,padding:'12px 14px',borderRadius:12,
+          background:'rgba(255,77,106,0.12)',border:`1.5px solid ${C.red}`,
+          color:C.red,fontSize:13,fontWeight:600,lineHeight:1.5}}>{fatal}</div>
+      )}
     </div>
   )
 

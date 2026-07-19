@@ -14,6 +14,11 @@ import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
 import { useAuth } from '@/hooks/useAuth'
 import Avatar from '@/components/Avatar'
+import PinPad from './shared/PinPad'
+import {
+  adoptDeviceTokenFromUrl, fetchDeviceContext, confirmHandoff,
+  type DeviceContext, type HandoffResult,
+} from '@/lib/safepassDevice'
 
 // org_id (3a9a290e-7e49-491e-946b-ad86f2399910) is stamped on INSERT by the
 // parent flow (Step 4); the teacher view only reads/confirms existing sessions.
@@ -35,6 +40,7 @@ type Session = {
   id: string
   child_id: string
   child_name: string
+  classroom_id: string
   parent_name: string | null
   trusted_person_name: string | null
   auth_method: string
@@ -212,6 +218,21 @@ export default function SafePassTeacherPage() {
   const [transportRuns, setTransportRuns] = useState<TransportRun[]>([])
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Device identity. The pad authenticates against the centre the DEVICE is
+  // bound to, never the centre picker above — the picker is a viewing control.
+  const [deviceToken] = useState<string | null>(() => adoptDeviceTokenFromUrl())
+  const [deviceCtx, setDeviceCtx] = useState<DeviceContext | null>(null)
+  const [deviceError, setDeviceError] = useState<string | null>(null)
+  const [pending, setPending] = useState<Session | null>(null)
+
+  // Gathering room — MANUAL switch, off by default. The morning intake happens in
+  // one room for the whole centre, so the queue must be scoped by centre rather
+  // than by class; every other room keeps its per-class behaviour untouched.
+  // Design note: this is the hand-operated forerunner of a future Early-Care
+  // mode. When Early/Late stop being inert flags (they are, today — see
+  // teacher-portal-order.md), this switch is what that mode should automate.
+  const [gathering, setGathering] = useState(false)
+
   const className = classrooms.find(c => c.id === classId)?.name ?? '—'
 
   // tick (clock + timers)
@@ -261,12 +282,18 @@ export default function SafePassTeacherPage() {
         .order('child_name')
       if (!cancelled) setRoster((kids ?? []) as Child[])
 
-      const { data: sess } = await supabase.schema('menumaker').from('safepass_sessions')
-        .select('id,child_id,child_name,parent_name,trusted_person_name,auth_method,action_type,status,person_initiated_at,teacher_confirmed_at')
-        .eq('classroom_id', classId)
+      // Gathering room: the morning is taken in one room for the whole centre, so
+      // the queue is scoped by CENTRE and each card carries the child's own class.
+      // Manual toggle on purpose — see the note by the switch.
+      const q = supabase.schema('menumaker').from('safepass_sessions')
+        .select('id,child_id,child_name,classroom_id,parent_name,trusted_person_name,auth_method,action_type,status,person_initiated_at,teacher_confirmed_at')
         .gte('created_at', startOfTodayISO())
         .order('person_initiated_at', { ascending: true })
+      const { data: sess, error: sessErr } = gathering && deviceCtx
+        ? await q.eq('center_id', deviceCtx.center_id)
+        : await q.eq('classroom_id', classId)
       if (cancelled) return
+      if (sessErr) { flashToast('Could not load the queue — check the connection', true); return }
       const rows = (sess ?? []) as Session[]
       setQueue(rows.filter(s => s.status === 'waiting' && s.auth_method === 'app'))
       setConfirmed(rows.filter(s => s.status === 'confirmed').sort(
@@ -274,16 +301,18 @@ export default function SafePassTeacherPage() {
     })()
 
     const channel = supabase
-      .channel(`safepass:classroom:${classId}`)
+      .channel(gathering && deviceCtx ? `safepass:center:${deviceCtx.center_id}` : `safepass:classroom:${classId}`)
       .on('postgres_changes',
-        { event: 'INSERT', schema: 'menumaker', table: 'safepass_sessions', filter: `classroom_id=eq.${classId}` },
+        { event: 'INSERT', schema: 'menumaker', table: 'safepass_sessions',
+          filter: gathering && deviceCtx ? `center_id=eq.${deviceCtx.center_id}` : `classroom_id=eq.${classId}` },
         ({ new: s }: any) => {
           if (s.status === 'waiting' && s.auth_method === 'app') {
             setQueue(q => q.some(x => x.id === s.id) ? q : [...q, s as Session])
           }
         })
       .on('postgres_changes',
-        { event: 'UPDATE', schema: 'menumaker', table: 'safepass_sessions', filter: `classroom_id=eq.${classId}` },
+        { event: 'UPDATE', schema: 'menumaker', table: 'safepass_sessions',
+          filter: gathering && deviceCtx ? `center_id=eq.${deviceCtx.center_id}` : `classroom_id=eq.${classId}` },
         ({ new: s }: any) => {
           if (s.status === 'confirmed') {
             setQueue(q => q.filter(x => x.id !== s.id))
@@ -297,7 +326,21 @@ export default function SafePassTeacherPage() {
       .subscribe()
 
     return () => { cancelled = true; supabase.removeChannel(channel) }
-  }, [classId])
+    // gathering + the device's centre are READ inside: without them here, flipping
+    // the switch changed only the per-card badge while the query and the Realtime
+    // channel stayed bound to the old scope.
+  }, [classId, gathering, deviceCtx?.center_id])
+
+  // Resolve the device once. A missing/revoked token is not a silent condition:
+  // Accept/Release stay disabled and the banner says why.
+  useEffect(() => {
+    if (!deviceToken) { setDeviceError('This tablet is not registered as a SafePass device.'); return }
+    let cancelled = false
+    fetchDeviceContext(deviceToken)
+      .then(ctx => { if (!cancelled) { setDeviceCtx(ctx); setDeviceError(null) } })
+      .catch(e => { if (!cancelled) setDeviceError(e?.message ?? 'device not registered') })
+    return () => { cancelled = true }
+  }, [deviceToken])
 
   function flashToast(text: string, amber = false) {
     setToast({ text, amber })
@@ -305,15 +348,31 @@ export default function SafePassTeacherPage() {
     toastTimer.current = setTimeout(() => setToast(null), 2600)
   }
 
-  async function confirm(s: Session) {
+  // A handoff is confirmed ONLY through safepass_confirm_handoff: device token
+  // + staff PIN. The direct .from('safepass_sessions').update(...) this function
+  // used to do is gone — it bypassed both, and stamped every handoff with the
+  // shared service account instead of the person who actually took the child.
+  function confirm(s: Session) {
+    if (!deviceToken || !deviceCtx) { flashToast('Device not registered', true); return }
+    setPending(s)
+  }
+
+  async function verifyHandoff(hash: string): Promise<HandoffResult> {
+    return confirmHandoff(deviceToken!, pending!.id, hash)
+  }
+
+  function onHandoffConfirmed(r: HandoffResult) {
+    const s = pending!
     const ts = new Date().toISOString()
-    const { error } = await supabase.schema('menumaker').from('safepass_sessions')
-      .update({ status: 'confirmed', teacher_confirmed_at: ts, teacher_id: teacherId, teacher_name: teacherName })
-      .eq('id', s.id)
-    if (error) { flashToast('Error — try again', true); return }
+    setPending(null)
     setQueue(q => q.filter(x => x.id !== s.id))
-    setConfirmed(c => [{ ...s, status: 'confirmed', teacher_confirmed_at: ts }, ...c])
-    flashToast(s.action_type === 'drop_off' ? `✓ ${s.child_name} accepted` : `✓ ${s.child_name} released`,
+    setConfirmed(c => c.some(x => x.id === s.id)
+      ? c
+      : [{ ...s, status: 'confirmed', teacher_confirmed_at: ts, teacher_name: r.staff_name }, ...c])
+    flashToast(
+      s.action_type === 'drop_off'
+        ? `✓ ${s.child_name} accepted — ${r.staff_name}`
+        : `✓ ${s.child_name} released — ${r.staff_name}`,
       s.action_type !== 'drop_off')
   }
 
@@ -396,6 +455,30 @@ export default function SafePassTeacherPage() {
         </div>
       )}
 
+      {/* Device gate — visible, not silent: without it nothing can be confirmed */}
+      {deviceError && (
+        <div style={{ background: '#3a1420', borderBottom: `1px solid ${C.border}`, padding: '10px 20px', color: '#ff4d6a', fontSize: 13, fontWeight: 600 }}>
+          ⚠️ {deviceError} Accept / Release are disabled until it is registered.
+        </div>
+      )}
+      {deviceCtx && (
+        <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: '6px 20px', fontSize: 11, color: C.muted }}>
+          Device: {deviceCtx.classroom_name}
+        </div>
+      )}
+
+      {/* PIN gate for a single pending handoff */}
+      {pending && deviceCtx && (
+        <PinPad
+          centerId={deviceCtx.center_id}
+          title={pending.action_type === 'drop_off' ? `Accept ${pending.child_name}` : `Release ${pending.child_name}`}
+          subtitle="Enter your 4-digit staff PIN"
+          onVerify={verifyHandoff}
+          onSuccess={onHandoffConfirmed}
+          onCancel={() => setPending(null)}
+        />
+      )}
+
       {/* Help link */}
       <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: '6px 20px', display: 'flex', justifyContent: 'flex-end' }}>
         <a href="/safepass/help" target="_blank"
@@ -413,6 +496,12 @@ export default function SafePassTeacherPage() {
           </button>
         ))}
         {dutyChildren.length>0 && <span style={{ marginLeft:'auto', fontSize:12, color:C.amber, fontWeight:700, display:'flex', alignItems:'center' }}>⚠️ {dutyChildren.length} in duty care</span>}
+        <label title="Morning intake for the whole centre in one room. Off = this class only."
+          style={{ marginLeft: dutyChildren.length>0 ? 12 : 'auto', display:'flex', alignItems:'center', gap:6, fontSize:12, fontWeight:600, color: gathering ? C.green : C.muted, cursor: deviceCtx ? 'pointer' : 'not-allowed', opacity: deviceCtx ? 1 : 0.5 }}>
+          <input type="checkbox" checked={gathering} disabled={!deviceCtx}
+            onChange={e => setGathering(e.target.checked)} style={{ accentColor: C.green }} />
+          Gathering room (whole centre)
+        </label>
       </div>
 
       {mode==='early_care' && <div style={{ padding: '20px', maxWidth: 800, margin: '0 auto' }}><EarlyCarePanelView dutyChildren={dutyChildren} onTransfer={c=>flashToast(c.child_name+' transferred')} onEscalate={c=>flashToast('Escalating: '+c.child_name,true)} C={C}/></div>}
@@ -441,6 +530,11 @@ export default function SafePassTeacherPage() {
                   <div style={{ width: 52, height: 52, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0, background: drop ? C.blueDim : C.amberDim, border: `2px solid ${drop ? C.blue : C.amber}` }}>{drop ? '🧒' : '👋'}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 19, fontWeight: 700, letterSpacing: -0.3 }}>{s.child_name}</div>
+                    {gathering && s.classroom_id !== classId && (
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.blue }}>
+                        {classrooms.find(c => c.id === s.classroom_id)?.name ?? 'another class'}
+                      </div>
+                    )}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
                       {s.parent_name && <span style={{ fontSize: 13, color: C.muted }}>{s.parent_name}</span>}
                       <span style={methodBadge}>📱 App</span>
@@ -454,7 +548,7 @@ export default function SafePassTeacherPage() {
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, borderTop: `1px solid ${C.border}`, background: C.border }}>
                   <button onClick={() => skip(s.id)} style={{ padding: 15, fontSize: 14, fontWeight: 700, border: 'none', cursor: 'pointer', background: C.surface2, color: C.muted, borderRadius: '0 0 0 16px', fontFamily: 'inherit' }}>Skip</button>
-                  <button onClick={() => confirm(s)} style={{ padding: 15, fontSize: 14, fontWeight: 700, border: 'none', cursor: 'pointer', background: drop ? C.blue : C.amber, color: drop ? '#fff' : C.bg, borderRadius: '0 0 16px 0', fontFamily: 'inherit' }}>{drop ? '✓ Accept' : '✓ Release'}</button>
+                  <button onClick={() => confirm(s)} disabled={!deviceCtx} style={{ padding: 15, fontSize: 14, fontWeight: 700, border: 'none', cursor: deviceCtx ? 'pointer' : 'not-allowed', background: !deviceCtx ? C.surface2 : (drop ? C.blue : C.amber), color: !deviceCtx ? C.muted : (drop ? '#fff' : C.bg), borderRadius: '0 0 16px 0', fontFamily: 'inherit' }}>{drop ? '✓ Accept' : '✓ Release'}</button>
                 </div>
               </div>
             )

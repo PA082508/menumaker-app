@@ -44,18 +44,22 @@ with ids as (
     join menumaker.classrooms cl on cl.center_id = ct.id and cl.name = 'Red'
    where ct.name ilike '%ridge%'
 ), kid as (
-  insert into menumaker.roster (center_id, classroom_id, child_name, first_name, last_name, is_active)
-  select center_id, classroom_id, 'ZZZSMOKE Testchild', 'ZZZSMOKE', 'Testchild', true
+  -- org_id ОБЯЗАТЕЛЕН, хотя колонка nullable: v_meal_grid фильтрует
+  -- core.is_org_member(r.org_id), и с NULL ребёнок стал бы невидим на планшете
+  -- (ростер воспитателя читается именно через эту вьюху). Вставка прошла бы
+  -- молча, а тест сорвался бы на пустом списке.
+  insert into menumaker.roster (org_id, center_id, classroom_id, child_name, first_name, last_name, is_active)
+  select org_id, center_id, classroom_id, 'ZZZSMOKE Testchild', 'ZZZSMOKE', 'Testchild', true
     from ids
-  returning id, center_id, child_name
+  returning id, org_id, center_id, child_name
 )
 insert into menumaker.safepass_trusted_persons
   (org_id, center_id, child_id, child_name, person_name, phone,
    relationship, authorized_by, access_type, is_active)
-select ids.org_id, kid.center_id, kid.id::text, kid.child_name,
+select kid.org_id, kid.center_id, kid.id::text, kid.child_name,
        'HOME TEST Parent', '+19999999999',
        'parent', 'home-test-19.07', 'permanent', true
-  from kid, ids
+  from kid
 returning child_id as zzzsmoke_child_id, child_name, person_name, phone;
 
 commit;
@@ -69,7 +73,8 @@ select
   r.is_active                                         as child_active,
   tp.phone = '+19999999999'                           as phone_is_test_number,
   tp.is_active                                        as trusted_active,
-  tp.child_id = r.id::text                            as link_intact
+  tp.child_id = r.id::text                            as link_intact,
+  r.org_id is not null                                as org_id_set
 from menumaker.roster r
   join menumaker.classrooms cl on cl.id = r.classroom_id
   join menumaker.safepass_trusted_persons tp on tp.child_id = r.id::text

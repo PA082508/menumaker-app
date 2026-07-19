@@ -18,7 +18,7 @@ target: Pages-репо (не Drive) + карточка Hub одним заход
 | 6 | School-Age Transportation + GPS | **секция удалена целиком** | геолокации в коде нет |
 | 7 | Field Trips and Special Activities | **секция удалена целиком** | не найдено в коде вовсе |
 | 8 | «a legal record available to you at any time» | смягчено до фактического | журнал есть; append-only и именных отказов — нет |
-| 9 | Early Care | **сохранено дословно** | точное описание (а)-режима, построенного 18.07 |
+| 9 | Early Care | **дословно, минус одна фраза** | текст = точное описание (а)-режима. Удалено: «Our system automatically routes your notification to the duty teacher on shift» — авто-роутинга нет: `duty_teacher_id` никем не пишется, `dutyChildren` не наполняется, маршрутизации уведомлений в коде не существует. Остальное слово в слово |
 | 10 | Authorized Persons через директора | **сохранено**, уточнена граница с телефоном | `trusted_persons` — работает |
 
 **Принцип отбора:** обещание без кода не уходит под «Coming next» — оно **не
@@ -79,8 +79,7 @@ of responsibility.
 ## Early Care — Before Class Begins
 
 Children who arrive before their classroom teacher begins their shift are
-received by our Early Care duty staff. Our system automatically routes your
-notification to the duty teacher on shift. When your child's classroom teacher
+received by our Early Care duty staff. When your child's classroom teacher
 arrives, they formally accept the class. You always receive confirmation that
 your child is in safe hands.
 

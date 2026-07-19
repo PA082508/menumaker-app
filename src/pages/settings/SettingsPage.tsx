@@ -1370,7 +1370,7 @@ function CapacitySettings() {
         <strong style={{ color: '#1a5c3f' }}>Ohio State Minimums (OAC 5180:2-12-08)</strong> are shown for reference only — they cannot be changed.<br/>
         Set your <strong>Actual Limit</strong> — your own standard, based on your program requirements.<br/>
         <span style={{ color: '#6b7280', fontSize: 12 }}>
-          Early Care hours use Ohio minimums automatically. Mixed age rule: up to N younger children allowed before ratio changes.
+          Early / Late mark a room for planning. Automatic ratio recalculation for those hours is in development — these boxes do not change any calculation today.
         </span>
       </div>
 

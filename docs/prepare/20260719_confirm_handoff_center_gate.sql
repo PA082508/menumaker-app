@@ -88,23 +88,61 @@ commit;
 
 -- ---------------------------------------------------------------------------
 -- §3 READ-BACK — заказанный тест: ребёнок Blue на девайсе Red.
---     Выполнять в транзакции с ROLLBACK: он ПИШЕТ (в этом весь смысл теста).
---     Read-back никогда не пишет — поэтому откат здесь обязателен, не опция.
+--
+--     Он ПИШЕТ — в этом весь смысл теста. Поэтому begin…rollback обязателен,
+--     не опция: read-back не оставляет следов. Ниже — готовый блок для
+--     SQL-редактора (без psql-переменных `:tok`, их редактор не понимает).
+--
+--     Вердикт возвращается КОЛОНКАМИ, а не notice: notice редактор глотает
+--     целиком (Case 5 в platform-standards.md). Три true — прошло.
+--
+--     Подставить в двух местах: ВСТАВЬ_ТОКЕН (токен девайса Red) и
+--     ВСТАВЬ_PIN (4 цифры настоящего PIN сотрудника Ridge, например Carolyn).
 -- ---------------------------------------------------------------------------
--- begin;
---   -- подставить: :tok — токен девайса Red, :blue_child — ребёнок из Blue
---   -- 1. создать тестовую сессию для ребёнка Blue в центре Ridge
---   -- 2. вызвать confirm_handoff с токеном Red и ВЕРНЫМ PIN
---   -- 3. ожидаем: НЕ 'session not in this room' и НЕ 'session not in this center'
---   select menumaker.safepass_confirm_handoff(:'tok', :'blue_session', :'good_hash');
---   -- 4. запись несёт комнату УСТРОЙСТВА, а класс ребёнка сохранён:
---   select (confirmed_classroom_id = (select classroom_id from menumaker.safepass_devices
---                                      where token_hash = encode(digest(:'tok','sha256'),'hex')))
---            as confirmed_in_red,
---          (classroom_id <> confirmed_classroom_id) as child_class_preserved,
---          status = 'confirmed'                     as confirmed
---     from menumaker.safepass_sessions where id = :'blue_session';
--- rollback;
+/*
+begin;
+
+  -- 1. тестовая сессия для ребёнка ЧУЖОГО класса (Blue) в центре Ridge
+  with dev as (
+    select * from menumaker.safepass_devices
+     where token_hash = encode(digest('ВСТАВЬ_ТОКЕН','sha256'),'hex')
+  ), blue as (
+    select r.id, r.classroom_id from menumaker.roster r
+      join menumaker.classrooms cl on cl.id = r.classroom_id
+     where cl.name = 'Blue' and cl.center_id = (select center_id from dev)
+       and r.is_active limit 1
+  )
+  insert into menumaker.safepass_sessions
+    (org_id, center_id, classroom_id, child_id, child_name,
+     action_type, status, auth_method, person_initiated_at)
+  select d.org_id, d.center_id, b.classroom_id, b.id::text, 'READBACK BLUE',
+         'drop_off', 'waiting', 'app', now()
+    from dev d, blue b;
+
+  -- 2. подтвердить с планшета Red верным PIN. До миграции здесь падало
+  --    'session not in this room' — теперь должно пройти.
+  select menumaker.safepass_confirm_handoff(
+           'ВСТАВЬ_ТОКЕН',
+           (select id from menumaker.safepass_sessions where child_name='READBACK BLUE'),
+           menumaker._safepass_pin_hash(
+             (select center_id from menumaker.safepass_devices
+               where token_hash = encode(digest('ВСТАВЬ_ТОКЕН','sha256'),'hex')),
+             'ВСТАВЬ_PIN')
+         ) as rpc_result;
+
+  -- 3. ВЕРДИКТ — три true в одной строке
+  select confirmed_classroom_id = (select classroom_id from menumaker.safepass_devices
+                                    where token_hash = encode(digest('ВСТАВЬ_ТОКЕН','sha256'),'hex'))
+                                              as confirmed_in_red,
+         classroom_id <> confirmed_classroom_id as child_class_preserved,
+         status = 'confirmed'                   as confirmed,
+         teacher_id, teacher_name               -- настоящий staff, не дверь
+    from menumaker.safepass_sessions where child_name = 'READBACK BLUE';
+
+rollback;   -- ← обязателен. Без него READBACK BLUE останется в базе.
+*/
+-- ↑ КОНЕЦ READ-BACK. После rollback: select count(*) from
+--   menumaker.safepass_sessions where child_name='READBACK BLUE';  → 0
 
 -- ============================================================================
 -- §4 ⚠️ ОДНОГО ЭТОГО НЕ ХВАТИТ — следствие на клиенте, нужно решение
@@ -116,17 +154,18 @@ commit;
 -- поэтому в очереди Red её не будет — воспитателю нечего нажимать.
 --
 -- То есть «сборная комната» — это ДВЕ правки, а не одна:
---   (1) эта миграция — сервер перестаёт отвергать;   ← готово, ждёт go
---   (2) клиент — очередь сборной комнаты грузится по ЦЕНТРУ, а не по классу.  ← НЕ СДЕЛАНО
+--   (1) эта миграция — сервер перестаёт отвергать;   ← ждёт go
+--   (2) клиент — очередь сборной комнаты по ЦЕНТРУ.  ← СДЕЛАНО (обновление 19.07)
 --
--- (2) не сделан намеренно: это меняет то, что видит воспитатель на экране, и
--- вариантов минимум два —
---   а) режим «сборная комната» переключателем: очередь по центру, в карточке
---      показывать класс ребёнка (иначе Carolyn не поймёт, чей ребёнок);
---   б) очередь всегда по центру, а класс — просто колонка.
--- (а) ближе к утреннему сценарию и не меняет поведение остальных комнат.
--- Жду слова, какой; после этого правка ложится в ту же teacher-ветку ДО
--- вечернего деплоя.
+-- ОБНОВЛЕНИЕ 2026-07-19. Николай выбрал вариант (а): переключатель «Gathering
+-- room», по умолчанию выключен, в карточке показывается класс ребёнка. Лежит в
+-- feat/teacher-confirm-handoff (08cddd0); там же починены deps эффекта (c2c2cac),
+-- без которых щелчок переключателя менял только бейдж, а запрос и realtime-канал
+-- оставались на старой области.
+--
+-- ⚠️ ПОРЯДОК ВАЖЕН: эта миграция должна лечь ДО деплоя ветки. Иначе включённый
+-- переключатель покажет карточку ребёнка Blue, а нажатие Accept упрётся в
+-- 'session not in this room' — воспитатель увидит кнопку, которая не работает.
 --
 -- 'transfer' (переход ребёнка в свой класс позже) из модели attendance этим
 -- заходом НЕ вводится — confirmed_classroom_id как раз даёт ему опору.

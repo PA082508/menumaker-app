@@ -820,6 +820,108 @@ The `VERIFY` line is the load-bearing one: it makes re-measuring a copy-paste,
 which is what turns the standard from a habit into the cheap default. `APPLIED`
 stays explicitly labelled a claim, because that is what Case 2 proved it is.
 
+### Case 4: the measurement that never ran — and the rule that caught it (2026-07-18)
+
+Cases 1–3 were about trusting someone else's label. Case 4 is mine, and it is
+worse, because it wore the costume of a measurement.
+
+I reported that `safepass_confirm_handoff` had **zero callers** in `src/`, and
+built a whole §3 of a prepare-file on it. The grep behind that claim had run
+from `src/pages`, so it searched `src/pages/src/` — a path that does not exist.
+It printed nothing. **I read "no output" as "no callers".** In reality
+`src/lib/safepassDevice.ts`, `PinPad.tsx` and a parity test were all sitting
+there, complete.
+
+Then I tried to `Write` my own thinner version of `safepassDevice.ts` over the
+real one. It was refused: **a file must be Read before it can be overwritten.**
+That rule — which exists for ordinary edit-safety, not for this — is the only
+thing between a bad measurement and destroyed working code.
+
+**Two rules, and they are a pair.**
+
+1. **An empty result is not a finding until the probe is proven to work.** A
+   search that finds nothing and a search that ran nowhere are indistinguishable
+   from the output alone. Before reporting absence, prove the probe: `pwd`, or
+   run it against something you know it must hit. Absence-claims are the ones
+   that most need a positive control, because they license deletion and
+   rebuilding.
+2. **Never overwrite what you have not read.** Not as a formality — as the last
+   catch. Every other check had already passed by the time this one fired.
+
+The second rule caught the first rule's failure. That is what defence in depth
+is supposed to look like, and it is why "the linter/tool is being annoying" is
+usually the wrong reading of a refusal.
+
+**Corollary, same day:** I also reported the v3 flip left no `history` entry in
+the registry. It had left one — I printed `history[-1]` on an array that is
+**newest-first**, so I read the oldest record and called it the latest. Same
+class again: the probe was wrong, the output was believed. Check the ordering of
+a list before indexing into its end.
+
+## A flip writes its own history entry, in the same pass (2026-07-18)
+
+`enroll-registry.json` is the source of truth about a form's state — not memory,
+not the changelog. A `current` that moves without a `history` entry leaves the
+registry saying **what** is live and nothing about **when or why**, which is
+exactly the state that makes the next person rebuild from guesswork.
+
+**Rule: the commit that moves `current` also appends the `history` entry, with
+the deploy markers (commit SHAs of both repos) once they exist.** Not a
+follow-up commit — the same pass, because the follow-up is what gets forgotten.
+
+If an entry ever has to be added after the fact, it is labelled `backfilled`
+explicitly. An honest late record is not a forgery; an undated one that pretends
+to be contemporaneous is.
+
+## Где живёт публикуемое: Pages/Storage — да, Drive — нет (2026-07-18)
+
+**Канон (Николай, 18.07).** Всё, что публикуется родителям или персоналу как
+документ, живёт **в Pages-репозитории или в Supabase Storage, с версией в
+реестре**. Google Drive — место для черновиков и исходников; **витрина на Drive
+не ссылается никогда**.
+
+**Почему это правило, а не вкусовщина.** Проверено в тот же день: три
+SafePass-карточки Doc Hub ведут на Drive-файлы, которых **нет**. Не «нет
+доступа» — нет:
+
+- Drive API под аккаунтом-владельцем (`playacademyusa@gmail.com`) на все три
+  ID → `Requested entity was not found`;
+- папка «Play Academy — SafePass Documents» в том же Drive — **пустая**;
+- поиск по `title contains 'SafePass' | 'Parent Letter'`, включая
+  `sharedWithMe` → ничего;
+- анонимный `curl` по всем четырём Drive-ссылкам витрины → **401**.
+
+То есть **живая витрина ведёт родителя в тупик**, и заметить это изнутри
+приложения нельзя: карточка выглядит целой, ссылка выглядит целой, ломается
+только клик. Файл на Drive может быть перемещён, удалён или перевыпущен с новым
+ID кем угодно и когда угодно — у ссылки нет ни версии, ни владельца в реестре,
+ни способа проверить её из CI.
+
+**Правило.**
+
+- публикуемый документ → Pages-репо (или Storage), URL резолвится анонимно,
+  версия записана в реестре, история флипов ведётся (см. §«A flip writes its
+  own history entry»);
+- Drive → черновики, исходники, внутренняя переписка. С витрины на него ссылок
+  нет;
+- ссылка на витрине обязана проверяться **анонимно** — авторизованный клик
+  автора ничего не доказывает, ровно как push не доказывает деплой.
+
+**Текущие кандидаты на переезд** (все — `driveUrl` в `DocumentHubPage.tsx`,
+захардкожены в странице, а НЕ в `src/config/showcaseLinks.ts`):
+
+| карточка | состояние |
+|---|---|
+| `safepass-parent-letter` | Drive, файл не найден · **родительская, приоритет** |
+| `safepass-teacher-guide` | Drive, файл не найден |
+| `safepass-concept` | Drive, файл не найден |
+| `byod-policy` | Drive, анонимно 401 — проверить отдельно |
+
+**Смежная находка, не про хранение:** `safepass-driver` и `safepass-director`
+ведут на `/safepass/teacher` — тот же роут, что и `safepass-teacher-app`, при
+том что карточки обещают «bus run checklist» и «Director Dashboard: monitor all
+classrooms». Ярлык ≠ содержание на живой витрине; отдельный кандидат на правку.
+
 ## A read-back never writes (2026-07-18)
 
 **Read-back = только чтение, ЛИБО явная транзакция с `rollback`. Третьего вида не

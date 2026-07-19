@@ -40,6 +40,7 @@ type Session = {
   id: string
   child_id: string
   child_name: string
+  classroom_id: string
   parent_name: string | null
   trusted_person_name: string | null
   auth_method: string
@@ -224,6 +225,14 @@ export default function SafePassTeacherPage() {
   const [deviceError, setDeviceError] = useState<string | null>(null)
   const [pending, setPending] = useState<Session | null>(null)
 
+  // Gathering room — MANUAL switch, off by default. The morning intake happens in
+  // one room for the whole centre, so the queue must be scoped by centre rather
+  // than by class; every other room keeps its per-class behaviour untouched.
+  // Design note: this is the hand-operated forerunner of a future Early-Care
+  // mode. When Early/Late stop being inert flags (they are, today — see
+  // teacher-portal-order.md), this switch is what that mode should automate.
+  const [gathering, setGathering] = useState(false)
+
   const className = classrooms.find(c => c.id === classId)?.name ?? '—'
 
   // tick (clock + timers)
@@ -273,12 +282,18 @@ export default function SafePassTeacherPage() {
         .order('child_name')
       if (!cancelled) setRoster((kids ?? []) as Child[])
 
-      const { data: sess } = await supabase.schema('menumaker').from('safepass_sessions')
-        .select('id,child_id,child_name,parent_name,trusted_person_name,auth_method,action_type,status,person_initiated_at,teacher_confirmed_at')
-        .eq('classroom_id', classId)
+      // Gathering room: the morning is taken in one room for the whole centre, so
+      // the queue is scoped by CENTRE and each card carries the child's own class.
+      // Manual toggle on purpose — see the note by the switch.
+      const q = supabase.schema('menumaker').from('safepass_sessions')
+        .select('id,child_id,child_name,classroom_id,parent_name,trusted_person_name,auth_method,action_type,status,person_initiated_at,teacher_confirmed_at')
         .gte('created_at', startOfTodayISO())
         .order('person_initiated_at', { ascending: true })
+      const { data: sess, error: sessErr } = gathering && deviceCtx
+        ? await q.eq('center_id', deviceCtx.center_id)
+        : await q.eq('classroom_id', classId)
       if (cancelled) return
+      if (sessErr) { flashToast('Could not load the queue — check the connection', true); return }
       const rows = (sess ?? []) as Session[]
       setQueue(rows.filter(s => s.status === 'waiting' && s.auth_method === 'app'))
       setConfirmed(rows.filter(s => s.status === 'confirmed').sort(
@@ -286,16 +301,18 @@ export default function SafePassTeacherPage() {
     })()
 
     const channel = supabase
-      .channel(`safepass:classroom:${classId}`)
+      .channel(gathering && deviceCtx ? `safepass:center:${deviceCtx.center_id}` : `safepass:classroom:${classId}`)
       .on('postgres_changes',
-        { event: 'INSERT', schema: 'menumaker', table: 'safepass_sessions', filter: `classroom_id=eq.${classId}` },
+        { event: 'INSERT', schema: 'menumaker', table: 'safepass_sessions',
+          filter: gathering && deviceCtx ? `center_id=eq.${deviceCtx.center_id}` : `classroom_id=eq.${classId}` },
         ({ new: s }: any) => {
           if (s.status === 'waiting' && s.auth_method === 'app') {
             setQueue(q => q.some(x => x.id === s.id) ? q : [...q, s as Session])
           }
         })
       .on('postgres_changes',
-        { event: 'UPDATE', schema: 'menumaker', table: 'safepass_sessions', filter: `classroom_id=eq.${classId}` },
+        { event: 'UPDATE', schema: 'menumaker', table: 'safepass_sessions',
+          filter: gathering && deviceCtx ? `center_id=eq.${deviceCtx.center_id}` : `classroom_id=eq.${classId}` },
         ({ new: s }: any) => {
           if (s.status === 'confirmed') {
             setQueue(q => q.filter(x => x.id !== s.id))
@@ -476,6 +493,12 @@ export default function SafePassTeacherPage() {
           </button>
         ))}
         {dutyChildren.length>0 && <span style={{ marginLeft:'auto', fontSize:12, color:C.amber, fontWeight:700, display:'flex', alignItems:'center' }}>⚠️ {dutyChildren.length} in duty care</span>}
+        <label title="Morning intake for the whole centre in one room. Off = this class only."
+          style={{ marginLeft: dutyChildren.length>0 ? 12 : 'auto', display:'flex', alignItems:'center', gap:6, fontSize:12, fontWeight:600, color: gathering ? C.green : C.muted, cursor: deviceCtx ? 'pointer' : 'not-allowed', opacity: deviceCtx ? 1 : 0.5 }}>
+          <input type="checkbox" checked={gathering} disabled={!deviceCtx}
+            onChange={e => setGathering(e.target.checked)} style={{ accentColor: C.green }} />
+          Gathering room (whole centre)
+        </label>
       </div>
 
       {mode==='early_care' && <div style={{ padding: '20px', maxWidth: 800, margin: '0 auto' }}><EarlyCarePanelView dutyChildren={dutyChildren} onTransfer={c=>flashToast(c.child_name+' transferred')} onEscalate={c=>flashToast('Escalating: '+c.child_name,true)} C={C}/></div>}
@@ -504,6 +527,11 @@ export default function SafePassTeacherPage() {
                   <div style={{ width: 52, height: 52, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0, background: drop ? C.blueDim : C.amberDim, border: `2px solid ${drop ? C.blue : C.amber}` }}>{drop ? '🧒' : '👋'}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 19, fontWeight: 700, letterSpacing: -0.3 }}>{s.child_name}</div>
+                    {gathering && s.classroom_id !== classId && (
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.blue }}>
+                        {classrooms.find(c => c.id === s.classroom_id)?.name ?? 'another class'}
+                      </div>
+                    )}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
                       {s.parent_name && <span style={{ fontSize: 13, color: C.muted }}>{s.parent_name}</span>}
                       <span style={methodBadge}>📱 App</span>

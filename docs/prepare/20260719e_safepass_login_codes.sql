@@ -118,9 +118,17 @@ begin
   return jsonb_build_object('ok', true, 'person_name', v_row.person_name);
 end $$;
 
-grant execute on function menumaker.safepass_issue_login_code(text)  to authenticated;
-grant execute on function menumaker.safepass_verify_login_code(text,text) to anon, authenticated;
+-- ⚠️ Postgres при create function ДАЁТ execute для PUBLIC по умолчанию, а anon —
+-- член PUBLIC. Одного grant to authenticated НЕ достаточно: без revoke аноним
+-- тоже имеет право EXECUTE (тело всё равно вернёт staff_only, но слой прав должен
+-- совпадать с замыслом — defense in depth). Сначала снять PUBLIC, потом грантить.
+revoke execute on function menumaker.safepass_issue_login_code(text) from public;
+grant  execute on function menumaker.safepass_issue_login_code(text) to authenticated;
 -- issue НЕ выдаётся anon намеренно: код должен доставлять персонал вне браузера.
+
+-- verify открыт всем (родитель анонимен), поэтому PUBLIC-дефолт тут как раз кстати;
+-- грантим явно anon для читаемости.
+grant execute on function menumaker.safepass_verify_login_code(text,text) to anon, authenticated;
 
 commit;
 

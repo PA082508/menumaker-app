@@ -29,10 +29,6 @@ const RULES = [
   "If the teacher doesn't respond within 30 seconds, I use the Remind button and remain present with my child.",
   'All SafePass records are legally valid documents.',
 ]
-// ⚠️ REMOVE THE EVENING OF 2026-07-19 — fixed codes on a PUBLIC route. Authorised
-// for the home test only (a phone has no console to read the generated OTP from).
-// Cleanup is a line in the evening checklist; VERIFY = grep finds no test phone left.
-const TEST_PHONES: Record<string,string> = { '+19999999999':'123456', '+14407155225':'888777' }
 
 export default function SafePassParentPage() {
   const [screen, setScreen] = useState<Screen>('howto')
@@ -79,7 +75,7 @@ export default function SafePassParentPage() {
     const entered = otp.trim().replace(/\D/g,'')
     const stored = sessionStorage.getItem('sp_otp_'+np)
     const exp = parseInt(sessionStorage.getItem('sp_otp_exp_'+np) ?? '0')
-    const ok = (stored && stored === entered && Date.now() < exp) || TEST_PHONES[np] === entered
+    const ok = stored && stored === entered && Date.now() < exp
     if (!ok) { setOtpErr('Incorrect code or code expired.'); setVerifying(false); return }
     sessionStorage.removeItem('sp_otp_'+np)
     setPersonId(np)

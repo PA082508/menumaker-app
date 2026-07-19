@@ -63,8 +63,14 @@ begin
 
   -- доверенное лицо ИМЕННО для этого ребёнка. Один слитный отказ на оба случая
   -- («номера нет» / «номер есть, но не для этого ребёнка») — см. trust-рамку.
+  -- Окно доступа проверяется ЗДЕСЬ. is_active снимается вручную, а access_until
+  -- истекает сам — доверенное лицо с access_type='period' и вчерашней датой
+  -- осталось бы полноправным, потому что галку никто не снял. Для человека,
+  -- которому разрешено забирать ребёнка, «срок истёк» обязано значить «нельзя».
   select * into v_tp from menumaker.safepass_trusted_persons
    where phone = p_phone and child_id = p_child_id and is_active
+     and (access_from  is null or access_from  <= current_date)
+     and (access_until is null or access_until >= current_date)
    limit 1;
   if not found then
     return jsonb_build_object('ok', false, 'error', 'not_authorized');
@@ -80,10 +86,14 @@ begin
     return jsonb_build_object('ok', false, 'error', 'no_classroom');
   end if;
 
-  -- одна открытая заявка на ребёнка: повторное нажатие возвращает ту же строку,
-  -- а не плодит очередь на планшете
+  -- Одна открытая заявка НА ЭТО ЖЕ ДЕЙСТВИЕ: повторное нажатие возвращает ту же
+  -- строку, а не плодит очередь на планшете.
+  -- action_type в условии обязателен: без него Pick Up при незакрытой утренней
+  -- заявке вернул бы id того самого drop_off. Родитель видел бы «забираю», а в
+  -- журнале передач стояло бы «привёл» — подмена смысла юридической записи.
   select id into v_id from menumaker.safepass_sessions
    where child_id = p_child_id and status = 'waiting'
+     and action_type = p_action
      and created_at >= date_trunc('day', now())
    limit 1;
   if v_id is not null then

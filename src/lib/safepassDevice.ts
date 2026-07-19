@@ -25,6 +25,25 @@ export function clearDeviceToken(): void {
   try { localStorage.removeItem(TOKEN_KEY) } catch { /* noop */ }
 }
 
+/** Charging a tablet: the raw token arrives ONCE, as `?device_token=…` on the first
+ *  open (a tablet has no console to paste into). Persist it, then strip it from the
+ *  URL in the same tick — a token left in the address bar survives in history, in a
+ *  screenshot, and in whatever the next person opens. Returns the adopted token, or
+ *  the already-stored one when the param is absent. */
+export function adoptDeviceTokenFromUrl(): string | null {
+  try {
+    const url = new URL(window.location.href)
+    const fromUrl = url.searchParams.get('device_token')
+    if (fromUrl) {
+      setDeviceToken(fromUrl)
+      url.searchParams.delete('device_token')
+      window.history.replaceState({}, '', url.pathname + url.search + url.hash)
+      return fromUrl
+    }
+  } catch { /* no window / bad URL — fall through to storage */ }
+  return getDeviceToken()
+}
+
 // ── PIN hashing (MUST match menumaker._safepass_pin_hash) ─────────────────────
 export async function pinHash(centerId: string, pin: string): Promise<string> {
   const data = new TextEncoder().encode(`${centerId}:${pin}`)

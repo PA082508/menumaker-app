@@ -29,6 +29,9 @@ const RULES = [
   "If the teacher doesn't respond within 30 seconds, I use the Remind button and remain present with my child.",
   'All SafePass records are legally valid documents.',
 ]
+// ⚠️ REMOVE THE EVENING OF 2026-07-19 — fixed codes on a PUBLIC route. Authorised
+// for the home test only (a phone has no console to read the generated OTP from).
+// Cleanup is a line in the evening checklist; VERIFY = grep finds no test phone left.
 const TEST_PHONES: Record<string,string> = { '+19999999999':'123456', '+14407155225':'888777' }
 
 export default function SafePassParentPage() {

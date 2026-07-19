@@ -16,7 +16,7 @@ import { useAuth } from '@/hooks/useAuth'
 import Avatar from '@/components/Avatar'
 import PinPad from './shared/PinPad'
 import {
-  getDeviceToken, fetchDeviceContext, confirmHandoff,
+  adoptDeviceTokenFromUrl, fetchDeviceContext, confirmHandoff,
   type DeviceContext, type HandoffResult,
 } from '@/lib/safepassDevice'
 
@@ -220,7 +220,7 @@ export default function SafePassTeacherPage() {
 
   // Device identity. The pad authenticates against the centre the DEVICE is
   // bound to, never the centre picker above — the picker is a viewing control.
-  const [deviceToken] = useState<string | null>(() => getDeviceToken())
+  const [deviceToken] = useState<string | null>(() => adoptDeviceTokenFromUrl())
   const [deviceCtx, setDeviceCtx] = useState<DeviceContext | null>(null)
   const [deviceError, setDeviceError] = useState<string | null>(null)
   const [pending, setPending] = useState<Session | null>(null)
@@ -326,7 +326,10 @@ export default function SafePassTeacherPage() {
       .subscribe()
 
     return () => { cancelled = true; supabase.removeChannel(channel) }
-  }, [classId])
+    // gathering + the device's centre are READ inside: without them here, flipping
+    // the switch changed only the per-card badge while the query and the Realtime
+    // channel stayed bound to the old scope.
+  }, [classId, gathering, deviceCtx?.center_id])
 
   // Resolve the device once. A missing/revoked token is not a silent condition:
   // Accept/Release stay disabled and the banner says why.

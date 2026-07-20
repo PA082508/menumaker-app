@@ -10,6 +10,8 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 
 <!-- newest on top -->
 
+- 2026-07-20 · 🔧 · The teacher tablet no longer lets anyone switch which class it is showing. It was already locked to the right building after this morning's fix, but the room dropdown in the corner was still live — a stray tap could put a teacher on a different room of her own center and have her mark children who weren't in front of her. A registered tablet now just displays its room, with nothing to tap. If the tablet is registered to a room that no longer exists, it says so plainly instead of quietly showing some other room.
+
 - 2026-07-20 · 🔧 · The teacher tablet now shows only its own building. A pad standing in Ridge's Red room was listing Highland Heights' Red Room children, because two centers have a room called Red and the screen quietly defaulted to the first center in the alphabet. A registered tablet now takes its center from the device itself — the center picker disappears, the class defaults to the tablet's own room, and the roster is looked up by center as well as by class. Caught before the SafePass pilot; no attendance was ever marked on the wrong class.
 
 - 2026-07-17 · 🔧 · Saving a staff member's Work Schedule now actually sticks. The Save was quietly dropping the schedule — it tried to write a "classroom" field the schedule table does not have, so the database rejected the whole schedule (the profile still saved). A red banner already warned when it happened, so nothing was ever silently lost; now the schedule saves. Merged straight to production because the Red-room teachers' schedules are needed for Monday's SafePass rehearsal.

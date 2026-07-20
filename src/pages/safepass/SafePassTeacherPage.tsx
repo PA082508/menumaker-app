@@ -264,6 +264,10 @@ export default function SafePassTeacherPage() {
   // The DEVICE decides the centre. A registered pad is physically bolted to one
   // room in one building; the picker and OrgContext are viewing controls for an
   // office browser and must never widen what the pad can see or mark.
+  // ONE flag for "this is a charged pad, not an office browser". Both pickers read
+  // it. They used to be guarded separately, which is how the class dropdown stayed
+  // live on a locked pad after the centre row was already hidden.
+  const deviceLocked = !!deviceCtx?.center_id
   const activeCenterId = deviceCtx?.center_id || selectedCenterId || currentCenter?.id
   const centerName = allCenters.find(c => c.id === activeCenterId)?.name ?? currentCenter?.name ?? '—'
 
@@ -280,11 +284,15 @@ export default function SafePassTeacherPage() {
       // Device pad → its own room, always. Otherwise keep the remembered class
       // only when it belongs to THIS centre (the key is per-centre for the same
       // reason), else fall back to the first room of the centre.
+      if (deviceCtx?.classroom_id) {
+        // No fallback to cls[0] here: if the pad's own room is missing from the
+        // list (deactivated, moved centre) the honest answer is "nothing", not a
+        // silent lock onto whichever room sorts first.
+        setClassId(cls.some(c => c.id === deviceCtx.classroom_id) ? deviceCtx.classroom_id : '')
+        return
+      }
       const remembered = localStorage.getItem(`safepass_class:${activeCenterId}`) || ''
-      setClassId(
-        deviceCtx?.classroom_id && cls.some(c => c.id === deviceCtx.classroom_id)
-          ? deviceCtx.classroom_id
-          : cls.some(c => c.id === remembered) ? remembered : (cls[0]?.id ?? ''))
+      setClassId(cls.some(c => c.id === remembered) ? remembered : (cls[0]?.id ?? ''))
     })()
     return () => { cancelled = true }
     // activeCenterId is READ here — watching currentCenter?.id alone left the list
@@ -456,7 +464,15 @@ export default function SafePassTeacherPage() {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          {classrooms.length > 0 && (
+          {/* A charged pad shows its room, it does not offer a choice of room.
+              Not hidden-but-live and not disabled-but-present: there is no control
+              to tap at all, because tapping one would mark children who are not in
+              front of the teacher. The office browser keeps the picker. */}
+          {deviceLocked ? (
+            <div style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 100, padding: '8px 16px', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+              🔒 {className}
+            </div>
+          ) : classrooms.length > 0 && (
             <select value={classId} onChange={e => setClassId(e.target.value)}
               style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 100, padding: '8px 14px', fontSize: 13, color: C.text, fontFamily: 'inherit', outline: 'none', cursor: 'pointer' }}>
               {classrooms.map(c => <option key={c.id} value={c.id} style={{ background: C.surface }}>{c.name}</option>)}
@@ -470,7 +486,7 @@ export default function SafePassTeacherPage() {
       {/* MAIN */}
       {/* Center selector — org view only, and NEVER on a registered pad: the pad's
           centre comes from its token and is not a user choice. */}
-      {!deviceCtx && !currentCenter?.id && allCenters.length > 0 && (
+      {!deviceLocked && !currentCenter?.id && allCenters.length > 0 && (
         <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>CENTER:</span>
           <div style={{ display: 'flex', gap: 6 }}>
@@ -493,7 +509,12 @@ export default function SafePassTeacherPage() {
       )}
       {deviceCtx && (
         <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: '6px 20px', fontSize: 11, color: C.muted }}>
-          Device: {deviceCtx.classroom_name} · {centerName} — this pad is locked to this centre
+          Device: {deviceCtx.classroom_name} · {centerName} — this pad is locked to this room
+        </div>
+      )}
+      {deviceLocked && !classId && classrooms.length > 0 && (
+        <div style={{ background: '#3a1420', borderBottom: `1px solid ${C.border}`, padding: '10px 20px', color: '#ff4d6a', fontSize: 13, fontWeight: 600 }}>
+          ⚠️ This pad is registered to “{deviceCtx?.classroom_name}”, which is not an active room in {centerName}. Nothing is shown — ask the director to re-register the tablet.
         </div>
       )}
 

@@ -207,7 +207,9 @@ export default function SafePassTeacherPage() {
     (user?.user_metadata?.full_name as string) || (user?.email?.split('@')[0]) || 'Teacher'
 
   const [classrooms, setClassrooms] = useState<Classroom[]>([])
-  const [classId, setClassId] = useState<string>(() => localStorage.getItem('safepass_class') || '')
+  // no cross-centre seed: the remembered class is resolved per-centre once the
+  // centre is known (see the classrooms effect)
+  const [classId, setClassId] = useState<string>('')
   const [roster, setRoster] = useState<Child[]>([])
   const [queue, setQueue] = useState<Session[]>([])
   const [confirmed, setConfirmed] = useState<Session[]>([])
@@ -244,41 +246,68 @@ export default function SafePassTeacherPage() {
   const [selectedCenterId, setSelectedCenterId] = useState<string>(currentCenter?.id ?? '')
   const [allCenters, setAllCenters] = useState<{id:string;name:string}[]>([])
 
-  // load all centers for selector
+  // load all centers for selector.
+  // NO auto-pick of the first row: "first by name" is Highland Heights, and a pad
+  // that fell back to it showed Highland's "Red Room" while sitting in Ridge's
+  // "Red" — two rooms, same short name, different centre. With no centre chosen
+  // the panel says so instead of guessing.
   useEffect(() => {
     supabase.schema('menumaker').from('centers')
       .select('id,name').eq('org_id', '3a9a290e-7e49-491e-946b-ad86f2399910').eq('is_active', true).order('name')
-      .then(({data}) => { setAllCenters(data ?? []); if (!selectedCenterId && data?.[0]) setSelectedCenterId(data[0].id) })
+      .then(({data}) => setAllCenters(data ?? []))
   }, [])
 
   useEffect(() => {
     if (currentCenter?.id) setSelectedCenterId(currentCenter.id)
   }, [currentCenter?.id])
 
-  const activeCenterId = selectedCenterId || currentCenter?.id
+  // The DEVICE decides the centre. A registered pad is physically bolted to one
+  // room in one building; the picker and OrgContext are viewing controls for an
+  // office browser and must never widen what the pad can see or mark.
+  const activeCenterId = deviceCtx?.center_id || selectedCenterId || currentCenter?.id
+  const centerName = allCenters.find(c => c.id === activeCenterId)?.name ?? currentCenter?.name ?? '—'
 
   // load classrooms for the active center
   useEffect(() => {
-    if (!activeCenterId) { setClassrooms([]); return }
+    if (!activeCenterId) { setClassrooms([]); setClassId(''); return }
+    let cancelled = false
     ;(async () => {
       const { data } = await supabase.schema('menumaker').from('classrooms')
         .select('id,name,center_id').eq('is_active', true).eq('center_id', activeCenterId).order('sort_order')
+      if (cancelled) return
       const cls = (data ?? []) as Classroom[]
       setClassrooms(cls)
-      setClassId(prev => (prev && cls.some(c => c.id === prev)) ? prev : (cls[0]?.id ?? ''))
+      // Device pad → its own room, always. Otherwise keep the remembered class
+      // only when it belongs to THIS centre (the key is per-centre for the same
+      // reason), else fall back to the first room of the centre.
+      const remembered = localStorage.getItem(`safepass_class:${activeCenterId}`) || ''
+      setClassId(
+        deviceCtx?.classroom_id && cls.some(c => c.id === deviceCtx.classroom_id)
+          ? deviceCtx.classroom_id
+          : cls.some(c => c.id === remembered) ? remembered : (cls[0]?.id ?? ''))
     })()
-  }, [currentCenter?.id])
+    return () => { cancelled = true }
+    // activeCenterId is READ here — watching currentCenter?.id alone left the list
+    // pinned to whatever centre happened to resolve first.
+  }, [activeCenterId, deviceCtx?.classroom_id])
 
-  useEffect(() => { if (classId) localStorage.setItem('safepass_class', classId) }, [classId])
+  useEffect(() => {
+    if (classId && activeCenterId) localStorage.setItem(`safepass_class:${activeCenterId}`, classId)
+  }, [classId, activeCenterId])
 
   // load roster + today's sessions, then subscribe to Realtime for this classroom
   useEffect(() => {
-    if (!classId) { setRoster([]); setQueue([]); setConfirmed([]); return }
+    if (!classId || !activeCenterId) { setRoster([]); setQueue([]); setConfirmed([]); return }
     let cancelled = false
 
     ;(async () => {
+      // center_id as well as classroom_id — belt and braces. roster has no centre
+      // RLS, so a stale/foreign classroom id would otherwise return that centre's
+      // children and the teacher would be marking someone else's class.
       const { data: kids } = await supabase.schema('menumaker').from('v_meal_grid')
-        .select('roster_id,child_name,photo_url').eq('classroom_id', classId).eq('is_active', true)  // photo_url: v_meal_grid carries it as of 20260716d
+        .select('roster_id,child_name,photo_url')
+        .eq('center_id', activeCenterId)
+        .eq('classroom_id', classId).eq('is_active', true)  // photo_url: v_meal_grid carries it as of 20260716d
         .order('child_name')
       if (!cancelled) setRoster((kids ?? []) as Child[])
 
@@ -329,7 +358,7 @@ export default function SafePassTeacherPage() {
     // gathering + the device's centre are READ inside: without them here, flipping
     // the switch changed only the per-card badge while the query and the Realtime
     // channel stayed bound to the old scope.
-  }, [classId, gathering, deviceCtx?.center_id])
+  }, [classId, activeCenterId, gathering, deviceCtx?.center_id])
 
   // Resolve the device once. A missing/revoked token is not a silent condition:
   // Accept/Release stay disabled and the banner says why.
@@ -423,7 +452,7 @@ export default function SafePassTeacherPage() {
           <div style={{ width: 40, height: 40, background: C.green, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>🛡️</div>
           <div>
             <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.3 }}>SafePass</div>
-            <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{className} · {currentCenter?.name ?? '—'}</div>
+            <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{className} · {centerName}</div>
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -439,8 +468,9 @@ export default function SafePassTeacherPage() {
       </header>
 
       {/* MAIN */}
-      {/* Center selector — shown when in org view */}
-      {!currentCenter?.id && allCenters.length > 0 && (
+      {/* Center selector — org view only, and NEVER on a registered pad: the pad's
+          centre comes from its token and is not a user choice. */}
+      {!deviceCtx && !currentCenter?.id && allCenters.length > 0 && (
         <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>CENTER:</span>
           <div style={{ display: 'flex', gap: 6 }}>
@@ -463,7 +493,7 @@ export default function SafePassTeacherPage() {
       )}
       {deviceCtx && (
         <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: '6px 20px', fontSize: 11, color: C.muted }}>
-          Device: {deviceCtx.classroom_name}
+          Device: {deviceCtx.classroom_name} · {centerName} — this pad is locked to this centre
         </div>
       )}
 
@@ -514,8 +544,8 @@ export default function SafePassTeacherPage() {
         <div style={{ padding: '24px 28px', overflowY: 'auto', borderRight: `1px solid ${C.border}` }}>
           <div style={panelLabel}>Incoming Requests</div>
 
-          {!currentCenter?.id && <div style={{ color: C.muted, fontSize: 13 }}>Pick a center in the switcher at the top to begin.</div>}
-          {currentCenter?.id && classrooms.length === 0 && <div style={{ color: C.muted, fontSize: 13 }}>No active classrooms for {currentCenter.name}.</div>}
+          {!activeCenterId && <div style={{ color: C.muted, fontSize: 13 }}>Pick a center in the switcher at the top to begin.</div>}
+          {activeCenterId && classrooms.length === 0 && <div style={{ color: C.muted, fontSize: 13 }}>No active classrooms for {centerName}.</div>}
           {classId && queue.length === 0 && (
             <div style={{ background: C.surface, border: `1px dashed ${C.border}`, borderRadius: 16, padding: '28px', textAlign: 'center', color: C.muted, fontSize: 13 }}>
               No incoming requests. Waiting for parents…

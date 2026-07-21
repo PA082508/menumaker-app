@@ -56,6 +56,7 @@ import ChildrenExportPage from '@/pages/children/ChildrenExportPage'
 import PortalPage from '@/pages/portal/PortalPage'
 import EnrollmentInboxPage from '@/pages/enrollment/EnrollmentInboxPage'
 import ParentPacketPage from '@/pages/enrollment/ParentPacketPage'
+import PacketSetsPage from '@/pages/enrollment/PacketSetsPage'
 import DirectorHome from '@/pages/dashboard/DirectorHome'
 
 // Lazy placeholders for other pages
@@ -180,6 +181,7 @@ export default function App() {
               <Route path="parents"            element={<ParentsPage />} />
               <Route path="enrollment-inbox"   element={<EnrollmentInboxPage />} />
               <Route path="issue-packet"       element={<ParentPacketPage />} />
+              <Route path="packet-sets"        element={<PacketSetsPage />} />
               <Route path="issue-renewal"      element={<IssueRenewalPage />} />
               <Route path="center/:centerId"   element={<CenterRosterPage />} />
               <Route path="staff"              element={<StaffPage />} />

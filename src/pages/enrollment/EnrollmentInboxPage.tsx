@@ -5,7 +5,7 @@
 // validation badge. Rows expand to show what's missing / warnings. No writes to
 // roster yet — diff-view + Approve/Reject land in Slice B/C.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
@@ -90,7 +90,16 @@ export default function EnrollmentInboxPage() {
   const [search, setSearch] = useState('')
   // The queue defaults to what needs a person. Auto-filed rows are a FACT to look up,
   // not a task — "видно ≠ actionable" (spec §1.1).
-  const [view, setView] = useState<'todo' | 'auto' | 'all'>('todo')
+  const [view, setView] = useState<'todo' | 'auto' | 'all' | 'countersign'>('todo')
+  // Forms that ALWAYS need a director signature and NEVER auto-file (spec §2b).
+  // Single source of truth = the DB function, which matches the registry flags
+  // (renewal_countersign_types(): transition_into_program · dcy_01234 ·
+  // child_release_authorization). Empty until loaded / if the RPC fails — in which
+  // case the tab simply doesn't appear and those rows still sit in "Needs a person".
+  const [countersignTypes, setCountersignTypes] = useState<string[]>([])
+  // Auto-open the signature queue on first load when it is non-empty (spec §2b:
+  // "включённым по умолчанию"). One-shot — a manual tab change afterwards sticks.
+  const autoViewedRef = useRef(false)
   // Enrollment-enabled center_ids, from the embed registry's `centers` map. Null
   // until loaded — the "Open the enrollment form" picker offers only these
   // (intersection), so Kitchen / future non-enrollment centers never appear.
@@ -132,6 +141,16 @@ export default function EnrollmentInboxPage() {
         if (!cancelled) { setEnrollCenterIds(new Set(ids)); setSlugById(byId); setEnrollBaseUrl(url) }
       } catch { /* registry unreachable → picker stays empty, no leak */ }
     })()
+    return () => { cancelled = true }
+  }, [])
+
+  // Which submission types require a director signature. RPC is authenticated-only
+  // (revoked from PUBLIC in step 0) — this page is staff-gated, so the director's
+  // session can call it.
+  useEffect(() => {
+    let cancelled = false
+    supabase.schema('menumaker').rpc('renewal_countersign_types')
+      .then(({ data }) => { if (!cancelled && Array.isArray(data)) setCountersignTypes(data as string[]) })
     return () => { cancelled = true }
   }, [])
 
@@ -199,26 +218,64 @@ export default function EnrollmentInboxPage() {
   const navigate = useNavigate()
   const from = searchParams.get('from')  // 'children' | 'staff' | null
 
+  // Rows in scope for the current entry point (Children vs Staff vs org-wide).
+  // Tab counts are computed from THIS, so a tab's number always matches what its
+  // list will actually show — a countersign form is a child form, so it must not
+  // count toward a badge in the Staff view where it can never appear.
+  const scoped = useMemo(
+    () => rows.filter(r => from === 'staff' ? isStaffType(r.submission_type)
+                         : from === 'children' ? !isStaffType(r.submission_type)
+                         : true),
+    [rows, from],
+  )
+
   // Live validation per row (Phase 1 computes client-side; no trigger yet).
-  const counts = useMemo(() => ({
-    todo: rows.filter(r => r.status === 'pending').length,
-    auto: rows.filter(r => r.status === 'received').length,
-  }), [rows])
+  const counts = useMemo(() => {
+    const cs = new Set(countersignTypes)
+    return {
+      todo: scoped.filter(r => r.status === 'pending').length,
+      auto: scoped.filter(r => r.status === 'received').length,
+      // A subset of pending — countersign forms stay in "Needs a person" too
+      // (they still need a human); this is a focused lens, not a separate bucket.
+      countersign: scoped.filter(r => r.status === 'pending' && cs.has(r.submission_type)).length,
+    }
+  }, [scoped, countersignTypes])
 
   const graded = useMemo(
-    () => rows
-      .filter(r => from === 'staff' ? isStaffType(r.submission_type)
-                 : from === 'children' ? !isStaffType(r.submission_type)
-                 : true)
+    () => scoped
       .filter(r => view === 'all' ? true
                  : view === 'auto' ? r.status === 'received'
+                 : view === 'countersign' ? (r.status === 'pending' && countersignTypes.includes(r.submission_type))
                  : r.status === 'pending')
       .map(r => ({
         row: r,
         v: validateSubmission(r.submission_type, r.form_data, { signatureDate: r.signature_date, source: r.source }),
       })),
-    [rows, from, view],
+    [scoped, view, countersignTypes],
   )
+
+  // Default-open the signature queue once, when it is non-empty. And if it empties
+  // out (the last form got signed) while it is the active tab, fall back to the
+  // work list — otherwise the active tab would vanish from under the director.
+  useEffect(() => {
+    if (!autoViewedRef.current && counts.countersign > 0) {
+      autoViewedRef.current = true
+      setView('countersign')
+    } else if (view === 'countersign' && counts.countersign === 0) {
+      setView('todo')
+    }
+  }, [counts.countersign, view])
+
+  // Tab set. The countersign tab appears only while its queue is non-empty.
+  const tabs = useMemo(() => {
+    const t: [typeof view, string][] = [
+      ['todo', `Needs a person${counts.todo ? ` · ${counts.todo}` : ''}`],
+    ]
+    if (counts.countersign) t.push(['countersign', `Awaiting director signature · ${counts.countersign}`])
+    t.push(['auto', `Filed automatically${counts.auto ? ` · ${counts.auto}` : ''}`])
+    t.push(['all', 'All'])
+    return t
+  }, [counts.todo, counts.auto, counts.countersign])
 
   // search-v2: filter the pending list by child name (scoreMatch), ranked when set.
   const visible = useMemo(() => {
@@ -308,17 +365,22 @@ export default function EnrollmentInboxPage() {
           {/* The queue is what needs a person; auto-filed is a separate shelf. Splitting
               them here is what keeps the signal from becoming "150" again. */}
           <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
-            {([['todo', `Needs a person${counts.todo ? ` · ${counts.todo}` : ''}`],
-               ['auto', `Filed automatically${counts.auto ? ` · ${counts.auto}` : ''}`],
-               ['all',  'All']] as const).map(([k, label]) => (
-              <button key={k} onClick={() => setView(k)} style={{
-                padding: '6px 12px', borderRadius: 20, fontSize: 12.5, fontWeight: 600,
-                fontFamily: 'inherit', cursor: 'pointer',
-                border: `1.5px solid ${view === k ? '#0f4c35' : '#e5e7eb'}`,
-                background: view === k ? '#0f4c35' : '#fff',
-                color: view === k ? '#fff' : '#6b7280',
-              }}>{label}</button>
-            ))}
+            {tabs.map(([k, label]) => {
+              const active = view === k
+              // The signature queue reads as attention (amber) rather than the
+              // neutral green of the other tabs — it is the one that blocks a renewal.
+              const accent = k === 'countersign'
+              const activeBg = accent ? '#92400e' : '#0f4c35'
+              return (
+                <button key={k} onClick={() => setView(k)} style={{
+                  padding: '6px 12px', borderRadius: 20, fontSize: 12.5, fontWeight: 600,
+                  fontFamily: 'inherit', cursor: 'pointer',
+                  border: `1.5px solid ${active ? activeBg : accent ? '#fcd9a8' : '#e5e7eb'}`,
+                  background: active ? activeBg : accent ? '#fffbeb' : '#fff',
+                  color: active ? '#fff' : accent ? '#92400e' : '#6b7280',
+                }}>{label}</button>
+              )
+            })}
           </div>
         </div>
       )}
@@ -332,6 +394,7 @@ export default function EnrollmentInboxPage() {
           background: '#fafafa', borderRadius: 12, border: '1px dashed #e5e7eb',
         }}>
           {view === 'auto' ? 'Nothing has been filed automatically yet.'
+           : view === 'countersign' ? 'No forms are waiting for a director signature.'
            : view === 'all' ? 'No submissions.'
            : 'Nothing needs a person right now.'}
         </div>

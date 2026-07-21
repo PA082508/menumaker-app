@@ -1,6 +1,26 @@
 # RENEWAL-КОНТУР — спека
 
-**Статус:** §5 закрыт решениями Николая 2026-07-16. Кода нет — ждёт отмашки на Волну 1.
+**Статус (обновлён 2026-07-20):** §5 закрыт 2026-07-16. **Волна 1 в значительной части
+ЗАДЕПЛОЕНА, не «ждёт».** Замер по живой БД + edge 2026-07-20:
+- ✅ реестровые флаги `auto_file` (`parent_consent`, `parents_book_ack`) и
+  `requires_countersign: director` (`dcy_01234`, `child_release_authorization`,
+  `transition_into_program`) — **больше не инертны**: их читает edge `enrollment-autofile`;
+- ✅ статус `received` — CHECK расширен, инбокс читает `.in('status',['pending','received'])`,
+  вкладки `todo|auto|all`; авто-филенное в красную цифру НЕ попадает (оба ad-hoc счётчика
+  фильтруют `status='pending'` — §1.1 выполнено побочно, но ещё не консолидировано);
+- ✅ `enrollment-autofile` v3 ACTIVE в dry-run; `commit:true` под гейтом §2e-2 (DOB) — не поставлен;
+- ✅ `campaigns` / `prefill_tokens` / `mint_prefill_token` / `get_prefill` / FK `batch_id`
+  живые, все три таблицы пустые (0 строк); `renewal_countersign_types()` = те же 3 ключа;
+- ❌ ещё НЕТ: очередь «Awaiting director signature», Renewal Tracker, §2e-2 DOB-фактор,
+  консолидация красной цифры в `refresh_action_items`.
+
+⚠️ **Исправление ложного read-back.** `supabase/migrations/20260719_one_token_store.sql`
+в шапке утверждает «campaign_issues → NULL ✓ снесена». Замер 2026-07-20: таблица
+`menumaker.campaign_issues` (с колонкой `issue_token`) **существует** — пустая, 0 строк,
+без входящих FK и вью. `DROP` в применённом наборе не сработал (комментарии в БД
+английские, в файле русские → применялся не этот файл). Добивается шагом 0 контура.
+Тот же класс ошибки, что стоил суток на safepass: **комментарий миграции — не доказательство.**
+
 **Дедлайн кампании:** 31.07.2026.
 **Правило:** реестрово, без хардкода «кампании июля». Кампания — это **штатный режим**, а не спецслучай.
 

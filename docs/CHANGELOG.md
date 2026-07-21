@@ -10,6 +10,8 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 
 <!-- newest on top -->
 
+- 2026-07-20 · 🚀 · Auto-filing of renewal forms now double-checks the child's date of birth. A prefill link isn't single-use and could be forwarded to another family, so from now on a form only auto-files if the birth date on it matches the birth date of the child the link was issued for — otherwise it waits for a person. No date on the form means it never auto-files. Still running in preview mode (nothing is written yet); this is the safety check that has to exist before real auto-filing is ever switched on.
+
 - 2026-07-20 · 🔀 · The red "needs attention" number on the Enrollment button (both the Children and Staff views) now comes from one shared definition in the database instead of two separate counts that could drift apart. The number shown today is unchanged — this removes the risk of the two ever disagreeing, and is the single source the renewal tracker will build on.
 
 - 2026-07-20 · 🔀 · The director's Enrollment Inbox now has a focused "Awaiting director signature" tab that gathers exactly the forms that always need the director to sign (like the child release authorization) and never file themselves. It appears only when something is actually waiting, opens to it automatically, and its count always matches what's inside. Groundwork for the renewal campaign: the inbox stays a real signal instead of one long undifferentiated list.

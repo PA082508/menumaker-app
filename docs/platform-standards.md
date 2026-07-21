@@ -30,8 +30,9 @@ Rules every spec and feature follows:
 - **Internal keys are frozen.** `admin`, `office_manager`, `org-admin`, `is_org_owner()`,
   `can_manage_base()` and every RLS predicate stay exactly as they are. This canon renames only
   the **human-facing LABEL**, never a role key or a policy.
-- **UI / doc label — TBD.** Nikolay picks the English label from the proposed options; until then
-  write `General Director (org-admin)`.
+- **UI / doc label = "General Director (Owner)"** (chosen by Nikolay 2026-07-21). `(org-admin)` /
+  `is_org_owner()` remain the internal key/predicate names. Applying the label across the UI and the
+  user instructions is a separate pass; docs use "General Director (Owner)" now.
 
 A center **director** is scoped to their own center and never inherits org-level rights — the
 boundary is identical whether the org-level seat is the owner or a hired executive. This is why

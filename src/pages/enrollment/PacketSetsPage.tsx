@@ -82,12 +82,14 @@ export default function PacketSetsPage() {
     if (!org?.id) return
     setLoading(true); setErr(null)
     try {
-      // RLS already scopes this; the filter mirrors it for clarity. In org view (no active
-      // center) only base sets are visible — base is org-wide and still editable.
+      // RLS already scopes this; the filter mirrors it for clarity.
+      //  • director (a center in context) → base + own-center custom
+      //  • org-admin in Organization view (no center) → NO filter: RLS returns base +
+      //    EVERY center's custom (the owner manages the whole network)
+      //  • anyone else with no center → base only (defensive)
       let q = S().from('packet_sets').select('*')
-      q = currentCenter?.id
-        ? q.or(`center_id.eq.${currentCenter.id},center_id.is.null`)
-        : q.is('center_id', null)
+      if (currentCenter?.id) q = q.or(`center_id.eq.${currentCenter.id},center_id.is.null`)
+      else if (!isOrgAdmin) q = q.is('center_id', null)
       const { data, error } = await q.order('kind', { ascending: true }).order('name', { ascending: true })
       if (error) throw error
       const rows = (data ?? []) as PacketSet[]
@@ -102,6 +104,30 @@ export default function PacketSetsPage() {
   }
 
   useEffect(() => { load() }, [org?.id, currentCenter?.id])
+
+  // Mirror of the packet_sets RLS (UI ONLY — the DB enforces it regardless):
+  //   base  → editable by the owner (org-admin) alone ("network standard");
+  //   custom→ editable by its own center OR the owner.
+  const canEdit = (s: PacketSet) =>
+    s.kind === 'base' ? isOrgAdmin : (isOrgAdmin || s.center_id === currentCenter?.id)
+
+  // Group the list: "Base — network standard" first, then a section per center. A director
+  // sees Base + their one center; the owner sees Base + every center.
+  const centerName = (id: string | null) =>
+    id == null ? null : (centers.find(c => c.id === id)?.name ?? 'Center')
+  const groups = useMemo(() => {
+    const g: { key: string; label: string; items: PacketSet[] }[] = []
+    const base = sets.filter(s => s.center_id == null)
+    if (base.length) g.push({ key: 'base', label: 'Base — network standard', items: base })
+    const byCenter = new Map<string, PacketSet[]>()
+    for (const s of sets) if (s.center_id != null) {
+      const arr = byCenter.get(s.center_id) ?? []
+      arr.push(s); byCenter.set(s.center_id, arr)
+    }
+    const ids = [...byCenter.keys()].sort((a, b) => (centerName(a) ?? '').localeCompare(centerName(b) ?? ''))
+    for (const cid of ids) g.push({ key: cid, label: centerName(cid) ?? 'Center', items: byCenter.get(cid)! })
+    return g
+  }, [sets, centers])
   // Load the selected set's composition into the draft whenever selection changes.
   useEffect(() => { setDraft(selected ? [...selected.form_keys] : []); setNote(null) }, [selectedId, selected?.form_keys])
   // A custom set's QR is its own center; a base set is org-wide → default to the active
@@ -118,17 +144,18 @@ export default function PacketSetsPage() {
     return lib.items.filter(i => i.title.toLowerCase().includes(q) || i.key.toLowerCase().includes(q))
   }, [lib.items, search])
 
-  const move = (i: number, dir: -1 | 1) => setDraft(d => {
+  const editable = selected ? canEdit(selected) : false
+  const move = (i: number, dir: -1 | 1) => { if (!editable) return; setDraft(d => {
     const j = i + dir
     if (j < 0 || j >= d.length) return d
     const n = [...d]; [n[i], n[j]] = [n[j], n[i]]; return n
-  })
-  const remove = (key: string) => setDraft(d => d.filter(k => k !== key))
-  const add = (key: string) => setDraft(d => (d.includes(key) ? d : [...d, key]))
+  }) }
+  const remove = (key: string) => { if (editable) setDraft(d => d.filter(k => k !== key)) }
+  const add = (key: string) => { if (editable) setDraft(d => (d.includes(key) ? d : [...d, key])) }
   const reset = () => { setDraft(selected ? [...selected.form_keys] : []); setNote(null) }
 
   const save = async () => {
-    if (!selected || !dirty) return
+    if (!selected || !dirty || !editable) return
     setSaving(true); setErr(null); setNote(null)
     try {
       const { error } = await S().from('packet_sets').update({ form_keys: draft }).eq('id', selected.id)
@@ -210,24 +237,32 @@ export default function PacketSetsPage() {
           <div style={colHead}>Sets</div>
           {loading ? <div style={muted}>Loading…</div> : sets.length === 0 ? (
             <div style={empty}>No sets visible here.</div>
-          ) : sets.map(s => {
-            const on = s.id === selectedId
-            return (
-              <button key={s.id} onClick={() => setSelectedId(s.id)} style={{ ...setRow, ...(on ? setRowOn : null) }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                  <span style={{ fontWeight: 600, color: '#0a3320' }}>{s.name}</span>
-                  <span style={s.kind === 'base' ? tagBase : tagCustom}>{s.kind}</span>
-                  {s.status === 'archived' && <span style={tagArchived}>archived</span>}
-                </div>
-                <div style={{ fontSize: 11.5, color: '#6b7280', marginTop: 2 }}>
-                  {s.form_keys.length} form{s.form_keys.length === 1 ? '' : 's'}
-                </div>
-              </button>
-            )
-          })}
-          <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 10, lineHeight: 1.5 }}>
-            Base sets show for every center; a center’s own sets show only here. Creating,
-            renaming and archiving arrive next — for now you edit what forms each set holds.
+          ) : groups.map(grp => (
+            <div key={grp.key} style={{ marginBottom: 10 }}>
+              <div style={groupHead}>{grp.label}</div>
+              {grp.items.map(s => {
+                const on = s.id === selectedId
+                const ro = !canEdit(s)
+                return (
+                  <button key={s.id} onClick={() => setSelectedId(s.id)} style={{ ...setRow, ...(on ? setRowOn : null) }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                      <span style={{ fontWeight: 600, color: '#0a3320' }}>{s.name}</span>
+                      <span style={s.kind === 'base' ? tagBase : tagCustom}>{s.kind}</span>
+                      {s.status === 'archived' && <span style={tagArchived}>archived</span>}
+                      {ro && <span style={tagView} title="You can view this set; only the owner edits it">view</span>}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: '#6b7280', marginTop: 2 }}>
+                      {s.form_keys.length} form{s.form_keys.length === 1 ? '' : 's'}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          ))}
+          <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4, lineHeight: 1.5 }}>
+            Base sets are the network standard (owner-edited); a center’s own sets are grouped
+            by center. Creating, renaming and archiving arrive next — for now you edit the forms
+            each set holds.
           </div>
         </div>
 
@@ -240,11 +275,14 @@ export default function PacketSetsPage() {
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
                 <div style={{ fontSize: 16, fontWeight: 700, color: '#0a3320' }}>{selected.name}</div>
                 <span style={selected.kind === 'base' ? tagBase : tagCustom}>{selected.kind}</span>
-                {selected.kind === 'base' && (
-                  <span style={{ fontSize: 11.5, color: '#6b7280' }}>
-                    base set — its forms are editable (swap a form when the state changes it); it can’t be archived
+                {selected.center_id && <span style={{ fontSize: 11.5, color: '#6b7280' }}>· {centerName(selected.center_id)}</span>}
+                {!editable ? (
+                  <span style={{ fontSize: 11.5, fontWeight: 600, color: '#92400e', background: '#fef3c7', padding: '2px 8px', borderRadius: 5 }}>
+                    View only — {selected.kind === 'base' ? 'the network standard is edited by the owner' : 'edited by its center or the owner'}
                   </span>
-                )}
+                ) : selected.kind === 'base' ? (
+                  <span style={{ fontSize: 11.5, color: '#6b7280' }}>network standard — editable by you (owner); it can’t be archived</span>
+                ) : null}
               </div>
 
               <div style={editGrid}>
@@ -263,9 +301,9 @@ export default function PacketSetsPage() {
                             {isUnknown(key) && <span style={tagUnknown} title="Not in the current forms library — kept as-is">unknown</span>}
                             {lib.byKey.get(key)?.isGovForm && <span style={tagGov} title={lib.byKey.get(key)?.requiringOrg || 'Government form'}>gov</span>}
                           </span>
-                          <button style={iconBtn} title="Move up" disabled={i === 0} onClick={() => move(i, -1)}>↑</button>
-                          <button style={iconBtn} title="Move down" disabled={i === draft.length - 1} onClick={() => move(i, 1)}>↓</button>
-                          <button style={{ ...iconBtn, color: '#b91c1c' }} title="Remove" onClick={() => remove(key)}>✕</button>
+                          <button style={iconBtn} title="Move up" disabled={!editable || i === 0} onClick={() => move(i, -1)}>↑</button>
+                          <button style={iconBtn} title="Move down" disabled={!editable || i === draft.length - 1} onClick={() => move(i, 1)}>↓</button>
+                          <button style={{ ...iconBtn, color: '#b91c1c' }} title="Remove" disabled={!editable} onClick={() => remove(key)}>✕</button>
                         </li>
                       ))}
                     </ol>
@@ -277,8 +315,9 @@ export default function PacketSetsPage() {
                   <div style={colHead}>
                     Library · {lib.items.length} form{lib.items.length === 1 ? '' : 's'}
                     {draft.length > 0 && <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}> · {draft.length} in this set</span>}
+                    {!editable && <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0, color: '#92400e' }}> · view only</span>}
                   </div>
-                  <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search the whole forms library…" style={searchBox} />
+                  <input value={search} onChange={e => setSearch(e.target.value)} disabled={!editable} placeholder={editable ? 'Search the whole forms library…' : 'View only — the owner manages this set'} style={{ ...searchBox, ...(!editable ? { background: '#fafafa', color: '#9ca3af' } : null) }} />
                   {lib.loading ? <div style={muted}>Loading library…</div> : lib.items.length === 0 ? (
                     <div style={muted}>Library empty.</div>
                   ) : libShown.length === 0 ? (
@@ -295,7 +334,9 @@ export default function PacketSetsPage() {
                             <span style={{ fontSize: 10.5, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em' }}>in set</span>
                           </div>
                         ) : (
-                          <button key={i.key} onClick={() => add(i.key)} style={libRow} title={`Add “${i.title}”`}>
+                          <button key={i.key} disabled={!editable} onClick={() => add(i.key)}
+                            style={{ ...libRow, ...(!editable ? { opacity: 0.5, cursor: 'not-allowed' } : null) }}
+                            title={editable ? `Add “${i.title}”` : 'View only — the owner manages this set'}>
                             <span style={{ color: GREEN, fontWeight: 700 }}>＋</span>
                             <span style={{ flex: 1 }}>{i.title}</span>
                             {i.isGovForm && <span style={tagGov} title={i.requiringOrg || 'Government form'}>gov</span>}
@@ -308,7 +349,7 @@ export default function PacketSetsPage() {
               </div>
 
               <ButtonRow style={{ marginTop: 14 }}>
-                <Button variant="primary" onClick={save} disabled={!dirty || saving}>
+                <Button variant="primary" onClick={save} disabled={!editable || !dirty || saving}>
                   {saving ? 'Saving…' : dirty ? 'Save composition' : 'Saved'}
                 </Button>
                 <Button onClick={reset} disabled={!dirty || saving}>Cancel</Button>
@@ -394,7 +435,9 @@ const colSets: React.CSSProperties = { display: 'flex', flexDirection: 'column',
 const colEdit: React.CSSProperties = { minWidth: 0 }
 const editGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 12 }
 const colHead: React.CSSProperties = { fontSize: 11.5, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#6b7280', marginBottom: 6 }
-const setRow: React.CSSProperties = { textAlign: 'left', width: '100%', font: 'inherit', cursor: 'pointer', background: '#fff', border: '1px solid #e4e8e4', borderRadius: 9, padding: '8px 10px' }
+const groupHead: React.CSSProperties = { fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: '#0a3320', margin: '2px 0 5px' }
+const tagView: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: '#92400e', background: '#fef3c7', padding: '1px 6px', borderRadius: 5, textTransform: 'uppercase', letterSpacing: '0.04em' }
+const setRow: React.CSSProperties = { textAlign: 'left', width: '100%', font: 'inherit', cursor: 'pointer', background: '#fff', border: '1px solid #e4e8e4', borderRadius: 9, padding: '8px 10px', marginBottom: 5 }
 const setRowOn: React.CSSProperties = { borderColor: GREEN, background: '#f6fdf9', boxShadow: 'inset 3px 0 0 ' + GREEN }
 const chipRow: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', border: '1px solid #e4e8e4', borderRadius: 8, background: '#fff', marginBottom: 5, fontSize: 13, color: '#374151' }
 const libRow: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', font: 'inherit', fontSize: 13, color: '#374151', cursor: 'pointer', background: '#fff', border: '1px solid #eef1ee', borderRadius: 8, padding: '6px 9px', marginBottom: 4 }

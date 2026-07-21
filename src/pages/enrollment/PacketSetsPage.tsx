@@ -86,10 +86,14 @@ export default function PacketSetsPage() {
   useEffect(() => { setDraft(selected ? [...selected.form_keys] : []); setNote(null) }, [selectedId, selected?.form_keys])
 
   const inSet = useMemo(() => new Set(draft), [draft])
-  const libFiltered = useMemo(() => {
+  // The WHOLE registry is always shown — search is the only filter. Forms already in the
+  // set are not hidden (that read as "not the full registry"): they stay visible, marked
+  // "in set" and inert. Any real exclusion must be a conscious flag, never a silent drop.
+  const libShown = useMemo(() => {
     const q = search.trim().toLowerCase()
-    return lib.items.filter(i => !inSet.has(i.key) && (!q || i.title.toLowerCase().includes(q) || i.key.toLowerCase().includes(q)))
-  }, [lib.items, inSet, search])
+    if (!q) return lib.items
+    return lib.items.filter(i => i.title.toLowerCase().includes(q) || i.key.toLowerCase().includes(q))
+  }, [lib.items, search])
 
   const move = (i: number, dir: -1 | 1) => setDraft(d => {
     const j = i + dir
@@ -194,21 +198,36 @@ export default function PacketSetsPage() {
                   )}
                 </div>
 
-                {/* Library — add */}
+                {/* Library — the WHOLE registry, always. Add what isn't in yet. */}
                 <div>
-                  <div style={colHead}>Add from library</div>
-                  <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search forms…" style={searchBox} />
-                  {lib.loading ? <div style={muted}>Loading library…</div> : libFiltered.length === 0 ? (
-                    <div style={muted}>{lib.items.length === 0 ? 'Library empty.' : 'Nothing left to add.'}</div>
+                  <div style={colHead}>
+                    Library · {lib.items.length} form{lib.items.length === 1 ? '' : 's'}
+                    {draft.length > 0 && <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}> · {draft.length} in this set</span>}
+                  </div>
+                  <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search the whole forms library…" style={searchBox} />
+                  {lib.loading ? <div style={muted}>Loading library…</div> : lib.items.length === 0 ? (
+                    <div style={muted}>Library empty.</div>
+                  ) : libShown.length === 0 ? (
+                    <div style={muted}>No form matches “{search.trim()}”.</div>
                   ) : (
                     <div style={{ maxHeight: 340, overflowY: 'auto' }}>
-                      {libFiltered.map(i => (
-                        <button key={i.key} onClick={() => add(i.key)} style={libRow} title={`Add “${i.title}”`}>
-                          <span style={{ color: GREEN, fontWeight: 700 }}>＋</span>
-                          <span style={{ flex: 1 }}>{i.title}</span>
-                          {i.isGovForm && <span style={tagGov} title={i.requiringOrg || 'Government form'}>gov</span>}
-                        </button>
-                      ))}
+                      {libShown.map(i => {
+                        const on = inSet.has(i.key)
+                        return on ? (
+                          <div key={i.key} style={{ ...libRow, opacity: 0.55, cursor: 'default' }} title="Already in this set">
+                            <span style={{ color: GREEN }}>✓</span>
+                            <span style={{ flex: 1 }}>{i.title}</span>
+                            {i.isGovForm && <span style={tagGov} title={i.requiringOrg || 'Government form'}>gov</span>}
+                            <span style={{ fontSize: 10.5, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em' }}>in set</span>
+                          </div>
+                        ) : (
+                          <button key={i.key} onClick={() => add(i.key)} style={libRow} title={`Add “${i.title}”`}>
+                            <span style={{ color: GREEN, fontWeight: 700 }}>＋</span>
+                            <span style={{ flex: 1 }}>{i.title}</span>
+                            {i.isGovForm && <span style={tagGov} title={i.requiringOrg || 'Government form'}>gov</span>}
+                          </button>
+                        )
+                      })}
                     </div>
                   )}
                 </div>

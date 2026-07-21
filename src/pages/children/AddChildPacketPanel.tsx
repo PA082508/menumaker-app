@@ -63,7 +63,7 @@ export default function AddChildPacketPanel({ center, onClose }: { center: { id:
 
   const ov: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(10,20,15,0.55)', zIndex: 3000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', overflowY: 'auto', padding: '30px 14px' }
   const sheet: React.CSSProperties = { background: '#fff', borderRadius: 16, width: '100%', maxWidth: 620, boxShadow: '0 24px 70px rgba(0,0,0,0.28)', overflow: 'hidden', fontFamily: "'DM Sans', system-ui, Arial, sans-serif" }
-  const tab = (on: boolean): React.CSSProperties => ({ flex: 1, minWidth: 150, textAlign: 'left', border: `1.5px solid ${on ? GREEN : '#d1fae5'}`, background: on ? '#f0f7f4' : '#fff', borderRadius: 12, padding: '10px 12px', cursor: 'pointer', fontFamily: 'inherit' })
+  const tab = (on: boolean): React.CSSProperties => ({ textAlign: 'left', border: `1.5px solid ${on ? GREEN : '#d1fae5'}`, background: on ? '#f0f7f4' : '#fff', borderRadius: 12, padding: '10px 12px', cursor: 'pointer', fontFamily: 'inherit' })
   const miniQR = (title: string, url: string, size = 40) => (
     <span title="Scan / share" onClick={e => { e.stopPropagation(); setPopup({ title, url }) }}
       style={{ cursor: 'pointer', lineHeight: 0, border: '1.5px solid #d1fae5', borderRadius: 8, padding: 3, background: '#fff', flex: '0 0 auto' }}>
@@ -84,7 +84,10 @@ export default function AddChildPacketPanel({ center, onClose }: { center: { id:
 
         <div style={{ padding: 18 }}>
           {/* Set switcher — each button carries a mini-QR of its current selection */}
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {/* Equal grid — 2 columns → 4 sets read as a clean 2×2, not "3 + a full-width
+              strip". >4 sets (future custom) wrap into equal 2-wide rows, never a lone
+              stretched tile. */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
             {SETS.map(s => (
               <div key={s.key} style={tab(active === s.key)} onClick={() => setActive(s.key)}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

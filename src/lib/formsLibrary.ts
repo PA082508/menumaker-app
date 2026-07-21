@@ -27,20 +27,29 @@ interface RawForm {
   requiringOrg?: string
   requires_countersign?: string
   intakeMode?: string
+  /** Label-only alias: this key shows its own title but IS the form at forms[sameAs]. */
+  sameAs?: string
 }
 
 /** Pure mapping registry.forms → FormLibItem[], sorted by title. Exported for tests. */
 export function toFormLibItems(forms: Record<string, RawForm> | undefined | null): FormLibItem[] {
   if (!forms) return []
   return Object.entries(forms)
-    .map(([key, f]) => ({
-      key,
-      title: f?.title || key,
-      requiringOrg: f?.requiringOrg,
-      requiresCountersign: f?.requires_countersign,
-      intakeMode: f?.intakeMode,
-      isGovForm: !!(f?.requiringOrg || f?.requires_countersign === 'director' || f?.intakeMode === 'paper_scan'),
-    }))
+    // `_`-prefixed keys are registry meta (e.g. _alias_note), never forms.
+    .filter(([key]) => !key.startsWith('_'))
+    .map(([key, f]) => {
+      // Alias key: gov status + metadata come from the TARGET (sameAs) — one source of
+      // truth for the document — while the title stays the alias's own label.
+      const meta = f?.sameAs ? (forms[f.sameAs] ?? f) : f
+      return {
+        key,
+        title: f?.title || key,
+        requiringOrg: meta?.requiringOrg,
+        requiresCountersign: meta?.requires_countersign,
+        intakeMode: meta?.intakeMode,
+        isGovForm: !!(meta?.requiringOrg || meta?.requires_countersign === 'director' || meta?.intakeMode === 'paper_scan'),
+      }
+    })
     .sort((a, b) => a.title.localeCompare(b.title))
 }
 

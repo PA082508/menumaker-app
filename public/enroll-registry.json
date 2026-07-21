@@ -7,6 +7,15 @@
     "anonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRycm15cWZweG50bWd4bnFraWtwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1OTczMzMsImV4cCI6MjA5NjE3MzMzM30.b2zlijzzwPPgZqTFNrOvhgNWZpBSxmQQioErMpoX_Ko"
   },
   "forms": {
+    "_alias_note": "sameAs = label-only alias: one source document/edition, two library labels. The resolver (app formUrl + formsLibrary + parent-forms.html) follows sameAs for url/version/live and gov metadata; the title stays the alias key's own. Editing a new edition edits ONLY the target (e.g. enroll). Used for School Enrollment Regular/Full-Day — same CACFP enrollment form, two meal-profile labels; both go into the school_age set as distinct form_keys.",
+    "school_enrollment_regular": {
+      "title": "School Enrollment (Regular)",
+      "sameAs": "enroll"
+    },
+    "school_enrollment_fullday": {
+      "title": "School Enrollment (Full-Day)",
+      "sameAs": "enroll"
+    },
     "enroll": {
       "current": "v9",
       "versions": {

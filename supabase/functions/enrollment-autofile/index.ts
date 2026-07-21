@@ -40,8 +40,10 @@
 // mint_prefill_token upserts on child_id, so a child has exactly one live token. I briefly
 // built a SECOND store (campaign_issues.issue_token) without reading that spec — dropped
 // in 20260719.
-//   · token present  → child_id comes from prefill_tokens. No guessing. THIS is the
-//                      ONLY auto-file path. Filing deletes the token (decision 4).
+//   · token present  → child_id comes from prefill_tokens, AND the submitted DOB must
+//                      corroborate that child's roster birthday (§2e-2, see identity.ts).
+//                      A ?t= link is forwardable, so token alone is not identity. THIS is
+//                      the ONLY auto-file path. Filing deletes the token (decision 4).
 //   · token absent   → a walk-in. NEVER auto-filed, not even on a single exact name hit
 //                      (Nikolay, 2026-07-16). The name is still matched, but only to put
 //                      a useful reason on the queue row. Why: across 332 active children,
@@ -61,6 +63,7 @@
 // actually wrote the status.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { extractToken, extractSubmittedDob, dobVerdict } from './identity.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -236,7 +239,7 @@ async function run(orgId?: string, dryRun = true): Promise<{ dry_run: boolean; s
     // ── identity: the prefill token we handed the family ───────────────────────
     // A renewal is not matched, it is RECOGNISED. mint_prefill_token put this token in the
     // link; get_prefill filled the form with it; it came back with the submission.
-    const token = s.form_data?.t ?? s.form_data?.issue_token ?? s.form_data?.prefill_token ?? null
+    const token = extractToken(s.form_data)
     if (token) {
       const { data: pt } = await db.from('prefill_tokens')
         .select('child_id,center_id,expires_at')
@@ -248,7 +251,25 @@ async function run(orgId?: string, dryRun = true): Promise<{ dry_run: boolean; s
         push('pending', `prefill token expired ${String(pt.expires_at).slice(0, 10)} — needs a person`); continue
       }
       if (pt.center_id !== s.center_id) { push('pending', 'token centre != submission centre'); continue }
-      if (dryRun) { push('received', `WOULD file by prefill token -> ${pt.child_id}`); continue }
+
+      // ── §2e-2: the token alone is not identity ──────────────────────────────
+      // A ?t= link is not one-time and lives ~30 days, so it can be forwarded from
+      // one family to another. Corroborate with the child's DOB: the submitted DOB
+      // must equal the roster birthday of the token's child. STRICT — a missing DOB
+      // is 'absent', never a pass, so a token row with no DOB is NEVER auto-filed
+      // (this holds even under commit:true; the form half that sends DOB is not
+      // built yet, so today every live token row lands here and waits for a person).
+      const { data: rc } = await db.from('roster')
+        .select('birthday').eq('id', pt.child_id).maybeSingle()
+      const verdict = dobVerdict(extractSubmittedDob(s.form_data), rc?.birthday)
+      if (verdict === 'mismatch') {
+        push('pending', 'token DOB mismatch — needs a person'); continue
+      }
+      if (verdict === 'absent') {
+        push('pending', 'token present but no DOB to corroborate — needs a person'); continue
+      }
+
+      if (dryRun) { push('received', `WOULD file by prefill token + DOB -> ${pt.child_id}`); continue }
       const { data: up, error: e2 } = await db.from('enrollment_submissions')
         .update({ status: 'received', child_id: pt.child_id, validation: val, reviewed_at: new Date().toISOString() })
         .eq('id', s.id).eq('status', 'pending').select('id')

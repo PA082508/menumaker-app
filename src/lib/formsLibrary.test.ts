@@ -39,4 +39,30 @@ describe('toFormLibItems (the useFormsLibrary seam)', () => {
     expect(item.requiresCountersign).toBe('director')
     expect(item.intakeMode).toBe('paper_scan')
   })
+
+  it('skips `_`-prefixed registry meta keys (e.g. _alias_note)', () => {
+    const items = toFormLibItems({ _alias_note: { title: 'a note' }, enroll: { title: 'CACFP Enrollment' } })
+    expect(items.map(i => i.key)).toEqual(['enroll'])
+  })
+
+  it('alias (sameAs): title stays the alias label, gov metadata comes from the target', () => {
+    const items = toFormLibItems({
+      enroll: { title: 'CACFP Enrollment', requiringOrg: 'ODE Nutrition/CACFP', intakeMode: 'paper_scan' },
+      school_enrollment_regular: { title: 'School Enrollment (Regular)', sameAs: 'enroll' },
+      school_enrollment_fullday: { title: 'School Enrollment (Full-Day)', sameAs: 'enroll' },
+    })
+    const reg = items.find(i => i.key === 'school_enrollment_regular')!
+    expect(reg.title).toBe('School Enrollment (Regular)')       // its own label
+    expect(reg.requiringOrg).toBe('ODE Nutrition/CACFP')        // inherited from enroll
+    expect(reg.intakeMode).toBe('paper_scan')
+    expect(reg.isGovForm).toBe(true)                            // inherits gov status
+    // both aliases distinct keys → can both live in a set's form_keys[]
+    expect(items.filter(i => i.key.startsWith('school_enrollment_')).length).toBe(2)
+  })
+
+  it('alias with a missing target degrades gracefully (no gov status, keeps title)', () => {
+    const [item] = toFormLibItems({ orphan: { title: 'Orphan', sameAs: 'nope' } })
+    expect(item.title).toBe('Orphan')
+    expect(item.isGovForm).toBe(false)
+  })
 })

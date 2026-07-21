@@ -28,7 +28,7 @@ type Slot = {
   note?: string
 }
 type Condition = { title?: string; issue?: string }
-type FormRec = { current?: string | null; versions?: Record<string, string>; fallbackUrl?: string | null; title?: string; note?: string; condition?: string }
+type FormRec = { current?: string | null; versions?: Record<string, string>; fallbackUrl?: string | null; title?: string; note?: string; condition?: string; sameAs?: string }
 type Registry = {
   forms?: Record<string, FormRec>
   conditions?: Record<string, Condition>   // the ONE condition map (titles + order + issue)
@@ -37,8 +37,11 @@ type Registry = {
 
 // Resolve a form's live URL — absolute http(s) only; PENDING / dark → null.
 function formUrl(reg: Registry | null, key: string): { url: string | null; live: boolean } {
-  const f = reg?.forms?.[key]
-  if (!f) return { url: null, live: false }
+  const raw = reg?.forms?.[key]
+  if (!raw) return { url: null, live: false }
+  // Label-only alias (sameAs): resolve url/version/live from the TARGET — one source
+  // document for two labels. Falls back to the alias itself if the target is missing.
+  const f = raw.sameAs ? (reg?.forms?.[raw.sameAs] ?? raw) : raw
   const live = !!f.current
   const pick = (v?: string | null) => (v && v !== 'PENDING' && /^https?:/.test(v) ? v : null)
   const url =

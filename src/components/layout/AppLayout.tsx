@@ -74,7 +74,6 @@ const SECTIONS: Section[] = [
       { path: '/children', label: 'Children', icon: 'ti-baby-carriage' },
       { path: '/parents',  label: 'Parents',  icon: 'ti-users' },
       { path: '/issue-renewal', label: 'Issue Renewal', icon: 'ti-send' },
-      { path: '/packet-sets',   label: 'Packet Sets',   icon: 'ti-stack-2' },
       { path: '/staff',    label: 'Staff',    icon: 'ti-id-badge' },
     ],
   },

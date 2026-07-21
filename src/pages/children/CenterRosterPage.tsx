@@ -380,6 +380,10 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
         <Button onClick={() => navigate('/enrollment-inbox?from=children')} badge={pendingCount}>
           📥 Enrollment
         </Button>
+        <Button onClick={() => navigate('/packet-sets')}
+          title="Build and share packet sets (composition & QR). /packet-sets gates by role.">
+          🗂 Packet Sets
+        </Button>
         <Button onClick={() => navigate('/children/import')}>⇪ Import</Button>
       </ButtonRow>
 

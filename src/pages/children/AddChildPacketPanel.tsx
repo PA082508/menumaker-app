@@ -1,16 +1,14 @@
 // AddChildPacketPanel.tsx — "Add Child" = the packet-set screen (director tool).
 //
-// Three packet sets (Starter / Toddler-Preschool / Infants) resolved from the
-// registry (packets.<set>.slots) — composition & order are DATA, not code. Every
-// row is a REMOVABLE checkbox: `mandatory` default-checked, `if_applicable`
-// default-unchecked, Consent first-by-order but removable like any other
-// (signature-aware later). Two levels of QR: one per SET button (encodes the set's
-// current checkbox selection → storefront ?center=&set=&only=) and one per FORM
-// (point issuance). `pending` slots show as a disabled "coming soon" row and are
-// never included. QR = qrcode.react (client-side, no external calls).
+// Packet sets resolved from the registry (packets.<set>.slots) — composition & order
+// are DATA, not code, and are FIXED by the set (no per-form checkboxes: a director
+// combines READY sets, they don't tick a subset). The set button's QR/link is the
+// whole set → storefront ?center=&set= (the storefront resolves the composition and
+// handles if_applicable). A per-FORM QR stays for point issuance. `pending` slots show
+// as a disabled "coming soon" row. QR = qrcode.react (client-side, no external calls).
 import { useEffect, useMemo, useState } from 'react'
 import { QRCodeCanvas } from 'qrcode.react'
-import { SHOWCASE_ORIGIN, storefrontOnlyUrl } from '@/config/showcaseLinks'
+import { storefrontOnlyUrl, storefrontPacketUrl } from '@/config/showcaseLinks'
 
 const GREEN = '#0f4c35'
 const SETS: { key: string; label: string; sub: string }[] = [
@@ -44,46 +42,23 @@ function withCenter(url: string, slug: string): string {
 export default function AddChildPacketPanel({ center, onClose }: { center: { id: string; name: string; slug: string }; onClose: () => void }) {
   const [reg, setReg] = useState<Registry | null>(null)
   const [active, setActive] = useState<string>('starter')
-  // Per-set checkbox selection, initialised to each set's mandatory (non-pending) slots.
-  const [checkedBySet, setCheckedBySet] = useState<Record<string, Set<string>>>({})
   const [popup, setPopup] = useState<{ title: string; url: string } | null>(null)
 
   useEffect(() => {
     let cancelled = false
     fetch('/enroll-registry.json?t=' + Date.now(), { cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
-      .then((j: Registry | null) => {
-        if (cancelled || !j) return
-        setReg(j)
-        const init: Record<string, Set<string>> = {}
-        SETS.forEach(s => {
-          const slots = j.packets?.[s.key]?.slots ?? []
-          init[s.key] = new Set(slots.filter(sl => !sl.pending && sl.section !== 'if_applicable').map(sl => sl.key))
-        })
-        setCheckedBySet(init)
-      })
+      .then((j: Registry | null) => { if (!cancelled && j) setReg(j) })
       .catch(() => {})
     return () => { cancelled = true }
   }, [])
 
   const slots: Slot[] = useMemo(() => reg?.packets?.[active]?.slots ?? [], [reg, active])
-  const checked = checkedBySet[active] ?? new Set<string>()
 
-  // Storefront link for a set = its current checkbox selection (only=), pending excluded.
-  function storefrontFor(setKey: string): string {
-    const sel = Array.from(checkedBySet[setKey] ?? []).filter(Boolean)
-    const base = `${SHOWCASE_ORIGIN}/parent-forms.html?center=${encodeURIComponent(center.slug)}&set=${encodeURIComponent(setKey)}`
-    return sel.length ? `${base}&only=${sel.map(encodeURIComponent).join(',')}` : base
-  }
+  // A set's link/QR is the WHOLE set (?center=&set=) — composition is fixed by the set,
+  // not by per-form selection; the storefront resolves it and filters if_applicable.
+  const storefrontFor = (setKey: string) => storefrontPacketUrl(center.slug, setKey)
   const activeStorefront = storefrontFor(active)
-
-  function toggle(key: string) {
-    setCheckedBySet(prev => {
-      const next = new Set(prev[active] ?? [])
-      next.has(key) ? next.delete(key) : next.add(key)
-      return { ...prev, [active]: next }
-    })
-  }
 
   const ov: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(10,20,15,0.55)', zIndex: 3000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', overflowY: 'auto', padding: '30px 14px' }
   const sheet: React.CSSProperties = { background: '#fff', borderRadius: 16, width: '100%', maxWidth: 620, boxShadow: '0 24px 70px rgba(0,0,0,0.28)', overflow: 'hidden', fontFamily: "'DM Sans', system-ui, Arial, sans-serif" }
@@ -129,27 +104,8 @@ export default function AddChildPacketPanel({ center, onClose }: { center: { id:
               <div style={{ fontSize: 12, color: '#6b7280', margin: '14px 2px 8px' }}>
                 {reg.packets?.[active]?.mode === 'anonymous'
                   ? 'Anonymous — the family fills on-site or on their phone.'
-                  : 'Addressed — pick the composition for this child. Uncheck anything already on file.'}
+                  : 'This packet’s forms are fixed by the set. Share the whole packet below, or a single form’s QR.'}
               </div>
-
-              {/* Full packet — one master check toggles every non-pending row on;
-                  clicking again resets to the set's mandatory default. */}
-              {(() => {
-                const selectable = slots.filter(s => !s.pending)
-                const allOn = selectable.length > 0 && selectable.every(s => checked.has(s.key))
-                const toggleAll = () => setCheckedBySet(prev => ({
-                  ...prev,
-                  [active]: allOn
-                    ? new Set(slots.filter(s => !s.pending && s.section !== 'if_applicable').map(s => s.key))
-                    : new Set(selectable.map(s => s.key)),
-                }))
-                return (
-                  <button onClick={toggleAll} style={{ display: 'flex', alignItems: 'center', gap: 9, alignSelf: 'flex-start', margin: '0 2px 10px', padding: '4px 6px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-                    <span style={{ width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${allOn ? GREEN : '#c9d3cd'}`, background: allOn ? GREEN : '#fff', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, lineHeight: 1 }}>{allOn ? '✓' : ''}</span>
-                    <span style={{ fontSize: 12.5, fontWeight: 700, color: allOn ? GREEN : '#374151' }}>Full packet — select every form</span>
-                  </button>
-                )
-              })()}
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {slots.map(s => {
@@ -169,10 +125,9 @@ export default function AddChildPacketPanel({ center, onClose }: { center: { id:
                       <span style={{ fontSize: 10, fontWeight: 700, color: '#92400e', background: '#fef3c7', borderRadius: 999, padding: '2px 8px' }}>soon</span>
                     </div>
                   )
-                  const on = checked.has(s.key)
                   return (
-                    <div key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 12, border: `1px solid ${on ? '#d1fae5' : '#eef0ee'}`, borderRadius: 11, padding: '11px 14px', background: on ? '#fff' : '#fafbfa' }}>
-                      <button onClick={() => toggle(s.key)} aria-label={on ? 'Remove' : 'Add'} style={{ width: 20, height: 20, borderRadius: 5, border: `1.5px solid ${on ? GREEN : '#c9d3cd'}`, background: on ? GREEN : '#fff', color: '#fff', cursor: 'pointer', flex: '0 0 auto', fontSize: 12, lineHeight: 1, padding: 0 }}>{on ? '✓' : ''}</button>
+                    <div key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 12, border: '1px solid #e6f2ec', borderRadius: 11, padding: '11px 14px', background: '#fff' }}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: GREEN, flex: '0 0 auto' }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 700, fontSize: 15, color: '#14251b', lineHeight: 1.2 }}>
                           {label}

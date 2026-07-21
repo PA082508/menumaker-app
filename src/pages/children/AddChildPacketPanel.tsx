@@ -15,6 +15,7 @@ const SETS: { key: string; label: string; sub: string }[] = [
   { key: 'starter', label: 'Starter', sub: 'New family' },
   { key: 'toddler_preschool', label: 'Toddler / Preschool', sub: 'Returning · addressed' },
   { key: 'infant', label: 'Infants', sub: 'Returning · addressed' },
+  { key: 'school_age', label: 'School-Age', sub: 'Returning · addressed' },
 ]
 
 type Slot = { key: string; section?: 'mandatory' | 'if_applicable'; label?: string; note?: string; pending?: boolean; handout?: boolean; group?: string }

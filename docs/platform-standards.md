@@ -10,6 +10,36 @@ A new locked decision is written into that index **in the same commit as the cod
 
 ---
 
+## Roles: the org-level seat is a hired General Director, not the owner (2026-07-21)
+
+The organization-level role — internal keys `admin` / `office_manager`, predicate
+`menumaker.is_org_owner()`, "org-admin" in code — is a **job, not ownership**. In a large
+multi-center group the owner does not run the platform day to day; a **hired General Director**
+executes the org-level duties. Every org-level right therefore attaches to the **ROLE**, never
+to a person or to ownership:
+
+- the forms library (create/edit the forms themselves) and the forms-dev agent;
+- base, "network-standard" packet sets;
+- income determination (IEA / USDA waiver) — its content, countersignature and Approve;
+- which library forms a center director may compose from (the access layer).
+
+Rules every spec and feature follows:
+- **Rights are role-bound.** Name the ROLE (*General Director* / org-admin), never a person.
+  "At Play Academy this seat is held by Tatiana" is a deployment fact — written as a
+  parenthetical, never as the binding itself.
+- **Internal keys are frozen.** `admin`, `office_manager`, `org-admin`, `is_org_owner()`,
+  `can_manage_base()` and every RLS predicate stay exactly as they are. This canon renames only
+  the **human-facing LABEL**, never a role key or a policy.
+- **UI / doc label — TBD.** Nikolay picks the English label from the proposed options; until then
+  write `General Director (org-admin)`.
+
+A center **director** is scoped to their own center and never inherits org-level rights — the
+boundary is identical whether the org-level seat is the owner or a hired executive. This is why
+income determination, base-set editing and forms authoring route to the General Director role,
+not to whoever happens to own the company.
+
+---
+
 ## 1. Child name display — "Last First" (CACFP canonical)
 
 **Rule.** Children are always displayed as **`Last First`** (e.g. `Rodriguez Juan`).

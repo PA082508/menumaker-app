@@ -18,9 +18,11 @@
 // registry directly, so the registry can move to the DB later without changing this file.
 
 import { useEffect, useMemo, useState } from 'react'
+import { QRCodeCanvas } from 'qrcode.react'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
 import { useFormsLibrary } from '@/lib/formsLibrary'
+import { storefrontPacketUrl } from '@/config/showcaseLinks'
 import Button, { ButtonRow } from '@/components/ui/Button'
 
 const S = () => supabase.schema('menumaker')
@@ -38,7 +40,7 @@ type PacketSet = {
 }
 
 export default function PacketSetsPage() {
-  const { org, currentCenter, isOrgAdmin, orgRole } = useOrg()
+  const { org, currentCenter, centers, isOrgAdmin, orgRole } = useOrg()
   const allowed = isOrgAdmin || ['admin', 'director', 'office_manager', 'owner'].includes(orgRole ?? '')
 
   const lib = useFormsLibrary()
@@ -51,6 +53,24 @@ export default function PacketSetsPage() {
   const [err, setErr] = useState<string | null>(null)
   const [note, setNote] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+
+  // ── Share (#4): storefront slug per center comes from the registry (never guessed
+  // from the center's name — same map embed.js uses), keyed by center_id.
+  const [centerSlug, setCenterSlug] = useState<Record<string, string>>({})
+  const [shareCenterId, setShareCenterId] = useState<string | null>(null)
+  useEffect(() => {
+    let dead = false
+    fetch('/enroll-registry.json?t=' + Date.now(), { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(j => {
+        if (dead || !j?.centers) return
+        const m: Record<string, string> = {}
+        for (const [slug, v] of Object.entries<any>(j.centers)) if (v?.center_id) m[v.center_id] = slug
+        setCenterSlug(m)
+      })
+      .catch(() => {})
+    return () => { dead = true }
+  }, [])
 
   const selected = useMemo(() => sets.find(s => s.id === selectedId) ?? null, [sets, selectedId])
   const dirty = useMemo(
@@ -84,6 +104,9 @@ export default function PacketSetsPage() {
   useEffect(() => { load() }, [org?.id, currentCenter?.id])
   // Load the selected set's composition into the draft whenever selection changes.
   useEffect(() => { setDraft(selected ? [...selected.form_keys] : []); setNote(null) }, [selectedId, selected?.form_keys])
+  // A custom set's QR is its own center; a base set is org-wide → default to the active
+  // center and let the director pick which center this QR is for.
+  useEffect(() => { setShareCenterId(selected?.center_id ?? currentCenter?.id ?? null) }, [selectedId, selected?.center_id, currentCenter?.id])
 
   const inSet = useMemo(() => new Set(draft), [draft])
   // The WHOLE registry is always shown — search is the only filter. Forms already in the
@@ -119,6 +142,57 @@ export default function PacketSetsPage() {
 
   const titleOf = (key: string) => lib.byKey.get(key)?.title ?? key
   const isUnknown = (key: string) => lib.items.length > 0 && !lib.byKey.has(key)
+
+  // ── Share (#4): stationary QR + copyable mailing block ─────────────────────
+  const shareSlug = shareCenterId ? centerSlug[shareCenterId] ?? null : null
+  // QR encodes only center + set.id → resolve_packet_set reads the SAVED composition
+  // live from the DB, so the QR never changes when the set is edited.
+  const shareUrl = selected && shareSlug ? storefrontPacketUrl(shareSlug, selected.id) : null
+  const shareCenterName = centers.find(c => c.id === shareCenterId)?.name ?? ''
+
+  const qrCanvas = () => document.getElementById('pset-qr')?.querySelector('canvas') as HTMLCanvasElement | null
+
+  const buildBlockHtml = (): string | null => {
+    const canvas = qrCanvas()
+    if (!canvas || !shareUrl || !selected) return null
+    const png = canvas.toDataURL('image/png')
+    // Self-contained (inline PNG) so it survives paste into an email/flyer.
+    return (
+      `<table style="border-collapse:collapse;font-family:Arial,sans-serif"><tr>` +
+      `<td style="padding:0 14px 0 0;vertical-align:top"><img src="${png}" width="150" height="150" alt="Packet QR"></td>` +
+      `<td style="vertical-align:top">` +
+      `<div style="font-size:16px;font-weight:bold;color:#0a3320">${selected.name}${shareCenterName ? ` — ${shareCenterName}` : ''}</div>` +
+      `<div style="font-size:13px;color:#374151;margin:4px 0 8px">Scan the code or open the link to fill out your child's forms:</div>` +
+      `<div style="font-size:12px"><a href="${shareUrl}" style="color:#0f4c35">${shareUrl}</a></div>` +
+      `</td></tr></table>`
+    )
+  }
+
+  const copyBlock = async () => {
+    const html = buildBlockHtml()
+    if (!html) { setErr('QR is not ready — pick a center first.'); return }
+    setErr(null)
+    try {
+      const item = new ClipboardItem({
+        'text/html': new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob([shareUrl ?? ''], { type: 'text/plain' }),
+      })
+      await navigator.clipboard.write([item])
+      setNote('Block copied — paste it into your email or flyer (the QR image comes with it).')
+    } catch {
+      try { await navigator.clipboard.writeText(html); setNote('Block HTML copied as text.') }
+      catch { setErr('Copy failed — the browser blocked clipboard access.') }
+    }
+  }
+
+  const downloadQr = () => {
+    const canvas = qrCanvas()
+    if (!canvas || !selected) return
+    const a = document.createElement('a')
+    a.href = canvas.toDataURL('image/png')
+    a.download = `packet-${selected.slug ?? selected.id}-${shareSlug ?? 'center'}.png`
+    a.click()
+  }
 
   if (!allowed) return <div style={wrap}><div style={{ color: '#9ca3af', fontSize: 14 }}>You don’t have access to packet sets.</div></div>
 
@@ -240,6 +314,48 @@ export default function PacketSetsPage() {
                 <Button onClick={reset} disabled={!dirty || saving}>Cancel</Button>
                 {dirty && <span style={{ fontSize: 12, color: '#92400e', alignSelf: 'center' }}>unsaved changes</span>}
               </ButtonRow>
+
+              {/* ── Share: stationary QR + copyable mailing block (#4) ── */}
+              <div style={{ marginTop: 22, paddingTop: 16, borderTop: '1px solid #eef1ee' }}>
+                <div style={colHead}>Share this set</div>
+                {selected.kind === 'base' && (
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={{ fontSize: 12.5, color: '#374151', marginRight: 8 }}>Center for this QR:</label>
+                    <select value={shareCenterId ?? ''} onChange={e => setShareCenterId(e.target.value || null)} style={ctlSmall}>
+                      <option value="">— pick a center —</option>
+                      {centers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                    <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 4 }}>
+                      A base set is org-wide, but a QR is center-specific (the link carries <code>center=</code>). Pick which center this QR is for.
+                    </div>
+                  </div>
+                )}
+                {!shareUrl ? (
+                  <div style={muted}>
+                    {!shareCenterId ? 'Pick a center to build the QR.'
+                      : 'This center has no slug in the forms registry — the QR link needs center=. Add it to enroll-registry.json first.'}
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                    <div id="pset-qr" style={{ background: '#fff', padding: 8, border: '1px solid #e4e8e4', borderRadius: 10 }}>
+                      <QRCodeCanvas value={shareUrl} size={512} level="M" marginSize={2} style={{ width: 150, height: 150, display: 'block' }} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 240 }}>
+                      <div style={{ fontSize: 12.5, color: '#374151', marginBottom: 5 }}>Permanent link — editing the set never changes it:</div>
+                      <code style={{ fontSize: 11.5, color: GREEN, wordBreak: 'break-all', display: 'block', marginBottom: 10 }}>{shareUrl}</code>
+                      <ButtonRow>
+                        <Button variant="primary" onClick={copyBlock}>📋 Copy block</Button>
+                        <Button onClick={() => { navigator.clipboard?.writeText(shareUrl); setNote('Link copied.') }}>🔗 Copy link</Button>
+                        <Button onClick={downloadQr}>⬇ Download QR</Button>
+                      </ButtonRow>
+                      <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 8, lineHeight: 1.5 }}>
+                        The QR carries only the center and this set’s id; parents receive whatever forms are <b>saved</b> in the set, read live from the database.
+                        {dirty && <span style={{ color: '#92400e' }}> Save your changes first — unsaved edits aren’t in the QR yet.</span>}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </>
           )}
         </div>
@@ -284,6 +400,7 @@ const chipRow: React.CSSProperties = { display: 'flex', alignItems: 'center', ga
 const libRow: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', font: 'inherit', fontSize: 13, color: '#374151', cursor: 'pointer', background: '#fff', border: '1px solid #eef1ee', borderRadius: 8, padding: '6px 9px', marginBottom: 4 }
 const iconBtn: React.CSSProperties = { font: 'inherit', fontSize: 13, lineHeight: 1, width: 26, height: 26, borderRadius: 7, border: '1px solid #d7ded7', background: '#fff', color: GREEN, cursor: 'pointer' }
 const searchBox: React.CSSProperties = { font: 'inherit', fontSize: 13, padding: '7px 10px', border: '1px solid #e5e7eb', borderRadius: 9, background: '#fff', width: '100%', boxSizing: 'border-box', marginBottom: 8 }
+const ctlSmall: React.CSSProperties = { font: 'inherit', fontSize: 13, padding: '6px 9px', border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', minWidth: 160 }
 const empty: React.CSSProperties = { padding: '20px 16px', textAlign: 'center', color: '#9ca3af', fontSize: 13, background: '#fafafa', borderRadius: 10, border: '1px dashed #e5e7eb' }
 const muted: React.CSSProperties = { color: '#9ca3af', fontSize: 13, padding: '8px 2px' }
 const tagBase: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: '#0a3320', background: '#dcfce7', padding: '1px 6px', borderRadius: 5, textTransform: 'uppercase', letterSpacing: '0.04em' }

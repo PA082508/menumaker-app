@@ -8,6 +8,7 @@ import ChildSettingsPage from './ChildSettingsPage'
 import EmergencyPopup from './EmergencyPopup'
 import AddChildRouterModal from './AddChildRouter'
 import { useOrg } from '@/contexts/OrgContext'
+import { fetchEnrollmentActionCounts } from '@/lib/enrollmentActionCount'
 import { useAuth } from '@/hooks/useAuth'
 import { displayChildName } from '@/lib/childName'
 import Avatar from '@/components/Avatar'
@@ -246,15 +247,15 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
   const [pendingCount, setPendingCount] = useState<number>(0)
   const [showPacket, setShowPacket] = useState(false)   // Add Child → packet Link + QR panel
 
+  // One source for the badge — the actionable predicate lives in the DB function,
+  // shared with the Staff badge (see enrollmentActionCount.ts). `.children` here.
   useEffect(() => {
-    if (!centerId) return
+    if (!org?.id || !centerId) { setPendingCount(0); return }
     let cancelled = false
-    supabase.schema('menumaker').from('enrollment_submissions')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'pending').eq('center_id', centerId).neq('submission_type', 'staff')
-      .then(({ count }) => { if (!cancelled) setPendingCount(count ?? 0) })
+    fetchEnrollmentActionCounts(org.id, centerId)
+      .then(c => { if (!cancelled) setPendingCount(c.children) })
     return () => { cancelled = true }
-  }, [centerId])
+  }, [org?.id, centerId])
   const [childSettingsId, setChildSettingsId] = useState<string|null>(null)
   const [settingsTab, setSettingsTab] = useState(0)
   const [focusField, setFocusField] = useState<string|null>(null)

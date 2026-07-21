@@ -3,6 +3,7 @@ import Button, { ButtonRow } from '@/components/ui/Button'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
+import { fetchEnrollmentActionCounts } from '@/lib/enrollmentActionCount'
 import { useAuth } from '@/hooks/useAuth'
 import AddStaffPacketPanel from './AddStaffPacketPanel'
 
@@ -48,15 +49,14 @@ export default function StaffPage() {
   const { org, currentCenter, centers, setCurrentCenter } = useOrg()
   const [pendingStaff, setPendingStaff] = useState<number>(0)  // IA v2: staff Enrollment badge
   const [showPacket, setShowPacket] = useState(false)
+  // One source for the badge — same DB function as the Children badge, `.staff` here.
   useEffect(() => {
-    if (!currentCenter?.id) { setPendingStaff(0); return }
+    if (!org?.id || !currentCenter?.id) { setPendingStaff(0); return }
     let cancelled = false
-    supabase.schema('menumaker').from('enrollment_submissions')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'pending').eq('center_id', currentCenter.id).eq('submission_type', 'staff')
-      .then(({ count }) => { if (!cancelled) setPendingStaff(count ?? 0) })
+    fetchEnrollmentActionCounts(org.id, currentCenter.id)
+      .then(c => { if (!cancelled) setPendingStaff(c.staff) })
     return () => { cancelled = true }
-  }, [currentCenter?.id])
+  }, [org?.id, currentCenter?.id])
   const { roles } = useAuth()
   const navigate = useNavigate()
   const allowed = (roles as string[]).some(r => ['admin','director','office_manager'].includes(r))

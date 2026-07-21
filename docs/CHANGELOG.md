@@ -10,6 +10,8 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 
 <!-- newest on top -->
 
+- 2026-07-20 · 🔀 · The red "needs attention" number on the Enrollment button (both the Children and Staff views) now comes from one shared definition in the database instead of two separate counts that could drift apart. The number shown today is unchanged — this removes the risk of the two ever disagreeing, and is the single source the renewal tracker will build on.
+
 - 2026-07-20 · 🔀 · The director's Enrollment Inbox now has a focused "Awaiting director signature" tab that gathers exactly the forms that always need the director to sign (like the child release authorization) and never file themselves. It appears only when something is actually waiting, opens to it automatically, and its count always matches what's inside. Groundwork for the renewal campaign: the inbox stays a real signal instead of one long undifferentiated list.
 
 - 2026-07-20 · 🔧 · The teacher tablet no longer lets anyone switch which class it is showing. It was already locked to the right building after this morning's fix, but the room dropdown in the corner was still live — a stray tap could put a teacher on a different room of her own center and have her mark children who weren't in front of her. A registered tablet now just displays its room, with nothing to tap. If the tablet is registered to a room that no longer exists, it says so plainly instead of quietly showing some other room.

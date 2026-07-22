@@ -59,8 +59,26 @@ determination on file"), so nothing operational is lost.
 - **Ф2 — GD surface + routing:** org-level IEA/waiver inbox (filtered EnrollmentInboxPage for the
   GD, or dedicated), her `sponsor_sig` countersign + her Approve (Approve-split = the IEA Approve is
   the GD's own DB write).
-- **Ф3 — status chip:** the director's family→child tree renders the unified "income determination —
-  on file" chip from `income_determination_status()`. Status field, not a form row (never leaks).
+- **Ф3 — status chip:** ✅ BUILT 2026-07-22. The director's family→child tree (`ParentsPage`) renders
+  the unified "💲 Income determination — on file" chip from `income_determination_status()`. Status
+  field, not a form row (never leaks). **Re-sourced 20260722e** onto the authoritative per-child
+  `income_eligibility` (the prior version read `enrollment_submissions.child_id`, always NULL for a
+  multi-child IEA → chip never rendered). `status='on_file'` ONLY for a **period-effective**
+  determination (frp_expires null or ≥ current month start — same as `catmap` 20260722c); expired /
+  absent → no row → no chip (director sees incompleteness, never the reason). Content-free, self-scoped.
+  Coverage: 247 of 260 active children with a determination.
+
+### Paper path is a GENERAL DIRECTOR capability, never a director's (2026-07-22)
+
+The paper route for an income determination (a "enter from paper" button, photo attach + Approve) is a
+capability of the **General Director role only**. Confirmed by fact, not policy:
+- RLS `income_org_only` on `enrollment_submissions` is **RESTRICTIVE with both `USING` and `WITH CHECK`**
+  = `(submission_type NOT IN (iea, usda_waiver)) OR is_org_owner(org_id)`. So a center director can
+  neither **read** nor **write** an IEA/waiver row — a paper-entered income row inherits this gate
+  automatically (the `WITH CHECK` blocks the insert/update for a non-owner).
+- **Requirement:** any NEW manual paper-entry surface (button "enter from paper", photo-attach) is born
+  **behind an `is_org_owner()` gate** — it does not exist in a director's UI and is refused by their
+  rights. The gate is the default, not an add-on.
 - **Ф4 — approve-split + COUNTERSIGN_SLOT:** director packet Approve excludes IEA/waiver; remove IEA
   from client `COUNTERSIGN_SLOT` → `{dcy_01234, start_form}`; update every consumer.
 

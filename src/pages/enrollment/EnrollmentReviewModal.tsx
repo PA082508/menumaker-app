@@ -279,12 +279,16 @@ export default function EnrollmentReviewModal({
   const dupUnresolved = isCacfp && !resolvedChildId && cacfpMatches.length > 0 && !chosenMatch
   const docNeedsChild = isDocument && !resolvedChildId && !docChild
   const docNeedsSig = isDocument && !!slot && !alreadyCountersigned && !countersignImage
-  // IEA carries the General Director's sponsor_sig slot — her countersignature is
-  // required to approve (unless already on file), same rule as a document's slot.
-  const ieaNeedsSig = isIea && !!slot && !alreadyCountersigned && !countersignImage
+  // IEA (Variant 1 amended, Nikolay 2026-07-22): the determination's AUTHORITY is
+  // this Approve under auth.uid (income_eligibility.determined_by), not a signature
+  // image. So a signature is NEVER an Approve gate here — the only gate is the
+  // determination itself (frp + fiscal year + matched children). If the storefront
+  // form already carried sponsor_sig ("Sponsor Use Only"), it is kept, not blocking;
+  // an empty slot MAY be stamped with her sample, but that is optional.
+  const ieaSponsorOnForm = isIea && !!slot && !!submission.signatures?.[slot]
   const approveBlocked = v.status === 'errors' || dupUnresolved || chosenInactive || busy
     || (isIea && (!frpChoice || !ieaFiscalYear || ieaMatchedIds.length === 0))
-    || docNeedsChild || docNeedsSig || ieaNeedsSig
+    || docNeedsChild || docNeedsSig
 
   async function doApprove() {
     if (v.status === 'errors') return
@@ -318,10 +322,12 @@ export default function EnrollmentReviewModal({
         if (!frpChoice) throw new Error('Choose an F/R/P determination')
         if (!ieaFiscalYear) throw new Error('Could not resolve the IEA form edition / fiscal year')
         if (ieaMatchedIds.length === 0) throw new Error('No roster children matched — add them via CACFP enrollment first')
-        // The General Director's sponsor_sig — written into signatures.sponsor_sig
-        // by approveIea (merge, never replace). Applied from her sponsor shelf, or
-        // drawn/typed here as fallback.
-        const ieaCs = slot && countersignImage && !alreadyCountersigned
+        // The General Director's sponsor_sig — stamped into signatures.sponsor_sig by
+        // approveIea ONLY when the slot is empty (a form-submitted sponsor_sig is kept,
+        // never overwritten — Variant 1 amended). Applied from her sponsor shelf, or
+        // drawn/typed here as fallback. Optional: the determination, not the image, is
+        // what Approve records under her uid.
+        const ieaCs = slot && countersignImage && !ieaSponsorOnForm
           ? { slot, image: countersignImage, signedBy: reviewerId, signedName: reviewerName }
           : null
         result = await approveIea(
@@ -722,15 +728,25 @@ export default function EnrollmentReviewModal({
             </div>
           )}
 
-          {/* ── IEA countersignature — the General Director's sponsor_sig (кусок 2) ──
-              Reads her OWN `sponsor` shelf (not the center director shelf). Apply a
-              saved sample with one tap, or draw/type as fallback and optionally adopt
-              it. Written into signatures.sponsor_sig on Approve (approveIea, merge). */}
-          {isIea && slot && !alreadyCountersigned && (
+          {/* ── IEA sponsor_sig (кусок 2, Variant 1 amended) ──────────────────────
+              The determination she records at Approve (under her uid) is the authority;
+              the slot image is secondary. If the form already carried sponsor_sig, show
+              it READ-ONLY and never overwrite it. If the slot is empty, she MAY stamp a
+              saved sample from her OWN `sponsor` shelf (one tap) or draw/type — optional,
+              not a gate. Written into signatures.sponsor_sig only when empty. */}
+          {isIea && slot && ieaSponsorOnForm && (
+            <div style={{ fontSize: 12.5, background: '#f9fafb', border: '1px solid #eef2f7', borderRadius: 10, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <img src={submission.signatures?.[slot]} alt="" style={{ height: 30, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4 }} />
+              <div style={{ color: '#374151' }}>
+                <strong>Sponsor signed on the form</strong> — kept as submitted (read-only).
+                <div style={{ color: '#6b7280', fontSize: 11 }}>Your Approve records the determination under your login; the signature is not rewritten.</div>
+              </div>
+            </div>
+          )}
+          {isIea && slot && !ieaSponsorOnForm && (
             <div style={{ fontSize: 12.5 }}>
               <div style={{ fontWeight: 600, color: '#374151', marginBottom: 6 }}>
-                Your countersignature
-                <span style={{ color: '#9ca3af', fontWeight: 400 }}> — General Director's slot ({slot})</span>
+                Your signature <span style={{ color: '#9ca3af', fontWeight: 400 }}>— General Director's slot ({slot}) · optional</span>
               </div>
               {mySample && (
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -749,9 +765,6 @@ export default function EnrollmentReviewModal({
                 </>
               )}
             </div>
-          )}
-          {isIea && slot && alreadyCountersigned && (
-            <div style={{ fontSize: 12.5, color: '#0f4c35' }}>✓ Already countersigned — a signature is never written twice.</div>
           )}
 
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#374151' }}>

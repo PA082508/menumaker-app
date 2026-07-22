@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   matchRoster, parseIeaFiscalYear, frpExpiryDefault, isoDate,
   parseFormTime, buildSchedulePort, buildCacfpPatch, decideSchedule, scheduleIsStale, formAsOf,
+  ieaCountersignPatch,
   type RosterLite,
 } from './enrollmentApprove'
 
@@ -39,6 +40,32 @@ describe('matchRoster — gate detector', () => {
 
   it('does not match an unrelated child', () => {
     expect(matchRoster([talulah], 'Smith John', '2021-09-29')).toEqual([])
+  })
+})
+
+describe('ieaCountersignPatch — Variant 1 amended: image is secondary, never overwrites the form', () => {
+  const GD = 'data:image/png;base64,GDSAMPLE'
+  const FORM = 'data:image/png;base64,FORMSPONSOR'
+
+  it('form-WITHOUT sponsor_sig, slot empty → stamps the GD sample', () => {
+    const patch = ieaCountersignPatch({ adult_sig: 'data:image/png;base64,PARENT' }, 'sponsor_sig', GD)
+    expect(patch).toEqual({ adult_sig: 'data:image/png;base64,PARENT', sponsor_sig: GD })
+  })
+
+  it('form-WITH sponsor_sig → kept, never overwritten (returns null = write nothing)', () => {
+    const before = { adult_sig: 'data:image/png;base64,PARENT', sponsor_sig: FORM }
+    expect(ieaCountersignPatch(before, 'sponsor_sig', GD)).toBeNull()
+  })
+
+  it('empty slot but no image (signature is optional) → write nothing', () => {
+    expect(ieaCountersignPatch({ adult_sig: 'x' }, 'sponsor_sig', null)).toBeNull()
+  })
+
+  it('never mutates the applicant signature key (adult_sig), whichever branch', () => {
+    const before = { adult_sig: 'A' }
+    const patch = ieaCountersignPatch(before, 'sponsor_sig', GD)
+    expect(patch?.adult_sig).toBe('A')     // preserved by the merge
+    expect(before).toEqual({ adult_sig: 'A' })  // input not mutated
   })
 })
 

@@ -1,7 +1,13 @@
 -- 20260722_form_access.sql — ДОПУСК-СЛОЙ библиотеки (director_composable)
 --
--- ⛔ PREPARE — НЕ ПРИМЕНЕНО. Применяет Николай (или CC по его go) по live-DB протоколу:
---    prepare → go → apply → read-back вердиктом колонками. См. [[menumaker-live-db-write-protocol]].
+-- ✅ APPLIED 2026-07-22 на живой базе (проект trrmyqfpxntmgxnqkikp, CC по live-DB протоколу,
+--    Nikolay GO «false + сид»). Дефолт схемы false; сид активным блоком (§3). Read-back зелёный:
+--    R1 5 политик — sel/ins/upd/del + org_isolation(RESTRICTIVE); ЗАПИСЬ (ins/upd/del) только
+--       menumaker.is_org_owner, ЧТЕНИЕ core.is_org_member.
+--    R2 сид = 23 формы открыты для Play Academy (union текущих base-наборов), поимённо в отчёте.
+--    R3 GD (Татьяна 1567bda4) upsert 'enroll' → PASSED.
+--    R4 директор (Pearl c3c31e35) upsert → RLS-violation 42501 (отказ). R4b директор SELECT → 23 видит.
+--    Целостность: 23 строки / 23 открыто / 0 probe-строк / role reset.
 --
 -- ЧТО ЭТО. ВТОРОЙ, независимый от publish-гейта слой (см. formsLibrary.isDirectorComposable):
 --   • publishable = «форма построена?» (реестр PENDING/current:null → серая, неприбираемая);

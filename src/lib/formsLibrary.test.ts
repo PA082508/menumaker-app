@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toFormLibItems } from './formsLibrary'
+import { toFormLibItems, isPublishable } from './formsLibrary'
 
 describe('toFormLibItems (the useFormsLibrary seam)', () => {
   it('returns [] for missing forms', () => {
@@ -64,5 +64,56 @@ describe('toFormLibItems (the useFormsLibrary seam)', () => {
     const [item] = toFormLibItems({ orphan: { title: 'Orphan', sameAs: 'nope' } })
     expect(item.title).toBe('Orphan')
     expect(item.isGovForm).toBe(false)
+    expect(item.publishable).toBe(false)      // no target → nothing to publish
+  })
+})
+
+describe('isPublishable (the map-is-the-gate flag)', () => {
+  it('true when current resolves to a real URL string', () => {
+    expect(isPublishable({ current: 'v6', versions: { v6: 'https://x/iea_v6.html' } })).toBe(true)
+  })
+  it('false when current is null (nothing built yet)', () => {
+    expect(isPublishable({ current: null, versions: { v1: 'https://x' } })).toBe(false)
+    expect(isPublishable({ versions: { v1: 'https://x' } })).toBe(false)
+  })
+  it('false when the current version is the literal PENDING placeholder', () => {
+    expect(isPublishable({ current: 'v1', versions: { v1: 'PENDING' } })).toBe(false)
+    expect(isPublishable({ current: 'v1', versions: { v1: 'pending' } })).toBe(false)
+  })
+  it('false when current points at a missing / empty version', () => {
+    expect(isPublishable({ current: 'v9', versions: { v1: 'https://x' } })).toBe(false)
+    expect(isPublishable({ current: 'v1', versions: { v1: '   ' } })).toBe(false)
+  })
+  it('true for a per-center URL object (e.g. parents_book)', () => {
+    expect(isPublishable({ current: 'v1', versions: { v1: { pearl: 'https://x/pearl.pdf' } } })).toBe(true)
+  })
+  it('true on a fallbackUrl even without versions', () => {
+    expect(isPublishable({ fallbackUrl: 'https://x/fallback.html' })).toBe(true)
+  })
+  it('false for empty / nullish input', () => {
+    expect(isPublishable(null)).toBe(false)
+    expect(isPublishable(undefined)).toBe(false)
+    expect(isPublishable({})).toBe(false)
+  })
+})
+
+describe('toFormLibItems publishability wiring', () => {
+  it('marks a PENDING form unpublishable with a reason, a live one publishable', () => {
+    const items = toFormLibItems({
+      dcy_01217: { title: 'Medication Request', current: null, versions: { v1: 'PENDING' } },
+      iea: { title: 'IEA', current: 'v6', versions: { v6: 'https://x/iea.html' } },
+    })
+    const by = new Map(items.map(i => [i.key, i]))
+    expect(by.get('dcy_01217')?.publishable).toBe(false)
+    expect(by.get('dcy_01217')?.unpublishedReason).toBe('Not published yet')
+    expect(by.get('iea')?.publishable).toBe(true)
+    expect(by.get('iea')?.unpublishedReason).toBeUndefined()
+  })
+  it('an alias inherits the target’s publishability', () => {
+    const items = toFormLibItems({
+      enroll: { title: 'CACFP Enrollment', current: 'v9', versions: { v9: 'https://x/enroll.html' } },
+      school_enrollment_regular: { title: 'School Enrollment (Regular)', sameAs: 'enroll' },
+    })
+    expect(items.find(i => i.key === 'school_enrollment_regular')?.publishable).toBe(true)
   })
 })

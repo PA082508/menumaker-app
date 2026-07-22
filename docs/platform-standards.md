@@ -38,6 +38,31 @@ The map goes **into the report before any edit.** A design that skipped the map 
 
 ---
 
+## Smallest move first (2026-07-22)
+
+**The first thing formulated is the smallest solution to the essence of the order** — then
+expansions are added as *conscious* increments, each justified. A feature that arrived as a tab +
+a special fetch + a counter + a banner, when the essence ("the General Director sees income, the
+director does not") was already carried by one RLS policy and the standard conveyor, is the
+anti-pattern. Ask "what is the least code that satisfies the essence?" before "what would be
+nice around it?" Precedent: the income lens (Ф2 кусок 1) was rebuilt as a plain visibility fact
+(RLS) after first shipping as bespoke UI.
+
+## Packet execution — don't ask to continue (2026-07-22)
+
+Inside an issued packet or `go`, **execute every point to the end** — do not stop to ask
+permission to proceed. The only stops are the **marked** ones:
+- an item explicitly gated "on a separate word" / "on morning word";
+- a red read-back (a verify that failed its expectation);
+- a deviation from the stated expectation (`Отклонение = стоп`).
+
+Everything else — copy questions, design options, things you'd like a second opinion on — is
+**carried in the final report as one packet**, not surfaced one at a time mid-run. "Asking
+permission to continue" without a reason from the stop list is a delivery-protocol violation.
+The report is **one message** at the end.
+
+---
+
 ## Roles: the org-level seat is a hired General Director, not the owner (2026-07-21)
 
 The organization-level role — internal keys `admin` / `office_manager`, predicate

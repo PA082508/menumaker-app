@@ -18,7 +18,7 @@ import {
   parseIeaFiscalYear, frpExpiryDefault,
   type RosterLite, type ApproveResult,
 } from '@/lib/enrollmentApprove'
-import { countersignSlot, loadSample, adoptSample, type SignatureSample } from '@/lib/signatureSamples'
+import { countersignSlot, loadSample, adoptSample, type SignatureSample, type SampleOwner } from '@/lib/signatureSamples'
 import SignaturePad from '@/components/signing/SignaturePad'
 
 // roster.sched_days bitmask — Mon=1 Tue=2 Wed=4 Thu=8 Fri=16 (20260716c)
@@ -87,14 +87,23 @@ export default function EnrollmentReviewModal({
   const [adoptMine, setAdoptMine] = useState(false)               // remember it as my shelf
   const [feeOn, setFeeOn] = useState(!!submission.fee_received_at)
 
-  // The director's OWN shelf — read under their login, never from a form on the
+  // The signer's OWN shelf — read under their login, never from a form on the
   // shared kiosk. A pad reads only its own scope and never falls back.
+  //
+  // sponsor_sig (IEA, кусок 2) is the GENERAL DIRECTOR's slot, a distinct signing
+  // role from a center director — "the shelf is the signing role, not the person".
+  // Since 20260722b it has its OWN `sponsor` shelf, so we load THAT for sponsor_sig
+  // (never the center `director` shelf — that would be the exact collapse the shelves
+  // forbid). Every other slot (program_sig/admin_sig) keeps the director shelf.
   useEffect(() => {
-    if (!slot) return
+    if (!slot) { setMySample(null); setUseSample(false); return }
+    const owner: SampleOwner = slot === 'sponsor_sig'
+      ? { scope: 'sponsor', authId: reviewerId }
+      : { scope: 'director', authId: reviewerId }
     let cancelled = false
     ;(async () => {
       try {
-        const s = await loadSample({ scope: 'director', authId: reviewerId })
+        const s = await loadSample(owner)
         if (!cancelled) { setMySample(s); setUseSample(!!s) }
       } catch { /* no sample is a fact, not a failure — the pad still draws */ }
     })()
@@ -270,6 +279,13 @@ export default function EnrollmentReviewModal({
   const dupUnresolved = isCacfp && !resolvedChildId && cacfpMatches.length > 0 && !chosenMatch
   const docNeedsChild = isDocument && !resolvedChildId && !docChild
   const docNeedsSig = isDocument && !!slot && !alreadyCountersigned && !countersignImage
+  // IEA (Variant 1 amended, Nikolay 2026-07-22): the determination's AUTHORITY is
+  // this Approve under auth.uid (income_eligibility.determined_by), not a signature
+  // image. So a signature is NEVER an Approve gate here — the only gate is the
+  // determination itself (frp + fiscal year + matched children). If the storefront
+  // form already carried sponsor_sig ("Sponsor Use Only"), it is kept, not blocking;
+  // an empty slot MAY be stamped with her sample, but that is optional.
+  const ieaSponsorOnForm = isIea && !!slot && !!submission.signatures?.[slot]
   const approveBlocked = v.status === 'errors' || dupUnresolved || chosenInactive || busy
     || (isIea && (!frpChoice || !ieaFiscalYear || ieaMatchedIds.length === 0))
     || docNeedsChild || docNeedsSig
@@ -306,14 +322,39 @@ export default function EnrollmentReviewModal({
         if (!frpChoice) throw new Error('Choose an F/R/P determination')
         if (!ieaFiscalYear) throw new Error('Could not resolve the IEA form edition / fiscal year')
         if (ieaMatchedIds.length === 0) throw new Error('No roster children matched — add them via CACFP enrollment first')
+        // The General Director's sponsor_sig — stamped into signatures.sponsor_sig by
+        // approveIea ONLY when the slot is empty (a form-submitted sponsor_sig is kept,
+        // never overwritten — Variant 1 amended). Applied from her sponsor shelf, or
+        // drawn/typed here as fallback. Optional: the determination, not the image, is
+        // what Approve records under her uid.
+        const ieaCs = slot && countersignImage && !ieaSponsorOnForm
+          ? { slot, image: countersignImage, signedBy: reviewerId, signedName: reviewerName }
+          : null
         result = await approveIea(
           submission,
           {
             frp: frpChoice, frp_expires: frpExpiry || null, fiscal_year: ieaFiscalYear,
             eligibility_source: eligibilitySource, determined_by: reviewerId, determined_by_name: reviewerName,
           },
-          ieaMatchedIds, reviewerId, paperSigned,
+          ieaMatchedIds, reviewerId, paperSigned, ieaCs,
         )
+
+        // Remember it as MY sponsor sample, if asked — onto the `sponsor` shelf, never
+        // the center director shelf. Deliberate: adoption is not a side effect of one
+        // signature. The determination is already applied; a failed remember is not fatal.
+        if (ieaCs && adoptMine && !useSample && sigDraw) {
+          try {
+            await adoptSample({
+              owner: { scope: 'sponsor', authId: reviewerId },
+              orgId: submission.org_id, centerId: submission.center_id,
+              ownerName: reviewerName, image: sigDraw, method: 'drawn',
+              sourceSubmissionId: null,   // the GD mints under her login, not from a form
+              adoptedBy: reviewerId,
+            })
+          } catch (e: any) {
+            setErr(`Countersigned and approved, but your signature was not saved for next time: ${e?.message ?? e}`)
+          }
+        }
       } else {
         // A document: file it against a child, optionally countersigned. No
         // roster write — that is the CACFP/IEA path.
@@ -665,10 +706,14 @@ export default function EnrollmentReviewModal({
                 {ieaFiscalYear
                   ? <>Fiscal year <strong>{ieaFiscalYear}</strong> · </>
                   : <span style={{ color: '#991b1b' }}>Fiscal year unresolved (form edition unknown) · </span>}
-                Source: {frpOverridden ? <strong style={{ color: '#92400e' }}>manual override</strong>
-                  : frpInfo?.source === 'sponsor' ? 'Sponsor certification'
-                  : frpInfo?.source === 'helper' ? <span style={{ color: '#92400e' }}>⚠︎ calculator fallback (Sponsor empty)</span>
-                  : 'manual'}
+                {/* Category source, signed in the UI (Nikolay 22.07): make the
+                    provenance of the F/R/P legible — form-stated vs form-calculated
+                    vs a human override — so the GD signs knowing where it came from. */}
+                Category source: {frpOverridden
+                  ? <strong style={{ color: '#92400e' }}>✎ manual override</strong>
+                  : frpInfo?.source === 'sponsor' ? <strong style={{ color: '#0f4c35' }}>form-stated · Sponsor section</strong>
+                  : frpInfo?.source === 'helper' ? <strong style={{ color: '#0f4c35' }}>form-calculated · income helper</strong>
+                  : <span style={{ color: '#92400e' }}>⚠︎ manual entry (form stated none)</span>}
               </div>
               {frpChoice && (
                 <div style={{ fontSize: 11.5, color: '#0f4c35' }}>
@@ -680,6 +725,45 @@ export default function EnrollmentReviewModal({
                 {ieaChildren.some(c => c.matches.length === 0) &&
                   ` · skipped (no roster match): ${ieaChildren.filter(c => !c.matches.length).map(c => c.name).join(', ')}`}
               </div>
+            </div>
+          )}
+
+          {/* ── IEA sponsor_sig (кусок 2, Variant 1 amended) ──────────────────────
+              The determination she records at Approve (under her uid) is the authority;
+              the slot image is secondary. If the form already carried sponsor_sig, show
+              it READ-ONLY and never overwrite it. If the slot is empty, she MAY stamp a
+              saved sample from her OWN `sponsor` shelf (one tap) or draw/type — optional,
+              not a gate. Written into signatures.sponsor_sig only when empty. */}
+          {isIea && slot && ieaSponsorOnForm && (
+            <div style={{ fontSize: 12.5, background: '#f9fafb', border: '1px solid #eef2f7', borderRadius: 10, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <img src={submission.signatures?.[slot]} alt="" style={{ height: 30, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4 }} />
+              <div style={{ color: '#374151' }}>
+                <strong>Sponsor signed on the form</strong> — kept as submitted (read-only).
+                <div style={{ color: '#6b7280', fontSize: 11 }}>Your Approve records the determination under your login; the signature is not rewritten.</div>
+              </div>
+            </div>
+          )}
+          {isIea && slot && !ieaSponsorOnForm && (
+            <div style={{ fontSize: 12.5 }}>
+              <div style={{ fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+                Your signature <span style={{ color: '#9ca3af', fontWeight: 400 }}>— General Director's slot ({slot}) · optional</span>
+              </div>
+              {mySample && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <input type="checkbox" checked={useSample} onChange={e => setUseSample(e.target.checked)} />
+                  <span>Apply my signature</span>
+                  <img src={mySample.signature_image} alt="" style={{ height: 28, background: '#fafff9', border: '1px solid #e5e7eb', borderRadius: 4 }} />
+                </label>
+              )}
+              {!useSample && (
+                <>
+                  <SignaturePad onChange={setSigDraw} hint={`Sign as ${reviewerName}`} disabled={busy} />
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                    <input type="checkbox" checked={adoptMine} onChange={e => setAdoptMine(e.target.checked)} />
+                    <span style={{ color: '#6b7280' }}>Remember this as my signature — apply it with one tap next time</span>
+                  </label>
+                </>
+              )}
             </div>
           )}
 

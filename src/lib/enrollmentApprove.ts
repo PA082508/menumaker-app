@@ -422,10 +422,29 @@ export async function recordDetermination(p: DeterminationInput): Promise<() => 
   return async () => { await S().from('income_eligibility').delete().eq('id', newId) }
 }
 
+/** The signatures patch to write for the GD's IEA countersignature, or null when
+ *  nothing should change. Variant 1 amended (Nikolay 2026-07-22): the determination's
+ *  AUTHORITY is the Approve under auth.uid (income_eligibility.determined_by); the
+ *  slot image is secondary. So a sponsor_sig the storefront form already submitted
+ *  ("Sponsor Use Only") is NEVER overwritten and NEVER blocks — we only stamp an
+ *  EMPTY slot. The applicant's own signature (key `adult_sig` on IEA) is preserved by
+ *  the merge and never rewritten. Pure so the posture is unit-tested without the DB. */
+export function ieaCountersignPatch(
+  before: Record<string, any>, slot: string, image: string | null,
+): Record<string, any> | null {
+  if (before[slot]) return null           // form (or a prior Approve) already signed → keep it
+  if (!image) return null                 // empty slot, nothing to stamp (signature is optional)
+  return { ...before, [slot]: image }
+}
+
 export async function approveIea(
   sub: { id: string; child_id: string | null; org_id: string; center_id: string },
   det: IeaDetermination,
   matchedIds: string[], reviewerId: string, paperSigned: boolean,
+  // The General Director's own sponsor_sig countersignature (Ф2, кусок 2). Optional
+  // so the existing shape (and tests) keep working; when present it is written into
+  // enrollment_submissions.signatures[slot], merge-not-replace, and undone exactly.
+  countersign?: Countersign | null,
 ): Promise<ApproveResult> {
   if (matchedIds.length === 0) throw new Error('No matched roster children to apply eligibility to')
   if (!det.fiscal_year) throw new Error('Could not resolve the IEA form edition / fiscal year')
@@ -458,12 +477,37 @@ export async function approveIea(
     throw e
   }
 
+  // 3) sponsor_sig — the General Director's countersignature (secondary; see
+  // ieaCountersignPatch). Only an EMPTY slot is stamped; a form-submitted sponsor_sig
+  // is kept, never overwritten, and never blocks. The applicant's `adult_sig` is
+  // preserved by the merge. Snapshot the prior block so undo restores it. Written
+  // BEFORE markApproved so a failure rolls step 1+2 back and leaves the row pending.
+  let prevSignatures: Record<string, any> | null = null
+  if (countersign) {
+    if (!countersign.image?.startsWith('data:image/')) throw new Error('The countersignature must be an image')
+    const { data: prevSig } = await S().from('enrollment_submissions').select('signatures').eq('id', sub.id).single()
+    const before = ((prevSig as any)?.signatures ?? {}) as Record<string, any>
+    const patch = ieaCountersignPatch(before, countersign.slot, countersign.image)
+    if (patch) {   // empty slot → stamp; already signed (form or prior) → keep, write nothing
+      prevSignatures = before
+      const { error: sErr } = await S().from('enrollment_submissions')
+        .update({ signatures: patch }).eq('id', sub.id)
+      if (sErr) {
+        for (const u of ieUndo) await u().catch(() => {})
+        for (const id of matchedIds) await S().from('roster').update(prevRoster.get(id) ?? { frp: null, frp_expires: null }).eq('id', id)
+        throw sErr
+      }
+    }
+  }
+
   await markApproved(sub.id, null, reviewerId, paperSigned)
   return {
-    message: `Approved — FRP ${det.frp} (${det.fiscal_year}) applied to ${matchedIds.length} child${matchedIds.length > 1 ? 'ren' : ''}`,
+    message: `Approved — FRP ${det.frp} (${det.fiscal_year}) applied to ${matchedIds.length} child${matchedIds.length > 1 ? 'ren' : ''}`
+      + (countersign ? `, countersigned by ${countersign.signedName}` : ''),
     undo: async () => {
       for (const u of ieUndo) await u()
       for (const id of matchedIds) await S().from('roster').update(prevRoster.get(id) ?? { frp: null, frp_expires: null }).eq('id', id)
+      if (prevSignatures !== null) await S().from('enrollment_submissions').update({ signatures: prevSignatures }).eq('id', sub.id)
       await restorePending(sub.id, sub.child_id)
     },
   }

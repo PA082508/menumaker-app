@@ -10,6 +10,79 @@ A new locked decision is written into that index **in the same commit as the cod
 
 ---
 
+## Before deciding — map what already exists (2026-07-22)
+
+**Every order or fix begins with an inventory of what is already built — never a design from
+memory.** Design only *on top of* the map. "We re-built what already existed" is a standard
+violation, not a style nit.
+
+The map has three lanes, gathered by **fact**, not recall:
+
+- **(a) Code mechanisms** — `grep` by the *noun of the function* (see the DECISIONS index rule
+  above), not by the word of your task. Name the functions that already do it.
+- **(b) The forms' own built-in abilities** — a form often already computes, validates, or holds
+  a slot the app is about to reinvent. Read the form (fetch the live edition if it lives on
+  Pages), don't assume. Report the section headings and field keys you found.
+- **(c) DB tables / patterns** — signature samples, registries, flags, RLS shapes. The pattern
+  that already carries this concern is the one to extend.
+
+Precedents that bought this rule:
+- the **IEA form itself computes Free/Reduced/Paid** (Sponsor certification + a screen-only
+  income-scale helper) and exposes it in `form_data` — yet the Review modal was about to offer
+  a category "choose from scratch";
+- **`pa_sig_sample` / `signature_samples`** existed for reusable stamps — yet the countersignature
+  was drawn every single time;
+- **Add Child** grew a second panel beside one that already existed.
+
+The map goes **into the report before any edit.** A design that skipped the map is sent back.
+
+---
+
+## Smallest move first (2026-07-22)
+
+**The first thing formulated is the smallest solution to the essence of the order** — then
+expansions are added as *conscious* increments, each justified. A feature that arrived as a tab +
+a special fetch + a counter + a banner, when the essence ("the General Director sees income, the
+director does not") was already carried by one RLS policy and the standard conveyor, is the
+anti-pattern. Ask "what is the least code that satisfies the essence?" before "what would be
+nice around it?" Precedent: the income lens (Ф2 кусок 1) was rebuilt as a plain visibility fact
+(RLS) after first shipping as bespoke UI.
+
+## Packet execution — don't ask to continue (2026-07-22)
+
+Inside an issued packet or `go`, **execute every point to the end** — do not stop to ask
+permission to proceed. The only stops are the **marked** ones:
+- an item explicitly gated "on a separate word" / "on morning word";
+- a red read-back (a verify that failed its expectation);
+- a deviation from the stated expectation (`Отклонение = стоп`).
+
+Everything else — copy questions, design options, things you'd like a second opinion on — is
+**carried in the final report as one packet**, not surfaced one at a time mid-run. "Asking
+permission to continue" without a reason from the stop list is a delivery-protocol violation.
+The report is **one message** at the end.
+
+---
+
+## A page opened from a hub carries a return control back to that hub (2026-07-22)
+
+Any page reached by a **button from a hub** (People hubs — Children / Staff — or a Doc-style
+hub) MUST carry a prominent return control back to that hub. **Entered by a button → leave by
+a button; never rely on the browser back arrow.** The control is the shared `BackBar`
+component (`src/components/BackBar.tsx`) — a sticky, high-contrast bar reading "← Back to
+{hub}" — **reused, not reinvented** per page; `to` is the hub route, `label` its name.
+
+Placement: at the top of the page's render, bled full-width to the container's padding edges
+(negative-margin wrapper matching the page's `wrap` padding, e.g. `margin: '-24px -32px 18px'`).
+Put it on **every** exit path of the page, including a no-access/guard return — a stranded user
+with no way back is the exact violation.
+
+**Precedent that bought it:** Packet Sets (`/packet-sets`), opened from the Children page,
+shipped WITHOUT a back button while the Enrollment Inbox (same hub) had one — an inconsistency
+Nikolay caught 2026-07-22. Fixed by reusing `BackBar`, same as Inbox / Children Import / Daily
+Time Log. When adding a hub-opened page, `BackBar` is part of its Definition of Done.
+
+---
+
 ## Roles: the org-level seat is a hired General Director, not the owner (2026-07-21)
 
 The organization-level role — internal keys `admin` / `office_manager`, predicate

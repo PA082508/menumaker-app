@@ -19,7 +19,10 @@ import { supabase } from './supabase'
 
 const S = () => supabase.schema('menumaker')
 
-export type SigScope = 'parent' | 'staff' | 'director'
+// sponsor = the General Director / org owner (owner_auth_id), the IEA sponsor_sig
+// role. It is its OWN shelf, never the center `director` shelf — the shelves forbid
+// that collapse (20260722b_signature_samples_sponsor_scope.sql, DECISIONS §12 п.15).
+export type SigScope = 'parent' | 'staff' | 'director' | 'sponsor'
 export type SigMethod = 'drawn' | 'typed'
 
 export interface SignatureSample {
@@ -36,17 +39,20 @@ export interface SignatureSample {
 // prevent. Each shelf has its own owner column (CHECK signature_samples_one_owner).
 export type SampleOwner =
   | { scope: 'director'; authId: string }
+  | { scope: 'sponsor'; authId: string }
   | { scope: 'parent'; guardianId: string }
   | { scope: 'staff'; staffId: string }
 
 const OWNER_COL: Record<SigScope, string> = {
   director: 'owner_auth_id',
+  sponsor: 'owner_auth_id',   // same column as director; scope keeps them distinct
   parent: 'owner_guardian_id',
   staff: 'owner_staff_id',
 }
 
 const ownerId = (o: SampleOwner): string =>
-  o.scope === 'director' ? o.authId : o.scope === 'parent' ? o.guardianId : o.staffId
+  o.scope === 'director' || o.scope === 'sponsor' ? o.authId
+    : o.scope === 'parent' ? o.guardianId : o.staffId
 
 const COLS = 'id,scope,owner_name,signature_image,signature_method,adopted_at'
 
@@ -138,7 +144,9 @@ export async function revokeSample(id: string, by: string): Promise<void> {
 // slot; we fill the slot the form already has, and never mint a key it lacks.
 //
 //   dcy_01234                   → program_sig   (2 rows, 0 filled)
-//   iea                         → sponsor_sig   (4 rows, 0 filled)
+//   iea                         → sponsor_sig   (the General Director's slot; backed
+//                                 by the `sponsor` shelf since 20260722b — she may
+//                                 apply a reusable sample or draw/type as fallback)
 //   child_release_authorization → NO SLOT — carries only parent_sig, yet the
 //                                 registry marks it requires_countersign:director.
 //                                 Flagged for Nikolay; not invented here.

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   matchRoster, parseIeaFiscalYear, frpExpiryDefault, isoDate,
   parseFormTime, buildSchedulePort, buildCacfpPatch, decideSchedule, scheduleIsStale, formAsOf,
-  ieaCountersignPatch,
+  ieaCountersignPatch, ieaApproveBlocked,
   type RosterLite,
 } from './enrollmentApprove'
 
@@ -66,6 +66,26 @@ describe('ieaCountersignPatch — Variant 1 amended: image is secondary, never o
     const patch = ieaCountersignPatch(before, 'sponsor_sig', GD)
     expect(patch?.adult_sig).toBe('A')     // preserved by the merge
     expect(before).toEqual({ adult_sig: 'A' })  // input not mutated
+  })
+})
+
+describe('ieaApproveBlocked — canon: form self-validates, only structural gates block', () => {
+  const ok = { frpChosen: true, fiscalYearResolved: true, matchedCount: 1 }
+  it('foster / incomplete-form (validateIea would red) but determination complete → NOT blocked', () => {
+    // The form validated itself at submission; its findings are informational, not a gate.
+    expect(ieaApproveBlocked(ok)).toBe(false)
+  })
+  it('a submission with warnings but a complete determination → NOT blocked (Approve active)', () => {
+    expect(ieaApproveBlocked({ ...ok, matchedCount: 3 })).toBe(false)
+  })
+  it('no F/R/P choice → blocked (the GD must decide)', () => {
+    expect(ieaApproveBlocked({ ...ok, frpChosen: false })).toBe(true)
+  })
+  it('unresolved fiscal year → blocked (cannot write the right FY record)', () => {
+    expect(ieaApproveBlocked({ ...ok, fiscalYearResolved: false })).toBe(true)
+  })
+  it('no matched roster child → structural gate holds', () => {
+    expect(ieaApproveBlocked({ ...ok, matchedCount: 0 })).toBe(true)
   })
 })
 

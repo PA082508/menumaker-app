@@ -15,7 +15,7 @@ import {
   buildCacfpPatch, decideSchedule, formAsOf, buildIeaFrp, loadCenterRoster, matchRoster,
   approveCacfpInsert, approveCacfpUpdate, approveIea, approveDocument, rejectSubmission,
   setFeeReceived, isProspect,
-  parseIeaFiscalYear, frpExpiryDefault,
+  parseIeaFiscalYear, frpExpiryDefault, ieaApproveBlocked,
   type RosterLite, type ApproveResult,
 } from '@/lib/enrollmentApprove'
 import { countersignSlot, loadSample, adoptSample, type SignatureSample, type SampleOwner } from '@/lib/signatureSamples'
@@ -286,14 +286,21 @@ export default function EnrollmentReviewModal({
   // form already carried sponsor_sig ("Sponsor Use Only"), it is kept, not blocking;
   // an empty slot MAY be stamped with her sample, but that is optional.
   const ieaSponsorOnForm = isIea && !!slot && !!submission.signatures?.[slot]
-  const approveBlocked = v.status === 'errors' || dupUnresolved || chosenInactive || busy
-    || (isIea && (!frpChoice || !ieaFiscalYear || ieaMatchedIds.length === 0))
+  // Canon (Nikolay 2026-07-22): the FORM validates itself at submission; the app never
+  // re-checks the form's rules. So validateIea findings NEVER gate IEA Approve — they
+  // stay visible as informational warnings (banner above), and the determination is the
+  // GD's call, final for 12 months. Only the structural gates hold (ieaApproveBlocked:
+  // F/R/P chosen · fiscal year resolved · a matched roster child). Other types keep the
+  // errors gate until each is reviewed under the same canon.
+  const approveBlocked = (v.status === 'errors' && !isIea) || dupUnresolved || chosenInactive || busy
+    || (isIea && ieaApproveBlocked({ frpChosen: !!frpChoice, fiscalYearResolved: !!ieaFiscalYear, matchedCount: ieaMatchedIds.length }))
     || docNeedsChild || docNeedsSig
 
   async function doApprove() {
-    if (v.status === 'errors') return
-    // Warnings → open a review modal listing them (not a native confirm).
-    if (v.status === 'warnings') { setShowWarnings(true); return }
+    // IEA self-validated at submission → its findings never block (canon). Other types
+    // keep the errors/warnings gate.
+    if (!isIea && v.status === 'errors') return
+    if (!isIea && v.status === 'warnings') { setShowWarnings(true); return }
     // Anti-misclick: if the reviewer never edited the diff, confirm the roster
     // write first. Editing (dirty) already signals a deliberate review.
     const what = isDocument

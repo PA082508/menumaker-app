@@ -18,6 +18,10 @@ import EnrollmentReviewModal from './EnrollmentReviewModal'
 import BackBar from '@/components/BackBar'
 import { ocrFailed as isOcrFailed, reRunOcr } from '@/lib/enrollmentScan'
 import { scoreMatch, nameForms } from '@/lib/childSearch'
+import {
+  isIncomeType, groupIncome, pendingIncomeCount, childLabel,
+  type IncomeCenterGroup,
+} from '@/lib/incomeInbox'
 
 // Backup approvers: when the director is absent, office managers, admins and the
 // owner can also review/approve enrollment submissions.
@@ -75,8 +79,131 @@ function SourceTag({ source }: { source: string }) {
   )
 }
 
+// Status chip for an income row. Pending is the only actionable state ("waiting for
+// the GD"); approved/rejected are on file — shown, never counted.
+function IncomeStatusChip({ status }: { status: string }) {
+  const s = status === 'pending'
+    ? { bg: '#fffbeb', fg: '#92400e', label: '⏳ Waiting for General Director' }
+    : status === 'approved'
+    ? { bg: '#f0fff4', fg: '#166534', label: '✓ Approved · on file' }
+    : { bg: '#f4f4f5', fg: '#6b7280', label: 'On file · reviewed' }
+  return (
+    <span style={{
+      fontSize: 11, fontWeight: 700, color: s.fg, background: s.bg,
+      padding: '2px 9px', borderRadius: 6, whiteSpace: 'nowrap',
+    }}>{s.label}</span>
+  )
+}
+
+// Income lens (Ф2, кусок 1) — General Director only. View-only: center→family→child,
+// with the pending rows on top of a family. Her sponsor_sig + Approve land in кусок 2,
+// so there is deliberately no Approve/Review action here.
+function IncomeLens({
+  groups, centerScoped, expanded, onToggle,
+}: {
+  groups: IncomeCenterGroup<Submission>[]
+  centerScoped: boolean
+  expanded: string | null
+  onToggle: (id: string) => void
+}) {
+  const total = groups.reduce((n, g) => n + g.families.reduce((m, f) => m + f.rows.length, 0), 0)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <div style={{
+        fontSize: 12.5, color: '#6b7280', background: '#f9fafb', border: '1px solid #eef0f2',
+        borderRadius: 10, padding: '10px 14px', lineHeight: 1.5,
+      }}>
+        Income determination (IEA &amp; USDA waiver) is handled <strong>org-wide by the General
+        Director</strong>{centerScoped ? ' — shown across all centers regardless of the current center.' : '.'} Center
+        directors never see this content; they see only a “income determination — on file” status.
+      </div>
+
+      {total === 0 && (
+        <div style={{
+          padding: '40px 24px', textAlign: 'center', color: '#9ca3af', fontSize: 14,
+          background: '#fafafa', borderRadius: 12, border: '1px dashed #e5e7eb',
+        }}>
+          No income determinations on file.
+        </div>
+      )}
+
+      {groups.map(g => (
+        <div key={g.centerId} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#0f4c35', letterSpacing: 0.2 }}>
+            {g.centerName}
+          </div>
+          {g.families.map(fam => (
+            <div key={fam.key} style={{
+              border: '1px solid #eef0f2', borderRadius: 12, background: '#fff', overflow: 'hidden',
+            }}>
+              <div style={{
+                fontSize: 12.5, fontWeight: 700, color: '#374151', background: '#f9fafb',
+                padding: '8px 16px', borderBottom: '1px solid #f3f4f6',
+              }}>
+                👪 {fam.label}
+                <span style={{ fontWeight: 500, color: '#9ca3af', marginLeft: 8 }}>
+                  {fam.rows.length} on file
+                </span>
+              </div>
+              {fam.rows.map(row => {
+                const v = validateSubmission(row.submission_type, row.form_data,
+                  { signatureDate: row.signature_date, source: row.source })
+                const details = [...v.missing.map(m => ({ kind: 'missing', text: m })),
+                                 ...v.errors.map(m => ({ kind: 'error', text: m })),
+                                 ...v.warnings.map(m => ({ kind: 'warning', text: m }))]
+                const open = expanded === row.id
+                return (
+                  <div key={row.id} style={{ borderTop: '1px solid #f6f7f8' }}>
+                    <div
+                      onClick={() => details.length && onToggle(row.id)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
+                        cursor: details.length ? 'pointer' : 'default',
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 14, color: '#111827' }}>
+                          {childLabel(row.form_data)}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#6b7280', marginTop: 3, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                          <span>{submissionTypeLabel(row.submission_type)}</span>
+                          <span>·</span>
+                          <span>{fmtDate(row.created_at)}</span>
+                        </div>
+                      </div>
+                      <IncomeStatusChip status={row.status} />
+                      <StatusBadge v={v} />
+                      {details.length > 0 && (
+                        <span style={{ color: '#9ca3af', fontSize: 12, width: 14, textAlign: 'center' }}>{open ? '▾' : '▸'}</span>
+                      )}
+                    </div>
+                    {open && details.length > 0 && (
+                      <div style={{ borderTop: '1px solid #f3f4f6', padding: '10px 16px 14px' }}>
+                        <ul style={{ margin: 0, paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          {details.map((d, i) => (
+                            <li key={i} style={{
+                              fontSize: 13,
+                              color: d.kind === 'warning' ? '#92400e' : d.kind === 'error' ? '#991b1b' : '#6b7280',
+                            }}>
+                              {d.kind === 'warning' ? '⚠︎ ' : d.kind === 'error' ? '✕ ' : '○ '}{d.text}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function EnrollmentInboxPage() {
-  const { org, currentCenter, centers, loading: orgLoading } = useOrg()
+  const { org, currentCenter, centers, isOrgAdmin, loading: orgLoading } = useOrg()
   const { roles, user } = useAuth()
 
   const [rows, setRows] = useState<Submission[]>([])
@@ -90,7 +217,15 @@ export default function EnrollmentInboxPage() {
   const [search, setSearch] = useState('')
   // The queue defaults to what needs a person. Auto-filed rows are a FACT to look up,
   // not a task — "видно ≠ actionable" (spec §1.1).
-  const [view, setView] = useState<'todo' | 'auto' | 'all' | 'countersign'>('todo')
+  const [view, setView] = useState<'todo' | 'auto' | 'all' | 'countersign' | 'income'>('todo')
+  // Income determination (IEA + USDA waiver) is org-level, General-Director-only.
+  // Ф1 RLS (income_org_only) already keeps these rows out of a center director's
+  // query, so this lens is additive for the GD (isOrgAdmin) and cannot change the
+  // director's render. Fetched SEPARATELY from the work queue: org-wide, ALL statuses
+  // (so the GD sees rows already on file too — 7 IEA today, all rejected/approved),
+  // whereas the work queue is scoped + pending/received only.
+  const [incomeRows, setIncomeRows] = useState<Submission[]>([])
+  const [incomeExpanded, setIncomeExpanded] = useState<string | null>(null)
   // Forms that ALWAYS need a director signature and NEVER auto-file (spec §2b).
   // Single source of truth = the DB function, which matches the registry flags
   // (renewal_countersign_types(): transition_into_program · dcy_01234 ·
@@ -181,6 +316,25 @@ export default function EnrollmentInboxPage() {
     return () => { cancelled = true }
   }, [orgLoading, org?.id, currentCenter?.id, isStaff, reloadKey])
 
+  // Income lens — General Director only (isOrgAdmin = is_org_owner()). Org-wide, all
+  // statuses, income types only. A center director never runs this (guarded below),
+  // and even if they did, Ф1 RLS returns nothing. Independent of currentCenter:
+  // income is org-level, and the center dimension lives in the grouping instead.
+  useEffect(() => {
+    if (orgLoading || !org?.id || !isOrgAdmin) { setIncomeRows([]); return }
+    let cancelled = false
+    ;(async () => {
+      const { data } = await supabase.schema('menumaker').from('enrollment_submissions')
+        .select('id,org_id,center_id,child_id,submission_type,form_data,signatures,signature_date,status,source,created_at,fee_received_at')
+        .eq('org_id', org.id)
+        .in('submission_type', ['iea', 'usda_waiver'])
+        .order('center_id', { ascending: true })
+        .order('created_at', { ascending: false })
+      if (!cancelled) setIncomeRows((data ?? []) as Submission[])
+    })()
+    return () => { cancelled = true }
+  }, [orgLoading, org?.id, isOrgAdmin, reloadKey])
+
   // "Approved · Undo" toast auto-dismisses after 10s.
   useEffect(() => {
     if (!toast) return
@@ -223,11 +377,20 @@ export default function EnrollmentInboxPage() {
   // list will actually show — a countersign form is a child form, so it must not
   // count toward a badge in the Staff view where it can never appear.
   const scoped = useMemo(
-    () => rows.filter(r => from === 'staff' ? isStaffType(r.submission_type)
+    // Income types are pulled into their own GD-only lens (below), so they never
+    // sit in Needs-a-person / All. For a center director this is a no-op — Ф1 RLS
+    // already returns zero income rows — so the director's queue is byte-for-byte
+    // unchanged. For the GD it just relocates income to the Income tab.
+    () => rows.filter(r => !isIncomeType(r.submission_type) &&
+                         (from === 'staff' ? isStaffType(r.submission_type)
                          : from === 'children' ? !isStaffType(r.submission_type)
-                         : true),
+                         : true)),
     [rows, from],
   )
+
+  // Income lens data — grouped center→family→child, and the pending-only badge.
+  const incomeGroups = useMemo(() => groupIncome(incomeRows, centerName), [incomeRows, centerName])
+  const incomePending = useMemo(() => pendingIncomeCount(incomeRows), [incomeRows])
 
   // Live validation per row (Phase 1 computes client-side; no trigger yet).
   const counts = useMemo(() => {
@@ -274,8 +437,11 @@ export default function EnrollmentInboxPage() {
     if (counts.countersign) t.push(['countersign', `Awaiting director signature · ${counts.countersign}`])
     t.push(['auto', `Filed automatically${counts.auto ? ` · ${counts.auto}` : ''}`])
     t.push(['all', 'All'])
+    // Income lens — General Director only. Always present for her (so on-file rows
+    // have a home); the badge is pending-only ("waiting for the GD"), honest 0 today.
+    if (isOrgAdmin) t.push(['income', `Income${incomePending ? ` · ${incomePending}` : ''}`])
     return t
-  }, [counts.todo, counts.auto, counts.countersign])
+  }, [counts.todo, counts.auto, counts.countersign, isOrgAdmin, incomePending])
 
   // search-v2: filter the pending list by child name (scoreMatch), ranked when set.
   const visible = useMemo(() => {
@@ -345,20 +511,23 @@ export default function EnrollmentInboxPage() {
         Pending enrollment packet submissions awaiting director review.
       </div>
 
-      {/* search-v2: filter pending submissions by child name */}
-      {!loading && !orgLoading && rows.length > 0 && (
+      {/* search-v2: filter pending submissions by child name. The tab bar also
+          shows when only the GD's income lens has rows (empty work queue). */}
+      {!loading && !orgLoading && (rows.length > 0 || (isOrgAdmin && incomeRows.length > 0)) && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search by child name…"
-            style={{
-              flex: '1 1 260px', minWidth: 200, maxWidth: 360, padding: '8px 12px',
-              border: '1.5px solid #e5e7eb', borderRadius: 9, fontSize: 13.5,
-              fontFamily: 'inherit', color: '#111827',
-            }}
-          />
-          {search.trim() && (
+          {view !== 'income' && (
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search by child name…"
+              style={{
+                flex: '1 1 260px', minWidth: 200, maxWidth: 360, padding: '8px 12px',
+                border: '1.5px solid #e5e7eb', borderRadius: 9, fontSize: 13.5,
+                fontFamily: 'inherit', color: '#111827',
+              }}
+            />
+          )}
+          {view !== 'income' && search.trim() && (
             <span style={{ fontSize: 12.5, color: '#6b7280' }}>{visible.length} of {rows.length}</span>
           )}
 
@@ -388,7 +557,7 @@ export default function EnrollmentInboxPage() {
       {(loading || orgLoading) && <div style={{ color: '#888', fontSize: 14 }}>Loading…</div>}
       {err && <div style={{ color: '#991b1b', fontSize: 14 }}>Error: {err}</div>}
 
-      {!loading && !orgLoading && !err && graded.length === 0 && (
+      {view !== 'income' && !loading && !orgLoading && !err && graded.length === 0 && (
         <div style={{
           padding: '40px 24px', textAlign: 'center', color: '#9ca3af', fontSize: 14,
           background: '#fafafa', borderRadius: 12, border: '1px dashed #e5e7eb',
@@ -399,7 +568,7 @@ export default function EnrollmentInboxPage() {
            : 'Nothing needs a person right now.'}
         </div>
       )}
-      {!loading && !orgLoading && !err && graded.length > 0 && visible.length === 0 && (
+      {view !== 'income' && !loading && !orgLoading && !err && graded.length > 0 && visible.length === 0 && (
         <div style={{
           padding: '32px 24px', textAlign: 'center', color: '#9ca3af', fontSize: 14,
           background: '#fafafa', borderRadius: 12, border: '1px dashed #e5e7eb',
@@ -408,6 +577,16 @@ export default function EnrollmentInboxPage() {
         </div>
       )}
 
+      {view === 'income' && (
+        <IncomeLens
+          groups={incomeGroups}
+          centerScoped={!!currentCenter?.id}
+          expanded={incomeExpanded}
+          onToggle={id => setIncomeExpanded(incomeExpanded === id ? null : id)}
+        />
+      )}
+
+      {view !== 'income' && (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {visible.map(({ row, v }) => {
           // Already filed by the auto-file pass. It must not offer Approve: approving it
@@ -525,6 +704,7 @@ export default function EnrollmentInboxPage() {
           )
         })}
       </div>
+      )}
 
       {reviewing && (
         <EnrollmentReviewModal

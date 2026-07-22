@@ -18,7 +18,7 @@ import {
   parseIeaFiscalYear, frpExpiryDefault,
   type RosterLite, type ApproveResult,
 } from '@/lib/enrollmentApprove'
-import { countersignSlot, loadSample, adoptSample, type SignatureSample } from '@/lib/signatureSamples'
+import { countersignSlot, loadSample, adoptSample, type SignatureSample, type SampleOwner } from '@/lib/signatureSamples'
 import SignaturePad from '@/components/signing/SignaturePad'
 
 // roster.sched_days bitmask — Mon=1 Tue=2 Wed=4 Thu=8 Fri=16 (20260716c)
@@ -87,21 +87,23 @@ export default function EnrollmentReviewModal({
   const [adoptMine, setAdoptMine] = useState(false)               // remember it as my shelf
   const [feeOn, setFeeOn] = useState(!!submission.fee_received_at)
 
-  // The director's OWN shelf — read under their login, never from a form on the
+  // The signer's OWN shelf — read under their login, never from a form on the
   // shared kiosk. A pad reads only its own scope and never falls back.
   //
   // sponsor_sig (IEA, кусок 2) is the GENERAL DIRECTOR's slot, a distinct signing
   // role from a center director — "the shelf is the signing role, not the person".
-  // There is no `sponsor` shelf yet (SigScope = parent|staff|director), so we must
-  // NOT load the director shelf for it (that would be the exact collapse the shelves
-  // forbid). The GD draws/types each time until a sponsor shelf exists (flagged for
-  // Nikolay). Other slots (program_sig/admin_sig) keep the director shelf unchanged.
+  // Since 20260722b it has its OWN `sponsor` shelf, so we load THAT for sponsor_sig
+  // (never the center `director` shelf — that would be the exact collapse the shelves
+  // forbid). Every other slot (program_sig/admin_sig) keeps the director shelf.
   useEffect(() => {
-    if (!slot || slot === 'sponsor_sig') { setMySample(null); setUseSample(false); return }
+    if (!slot) { setMySample(null); setUseSample(false); return }
+    const owner: SampleOwner = slot === 'sponsor_sig'
+      ? { scope: 'sponsor', authId: reviewerId }
+      : { scope: 'director', authId: reviewerId }
     let cancelled = false
     ;(async () => {
       try {
-        const s = await loadSample({ scope: 'director', authId: reviewerId })
+        const s = await loadSample(owner)
         if (!cancelled) { setMySample(s); setUseSample(!!s) }
       } catch { /* no sample is a fact, not a failure — the pad still draws */ }
     })()
@@ -317,7 +319,8 @@ export default function EnrollmentReviewModal({
         if (!ieaFiscalYear) throw new Error('Could not resolve the IEA form edition / fiscal year')
         if (ieaMatchedIds.length === 0) throw new Error('No roster children matched — add them via CACFP enrollment first')
         // The General Director's sponsor_sig — written into signatures.sponsor_sig
-        // by approveIea (merge, never replace). Drawn/typed here (no sponsor shelf yet).
+        // by approveIea (merge, never replace). Applied from her sponsor shelf, or
+        // drawn/typed here as fallback.
         const ieaCs = slot && countersignImage && !alreadyCountersigned
           ? { slot, image: countersignImage, signedBy: reviewerId, signedName: reviewerName }
           : null
@@ -329,6 +332,23 @@ export default function EnrollmentReviewModal({
           },
           ieaMatchedIds, reviewerId, paperSigned, ieaCs,
         )
+
+        // Remember it as MY sponsor sample, if asked — onto the `sponsor` shelf, never
+        // the center director shelf. Deliberate: adoption is not a side effect of one
+        // signature. The determination is already applied; a failed remember is not fatal.
+        if (ieaCs && adoptMine && !useSample && sigDraw) {
+          try {
+            await adoptSample({
+              owner: { scope: 'sponsor', authId: reviewerId },
+              orgId: submission.org_id, centerId: submission.center_id,
+              ownerName: reviewerName, image: sigDraw, method: 'drawn',
+              sourceSubmissionId: null,   // the GD mints under her login, not from a form
+              adoptedBy: reviewerId,
+            })
+          } catch (e: any) {
+            setErr(`Countersigned and approved, but your signature was not saved for next time: ${e?.message ?? e}`)
+          }
+        }
       } else {
         // A document: file it against a child, optionally countersigned. No
         // roster write — that is the CACFP/IEA path.
@@ -680,10 +700,14 @@ export default function EnrollmentReviewModal({
                 {ieaFiscalYear
                   ? <>Fiscal year <strong>{ieaFiscalYear}</strong> · </>
                   : <span style={{ color: '#991b1b' }}>Fiscal year unresolved (form edition unknown) · </span>}
-                Source: {frpOverridden ? <strong style={{ color: '#92400e' }}>manual override</strong>
-                  : frpInfo?.source === 'sponsor' ? 'Sponsor certification'
-                  : frpInfo?.source === 'helper' ? <span style={{ color: '#92400e' }}>⚠︎ calculator fallback (Sponsor empty)</span>
-                  : 'manual'}
+                {/* Category source, signed in the UI (Nikolay 22.07): make the
+                    provenance of the F/R/P legible — form-stated vs form-calculated
+                    vs a human override — so the GD signs knowing where it came from. */}
+                Category source: {frpOverridden
+                  ? <strong style={{ color: '#92400e' }}>✎ manual override</strong>
+                  : frpInfo?.source === 'sponsor' ? <strong style={{ color: '#0f4c35' }}>form-stated · Sponsor section</strong>
+                  : frpInfo?.source === 'helper' ? <strong style={{ color: '#0f4c35' }}>form-calculated · income helper</strong>
+                  : <span style={{ color: '#92400e' }}>⚠︎ manual entry (form stated none)</span>}
               </div>
               {frpChoice && (
                 <div style={{ fontSize: 11.5, color: '#0f4c35' }}>
@@ -699,19 +723,31 @@ export default function EnrollmentReviewModal({
           )}
 
           {/* ── IEA countersignature — the General Director's sponsor_sig (кусок 2) ──
-              Distinct signing role → no reusable shelf yet, so she signs here each
-              time. Written into signatures.sponsor_sig on Approve (approveIea). */}
+              Reads her OWN `sponsor` shelf (not the center director shelf). Apply a
+              saved sample with one tap, or draw/type as fallback and optionally adopt
+              it. Written into signatures.sponsor_sig on Approve (approveIea, merge). */}
           {isIea && slot && !alreadyCountersigned && (
             <div style={{ fontSize: 12.5 }}>
               <div style={{ fontWeight: 600, color: '#374151', marginBottom: 6 }}>
                 Your countersignature
                 <span style={{ color: '#9ca3af', fontWeight: 400 }}> — General Director's slot ({slot})</span>
               </div>
-              <SignaturePad onChange={setSigDraw} hint={`Sign as ${reviewerName}`} disabled={busy} />
-              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 6 }}>
-                Saved-signature reuse isn’t available for this slot yet — it needs its own
-                sponsor shelf (separate decision). Draw or type your signature.
-              </div>
+              {mySample && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <input type="checkbox" checked={useSample} onChange={e => setUseSample(e.target.checked)} />
+                  <span>Apply my signature</span>
+                  <img src={mySample.signature_image} alt="" style={{ height: 28, background: '#fafff9', border: '1px solid #e5e7eb', borderRadius: 4 }} />
+                </label>
+              )}
+              {!useSample && (
+                <>
+                  <SignaturePad onChange={setSigDraw} hint={`Sign as ${reviewerName}`} disabled={busy} />
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                    <input type="checkbox" checked={adoptMine} onChange={e => setAdoptMine(e.target.checked)} />
+                    <span style={{ color: '#6b7280' }}>Remember this as my signature — apply it with one tap next time</span>
+                  </label>
+                </>
+              )}
             </div>
           )}
           {isIea && slot && alreadyCountersigned && (

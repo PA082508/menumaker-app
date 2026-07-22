@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toFormLibItems, isPublishable, isDirectorComposable } from './formsLibrary'
+import { toFormLibItems, isPublishable, isDirectorComposable, isHiddenFromDirector } from './formsLibrary'
 
 describe('toFormLibItems (the useFormsLibrary seam)', () => {
   it('returns [] for missing forms', () => {
@@ -118,24 +118,33 @@ describe('toFormLibItems publishability wiring', () => {
   })
 })
 
-describe('isDirectorComposable — the GD access gate (separate from publishable)', () => {
-  it('is true ONLY for a key the GD explicitly opened (=== true)', () => {
-    const access = { enroll: true, iea: false }
-    expect(isDirectorComposable('enroll', access)).toBe(true)
-    expect(isDirectorComposable('iea', access)).toBe(false)
+describe('director-access gate — CLOSED-LIST, default OPEN (Nikolay 2026-07-22)', () => {
+  // The map holds ONLY closed keys ({key:true}); absence = open.
+  it('hides only a key the GD explicitly closed (=== true)', () => {
+    const hidden = { iea: true }
+    expect(isHiddenFromDirector('iea', hidden)).toBe(true)
+    expect(isHiddenFromDirector('enroll', hidden)).toBe(false)
   })
-  it('defaults to closed for a key with no row (safe default)', () => {
-    expect(isDirectorComposable('special_diet', { enroll: true })).toBe(false)
+  it('defaults to OPEN for a key with no row', () => {
+    expect(isDirectorComposable('special_diet', { iea: true })).toBe(true)
+    expect(isHiddenFromDirector('special_diet', { iea: true })).toBe(false)
   })
-  it('is closed when the access map is missing or empty', () => {
-    expect(isDirectorComposable('enroll', null)).toBe(false)
-    expect(isDirectorComposable('enroll', undefined)).toBe(false)
-    expect(isDirectorComposable('enroll', {})).toBe(false)
+  it('everything is open when the map is missing or empty', () => {
+    for (const m of [null, undefined, {}] as const) {
+      expect(isDirectorComposable('enroll', m)).toBe(true)
+      expect(isHiddenFromDirector('enroll', m)).toBe(false)
+    }
   })
-  it('treats a truthy-but-not-true value as closed (no coercion surprises)', () => {
-    // A stray 1 / "true" from a bad row must NOT open the gate.
-    const access = { enroll: 1 as unknown as boolean, iea: 'true' as unknown as boolean }
-    expect(isDirectorComposable('enroll', access)).toBe(false)
-    expect(isDirectorComposable('iea', access)).toBe(false)
+  it('isDirectorComposable is the exact complement of isHiddenFromDirector', () => {
+    const hidden = { iea: true, staff: true }
+    for (const k of ['iea', 'enroll', 'staff', 'unknown']) {
+      expect(isDirectorComposable(k, hidden)).toBe(!isHiddenFromDirector(k, hidden))
+    }
+  })
+  it('treats a truthy-but-not-true value as NOT closed (no coercion surprises)', () => {
+    // A stray 1 / "true" from a bad row must NOT close the gate — only literal true hides.
+    const hidden = { enroll: 1 as unknown as boolean, iea: 'true' as unknown as boolean }
+    expect(isHiddenFromDirector('enroll', hidden)).toBe(false)
+    expect(isDirectorComposable('iea', hidden)).toBe(true)
   })
 })

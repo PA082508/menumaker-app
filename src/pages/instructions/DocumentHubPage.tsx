@@ -4,6 +4,8 @@ import { QRCodeCanvas } from 'qrcode.react'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
 import { PARENT_FORMS_URL, SHOWCASE_ORIGIN, storefrontOnlyUrl } from '@/config/showcaseLinks'
+import { SEC1, SUTQ_DOCS, SEC2, SEC4_FORMS, OUR_DOCS } from '@/lib/documentSections'
+import { isHiddenFromDirector, type FormAccessMap } from '@/lib/formsLibrary'
 import StaffJdOnboarding from './StaffJdOnboarding'
 
 const DOCS = [
@@ -265,11 +267,6 @@ const FORM_LABELS: Record<string, string> = {
   special_diet: 'Special Diet Statement', infant_meals: 'Infant Meals Preference',
   parent_consent: 'Parent Consent for E-Signatures', staff: 'Staff Enrollment',
 }
-const SEC1 = ['dcy_01234', 'dcy_01236', 'dcy_01217', 'dcy_01305', 'dcy_01218', 'dcy_01225', 'dcy_01226', 'center_parent_information']
-const SUTQ_DOCS = ['sutq_family_needs_survey']
-const SEC2 = ['enroll', 'iea', 'usda_waiver', 'fluid_milk', 'special_diet', 'infant_meals']
-const SEC4_FORMS = ['parent_consent', 'staff']
-const OUR_DOCS = ['child_release_authorization', 'parent_responsibilities', 'topical_product_consent', 'transition_into_program', 'building_for_the_future', 'what_to_bring_infant', 'parents_book', 'wic_information', 'start_form']
 const CLAIM_EXPORTS = [
   { label: 'Meal counts / attendance (checkmarks)', to: '/reports', note: 'The checkmark export — protected till Oct 1.' },
   { label: 'Menu', to: '/menu/current' },
@@ -313,6 +310,42 @@ export default function DocumentHubPage() {
 
   const slug = currentCenter?.slug
 
+  // ── Director-access (closed-list): the GD closes forms to directors right here in the Library.
+  // A row in menumaker.form_access = HIDDEN from a director's "Add from library"; absence = open
+  // (default). Only the General Director (is_org_owner → isOrgAdmin) sees/writes the toggle; RLS
+  // enforces the write. New documents need no row — they're open for free.
+  const [hidden, setHidden] = useState<FormAccessMap>({})
+  const [hideBusy, setHideBusy] = useState<string | null>(null)
+  useEffect(() => {
+    if (!org?.id) return
+    let dead = false
+    supabase.schema('menumaker').from('form_access').select('form_key,director_hidden')
+      .then(({ data, error }) => {
+        if (dead || error) return
+        const m: FormAccessMap = {}
+        for (const r of (data ?? []) as { form_key: string; director_hidden: boolean }[]) {
+          if (r.director_hidden === true) m[r.form_key] = true
+        }
+        setHidden(m)
+      })
+    return () => { dead = true }
+  }, [org?.id])
+
+  async function toggleHidden(key: string) {
+    if (!isOrgAdmin || !org?.id) return
+    const willHide = !isHiddenFromDirector(key, hidden)
+    setHideBusy(key)
+    setHidden(h => { const n = { ...h }; if (willHide) n[key] = true; else delete n[key]; return n }) // optimistic
+    const S = supabase.schema('menumaker')
+    const res = willHide
+      ? await S.from('form_access').upsert({ org_id: org.id, form_key: key, director_hidden: true }, { onConflict: 'org_id,form_key' })
+      : await S.from('form_access').delete().eq('org_id', org.id).eq('form_key', key) // open = remove the row
+    if (res.error) {
+      setHidden(h => { const n = { ...h }; if (willHide) delete n[key]; else n[key] = true; return n }) // revert
+    }
+    setHideBusy(null)
+  }
+
   function resolve(key: string) {
     const f = reg?.forms?.[key]
     const cur = f?.current
@@ -346,6 +379,14 @@ export default function DocumentHubPage() {
           {version && <span style={pill('#eef2ff', '#3730a3')}>{version}</span>}
           {!isKeep && <span style={live ? pill('#dcfce7', '#166534') : pill('#fef3c7', '#92400e')}>{live ? '● live' : '○ dark'}</span>}
           {futureFormKit && <span title="Signature form — planned as an online form-kit form later" style={pill('#f3e8ff', '#6b21a8')}>form-kit planned</span>}
+          {/* GD-only: open/close this form for directors' own packet sets (closed-list; default open). */}
+          {isOrgAdmin && (
+            <button onClick={() => toggleHidden(keyId)} disabled={hideBusy === keyId}
+              title={isHiddenFromDirector(keyId, hidden) ? 'Closed to directors — click to open for their sets' : 'Open to directors — click to close'}
+              style={{ ...pill(isHiddenFromDirector(keyId, hidden) ? '#f3f4f6' : '#dcfce7', isHiddenFromDirector(keyId, hidden) ? '#6b7280' : '#166534'), marginLeft: 'auto', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+              {hideBusy === keyId ? '…' : isHiddenFromDirector(keyId, hidden) ? '🚫 closed to directors' : '👁 open to directors'}
+            </button>
+          )}
         </div>
         <div style={{ marginTop: 'auto', display: 'flex', gap: 8 }}>
           {!fileUrl ? (

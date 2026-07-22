@@ -11,7 +11,9 @@
       "Bash(xargs -I{} dirname {})",
       "Bash(git merge *)",
       "Bash(gh api *)",
-      "Bash(npx vitest *)"
+      "Bash(npx vitest *)",
+      "Bash(python3 -c ' *)",
+      "Bash(gh pr create --draft --base main --head feat/packet-set-builder-crud --title 'feat\\(packet-sets\\): Set Builder CRUD + map-gate [PREVIEW — do not merge]' --body ' *)"
     ],
     "additionalDirectories": [
       "/Users/nikolaykutsenko/Downloads",

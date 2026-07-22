@@ -93,17 +93,24 @@ export function toFormLibItems(forms: Record<string, RawForm> | undefined | null
  * The DIRECTOR-ACCESS gate — a SECOND, independent gate from `publishable`.
  *
  *   publishable  = "is this form built?" (registry PENDING / current:null → greyed, unpickable)
- *   composable   = "did the General Director ALLOW directors to put this form in their own sets?"
+ *   hidden       = "did the General Director CLOSE this form to directors?" (default: OPEN)
  *
- * They never merge: a form can be built but not opened to directors (hidden from a director's
- * Add-from-library), or opened but not built (shown greyed). The access map is a thin per-org
- * overlay (menumaker.form_access) the GD toggles; the registry itself is never touched. Absence
- * of a row = NOT composable (closed until the GD opens it) — the safe default. Pure; the caller
- * (PacketSetsPage) owns the org-scoped fetch, exactly as it owns the registry fetch.
+ * Polarity (Nikolay 2026-07-22): DEFAULT OPEN. Everything in the library is composable by a
+ * director; the GD CLOSES forms one by one. So the overlay (menumaker.form_access) is a
+ * CLOSED-LIST — a row means the form is hidden from a director's Add-from-library; ABSENCE of a
+ * row = open. A brand-new document is therefore open for free (no row to add). The two gates
+ * never merge: a form can be built but closed (hidden from directors), or open but not built
+ * (shown greyed). Pure; the caller owns the org-scoped fetch, exactly as it owns the registry.
+ *
+ * The map holds ONLY closed keys (`{key: true}`); an absent key is open. `isHiddenFromDirector`
+ * is the raw predicate; `isDirectorComposable` is its complement (default open) for readability.
  */
 export type FormAccessMap = Record<string, boolean>
-export function isDirectorComposable(key: string, access: FormAccessMap | null | undefined): boolean {
-  return !!access && access[key] === true
+export function isHiddenFromDirector(key: string, hidden: FormAccessMap | null | undefined): boolean {
+  return !!hidden && hidden[key] === true
+}
+export function isDirectorComposable(key: string, hidden: FormAccessMap | null | undefined): boolean {
+  return !isHiddenFromDirector(key, hidden)
 }
 
 export interface FormsLibrary {

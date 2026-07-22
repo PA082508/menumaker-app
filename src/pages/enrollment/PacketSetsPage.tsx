@@ -21,7 +21,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { QRCodeCanvas } from 'qrcode.react'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
-import { useFormsLibrary } from '@/lib/formsLibrary'
+import { useFormsLibrary, isDirectorComposable, type FormAccessMap } from '@/lib/formsLibrary'
 import { storefrontPacketUrl } from '@/config/showcaseLinks'
 import Button, { ButtonRow } from '@/components/ui/Button'
 import BackBar from '@/components/BackBar'
@@ -65,6 +65,47 @@ export default function PacketSetsPage() {
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameText, setRenameText] = useState('')
   const [busy, setBusy] = useState(false)
+
+  // ── Director-access gate (a SECOND gate from publishable; see formsLibrary.isDirectorComposable).
+  // The General Director (org owner) decides which library forms a director may put in their OWN
+  // sets. Stored per-org in menumaker.form_access; the GD toggles it right here in the library, a
+  // director only SEES the opened forms (hidden, not greyed — greying is the publish-gate). Missing
+  // row = closed (safe default). RLS lets only is_org_owner WRITE; every org member reads.
+  const isGD = isOrgAdmin
+  const [access, setAccess] = useState<FormAccessMap>({})
+  const [accessBusy, setAccessBusy] = useState<string | null>(null)
+  useEffect(() => {
+    if (!org?.id) return
+    let dead = false
+    S().from('form_access').select('form_key,director_composable').then(({ data, error }) => {
+      if (dead) return
+      // Non-fatal: if the overlay is unavailable, default to CLOSED (a director sees nothing new
+      // until the office opens it) rather than falsely opening the whole library.
+      if (error) { setAccess({}); return }
+      const m: FormAccessMap = {}
+      for (const r of (data ?? []) as { form_key: string; director_composable: boolean }[]) {
+        m[r.form_key] = r.director_composable === true
+      }
+      setAccess(m)
+    })
+    return () => { dead = true }
+  }, [org?.id])
+
+  const toggleAccess = async (key: string, title: string) => {
+    if (!isGD || !org?.id) return
+    const next = !isDirectorComposable(key, access)
+    setAccessBusy(key); setErr(null); setNote(null)
+    setAccess(a => ({ ...a, [key]: next })) // optimistic
+    try {
+      const { error } = await S().from('form_access')
+        .upsert({ org_id: org.id, form_key: key, director_composable: next }, { onConflict: 'org_id,form_key' })
+      if (error) throw error
+      setNote(next ? `Opened “${title}” — directors can now add it to their sets.` : `Closed “${title}” — directors can no longer add it.`)
+    } catch (e: any) {
+      setAccess(a => ({ ...a, [key]: !next })) // revert
+      setErr(`Could not change access — ${e?.message ?? e}. Nothing was changed.`)
+    } finally { setAccessBusy(null) }
+  }
 
   // ── Share (#4): storefront slug per center comes from the registry (never guessed
   // from the center's name — same map embed.js uses), keyed by center_id.
@@ -152,9 +193,14 @@ export default function PacketSetsPage() {
   // "in set" and inert. Any real exclusion must be a conscious flag, never a silent drop.
   const libShown = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return lib.items
-    return lib.items.filter(i => i.title.toLowerCase().includes(q) || i.key.toLowerCase().includes(q))
-  }, [lib.items, search])
+    let items = lib.items
+    if (q) items = items.filter(i => i.title.toLowerCase().includes(q) || i.key.toLowerCase().includes(q))
+    // Access-gate HIDES for a director (unlike the publish-gate, which greys); the GD sees the
+    // whole library plus a per-row open/close toggle. A form already in the set stays in the
+    // In-this-set column regardless — this only filters what a director may ADD.
+    if (!isGD) items = items.filter(i => isDirectorComposable(i.key, access))
+    return items
+  }, [lib.items, search, isGD, access])
 
   const editable = selected ? canEdit(selected) : false
   const move = (i: number, dir: -1 | 1) => { if (!editable) return; setDraft(d => {
@@ -462,50 +508,71 @@ export default function PacketSetsPage() {
                   )}
                 </div>
 
-                {/* Library — the WHOLE registry, always. Add what isn't in yet. */}
+                {/* Library — the WHOLE registry for the GD; a director sees only opened forms. */}
                 <div>
                   <div style={colHead}>
-                    Library · {lib.items.length} form{lib.items.length === 1 ? '' : 's'}
+                    Library · {libShown.length} form{libShown.length === 1 ? '' : 's'}{!isGD && lib.items.length !== libShown.length ? ` of ${lib.items.length}` : ''}
                     {draft.length > 0 && <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}> · {draft.length} in this set</span>}
                     {!editable && <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0, color: '#92400e' }}> · view only</span>}
                   </div>
                   <input value={search} onChange={e => setSearch(e.target.value)} disabled={!editable} placeholder={editable ? 'Search the whole forms library…' : 'View only — the owner manages this set'} style={{ ...searchBox, ...(!editable ? { background: '#fafafa', color: '#9ca3af' } : null) }} />
+                  <div style={{ fontSize: 11, color: '#9ca3af', margin: '-2px 0 8px', lineHeight: 1.45 }}>
+                    {isGD
+                      ? 'You decide which forms directors may add to their own sets — toggle 👁 / 🚫 on the right of each form. Directors only see the opened ones.'
+                      : 'Only the forms your office has opened for your sets appear here.'}
+                  </div>
                   {lib.loading ? <div style={muted}>Loading library…</div> : lib.items.length === 0 ? (
                     <div style={muted}>Library empty.</div>
                   ) : libShown.length === 0 ? (
-                    <div style={muted}>No form matches “{search.trim()}”.</div>
+                    <div style={muted}>
+                      {search.trim() ? `No form matches “${search.trim()}”.`
+                        : isGD ? 'Library empty.'
+                        : 'Your office hasn’t opened any forms for your sets yet.'}
+                    </div>
                   ) : (
                     <div style={{ maxHeight: 340, overflowY: 'auto' }}>
                       {libShown.map(i => {
                         const on = inSet.has(i.key)
-                        if (on) return (
-                          <div key={i.key} style={{ ...libRow, opacity: 0.55, cursor: 'default' }} title="Already in this set">
+                        const openToDirectors = isDirectorComposable(i.key, access)
+                        const inner = on ? (
+                          <div style={{ ...libRow, flex: 1, minWidth: 0, marginBottom: 0, opacity: 0.55, cursor: 'default' }} title="Already in this set">
                             <span style={{ color: GREEN }}>✓</span>
                             <span style={{ flex: 1 }}>{i.title}</span>
                             {i.isGovForm && <span style={tagGov} title={i.requiringOrg || 'Government form'}>gov</span>}
                             <span style={{ fontSize: 10.5, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em' }}>in set</span>
                           </div>
-                        )
                         // The map is the gate: a form the registry hasn't published yet (PENDING /
                         // current:null) is shown so the director knows it exists, but can't be added
                         // to a packet — a family must never be sent a link to a form that isn't built.
-                        if (!i.publishable) return (
-                          <div key={i.key} style={{ ...libRow, opacity: 0.6, cursor: 'not-allowed', background: '#fafafa' }}
+                        ) : !i.publishable ? (
+                          <div style={{ ...libRow, flex: 1, minWidth: 0, marginBottom: 0, opacity: 0.6, cursor: 'not-allowed', background: '#fafafa' }}
                             title={`${i.unpublishedReason ?? 'Not published yet'} — can’t be added until it’s built`}>
                             <span style={{ color: '#9ca3af', fontWeight: 700 }}>＋</span>
                             <span style={{ flex: 1, color: '#9ca3af' }}>{i.title}</span>
                             {i.isGovForm && <span style={tagGov} title={i.requiringOrg || 'Government form'}>gov</span>}
                             <span style={tagPending}>{i.unpublishedReason ?? 'not published'}</span>
                           </div>
-                        )
-                        return (
-                          <button key={i.key} disabled={!editable} onClick={() => add(i.key)}
-                            style={{ ...libRow, ...(!editable ? { opacity: 0.5, cursor: 'not-allowed' } : null) }}
+                        ) : (
+                          <button disabled={!editable} onClick={() => add(i.key)}
+                            style={{ ...libRow, flex: 1, minWidth: 0, marginBottom: 0, ...(!editable ? { opacity: 0.5, cursor: 'not-allowed' } : null) }}
                             title={editable ? `Add “${i.title}”` : 'View only — the owner manages this set'}>
                             <span style={{ color: GREEN, fontWeight: 700 }}>＋</span>
                             <span style={{ flex: 1 }}>{i.title}</span>
                             {i.isGovForm && <span style={tagGov} title={i.requiringOrg || 'Government form'}>gov</span>}
                           </button>
+                        )
+                        return (
+                          <div key={i.key} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                            {inner}
+                            {/* GD-only access toggle: open/close this form for directors' own sets. */}
+                            {isGD && (
+                              <button onClick={() => toggleAccess(i.key, i.title)} disabled={accessBusy === i.key}
+                                title={openToDirectors ? 'Open to directors — click to close' : 'Closed to directors — click to open'}
+                                style={{ ...accessToggle, ...(openToDirectors ? accessOn : accessOff) }}>
+                                {accessBusy === i.key ? '…' : openToDirectors ? '👁 open' : '🚫 closed'}
+                              </button>
+                            )}
+                          </div>
                         )
                       })}
                     </div>
@@ -620,3 +687,6 @@ const tagPending: React.CSSProperties = { fontSize: 9.5, fontWeight: 700, color:
 const newBtn: React.CSSProperties = { font: 'inherit', fontSize: 12, fontWeight: 600, color: '#fff', background: GREEN, border: 'none', borderRadius: 8, padding: '5px 10px', cursor: 'pointer' }
 const ghostBtn: React.CSSProperties = { font: 'inherit', fontSize: 12, fontWeight: 600, color: '#374151', background: '#fff', border: '1px solid #d7ded7', borderRadius: 7, padding: '4px 9px', cursor: 'pointer' }
 const createCard: React.CSSProperties = { background: '#f6fdf9', border: '1px solid #cdeadb', borderRadius: 10, padding: 12, margin: '4px 0 10px' }
+const accessToggle: React.CSSProperties = { font: 'inherit', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap', padding: '4px 7px', borderRadius: 7, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.03em', flexShrink: 0 }
+const accessOn: React.CSSProperties = { color: GREEN, background: '#dcfce7', border: '1px solid #bbf7d0' }
+const accessOff: React.CSSProperties = { color: '#6b7280', background: '#f3f4f6', border: '1px solid #e5e7eb' }

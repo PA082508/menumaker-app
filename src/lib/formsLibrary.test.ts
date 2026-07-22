@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toFormLibItems, isPublishable } from './formsLibrary'
+import { toFormLibItems, isPublishable, isDirectorComposable } from './formsLibrary'
 
 describe('toFormLibItems (the useFormsLibrary seam)', () => {
   it('returns [] for missing forms', () => {
@@ -115,5 +115,27 @@ describe('toFormLibItems publishability wiring', () => {
       school_enrollment_regular: { title: 'School Enrollment (Regular)', sameAs: 'enroll' },
     })
     expect(items.find(i => i.key === 'school_enrollment_regular')?.publishable).toBe(true)
+  })
+})
+
+describe('isDirectorComposable — the GD access gate (separate from publishable)', () => {
+  it('is true ONLY for a key the GD explicitly opened (=== true)', () => {
+    const access = { enroll: true, iea: false }
+    expect(isDirectorComposable('enroll', access)).toBe(true)
+    expect(isDirectorComposable('iea', access)).toBe(false)
+  })
+  it('defaults to closed for a key with no row (safe default)', () => {
+    expect(isDirectorComposable('special_diet', { enroll: true })).toBe(false)
+  })
+  it('is closed when the access map is missing or empty', () => {
+    expect(isDirectorComposable('enroll', null)).toBe(false)
+    expect(isDirectorComposable('enroll', undefined)).toBe(false)
+    expect(isDirectorComposable('enroll', {})).toBe(false)
+  })
+  it('treats a truthy-but-not-true value as closed (no coercion surprises)', () => {
+    // A stray 1 / "true" from a bad row must NOT open the gate.
+    const access = { enroll: 1 as unknown as boolean, iea: 'true' as unknown as boolean }
+    expect(isDirectorComposable('enroll', access)).toBe(false)
+    expect(isDirectorComposable('iea', access)).toBe(false)
   })
 })

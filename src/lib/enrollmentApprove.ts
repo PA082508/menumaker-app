@@ -426,6 +426,10 @@ export async function approveIea(
   sub: { id: string; child_id: string | null; org_id: string; center_id: string },
   det: IeaDetermination,
   matchedIds: string[], reviewerId: string, paperSigned: boolean,
+  // The General Director's own sponsor_sig countersignature (Ф2, кусок 2). Optional
+  // so the existing shape (and tests) keep working; when present it is written into
+  // enrollment_submissions.signatures[slot], merge-not-replace, and undone exactly.
+  countersign?: Countersign | null,
 ): Promise<ApproveResult> {
   if (matchedIds.length === 0) throw new Error('No matched roster children to apply eligibility to')
   if (!det.fiscal_year) throw new Error('Could not resolve the IEA form edition / fiscal year')
@@ -458,12 +462,34 @@ export async function approveIea(
     throw e
   }
 
+  // 3) sponsor_sig — the General Director's countersignature. Merge into the
+  // signatures block (the parent's signature keeps its exact bytes); snapshot the
+  // prior block so undo restores it. Written BEFORE markApproved so a signature
+  // failure rolls the roster + income writes back and leaves the row pending.
+  let prevSignatures: Record<string, any> | null = null
+  if (countersign) {
+    if (!countersign.image?.startsWith('data:image/')) throw new Error('The countersignature must be an image')
+    const { data: prevSig } = await S().from('enrollment_submissions').select('signatures').eq('id', sub.id).single()
+    const before = ((prevSig as any)?.signatures ?? {}) as Record<string, any>
+    if (before[countersign.slot]) throw new Error(`This form is already countersigned in ${countersign.slot}`)
+    prevSignatures = before
+    const { error: sErr } = await S().from('enrollment_submissions')
+      .update({ signatures: { ...before, [countersign.slot]: countersign.image } }).eq('id', sub.id)
+    if (sErr) {
+      for (const u of ieUndo) await u().catch(() => {})
+      for (const id of matchedIds) await S().from('roster').update(prevRoster.get(id) ?? { frp: null, frp_expires: null }).eq('id', id)
+      throw sErr
+    }
+  }
+
   await markApproved(sub.id, null, reviewerId, paperSigned)
   return {
-    message: `Approved — FRP ${det.frp} (${det.fiscal_year}) applied to ${matchedIds.length} child${matchedIds.length > 1 ? 'ren' : ''}`,
+    message: `Approved — FRP ${det.frp} (${det.fiscal_year}) applied to ${matchedIds.length} child${matchedIds.length > 1 ? 'ren' : ''}`
+      + (countersign ? `, countersigned by ${countersign.signedName}` : ''),
     undo: async () => {
       for (const u of ieUndo) await u()
       for (const id of matchedIds) await S().from('roster').update(prevRoster.get(id) ?? { frp: null, frp_expires: null }).eq('id', id)
+      if (prevSignatures !== null) await S().from('enrollment_submissions').update({ signatures: prevSignatures }).eq('id', sub.id)
       await restorePending(sub.id, sub.child_id)
     },
   }

@@ -89,8 +89,15 @@ export default function EnrollmentReviewModal({
 
   // The director's OWN shelf — read under their login, never from a form on the
   // shared kiosk. A pad reads only its own scope and never falls back.
+  //
+  // sponsor_sig (IEA, кусок 2) is the GENERAL DIRECTOR's slot, a distinct signing
+  // role from a center director — "the shelf is the signing role, not the person".
+  // There is no `sponsor` shelf yet (SigScope = parent|staff|director), so we must
+  // NOT load the director shelf for it (that would be the exact collapse the shelves
+  // forbid). The GD draws/types each time until a sponsor shelf exists (flagged for
+  // Nikolay). Other slots (program_sig/admin_sig) keep the director shelf unchanged.
   useEffect(() => {
-    if (!slot) return
+    if (!slot || slot === 'sponsor_sig') { setMySample(null); setUseSample(false); return }
     let cancelled = false
     ;(async () => {
       try {
@@ -270,9 +277,12 @@ export default function EnrollmentReviewModal({
   const dupUnresolved = isCacfp && !resolvedChildId && cacfpMatches.length > 0 && !chosenMatch
   const docNeedsChild = isDocument && !resolvedChildId && !docChild
   const docNeedsSig = isDocument && !!slot && !alreadyCountersigned && !countersignImage
+  // IEA carries the General Director's sponsor_sig slot — her countersignature is
+  // required to approve (unless already on file), same rule as a document's slot.
+  const ieaNeedsSig = isIea && !!slot && !alreadyCountersigned && !countersignImage
   const approveBlocked = v.status === 'errors' || dupUnresolved || chosenInactive || busy
     || (isIea && (!frpChoice || !ieaFiscalYear || ieaMatchedIds.length === 0))
-    || docNeedsChild || docNeedsSig
+    || docNeedsChild || docNeedsSig || ieaNeedsSig
 
   async function doApprove() {
     if (v.status === 'errors') return
@@ -306,13 +316,18 @@ export default function EnrollmentReviewModal({
         if (!frpChoice) throw new Error('Choose an F/R/P determination')
         if (!ieaFiscalYear) throw new Error('Could not resolve the IEA form edition / fiscal year')
         if (ieaMatchedIds.length === 0) throw new Error('No roster children matched — add them via CACFP enrollment first')
+        // The General Director's sponsor_sig — written into signatures.sponsor_sig
+        // by approveIea (merge, never replace). Drawn/typed here (no sponsor shelf yet).
+        const ieaCs = slot && countersignImage && !alreadyCountersigned
+          ? { slot, image: countersignImage, signedBy: reviewerId, signedName: reviewerName }
+          : null
         result = await approveIea(
           submission,
           {
             frp: frpChoice, frp_expires: frpExpiry || null, fiscal_year: ieaFiscalYear,
             eligibility_source: eligibilitySource, determined_by: reviewerId, determined_by_name: reviewerName,
           },
-          ieaMatchedIds, reviewerId, paperSigned,
+          ieaMatchedIds, reviewerId, paperSigned, ieaCs,
         )
       } else {
         // A document: file it against a child, optionally countersigned. No
@@ -681,6 +696,26 @@ export default function EnrollmentReviewModal({
                   ` · skipped (no roster match): ${ieaChildren.filter(c => !c.matches.length).map(c => c.name).join(', ')}`}
               </div>
             </div>
+          )}
+
+          {/* ── IEA countersignature — the General Director's sponsor_sig (кусок 2) ──
+              Distinct signing role → no reusable shelf yet, so she signs here each
+              time. Written into signatures.sponsor_sig on Approve (approveIea). */}
+          {isIea && slot && !alreadyCountersigned && (
+            <div style={{ fontSize: 12.5 }}>
+              <div style={{ fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+                Your countersignature
+                <span style={{ color: '#9ca3af', fontWeight: 400 }}> — General Director's slot ({slot})</span>
+              </div>
+              <SignaturePad onChange={setSigDraw} hint={`Sign as ${reviewerName}`} disabled={busy} />
+              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 6 }}>
+                Saved-signature reuse isn’t available for this slot yet — it needs its own
+                sponsor shelf (separate decision). Draw or type your signature.
+              </div>
+            </div>
+          )}
+          {isIea && slot && alreadyCountersigned && (
+            <div style={{ fontSize: 12.5, color: '#0f4c35' }}>✓ Already countersigned — a signature is never written twice.</div>
           )}
 
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#374151' }}>

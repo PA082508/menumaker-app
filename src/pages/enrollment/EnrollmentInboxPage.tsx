@@ -99,12 +99,13 @@ function IncomeStatusChip({ status }: { status: string }) {
 // with the pending rows on top of a family. Her sponsor_sig + Approve land in кусок 2,
 // so there is deliberately no Approve/Review action here.
 function IncomeLens({
-  groups, centerScoped, expanded, onToggle,
+  groups, centerScoped, expanded, onToggle, onReview,
 }: {
   groups: IncomeCenterGroup<Submission>[]
   centerScoped: boolean
   expanded: string | null
   onToggle: (id: string) => void
+  onReview: (row: Submission) => void
 }) {
   const total = groups.reduce((n, g) => n + g.families.reduce((m, f) => m + f.rows.length, 0), 0)
   return (
@@ -173,6 +174,19 @@ function IncomeLens({
                       </div>
                       <IncomeStatusChip status={row.status} />
                       <StatusBadge v={v} />
+                      {row.status === 'pending' && (
+                        // Income Approve happens ONLY here — the GD's sponsor_sig +
+                        // her own approveIea(auth.uid()). On-file rows have no action.
+                        <button
+                          onClick={e => { e.stopPropagation(); onReview(row) }}
+                          style={{
+                            padding: '6px 14px', borderRadius: 8, border: 'none', background: '#0f4c35',
+                            color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                          }}
+                        >
+                          Review
+                        </button>
+                      )}
                       {details.length > 0 && (
                         <span style={{ color: '#9ca3af', fontSize: 12, width: 14, textAlign: 'center' }}>{open ? '▾' : '▸'}</span>
                       )}
@@ -583,6 +597,7 @@ export default function EnrollmentInboxPage() {
           centerScoped={!!currentCenter?.id}
           expanded={incomeExpanded}
           onToggle={id => setIncomeExpanded(incomeExpanded === id ? null : id)}
+          onReview={row => setReviewing(row)}
         />
       )}
 

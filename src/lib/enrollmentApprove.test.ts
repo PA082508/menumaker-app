@@ -119,10 +119,17 @@ describe('frpExpiryDefault', () => {
     expect(frpExpiryDefault('2026-07-07', '7/31/2027')).toBe('2027-07-31')
     expect(frpExpiryDefault('2026-07-07', '2027-07-31')).toBe('2027-07-31')
   })
-  it('defaults to determination date + 12 months when the paper has no expiration', () => {
-    expect(frpExpiryDefault('2026-07-07', null)).toBe('2027-07-07')
-    expect(frpExpiryDefault('2026-07-07', '')).toBe('2027-07-07')
-    expect(frpExpiryDefault('2026-07-07', undefined)).toBe('2027-07-07')
+  it('defaults to the LAST DAY of the month, 12 months from the base (signature) date', () => {
+    // Official CACFP rule: valid until end of the month one year later.
+    expect(frpExpiryDefault('2026-07-07', null)).toBe('2027-07-31')
+    expect(frpExpiryDefault('2026-07-07', '')).toBe('2027-07-31')
+    expect(frpExpiryDefault('2026-07-07', undefined)).toBe('2027-07-31')
+  })
+  it('rounds to month-end correctly across month lengths and February', () => {
+    expect(frpExpiryDefault('2026-05-15', null)).toBe('2027-05-31')   // 31-day month
+    expect(frpExpiryDefault('2026-02-10', null)).toBe('2027-02-28')   // Feb, non-leap target
+    expect(frpExpiryDefault('2027-02-01', null)).toBe('2028-02-29')   // Feb, leap target (2028)
+    expect(frpExpiryDefault('2026-12-31', null)).toBe('2027-12-31')   // year rollover
   })
 })
 

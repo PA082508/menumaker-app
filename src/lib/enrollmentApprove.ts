@@ -223,12 +223,16 @@ export function parseIeaFiscalYear(source: any): string | null {
   return m ? `FY${m[1]}-${m[2]}` : null
 }
 
-// frp_expires: the paper's stated expiration if present, else the CACFP default
-// of determinationDate + 12 months. determinationDate is ISO 'YYYY-MM-DD'.
+// frp_expires: the paper/form's stated expiration if present (it wins — the v6 form
+// computes it from the signature date, to end of month), else the CACFP default.
+// Official rule: valid until the LAST DAY of the month one year after the base date —
+// which the caller passes as the household SIGNATURE date (formAsOf), NOT the Approve
+// date. setUTCMonth(m+13, 0) = day 0 of month+13 = last day of month+12.
+// determinationDate is ISO 'YYYY-MM-DD'.
 export function frpExpiryDefault(determinationDate: string, paperExpiration: string | null | undefined): string {
   if (!blank(paperExpiration)) return isoDate(paperExpiration)
   const d = new Date(`${determinationDate}T00:00:00Z`)
-  d.setUTCFullYear(d.getUTCFullYear() + 1)
+  d.setUTCMonth(d.getUTCMonth() + 13, 0)
   return d.toISOString().slice(0, 10)
 }
 

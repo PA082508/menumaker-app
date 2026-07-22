@@ -227,10 +227,23 @@ export default function EnrollmentReviewModal({
   useEffect(() => {
     if (!isIea) return
     setFrpChoice(frpInfo?.frp ?? '')
-    setFrpExpiry(frpExpiryDefault(today, frpInfo?.frp_expires ?? null))
+    // The IEA term runs 12 months from the HOUSEHOLD SIGNATURE date (to end of month),
+    // never from the Approve date — critical for back-dated paper. Base = formAsOf
+    // (signature_date, else the submission date); the form's own expiration still wins.
+    setFrpExpiry(frpExpiryDefault(formAsOf(submission) ?? today, frpInfo?.frp_expires ?? null))
     setFrpTouched(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isIea, frpInfo?.frp, frpInfo?.frp_expires])
+
+  // Informational (canon: not a gate) — the signature is more than a month old, so the
+  // term is already partly elapsed. Surfaced so the GD notices; she still decides.
+  const sigStaleMonths = useMemo(() => {
+    if (!isIea || !submission.signature_date) return 0
+    const sig = new Date(`${submission.signature_date}T00:00:00Z`)
+    const now = new Date(`${today}T00:00:00Z`)
+    const months = (now.getUTCFullYear() - sig.getUTCFullYear()) * 12 + (now.getUTCMonth() - sig.getUTCMonth())
+    return months
+  }, [isIea, submission.signature_date, today])
 
   // Fiscal year is the FORM EDITION, never date math. Embed forms carry
   // form_data.type ('iea_fy2026_27'); scanned paper doesn't → resolve the
@@ -735,6 +748,12 @@ export default function EnrollmentReviewModal({
                 {ieaChildren.some(c => c.matches.length === 0) &&
                   ` · skipped (no roster match): ${ieaChildren.filter(c => !c.matches.length).map(c => c.name).join(', ')}`}
               </div>
+              {sigStaleMonths >= 1 && (
+                <div style={{ fontSize: 11.5, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '6px 9px' }}>
+                  ⚠︎ Signed {sigStaleMonths} month{sigStaleMonths === 1 ? '' : 's'} ago ({submission.signature_date}). The 12-month term
+                  runs from the <strong>signature</strong> date, so it's already partly elapsed — the expiry above reflects that. Adjust if needed.
+                </div>
+              )}
             </div>
           )}
 

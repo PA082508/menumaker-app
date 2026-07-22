@@ -63,6 +63,26 @@ The report is **one message** at the end.
 
 ---
 
+## A page opened from a hub carries a return control back to that hub (2026-07-22)
+
+Any page reached by a **button from a hub** (People hubs — Children / Staff — or a Doc-style
+hub) MUST carry a prominent return control back to that hub. **Entered by a button → leave by
+a button; never rely on the browser back arrow.** The control is the shared `BackBar`
+component (`src/components/BackBar.tsx`) — a sticky, high-contrast bar reading "← Back to
+{hub}" — **reused, not reinvented** per page; `to` is the hub route, `label` its name.
+
+Placement: at the top of the page's render, bled full-width to the container's padding edges
+(negative-margin wrapper matching the page's `wrap` padding, e.g. `margin: '-24px -32px 18px'`).
+Put it on **every** exit path of the page, including a no-access/guard return — a stranded user
+with no way back is the exact violation.
+
+**Precedent that bought it:** Packet Sets (`/packet-sets`), opened from the Children page,
+shipped WITHOUT a back button while the Enrollment Inbox (same hub) had one — an inconsistency
+Nikolay caught 2026-07-22. Fixed by reusing `BackBar`, same as Inbox / Children Import / Daily
+Time Log. When adding a hub-opened page, `BackBar` is part of its Definition of Done.
+
+---
+
 ## Roles: the org-level seat is a hired General Director, not the owner (2026-07-21)
 
 The organization-level role — internal keys `admin` / `office_manager`, predicate

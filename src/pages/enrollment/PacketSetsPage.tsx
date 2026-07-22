@@ -24,6 +24,7 @@ import { useOrg } from '@/contexts/OrgContext'
 import { useFormsLibrary } from '@/lib/formsLibrary'
 import { storefrontPacketUrl } from '@/config/showcaseLinks'
 import Button, { ButtonRow } from '@/components/ui/Button'
+import BackBar from '@/components/BackBar'
 
 const S = () => supabase.schema('menumaker')
 const GREEN = '#0f4c35'
@@ -221,10 +222,19 @@ export default function PacketSetsPage() {
     a.click()
   }
 
-  if (!allowed) return <div style={wrap}><div style={{ color: '#9ca3af', fontSize: 14 }}>You don’t have access to packet sets.</div></div>
+  // Entered by a button from the Children hub → leave by a button (nav standard:
+  // a page opened from a hub carries a return control to that hub). Same BackBar
+  // component the Enrollment Inbox uses — reused, not reinvented.
+  if (!allowed) return (
+    <div style={wrap}>
+      <div style={{ margin: '-24px -32px 18px' }}><BackBar to="/children" label="Children" /></div>
+      <div style={{ color: '#9ca3af', fontSize: 14 }}>You don’t have access to packet sets.</div>
+    </div>
+  )
 
   return (
     <div style={wrap}>
+      <div style={{ margin: '-24px -32px 18px' }}><BackBar to="/children" label="Children" /></div>
       <Title center={currentCenter?.name} />
 
       {err && <Banner tone="bad">{err}</Banner>}

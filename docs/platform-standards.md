@@ -10,6 +10,34 @@ A new locked decision is written into that index **in the same commit as the cod
 
 ---
 
+## Before deciding — map what already exists (2026-07-22)
+
+**Every order or fix begins with an inventory of what is already built — never a design from
+memory.** Design only *on top of* the map. "We re-built what already existed" is a standard
+violation, not a style nit.
+
+The map has three lanes, gathered by **fact**, not recall:
+
+- **(a) Code mechanisms** — `grep` by the *noun of the function* (see the DECISIONS index rule
+  above), not by the word of your task. Name the functions that already do it.
+- **(b) The forms' own built-in abilities** — a form often already computes, validates, or holds
+  a slot the app is about to reinvent. Read the form (fetch the live edition if it lives on
+  Pages), don't assume. Report the section headings and field keys you found.
+- **(c) DB tables / patterns** — signature samples, registries, flags, RLS shapes. The pattern
+  that already carries this concern is the one to extend.
+
+Precedents that bought this rule:
+- the **IEA form itself computes Free/Reduced/Paid** (Sponsor certification + a screen-only
+  income-scale helper) and exposes it in `form_data` — yet the Review modal was about to offer
+  a category "choose from scratch";
+- **`pa_sig_sample` / `signature_samples`** existed for reusable stamps — yet the countersignature
+  was drawn every single time;
+- **Add Child** grew a second panel beside one that already existed.
+
+The map goes **into the report before any edit.** A design that skipped the map is sent back.
+
+---
+
 ## Roles: the org-level seat is a hired General Director, not the owner (2026-07-21)
 
 The organization-level role — internal keys `admin` / `office_manager`, predicate

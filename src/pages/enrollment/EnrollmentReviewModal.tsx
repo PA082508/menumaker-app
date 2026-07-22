@@ -78,7 +78,10 @@ export default function EnrollmentReviewModal({
   // every one of them. Izabella's consent and DCY 01234 have sat pending since
   // 15.07 for exactly that reason.
   const isDocument = !isCacfp && !isIea
-  const slot = countersignSlot(submission.submission_type)
+  // IEA's countersign slot is the GD's sponsor_sig, resolved HERE in the income path —
+  // NOT from COUNTERSIGN_SLOT, which is the center director's document map and no longer
+  // carries income (Ф4, 2026-07-22). A director never gets an income slot.
+  const slot = isIea ? 'sponsor_sig' : countersignSlot(submission.submission_type)
   const alreadyCountersigned = !!slot && !!submission.form_data && !!submission.signatures?.[slot]
   const [docChild, setDocChild] = useState<string | ''>('')      // manual link — no token, no guessing
   const [sigDraw, setSigDraw] = useState<string | null>(null)     // this session's stroke

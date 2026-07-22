@@ -139,27 +139,31 @@ export async function revokeSample(id: string, by: string): Promise<void> {
   if (!data?.length) throw new Error('Nothing was revoked — the sample was not written')
 }
 
-// ─── which slot a director's countersignature belongs in ─────────────────────
+// ─── which slot a DIRECTOR's countersignature belongs in ─────────────────────
 // MEASURED from the live submissions, not invented. A form declares its own
 // slot; we fill the slot the form already has, and never mint a key it lacks.
 //
+// This map is the CENTER DIRECTOR's document-countersign map only. Income (iea /
+// usda_waiver) is NOT here (Ф4, 2026-07-22): income routes to the General Director,
+// never the director's countersign queue — the DB `renewal_countersign_types()`
+// already excludes it, and this client map now matches. The GD's IEA `sponsor_sig`
+// is resolved in the income-specific path (EnrollmentReviewModal, `isIea`), not from
+// this shared map — a director must never be handed an income slot.
+//
 //   dcy_01234                   → program_sig   (2 rows, 0 filled)
-//   iea                         → sponsor_sig   (the General Director's slot; backed
-//                                 by the `sponsor` shelf since 20260722b — she may
-//                                 apply a reusable sample or draw/type as fallback)
-//   child_release_authorization → NO SLOT — carries only parent_sig, yet the
-//                                 registry marks it requires_countersign:director.
-//                                 Flagged for Nikolay; not invented here.
-//   transition_into_program     → no submissions yet, slot unknown.
 //   start_form                  → admin_sig. The pad EXISTS on the form
 //                                 (id="sig-admin", "Play Academy Administration")
 //                                 and the form already submits it under this key;
 //                                 the map simply forgot to name it, so the Inbox
 //                                 never drew the director's pad. Confirmed against
 //                                 the live form's submit block, 2026-07-17.
+//   iea                         → NOT here — GD's sponsor_sig, income path (see above).
+//   child_release_authorization → NO SLOT — carries only parent_sig, yet the DB
+//                                 `renewal_countersign_types()` lists it. Drift #16,
+//                                 still open (form declares no director slot).
+//   transition_into_program     → no submissions yet, slot unknown.
 export const COUNTERSIGN_SLOT: Readonly<Record<string, string>> = {
   dcy_01234: 'program_sig',
-  iea: 'sponsor_sig',
   start_form: 'admin_sig',
 }
 

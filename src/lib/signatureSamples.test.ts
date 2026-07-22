@@ -4,12 +4,19 @@ import { isProspect } from './enrollmentApprove'
 
 // Slots are MEASURED from the live submissions, never invented.
 describe('countersignSlot — fill the slot the form declares, mint none', () => {
-  it('knows the slots that exist in live data', () => {
+  it('knows the DIRECTOR document slots that exist in live data', () => {
     expect(countersignSlot('dcy_01234')).toBe('program_sig')
-    expect(countersignSlot('iea')).toBe('sponsor_sig')
     // start_form: the form ships a director pad (id="sig-admin") and submits it
     // under admin_sig — confirmed in the live form's submit block 2026-07-17.
     expect(countersignSlot('start_form')).toBe('admin_sig')
+  })
+
+  it('income is NOT a director countersign type (Ф4) — iea resolves GD-side, not here', () => {
+    // Income routes to the General Director, never the director's countersign map.
+    // The GD's sponsor_sig is resolved in the income path (EnrollmentReviewModal isIea),
+    // so this shared map must not hand a director an income slot.
+    expect(countersignSlot('iea')).toBeNull()
+    expect(countersignSlot('usda_waiver')).toBeNull()
   })
 
   it('refuses to invent a slot for a form that has none', () => {
@@ -23,8 +30,8 @@ describe('countersignSlot — fill the slot the form declares, mint none', () =>
     expect(countersignSlot('anything_else')).toBeNull()
   })
 
-  it('the map holds only measured slots', () => {
-    expect(Object.keys(COUNTERSIGN_SLOT).sort()).toEqual(['dcy_01234', 'iea', 'start_form'])
+  it('the map holds only measured director slots (no income — Ф4)', () => {
+    expect(Object.keys(COUNTERSIGN_SLOT).sort()).toEqual(['dcy_01234', 'start_form'])
   })
 })
 

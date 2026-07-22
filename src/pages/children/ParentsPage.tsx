@@ -32,7 +32,10 @@ type Guardian = {
   address: string | null
   relationship: string | null   // derived from child_guardian, NOT a guardian column
 }
-type ChildLite = { child_id: string; name: string; room: string; frp: string | null }
+// `id` = roster.id — the key income_determination_status() returns as child_id
+// (enrollment_submissions.child_id holds roster.id, not menumaker.child.id). Absent for
+// from-enrollment placeholder children (not yet admitted → no determination row).
+type ChildLite = { id?: string; child_id: string; name: string; room: string; frp: string | null }
 type Family = { guardian: Guardian; children: ChildLite[] }
 
 const isRealGuardian = (id: string) => !id.startsWith('sub:')
@@ -49,6 +52,9 @@ export default function ParentsPage() {
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [loadErr, setLoadErr] = useState<string | null>(null)
+  // Ф3: roster.id → income-determination status. Content-free (no F/R/P, no IEA-vs-waiver);
+  // the director never reads income rows (RLS income_org_only) — only "on file".
+  const [incomeStatus, setIncomeStatus] = useState<Map<string, string>>(new Map())
 
   const applyEdit = (g: Guardian) =>
     setFamilies(prev => prev.map(f => f.guardian.id === g.id ? { ...f, guardian: g } : f))
@@ -101,6 +107,7 @@ export default function ParentsPage() {
           const kid = kidByCid.get(l.child_id as string)
           if (!fam || !kid) continue
           fam.children.push({
+            id: kid.id as string,   // roster.id — join key for income_determination_status()
             child_id: kid.child_id as string,
             name: (kid.child_name as string) || `${kid.last_name ?? ''}, ${kid.first_name ?? ''}`.trim(),
             room: roomName.get(kid.classroom_id as string) ?? '—',
@@ -143,6 +150,18 @@ export default function ParentsPage() {
         const merged = list.concat(Array.from(fromSubs.values()).filter(f => f.children.length > 0))
           .sort((a, b) => (a.guardian.last_name ?? a.guardian.first_name ?? '').localeCompare(b.guardian.last_name ?? b.guardian.first_name ?? ''))
         if (!cancelled) setFamilies(merged)
+
+        // Ф3 — the unified "income determination — on file" chip. SECURITY DEFINER fn,
+        // self-scoped (director = own centers); returns {child_id=roster.id, status} only,
+        // never form_data/signatures, never IEA-vs-waiver. Bind the error so a failed read
+        // shows no chip rather than a false "nothing on file".
+        const { data: incomeRows, error: incErr } = await supabase.schema('menumaker').rpc('income_determination_status')
+        if (incErr) throw incErr
+        if (!cancelled) {
+          const im = new Map<string, string>()
+          for (const r of (incomeRows ?? []) as { child_id: string; status: string }[]) if (r.child_id) im.set(r.child_id, r.status)
+          setIncomeStatus(im)
+        }
       } catch (e: any) {
         // A failed query must never masquerade as "no families on file" — that is
         // how a broken column reference read as an empty centre for weeks.
@@ -195,7 +214,7 @@ export default function ParentsPage() {
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 14, marginTop: 16 }}>
-          {visible.map(f => <FamilyCard key={f.guardian.id} f={f} onSaved={applyEdit} />)}
+          {visible.map(f => <FamilyCard key={f.guardian.id} f={f} onSaved={applyEdit} income={incomeStatus} />)}
         </div>
       )}
     </div>
@@ -222,7 +241,7 @@ const EDITABLE: { key: keyof Guardian; label: string; type?: string }[] = [
   { key: 'address',      label: 'Address' },
 ]
 
-function FamilyCard({ f, onSaved }: { f: Family; onSaved: (g: Guardian) => void }) {
+function FamilyCard({ f, onSaved, income }: { f: Family; onSaved: (g: Guardian) => void; income: Map<string, string> }) {
   const g = f.guardian
   const editable = isRealGuardian(g.id)
   const [editing, setEditing] = useState(false)
@@ -319,11 +338,24 @@ function FamilyCard({ f, onSaved }: { f: Family; onSaved: (g: Guardian) => void 
       )}
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
-        {f.children.map(c => (
-          <span key={c.child_id} style={{ fontSize: 11.5, background: '#f0f7f4', border: '1px solid #d1fae5', borderRadius: 8, padding: '3px 9px', color: '#1a2e1a' }}>
-            🧒 {c.name} · {c.room}{c.frp ? ` · ${c.frp}` : ''}
-          </span>
-        ))}
+        {f.children.map(c => {
+          // Ф3 chip: content-free. The fn returns a row ONLY for a period-effective
+          // determination on file (income_determination_status, 20260722e) — no F/R/P,
+          // no IEA-vs-waiver. No row (absent OR expired) → no chip: the director sees the
+          // packet is incomplete without learning why. Income itself lives with the GD.
+          const onFile = !!c.id && income.get(c.id) === 'on_file'
+          return (
+            <span key={c.child_id} style={{ fontSize: 11.5, background: '#f0f7f4', border: '1px solid #d1fae5', borderRadius: 8, padding: '3px 9px', color: '#1a2e1a', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              🧒 {c.name} · {c.room}{c.frp ? ` · ${c.frp}` : ''}
+              {onFile && (
+                <span title="Income determination is on file and current — handled by the General Director; its content is never shown here."
+                  style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.01em', background: '#dcfce7', color: '#0f5132', border: '1px solid #bbf7d0', borderRadius: 6, padding: '1px 6px', whiteSpace: 'nowrap' }}>
+                  💲 Income determination — on file
+                </span>
+              )}
+            </span>
+          )
+        })}
       </div>
 
       {!editable && (

@@ -55,6 +55,17 @@ export default function PacketSetsPage() {
   const [note, setNote] = useState<string | null>(null)
   const [search, setSearch] = useState('')
 
+  // ── CRUD chrome (#3c): create / rename / archive. All against the SAME packet_sets
+  // RLS the composition editor already obeys — a director creates+edits custom sets for
+  // their center; base sets stay owner-only and un-archivable (the DB blocks it, the UI
+  // never offers it). No DELETE anywhere — archive is the only removal (RLS drops delete).
+  const [creating, setCreating] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newCenterId, setNewCenterId] = useState<string | null>(null)
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameText, setRenameText] = useState('')
+  const [busy, setBusy] = useState(false)
+
   // ── Share (#4): storefront slug per center comes from the registry (never guessed
   // from the center's name — same map embed.js uses), keyed by center_id.
   const [centerSlug, setCenterSlug] = useState<Record<string, string>>({})
@@ -170,6 +181,79 @@ export default function PacketSetsPage() {
 
   const titleOf = (key: string) => lib.byKey.get(key)?.title ?? key
   const isUnknown = (key: string) => lib.items.length > 0 && !lib.byKey.has(key)
+  // The map-is-the-gate read for a key already in a set: known to the library but not yet
+  // publishable (registry PENDING / current:null). Flagged, never silently dropped.
+  const isUnpublishable = (key: string) => {
+    const it = lib.byKey.get(key)
+    return !!it && !it.publishable
+  }
+
+  // ── CRUD handlers ──────────────────────────────────────────────────────────
+  const slugify = (name: string) =>
+    name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || null
+  // A slug is unique per org; keep it readable but never let a collision block creation —
+  // the QR keys off the row id (uuid), not the slug, so a null slug is perfectly fine.
+  const uniqueSlug = (name: string) => {
+    const base = slugify(name)
+    if (!base) return null
+    const taken = new Set(sets.map(s => s.slug).filter(Boolean) as string[])
+    if (!taken.has(base)) return base
+    for (let n = 2; n < 50; n++) if (!taken.has(`${base}-${n}`)) return `${base}-${n}`
+    return null
+  }
+
+  const createTargetCenterId = currentCenter?.id ?? newCenterId
+  const createSet = async () => {
+    const name = newName.trim()
+    if (!name) { setErr('Give the set a name first.'); return }
+    if (!createTargetCenterId) { setErr('Pick which center this set belongs to.'); return }
+    if (!org?.id) return
+    setBusy(true); setErr(null); setNote(null)
+    const row = { org_id: org.id, center_id: createTargetCenterId, name, slug: uniqueSlug(name), kind: 'custom' as const, form_keys: [] as string[], status: 'active' as const }
+    try {
+      let { data, error } = await S().from('packet_sets').insert(row).select('id').single()
+      // Unique-slug race across sessions → retry once with no slug (uuid is the real key).
+      if (error && String(error.code) === '23505') {
+        ({ data, error } = await S().from('packet_sets').insert({ ...row, slug: null }).select('id').single())
+      }
+      if (error) throw error
+      setCreating(false); setNewName(''); setNewCenterId(null)
+      setNote(`Created “${name}” — empty. Add forms below, then Save.`)
+      await load()
+      if (data?.id) setSelectedId(data.id as string)
+    } catch (e: any) {
+      setErr(`Could not create the set — ${e?.message ?? e}. Nothing was changed.`)
+    } finally { setBusy(false) }
+  }
+
+  const renameSet = async (s: PacketSet) => {
+    const name = renameText.trim()
+    if (!name) { setErr('The name can’t be empty.'); return }
+    if (name === s.name) { setRenamingId(null); return }
+    setBusy(true); setErr(null); setNote(null)
+    try {
+      const { error } = await S().from('packet_sets').update({ name }).eq('id', s.id)
+      if (error) throw error
+      setRenamingId(null); setNote(`Renamed to “${name}”.`)
+      await load()
+    } catch (e: any) {
+      setErr(`Rename failed — ${e?.message ?? e}. The old name is unchanged.`)
+    } finally { setBusy(false) }
+  }
+
+  const setStatus = async (s: PacketSet, status: 'active' | 'archived') => {
+    setBusy(true); setErr(null); setNote(null)
+    try {
+      const { error } = await S().from('packet_sets').update({ status }).eq('id', s.id)
+      if (error) throw error
+      setNote(status === 'archived'
+        ? `“${s.name}” archived — its QR still resolves, but it’s out of the way. Unarchive any time.`
+        : `“${s.name}” is active again.`)
+      await load()
+    } catch (e: any) {
+      setErr(`Could not ${status === 'archived' ? 'archive' : 'restore'} the set — ${e?.message ?? e}.`)
+    } finally { setBusy(false) }
+  }
 
   // ── Share (#4): stationary QR + copyable mailing block ─────────────────────
   const shareSlug = shareCenterId ? centerSlug[shareCenterId] ?? null : null
@@ -244,7 +328,41 @@ export default function PacketSetsPage() {
       <div style={cols}>
         {/* ── Sets ─────────────────────────────────────────────── */}
         <div style={colSets}>
-          <div style={colHead}>Sets</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <div style={colHead}>Sets</div>
+            {!creating && (
+              <button onClick={() => { setCreating(true); setErr(null); setNote(null); setNewName(''); setNewCenterId(currentCenter?.id ?? null) }}
+                style={newBtn} title="Create a new custom set for your center">＋ New set</button>
+            )}
+          </div>
+
+          {creating && (
+            <div style={createCard}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#0a3320', marginBottom: 7 }}>New custom set</div>
+              <input autoFocus value={newName} onChange={e => setNewName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') createSet(); if (e.key === 'Escape') setCreating(false) }}
+                placeholder="Set name (e.g. Summer Camp 2026)" style={searchBox} />
+              {/* Owner in Organization view has no active center → must say which one. A director
+                  is already scoped to their center, so no picker is shown. */}
+              {!currentCenter?.id && (
+                <select value={newCenterId ?? ''} onChange={e => setNewCenterId(e.target.value || null)} style={{ ...searchBox, marginBottom: 8 }}>
+                  <option value="">— center for this set —</option>
+                  {centers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              )}
+              <ButtonRow>
+                <Button variant="primary" onClick={createSet} disabled={busy || !newName.trim() || !createTargetCenterId}>
+                  {busy ? 'Creating…' : 'Create'}
+                </Button>
+                <Button onClick={() => { setCreating(false); setNewName(''); setNewCenterId(null) }} disabled={busy}>Cancel</Button>
+              </ButtonRow>
+              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 6, lineHeight: 1.45 }}>
+                A new set starts empty and belongs to {currentCenter?.name ?? 'the center you pick'}. Base “network
+                standard” sets are owner-managed and aren’t created here.
+              </div>
+            </div>
+          )}
+
           {loading ? <div style={muted}>Loading…</div> : sets.length === 0 ? (
             <div style={empty}>No sets visible here.</div>
           ) : groups.map(grp => (
@@ -271,8 +389,8 @@ export default function PacketSetsPage() {
           ))}
           <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4, lineHeight: 1.5 }}>
             Base sets are the network standard (owner-edited); a center’s own sets are grouped
-            by center. Creating, renaming and archiving arrive next — for now you edit the forms
-            each set holds.
+            by center. Create custom sets for your center with “＋ New set”; rename or archive them
+            from the panel on the right. Base sets can’t be archived — the storefront always keeps them.
           </div>
         </div>
 
@@ -282,17 +400,40 @@ export default function PacketSetsPage() {
             <div style={empty}>Pick a set on the left to edit its forms.</div>
           ) : (
             <>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-                <div style={{ fontSize: 16, fontWeight: 700, color: '#0a3320' }}>{selected.name}</div>
-                <span style={selected.kind === 'base' ? tagBase : tagCustom}>{selected.kind}</span>
-                {selected.center_id && <span style={{ fontSize: 11.5, color: '#6b7280' }}>· {centerName(selected.center_id)}</span>}
-                {!editable ? (
-                  <span style={{ fontSize: 11.5, fontWeight: 600, color: '#92400e', background: '#fef3c7', padding: '2px 8px', borderRadius: 5 }}>
-                    View only — {selected.kind === 'base' ? 'the network standard is edited by the owner' : 'edited by its center or the owner'}
-                  </span>
-                ) : selected.kind === 'base' ? (
-                  <span style={{ fontSize: 11.5, color: '#6b7280' }}>network standard — editable by you (owner); it can’t be archived</span>
-                ) : null}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                {renamingId === selected.id ? (
+                  <>
+                    <input autoFocus value={renameText} onChange={e => setRenameText(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') renameSet(selected); if (e.key === 'Escape') setRenamingId(null) }}
+                      style={{ ...searchBox, width: 260, marginBottom: 0 }} />
+                    <Button variant="primary" onClick={() => renameSet(selected)} disabled={busy || !renameText.trim()}>Save name</Button>
+                    <Button onClick={() => setRenamingId(null)} disabled={busy}>Cancel</Button>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: '#0a3320' }}>{selected.name}</div>
+                    <span style={selected.kind === 'base' ? tagBase : tagCustom}>{selected.kind}</span>
+                    {selected.status === 'archived' && <span style={tagArchived}>archived</span>}
+                    {selected.center_id && <span style={{ fontSize: 11.5, color: '#6b7280' }}>· {centerName(selected.center_id)}</span>}
+                    {!editable ? (
+                      <span style={{ fontSize: 11.5, fontWeight: 600, color: '#92400e', background: '#fef3c7', padding: '2px 8px', borderRadius: 5 }}>
+                        View only — {selected.kind === 'base' ? 'the network standard is edited by the owner' : 'edited by its center or the owner'}
+                      </span>
+                    ) : selected.kind === 'base' ? (
+                      <span style={{ fontSize: 11.5, color: '#6b7280' }}>network standard — editable by you (owner); it can’t be archived</span>
+                    ) : null}
+                    {/* Rename/archive live only for custom sets the user can edit. Base is owner-managed
+                        and un-archivable by RLS — no button is shown rather than showing a dead one. */}
+                    {editable && selected.kind === 'custom' && (
+                      <span style={{ display: 'inline-flex', gap: 6, marginLeft: 'auto' }}>
+                        <button style={ghostBtn} disabled={busy} onClick={() => { setRenamingId(selected.id); setRenameText(selected.name); setErr(null); setNote(null) }}>Rename</button>
+                        {selected.status === 'active'
+                          ? <button style={ghostBtn} disabled={busy} onClick={() => setStatus(selected, 'archived')} title="Hide from the working list; the QR still resolves">Archive</button>
+                          : <button style={{ ...ghostBtn, color: GREEN, borderColor: '#bbf7d0' }} disabled={busy} onClick={() => setStatus(selected, 'active')}>Unarchive</button>}
+                      </span>
+                    )}
+                  </>
+                )}
               </div>
 
               <div style={editGrid}>
@@ -309,6 +450,7 @@ export default function PacketSetsPage() {
                           <span style={{ flex: 1 }}>
                             {titleOf(key)}
                             {isUnknown(key) && <span style={tagUnknown} title="Not in the current forms library — kept as-is">unknown</span>}
+                            {isUnpublishable(key) && <span style={tagPending} title="In the registry but not published yet — parents can’t receive it until it’s built">not published</span>}
                             {lib.byKey.get(key)?.isGovForm && <span style={tagGov} title={lib.byKey.get(key)?.requiringOrg || 'Government form'}>gov</span>}
                           </span>
                           <button style={iconBtn} title="Move up" disabled={!editable || i === 0} onClick={() => move(i, -1)}>↑</button>
@@ -336,14 +478,27 @@ export default function PacketSetsPage() {
                     <div style={{ maxHeight: 340, overflowY: 'auto' }}>
                       {libShown.map(i => {
                         const on = inSet.has(i.key)
-                        return on ? (
+                        if (on) return (
                           <div key={i.key} style={{ ...libRow, opacity: 0.55, cursor: 'default' }} title="Already in this set">
                             <span style={{ color: GREEN }}>✓</span>
                             <span style={{ flex: 1 }}>{i.title}</span>
                             {i.isGovForm && <span style={tagGov} title={i.requiringOrg || 'Government form'}>gov</span>}
                             <span style={{ fontSize: 10.5, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em' }}>in set</span>
                           </div>
-                        ) : (
+                        )
+                        // The map is the gate: a form the registry hasn't published yet (PENDING /
+                        // current:null) is shown so the director knows it exists, but can't be added
+                        // to a packet — a family must never be sent a link to a form that isn't built.
+                        if (!i.publishable) return (
+                          <div key={i.key} style={{ ...libRow, opacity: 0.6, cursor: 'not-allowed', background: '#fafafa' }}
+                            title={`${i.unpublishedReason ?? 'Not published yet'} — can’t be added until it’s built`}>
+                            <span style={{ color: '#9ca3af', fontWeight: 700 }}>＋</span>
+                            <span style={{ flex: 1, color: '#9ca3af' }}>{i.title}</span>
+                            {i.isGovForm && <span style={tagGov} title={i.requiringOrg || 'Government form'}>gov</span>}
+                            <span style={tagPending}>{i.unpublishedReason ?? 'not published'}</span>
+                          </div>
+                        )
+                        return (
                           <button key={i.key} disabled={!editable} onClick={() => add(i.key)}
                             style={{ ...libRow, ...(!editable ? { opacity: 0.5, cursor: 'not-allowed' } : null) }}
                             title={editable ? `Add “${i.title}”` : 'View only — the owner manages this set'}>
@@ -461,3 +616,7 @@ const tagCustom: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: '
 const tagArchived: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: '#6b7280', background: '#f3f4f6', padding: '1px 6px', borderRadius: 5, textTransform: 'uppercase', letterSpacing: '0.04em' }
 const tagGov: React.CSSProperties = { fontSize: 9.5, fontWeight: 700, color: '#92400e', background: '#fef3c7', padding: '1px 5px', borderRadius: 5, marginLeft: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }
 const tagUnknown: React.CSSProperties = { fontSize: 9.5, fontWeight: 700, color: '#7f1d1d', background: '#fee2e2', padding: '1px 5px', borderRadius: 5, marginLeft: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }
+const tagPending: React.CSSProperties = { fontSize: 9.5, fontWeight: 700, color: '#92400e', background: '#fef3c7', padding: '1px 5px', borderRadius: 5, marginLeft: 6, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }
+const newBtn: React.CSSProperties = { font: 'inherit', fontSize: 12, fontWeight: 600, color: '#fff', background: GREEN, border: 'none', borderRadius: 8, padding: '5px 10px', cursor: 'pointer' }
+const ghostBtn: React.CSSProperties = { font: 'inherit', fontSize: 12, fontWeight: 600, color: '#374151', background: '#fff', border: '1px solid #d7ded7', borderRadius: 7, padding: '4px 9px', cursor: 'pointer' }
+const createCard: React.CSSProperties = { background: '#f6fdf9', border: '1px solid #cdeadb', borderRadius: 10, padding: 12, margin: '4px 0 10px' }

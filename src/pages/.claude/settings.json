@@ -8,7 +8,10 @@
       "Bash(python3)",
       "Bash(cp /tmp/CACFPReportsPage_final.tsx /Users/nikolaykutsenko/Downloads/menumaker-app/src/pages/cacfp-reports/CACFPReportsPage.tsx && echo \"ok\")",
       "Bash(pkill -f vite)",
-      "Bash(xargs -I{} dirname {})"
+      "Bash(xargs -I{} dirname {})",
+      "Bash(git merge *)",
+      "Bash(gh api *)",
+      "Bash(npx vitest *)"
     ],
     "additionalDirectories": [
       "/Users/nikolaykutsenko/Downloads",

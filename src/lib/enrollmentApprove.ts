@@ -422,6 +422,19 @@ export async function recordDetermination(p: DeterminationInput): Promise<() => 
   return async () => { await S().from('income_eligibility').delete().eq('id', newId) }
 }
 
+/** Whether IEA Approve is blocked. Canon (Nikolay 2026-07-22): the FORM validates
+ *  itself at submission — the app never re-checks or re-states the form's rules, and
+ *  validateIea findings NEVER gate Approve (they render as informational warnings).
+ *  The determination is the General Director's call, final for 12 months. Only the
+ *  STRUCTURAL gates remain: a determination needs an F/R/P choice, a resolved fiscal
+ *  year (to write the right FY record), and at least one matched roster child (record
+ *  addressing — where the eligibility is written — not a re-check of the form). */
+export function ieaApproveBlocked(opts: {
+  frpChosen: boolean; fiscalYearResolved: boolean; matchedCount: number
+}): boolean {
+  return !opts.frpChosen || !opts.fiscalYearResolved || opts.matchedCount === 0
+}
+
 /** The signatures patch to write for the GD's IEA countersignature, or null when
  *  nothing should change. Variant 1 amended (Nikolay 2026-07-22): the determination's
  *  AUTHORITY is the Approve under auth.uid (income_eligibility.determined_by); the

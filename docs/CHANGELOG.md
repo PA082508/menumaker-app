@@ -10,6 +10,8 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 
 <!-- newest on top -->
 
+- 2026-07-22 · 🔀 · Every form in the library now has its own **QR / share** button, in all three places forms are listed — the Documents → Library cards, the Packet-Sets builder, and the Documents page. The QR always opens just that one form, pre-scoped to a center; if no center is active (Organization view) it asks which center first — the same way a packet set does. Only forms that actually have an online version get a QR (print-only worksheets don't), and any new form gets one automatically.
+- 2026-07-22 · 🔀 · The **People** menu (Children, Parents, Staff…) moved up to sit **right after Dashboard** for everyone — it's the daily starting point.
 - 2026-07-22 · 🔧 · Fixed a blank-screen: Documents → Library could turn white for a director because one document type (the per-center Parent Handbook, which has a separate file per location) wasn't being resolved to a single file — it now picks the active center's copy. Previously a page reload was the only workaround.
 
 - 2026-07-22 · 🚀 · First help video is live: a 30-second "E-Forms for Directors" walkthrough (narrated, with subtitles) showing how a family's packet becomes an approved child on your roster. It appears two ways: a compact "▶ 0:30" button right next to the Children page title (click for a pop-up player), and a full card with a poster in Documents → Library, next to the Children guide. Both directors and the General Director see it. This is the pilot of a whole series — the same little button will show up on each page as its video is made.

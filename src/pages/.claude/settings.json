@@ -20,7 +20,9 @@
       "Bash(ffmpeg -hide_banner -buildconf)",
       "Bash(brew list *)",
       "Bash(python3 -c \"import PIL, PIL.Image; print\\('PIL', PIL.__version__\\)\")",
-      "Read(//System/Library/Fonts/Supplemental/**)"
+      "Read(//System/Library/Fonts/Supplemental/**)",
+      "Bash(python3 -)",
+      "Bash(python3 -c \"import json,sys; f=json.load\\(sys.stdin\\)['forms']['parents_book']; print\\('parents_book@3f5a90e current=',f.get\\('current'\\),'versions[cur] type=', type\\(\\(f.get\\('versions'\\) or {}\\).get\\(f.get\\('current'\\)\\)\\).__name__\\)\")"
     ],
     "additionalDirectories": [
       "/Users/nikolaykutsenko/Downloads",

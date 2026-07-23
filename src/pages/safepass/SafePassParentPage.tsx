@@ -17,7 +17,7 @@ function devId() {
     return d
   } catch { return 'dev-fallback' }
 }
-type Screen = 'howto'|'phone'|'otp'|'agreement'|'child_select'|'home'|'waiting'|'confirmed'
+type Screen = 'howto'|'phone'|'otp'|'activating'|'agreement'|'child_select'|'home'|'waiting'|'confirmed'
 type Child = { child_id:string; child_name:string; classroom_id:string; classroom_name:string; center_id:string }
 type Session = { id:string; action_type:string; status:string; teacher_name:string|null; teacher_confirmed_at:string|null }
 const hhmm = (iso:string|null) => iso ? new Date(iso).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false}) : '--:--'
@@ -53,6 +53,7 @@ export default function SafePassParentPage() {
   // nothing at all, and this banner says what did not happen.
   const [fatal, setFatal] = useState('')
   const waitTimer = useRef<ReturnType<typeof setInterval>|null>(null)
+  const didAuto = useRef(false)   // codeless deep-link fires once
 
   const normPhone = (p:string) => '+1' + p.replace(/\D/g,'').slice(-10)
 
@@ -70,23 +71,46 @@ export default function SafePassParentPage() {
     setVerifying(true); setOtpErr('')
     const np = normPhone(phone)
     const entered = otp.trim().replace(/\D/g,'')
-    // Server-side check against the staff-issued code. The browser never holds the
-    // correct value to compare against — that is the whole point vs the old
-    // in-browser OTP. Unknown phone and wrong code return the same 'invalid'.
+    // Server-side check against the staff-issued code (typed fallback path). Unknown
+    // phone and wrong code return the same 'invalid'.
     const { data:v, error:vErr } = await supabase.schema('menumaker')
       .rpc('safepass_verify_login_code', { p_phone: np, p_code: entered })
     if (vErr || !v?.ok) {
       setOtpErr('Incorrect or expired code. Ask Play Academy staff for a new one.')
       setVerifying(false); return
     }
+    await continueAfterAuth(np)
+  }
+
+  // CODELESS activation (primary path). Staff mints a one-time link (QR) for a ✓Pickup
+  // parent; the parent opens it on THEIR phone. Nothing is typed — physical presence is the
+  // verification. The token is consumed, the device is trusted, phone_verified is set, then
+  // we continue exactly like a verified login.
+  async function autoActivate(rawPhone: string, token: string) {
+    setScreen('activating'); setOtpErr('')
+    const np = normPhone(rawPhone)
+    const { data, error } = await supabase.schema('menumaker')
+      .rpc('safepass_activate_device', { p_phone: np, p_token: token, p_device_id: devId() })
+    if (error || !data?.ok) {
+      setPhone(rawPhone.replace(/\D/g,''))
+      setOtpErr('This activation link is invalid or expired. Please ask Play Academy staff to activate your phone again.')
+      setScreen('phone'); return
+    }
+    await continueAfterAuth(np)
+  }
+
+  // Shared continuation once the phone is authenticated (codeless or typed): load children,
+  // gate on the active policy, then route to home / child picker.
+  async function continueAfterAuth(np: string) {
+    setVerifying(true)
     setPersonId(np)
-    // Via RPC, not the table: it resolves the real classroom from roster (anon has
-    // no readable roster policy, which is why classroom was hardcoded here before).
+    // Via RPC, not the table: it resolves the real classroom from roster (anon has no
+    // readable roster policy, which is why classroom was hardcoded here before).
     const { data:list, error:listErr } = await supabase.schema('menumaker')
       .rpc('safepass_children_for_phone', { p_phone: np })
     if (listErr || !list?.ok) {
       setOtpErr('Could not load your children. Check your connection.')
-      setVerifying(false); return
+      setScreen('otp'); setVerifying(false); return
     }
     setPersonName(list.person_name ?? 'Parent')
     const kids: Child[] = (list.children ?? []).map((p:any) => ({
@@ -95,14 +119,12 @@ export default function SafePassParentPage() {
       center_id: p.center_id || '',
     }))
     if (kids[0]?.center_id) setCenterId(kids[0].center_id)
-    // No silent stand-in child. A phone with no children says so — the old
-    // 'Test Child' fallback made "you are not registered" look like success.
+    // No silent stand-in child. A phone with no children says so.
     if (kids.length === 0) {
       setOtpErr('This number is not registered for any child. Please see the office.')
-      setVerifying(false); return
+      setScreen('otp'); setVerifying(false); return
     }
-    const kidsFinal = kids
-    setChildren(kidsFinal)
+    setChildren(kids)
 
     // Policy gate: must have signed the CURRENT ACTIVE addendum version to proceed.
     const { data:pol } = await supabase.schema('menumaker')
@@ -118,10 +140,18 @@ export default function SafePassParentPage() {
       signed = has === true
     }
     setVerifying(false)
-    // Signed (or no active policy to enforce) → straight in; otherwise require consent.
-    if (signed || !active) proceedAfterAgreement(kidsFinal)
+    if (signed || !active) proceedAfterAgreement(kids)
     else setScreen('agreement')
   }
+
+  // Codeless deep-link from the staff screen's QR: /safepass/parent?p=<phone>&a=<token>.
+  useEffect(() => {
+    if (didAuto.current) return
+    const q = new URLSearchParams(window.location.search)
+    const p = q.get('p'), a = q.get('a')
+    if (p && a) { didAuto.current = true; autoActivate(p, a) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Route past the agreement: single child → home, else child picker.
   function proceedAfterAgreement(kids: Child[]) {
@@ -254,6 +284,16 @@ export default function SafePassParentPage() {
       ))}
       <div style={{height:8}}/>
       <button onClick={()=>setScreen('phone')} style={BTN(C.bg,C.green)}>Continue → Sign In</button>
+    </div></div>
+  )
+
+  if (screen === 'activating') return (
+    <div style={W}>{HDR}<div style={CARD}>
+      <div style={{textAlign:'center',marginTop:48}}>
+        <div style={{fontSize:48,marginBottom:16}}>🔒</div>
+        <div style={{fontSize:20,fontWeight:800}}>Activating this phone…</div>
+        <div style={{fontSize:14,color:C.muted,marginTop:8,lineHeight:1.6}}>One moment — setting up SafePass on your device. No code needed.</div>
+      </div>
     </div></div>
   )
 

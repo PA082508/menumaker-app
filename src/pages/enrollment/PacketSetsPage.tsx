@@ -6,13 +6,18 @@
 // set's composition from the DB by id (resolve_packet_set, step #2), so editing a set here
 // never changes its QR.
 //
-// This branch = #3a (list) + #3b (composition editor). CRUD chrome (+New / rename / archive)
-// and the QR / mailing block are the next pieces (#3c / #4).
+// Surfaces: list (#3a) + composition editor (#3b) + CRUD (#3c) + share/QR (#4) + scope (кусок B)
+// + archived hide/show. An "all centers" set (кусок B) is created as one custom COPY per
+// enrollment center, the copies tied by a shared origin_id; the composition is edited once and
+// propagated to every copy on Save (copies are read-only mirrors), and each copy carries its own
+// row id, so every center prints its own permanent QR.
 //
 // Scope & guards, all enforced by RLS on packet_sets — the UI only MIRRORS them:
-//   • sees base (org-wide) + custom of the active center;
+//   • sees base (org-wide) + custom of the active center (owner/GD: every center);
 //   • composition of ANY set is editable, INCLUDING base — when the state swaps a form the
-//     director replaces it here, no developer/deploy needed;
+//     owner replaces it here, no developer/deploy needed;
+//   • "all centers" sets are office-managed (owner/GD): a director sees their copy read-only so
+//     it never diverges from the shared composition;
 //   • base cannot be archived/deleted (DB blocks it); this screen doesn't offer it anyway.
 // The library is read through the useFormsLibrary() seam — this screen never touches the
 // registry directly, so the registry can move to the DB later without changing this file.
@@ -40,6 +45,7 @@ type PacketSet = {
   kind: 'base' | 'custom'
   form_keys: string[]
   status: 'active' | 'archived'
+  origin_id: string | null   // shared batch id across an "all centers" set's per-center copies
 }
 
 export default function PacketSetsPage() {
@@ -64,9 +70,16 @@ export default function PacketSetsPage() {
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
   const [newCenterId, setNewCenterId] = useState<string | null>(null)
+  // Scope of a new set (кусок B). Owner/GD only: 'center' = one custom set for a center;
+  // 'all' = org-wide, propagated into one custom COPY per enrollment center, siblings tied
+  // by a shared origin_id. A director never sees this — their sets are always own-center.
+  const [newScope, setNewScope] = useState<'center' | 'all'>('center')
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameText, setRenameText] = useState('')
   const [busy, setBusy] = useState(false)
+  // Archived sets are hidden inside each group until the office asks for them (per-group
+  // "Show archived (N)" toggle). Keyed by group key. Both roles.
+  const [showArchived, setShowArchived] = useState<Record<string, boolean>>({})
 
   // ── Director-access (closed-list; DEFAULT OPEN). The overlay menumaker.form_access holds ONLY
   // CLOSED forms (director_hidden=true); absence of a row = open. The General Director manages this
@@ -141,27 +154,47 @@ export default function PacketSetsPage() {
 
   useEffect(() => { load() }, [org?.id, currentCenter?.id])
 
-  // Mirror of the packet_sets RLS (UI ONLY — the DB enforces it regardless):
-  //   base  → editable by the owner (org-admin) alone ("network standard");
-  //   custom→ editable by its own center OR the owner.
-  const canEdit = (s: PacketSet) =>
-    s.kind === 'base' ? isOrgAdmin : (isOrgAdmin || s.center_id === currentCenter?.id)
+  // Siblings of an "all centers" set = every row sharing its origin_id, as many as RLS lets
+  // the viewer see (owner sees all enrollment centers; a director sees only their own copy).
+  const siblingsOf = (s: PacketSet) => (s.origin_id ? sets.filter(x => x.origin_id === s.origin_id) : [s])
+  const isBatch = (s: PacketSet) => !!s.origin_id
 
-  // Group the list: "Base — network standard" first, then a section per center. A director
-  // sees Base + their one center; the owner sees Base + every center.
+  // Mirror of the packet_sets RLS (UI ONLY — the DB enforces it regardless):
+  //   base        → editable by the owner (org-admin) alone ("network standard");
+  //   all-centers → office-managed: owner alone. Composition is edited in ONE place and the
+  //                 per-center copies mirror it; a director sees their copy read-only so it
+  //                 never diverges (the deferred merge problem is avoided by not diverging).
+  //   custom      → editable by its own center OR the owner.
+  const canEdit = (s: PacketSet) =>
+    isBatch(s) ? isOrgAdmin
+    : s.kind === 'base' ? isOrgAdmin
+    : (isOrgAdmin || s.center_id === currentCenter?.id)
+
+  // Group the list: "Base — network standard", then "All centers — office-managed" (batches,
+  // collapsed to ONE representative per origin_id), then a section per center for its own
+  // custom sets. Each group splits active vs archived — archived is hidden until "Show
+  // archived (N)". A director sees Base + All-centers (their copy) + their one center.
   const centerName = (id: string | null) =>
     id == null ? null : (centers.find(c => c.id === id)?.name ?? 'Center')
-  const groups = useMemo(() => {
-    const g: { key: string; label: string; items: PacketSet[] }[] = []
-    const base = sets.filter(s => s.center_id == null)
-    if (base.length) g.push({ key: 'base', label: 'Base — network standard', items: base })
-    const byCenter = new Map<string, PacketSet[]>()
-    for (const s of sets) if (s.center_id != null) {
-      const arr = byCenter.get(s.center_id) ?? []
-      arr.push(s); byCenter.set(s.center_id, arr)
+  type Grp = { key: string; label: string; active: PacketSet[]; archived: PacketSet[] }
+  const groups = useMemo<Grp[]>(() => {
+    // One representative per origin_id batch; singletons represent themselves.
+    const seen = new Set<string>()
+    const reps: PacketSet[] = []
+    const ordered = [...sets].sort((a, b) => (centerName(a.center_id) ?? '').localeCompare(centerName(b.center_id) ?? ''))
+    for (const s of ordered) {
+      if (s.origin_id) { if (seen.has(s.origin_id)) continue; seen.add(s.origin_id) }
+      reps.push(s)
     }
-    const ids = [...byCenter.keys()].sort((a, b) => (centerName(a) ?? '').localeCompare(centerName(b) ?? ''))
-    for (const cid of ids) g.push({ key: cid, label: centerName(cid) ?? 'Center', items: byCenter.get(cid)! })
+    const mk = (key: string, label: string, items: PacketSet[]): Grp | null =>
+      items.length ? { key, label, active: items.filter(s => s.status === 'active'), archived: items.filter(s => s.status === 'archived') } : null
+    const push = (x: Grp | null) => { if (x) g.push(x) }
+    const g: Grp[] = []
+    push(mk('base', 'Base — network standard', reps.filter(s => s.center_id == null && !s.origin_id)))
+    push(mk('all', 'All centers — office-managed', reps.filter(s => !!s.origin_id)))
+    const singles = reps.filter(s => s.center_id != null && !s.origin_id)
+    const cids = [...new Set(singles.map(s => s.center_id!))].sort((a, b) => (centerName(a) ?? '').localeCompare(centerName(b) ?? ''))
+    for (const cid of cids) push(mk(cid, centerName(cid) ?? 'Center', singles.filter(s => s.center_id === cid)))
     return g
   }, [sets, centers])
   // Load the selected set's composition into the draft whenever selection changes.
@@ -200,9 +233,13 @@ export default function PacketSetsPage() {
     if (!selected || !dirty || !editable) return
     setSaving(true); setErr(null); setNote(null)
     try {
-      const { error } = await S().from('packet_sets').update({ form_keys: draft }).eq('id', selected.id)
+      // An all-centers set edits in ONE place: write the composition to every sibling copy
+      // (same origin_id) so each center's own QR resolves the same forms. A singleton edits by id.
+      const q = S().from('packet_sets').update({ form_keys: draft })
+      const { error } = await (selected.origin_id ? q.eq('origin_id', selected.origin_id) : q.eq('id', selected.id))
       if (error) throw error
-      setNote(`Saved — “${selected.name}” now has ${draft.length} form${draft.length === 1 ? '' : 's'}.`)
+      const nCtr = selected.origin_id ? siblingsOf(selected).length : 0
+      setNote(`Saved — “${selected.name}” now has ${draft.length} form${draft.length === 1 ? '' : 's'}.${nCtr > 1 ? ` Applied to all ${nCtr} centers.` : ''}`)
       await load()
     } catch (e: any) {
       setErr(`Save failed — ${e?.message ?? e}. Nothing was changed.`)
@@ -233,24 +270,51 @@ export default function PacketSetsPage() {
   }
 
   const createTargetCenterId = currentCenter?.id ?? newCenterId
+  // "All centers" targets every enrollment center that has a storefront slug (pearl/ridge/alpha);
+  // the kitchen pseudo-center has no parent storefront, so it is never a packet target.
+  const allCenterTargets = centers.filter(c => centerSlug[c.id])
+
   const createSet = async () => {
     const name = newName.trim()
     if (!name) { setErr('Give the set a name first.'); return }
-    if (!createTargetCenterId) { setErr('Pick which center this set belongs to.'); return }
     if (!org?.id) return
+    // Scope is owner/GD-only; a director is always 'center'. Guard defensively even though
+    // the 'all' option is never rendered for a director (RLS also blocks cross-center insert).
+    const scope: 'center' | 'all' = (isOrgAdmin && newScope === 'all') ? 'all' : 'center'
+    if (scope === 'center' && !createTargetCenterId) { setErr('Pick which center this set belongs to.'); return }
+    if (scope === 'all' && allCenterTargets.length === 0) {
+      setErr('No enrollment centers with a storefront slug were found — can’t build an all-centers set yet.'); return
+    }
     setBusy(true); setErr(null); setNote(null)
-    const row = { org_id: org.id, center_id: createTargetCenterId, name, slug: uniqueSlug(name), kind: 'custom' as const, form_keys: [] as string[], status: 'active' as const }
     try {
-      let { data, error } = await S().from('packet_sets').insert(row).select('id').single()
-      // Unique-slug race across sessions → retry once with no slug (uuid is the real key).
-      if (error && String(error.code) === '23505') {
-        ({ data, error } = await S().from('packet_sets').insert({ ...row, slug: null }).select('id').single())
+      if (scope === 'all') {
+        // Org-wide: one custom COPY per enrollment center, all tied by a shared origin_id.
+        // Composition starts empty — edited once here and mirrored to every copy on Save; each
+        // copy keeps its OWN row id, so each center gets its own permanent QR.
+        const batch = crypto.randomUUID()
+        const rows = allCenterTargets.map(c => ({
+          org_id: org.id, center_id: c.id, name, slug: null as string | null,
+          kind: 'custom' as const, form_keys: [] as string[], status: 'active' as const, origin_id: batch,
+        }))
+        const { data, error } = await S().from('packet_sets').insert(rows).select('id')
+        if (error) throw error
+        setCreating(false); setNewName(''); setNewCenterId(null); setNewScope('center')
+        setNote(`Created “${name}” for all ${rows.length} centers — empty. Add forms once below; every center’s copy mirrors it. Then Save.`)
+        await load()
+        if (data?.[0]?.id) setSelectedId(data[0].id as string)
+      } else {
+        const row = { org_id: org.id, center_id: createTargetCenterId!, name, slug: uniqueSlug(name), kind: 'custom' as const, form_keys: [] as string[], status: 'active' as const, origin_id: null as string | null }
+        let { data, error } = await S().from('packet_sets').insert(row).select('id').single()
+        // Unique-slug race across sessions → retry once with no slug (uuid is the real key).
+        if (error && String(error.code) === '23505') {
+          ({ data, error } = await S().from('packet_sets').insert({ ...row, slug: null }).select('id').single())
+        }
+        if (error) throw error
+        setCreating(false); setNewName(''); setNewCenterId(null); setNewScope('center')
+        setNote(`Created “${name}” — empty. Add forms below, then Save.`)
+        await load()
+        if (data?.id) setSelectedId(data.id as string)
       }
-      if (error) throw error
-      setCreating(false); setNewName(''); setNewCenterId(null)
-      setNote(`Created “${name}” — empty. Add forms below, then Save.`)
-      await load()
-      if (data?.id) setSelectedId(data.id as string)
     } catch (e: any) {
       setErr(`Could not create the set — ${e?.message ?? e}. Nothing was changed.`)
     } finally { setBusy(false) }
@@ -262,7 +326,9 @@ export default function PacketSetsPage() {
     if (name === s.name) { setRenamingId(null); return }
     setBusy(true); setErr(null); setNote(null)
     try {
-      const { error } = await S().from('packet_sets').update({ name }).eq('id', s.id)
+      // Rename the whole batch at once (all sibling copies carry the same name).
+      const q = S().from('packet_sets').update({ name })
+      const { error } = await (s.origin_id ? q.eq('origin_id', s.origin_id) : q.eq('id', s.id))
       if (error) throw error
       setRenamingId(null); setNote(`Renamed to “${name}”.`)
       await load()
@@ -274,10 +340,12 @@ export default function PacketSetsPage() {
   const setStatus = async (s: PacketSet, status: 'active' | 'archived') => {
     setBusy(true); setErr(null); setNote(null)
     try {
-      const { error } = await S().from('packet_sets').update({ status }).eq('id', s.id)
+      // Archive/restore the whole batch together (all sibling copies move as one).
+      const q = S().from('packet_sets').update({ status })
+      const { error } = await (s.origin_id ? q.eq('origin_id', s.origin_id) : q.eq('id', s.id))
       if (error) throw error
       setNote(status === 'archived'
-        ? `“${s.name}” archived — its QR still resolves, but it’s out of the way. Unarchive any time.`
+        ? `“${s.name}” archived — it’s out of the working list. Unarchive any time.`
         : `“${s.name}” is active again.`)
       await load()
     } catch (e: any) {
@@ -286,39 +354,43 @@ export default function PacketSetsPage() {
   }
 
   // ── Share (#4): stationary QR + copyable mailing block ─────────────────────
-  const shareSlug = shareCenterId ? centerSlug[shareCenterId] ?? null : null
-  // QR encodes only center + set.id → resolve_packet_set reads the SAVED composition
-  // live from the DB, so the QR never changes when the set is edited.
-  const shareUrl = selected && shareSlug ? storefrontPacketUrl(shareSlug, selected.id) : null
-  const shareCenterName = centers.find(c => c.id === shareCenterId)?.name ?? ''
+  // A QR encodes only center + the copy's row id → the storefront resolves the SAVED
+  // composition live, so the QR never changes when the set is edited. Each all-centers copy
+  // carries its OWN row id, so every center prints its own permanent QR.
+  type QrTarget = { rowId: string; centerId: string; centerNm: string; slug: string | null }
+  const qrTargets: QrTarget[] = useMemo(() => {
+    if (!selected) return []
+    const mk = (rowId: string, centerId: string): QrTarget =>
+      ({ rowId, centerId, centerNm: centerName(centerId) ?? 'Center', slug: centerSlug[centerId] ?? null })
+    if (isBatch(selected)) return siblingsOf(selected).map(r => mk(r.id, r.center_id!)).sort((a, b) => a.centerNm.localeCompare(b.centerNm))
+    if (selected.kind === 'base') return shareCenterId ? [mk(selected.id, shareCenterId)] : []
+    return selected.center_id ? [mk(selected.id, selected.center_id)] : []
+  }, [selected, sets, shareCenterId, centerSlug, centers])
+  const qrUrlFor = (t: QrTarget) => (t.slug ? storefrontPacketUrl(t.slug, t.rowId) : null)
+  const canvasIdFor = (t: QrTarget) => `pset-qr-${t.rowId}-${t.centerId}`
 
-  const qrCanvas = () => document.getElementById('pset-qr')?.querySelector('canvas') as HTMLCanvasElement | null
-
-  const buildBlockHtml = (): string | null => {
-    const canvas = qrCanvas()
-    if (!canvas || !shareUrl || !selected) return null
+  const canvasOf = (id: string) => document.getElementById(id)?.querySelector('canvas') as HTMLCanvasElement | null
+  const blockHtmlFor = (t: QrTarget, url: string): string | null => {
+    const canvas = canvasOf(canvasIdFor(t))
+    if (!canvas || !selected) return null
     const png = canvas.toDataURL('image/png')
     // Self-contained (inline PNG) so it survives paste into an email/flyer.
     return (
       `<table style="border-collapse:collapse;font-family:Arial,sans-serif"><tr>` +
       `<td style="padding:0 14px 0 0;vertical-align:top"><img src="${png}" width="150" height="150" alt="Packet QR"></td>` +
       `<td style="vertical-align:top">` +
-      `<div style="font-size:16px;font-weight:bold;color:#0a3320">${selected.name}${shareCenterName ? ` — ${shareCenterName}` : ''}</div>` +
+      `<div style="font-size:16px;font-weight:bold;color:#0a3320">${selected.name}${t.centerNm ? ` — ${t.centerNm}` : ''}</div>` +
       `<div style="font-size:13px;color:#374151;margin:4px 0 8px">Scan the code or open the link to fill out your child's forms:</div>` +
-      `<div style="font-size:12px"><a href="${shareUrl}" style="color:#0f4c35">${shareUrl}</a></div>` +
+      `<div style="font-size:12px"><a href="${url}" style="color:#0f4c35">${url}</a></div>` +
       `</td></tr></table>`
     )
   }
-
-  const copyBlock = async () => {
-    const html = buildBlockHtml()
-    if (!html) { setErr('QR is not ready — pick a center first.'); return }
+  const copyBlockFor = async (t: QrTarget, url: string) => {
+    const html = blockHtmlFor(t, url)
+    if (!html) { setErr('QR is not ready yet.'); return }
     setErr(null)
     try {
-      const item = new ClipboardItem({
-        'text/html': new Blob([html], { type: 'text/html' }),
-        'text/plain': new Blob([shareUrl ?? ''], { type: 'text/plain' }),
-      })
+      const item = new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([url], { type: 'text/plain' }) })
       await navigator.clipboard.write([item])
       setNote('Block copied — paste it into your email or flyer (the QR image comes with it).')
     } catch {
@@ -326,14 +398,11 @@ export default function PacketSetsPage() {
       catch { setErr('Copy failed — the browser blocked clipboard access.') }
     }
   }
-
-  const downloadQr = () => {
-    const canvas = qrCanvas()
-    if (!canvas || !selected) return
+  const downloadQrFrom = (t: QrTarget) => {
+    const canvas = canvasOf(canvasIdFor(t))
+    if (!canvas) return
     const a = document.createElement('a')
-    a.href = canvas.toDataURL('image/png')
-    a.download = `packet-${selected.slug ?? selected.id}-${shareSlug ?? 'center'}.png`
-    a.click()
+    a.href = canvas.toDataURL('image/png'); a.download = `packet-${selected?.slug ?? t.rowId}-${t.slug ?? t.centerId}.png`; a.click()
   }
 
   // Entered by a button from the Children hub → leave by a button (nav standard:
@@ -361,66 +430,100 @@ export default function PacketSetsPage() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
             <div style={colHead}>Sets</div>
             {!creating && (
-              <button onClick={() => { setCreating(true); setErr(null); setNote(null); setNewName(''); setNewCenterId(currentCenter?.id ?? null) }}
-                style={newBtn} title="Create a new custom set for your center">＋ New set</button>
+              <button onClick={() => { setCreating(true); setErr(null); setNote(null); setNewName(''); setNewCenterId(currentCenter?.id ?? null); setNewScope('center') }}
+                style={newBtn} title="Create a new custom set">＋ New set</button>
             )}
           </div>
 
           {creating && (
             <div style={createCard}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#0a3320', marginBottom: 7 }}>New custom set</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#0a3320', marginBottom: 7 }}>New set</div>
               <input autoFocus value={newName} onChange={e => setNewName(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') createSet(); if (e.key === 'Escape') setCreating(false) }}
-                placeholder="Set name (e.g. Summer Camp 2026)" style={searchBox} />
-              {/* Owner in Organization view has no active center → must say which one. A director
-                  is already scoped to their center, so no picker is shown. */}
-              {!currentCenter?.id && (
+                placeholder="Set name (e.g. Renewal)" style={searchBox} />
+              {/* Scope (кусок B) — owner/GD only. A director always creates for their own center;
+                  the option isn't shown to them (and RLS blocks a cross-center insert regardless). */}
+              {isOrgAdmin && (
+                <div style={{ display: 'flex', gap: 6, margin: '0 0 8px' }}>
+                  <button type="button" onClick={() => setNewScope('center')} style={scopeBtn(newScope === 'center')}>This center</button>
+                  <button type="button" onClick={() => setNewScope('all')} style={scopeBtn(newScope === 'all')}
+                    title="Org-wide — one copy per enrollment center, edited in one place">All centers</button>
+                </div>
+              )}
+              {/* Center picker: only for a 'center'-scope set with no active center (owner in Org view). */}
+              {(!isOrgAdmin || newScope === 'center') && !currentCenter?.id && (
                 <select value={newCenterId ?? ''} onChange={e => setNewCenterId(e.target.value || null)} style={{ ...searchBox, marginBottom: 8 }}>
                   <option value="">— center for this set —</option>
                   {centers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               )}
+              {isOrgAdmin && newScope === 'all' && (
+                <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 8, lineHeight: 1.45 }}>
+                  {allCenterTargets.length > 0
+                    ? <>Org-wide: one copy for each of {allCenterTargets.length} centers ({allCenterTargets.map(c => c.name).join(', ')}). Edit the forms once — every copy mirrors it, each center gets its own QR.</>
+                    : <>No enrollment centers with a storefront slug were found yet — the registry is still loading.</>}
+                </div>
+              )}
               <ButtonRow>
-                <Button variant="primary" onClick={createSet} disabled={busy || !newName.trim() || !createTargetCenterId}>
-                  {busy ? 'Creating…' : 'Create'}
+                <Button variant="primary" onClick={createSet}
+                  disabled={busy || !newName.trim()
+                    || ((!isOrgAdmin || newScope === 'center') && !createTargetCenterId)
+                    || (isOrgAdmin && newScope === 'all' && allCenterTargets.length === 0)}>
+                  {busy ? 'Creating…' : (isOrgAdmin && newScope === 'all') ? 'Create for all centers' : 'Create'}
                 </Button>
-                <Button onClick={() => { setCreating(false); setNewName(''); setNewCenterId(null) }} disabled={busy}>Cancel</Button>
+                <Button onClick={() => { setCreating(false); setNewName(''); setNewCenterId(null); setNewScope('center') }} disabled={busy}>Cancel</Button>
               </ButtonRow>
               <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 6, lineHeight: 1.45 }}>
-                A new set starts empty and belongs to {currentCenter?.name ?? 'the center you pick'}. Base “network
-                standard” sets are owner-managed and aren’t created here.
+                {(isOrgAdmin && newScope === 'all')
+                  ? 'An all-centers set is office-managed: its composition is edited here once and mirrored to every center. It isn’t tied to a single center, and it can be archived like any custom set.'
+                  : <>A new set starts empty and belongs to {currentCenter?.name ?? 'the center you pick'}. Base “network standard” sets are owner-managed and aren’t created here.</>}
               </div>
             </div>
           )}
 
           {loading ? <div style={muted}>Loading…</div> : sets.length === 0 ? (
             <div style={empty}>No sets visible here.</div>
-          ) : groups.map(grp => (
-            <div key={grp.key} style={{ marginBottom: 10 }}>
-              <div style={groupHead}>{grp.label}</div>
-              {grp.items.map(s => {
-                const on = s.id === selectedId
-                const ro = !canEdit(s)
-                return (
-                  <button key={s.id} onClick={() => setSelectedId(s.id)} style={{ ...setRow, ...(on ? setRowOn : null) }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                      <span style={{ fontWeight: 600, color: '#0a3320' }}>{s.name}</span>
-                      <span style={s.kind === 'base' ? tagBase : tagCustom}>{s.kind}</span>
-                      {s.status === 'archived' && <span style={tagArchived}>archived</span>}
-                      {ro && <span style={tagView} title="You can view this set; only the owner edits it">view</span>}
-                    </div>
-                    <div style={{ fontSize: 11.5, color: '#6b7280', marginTop: 2 }}>
-                      {s.form_keys.length} form{s.form_keys.length === 1 ? '' : 's'}
-                    </div>
+          ) : groups.map(grp => {
+            const renderRow = (s: PacketSet) => {
+              const on = s.id === selectedId
+              const ro = !canEdit(s)
+              const archived = s.status === 'archived'
+              return (
+                <button key={s.id} onClick={() => setSelectedId(s.id)} style={{ ...setRow, ...(on ? setRowOn : null), ...(archived ? { opacity: 0.72 } : null) }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+                    <span style={{ fontWeight: 600, color: '#0a3320' }}>{s.name}</span>
+                    {isBatch(s) ? <span style={tagAll} title="Org-wide — one copy per center">all centers</span> : <span style={s.kind === 'base' ? tagBase : tagCustom}>{s.kind}</span>}
+                    {archived && <span style={tagArchived}>ARCHIVED</span>}
+                    {ro && <span style={tagView} title="You can view this set; only the owner edits it">view</span>}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: '#6b7280', marginTop: 2 }}>
+                    {s.form_keys.length} form{s.form_keys.length === 1 ? '' : 's'}
+                  </div>
+                </button>
+              )
+            }
+            const open = !!showArchived[grp.key]
+            return (
+              <div key={grp.key} style={{ marginBottom: 10 }}>
+                <div style={groupHead}>{grp.label}</div>
+                {grp.active.map(renderRow)}
+                {grp.active.length === 0 && grp.archived.length > 0 && !open && (
+                  <div style={{ ...muted, padding: '4px 2px' }}>All sets here are archived.</div>
+                )}
+                {open && grp.archived.map(renderRow)}
+                {grp.archived.length > 0 && (
+                  <button onClick={() => setShowArchived(m => ({ ...m, [grp.key]: !open }))} style={showArchivedBtn}>
+                    {open ? '▲ Hide archived' : `▾ Show archived (${grp.archived.length})`}
                   </button>
-                )
-              })}
-            </div>
-          ))}
+                )}
+              </div>
+            )
+          })}
           <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4, lineHeight: 1.5 }}>
-            Base sets are the network standard (owner-edited); a center’s own sets are grouped
-            by center. Create custom sets for your center with “＋ New set”; rename or archive them
-            from the panel on the right. Base sets can’t be archived — the storefront always keeps them.
+            Base sets are the network standard (owner-edited); “All centers” sets are org-wide and
+            office-managed (edit once, every center mirrors it); a center’s own sets are grouped by
+            center. Create sets with “＋ New set”; rename or archive them from the panel on the right.
+            Archived sets tuck away under “Show archived”. Base sets can’t be archived.
           </div>
         </div>
 
@@ -442,13 +545,19 @@ export default function PacketSetsPage() {
                 ) : (
                   <>
                     <div style={{ fontSize: 16, fontWeight: 700, color: '#0a3320' }}>{selected.name}</div>
-                    <span style={selected.kind === 'base' ? tagBase : tagCustom}>{selected.kind}</span>
-                    {selected.status === 'archived' && <span style={tagArchived}>archived</span>}
-                    {selected.center_id && <span style={{ fontSize: 11.5, color: '#6b7280' }}>· {centerName(selected.center_id)}</span>}
+                    {isBatch(selected)
+                      ? <span style={tagAll} title="Org-wide — one copy per center">all centers</span>
+                      : <span style={selected.kind === 'base' ? tagBase : tagCustom}>{selected.kind}</span>}
+                    {selected.status === 'archived' && <span style={tagArchived}>ARCHIVED</span>}
+                    {isBatch(selected)
+                      ? <span style={{ fontSize: 11.5, color: '#6b7280' }}>· {siblingsOf(selected).length} center{siblingsOf(selected).length === 1 ? '' : 's'}</span>
+                      : selected.center_id ? <span style={{ fontSize: 11.5, color: '#6b7280' }}>· {centerName(selected.center_id)}</span> : null}
                     {!editable ? (
                       <span style={{ fontSize: 11.5, fontWeight: 600, color: '#92400e', background: '#fef3c7', padding: '2px 8px', borderRadius: 5 }}>
-                        View only — {selected.kind === 'base' ? 'the network standard is edited by the owner' : 'edited by its center or the owner'}
+                        View only — {isBatch(selected) ? 'this org-wide set is edited once by the office' : selected.kind === 'base' ? 'the network standard is edited by the owner' : 'edited by its center or the owner'}
                       </span>
+                    ) : isBatch(selected) ? (
+                      <span style={{ fontSize: 11.5, color: '#6b7280' }}>org-wide — edit once here; every center’s copy mirrors it</span>
                     ) : selected.kind === 'base' ? (
                       <span style={{ fontSize: 11.5, color: '#6b7280' }}>network standard — editable by you (owner); it can’t be archived</span>
                     ) : null}
@@ -569,9 +678,9 @@ export default function PacketSetsPage() {
                 {dirty && <span style={{ fontSize: 12, color: '#92400e', alignSelf: 'center' }}>unsaved changes</span>}
               </ButtonRow>
 
-              {/* ── Share: stationary QR + copyable mailing block (#4) ── */}
+              {/* ── Share: stationary per-center QR + copyable mailing block (#4) ── */}
               <div style={{ marginTop: 22, paddingTop: 16, borderTop: '1px solid #eef1ee' }}>
-                <div style={colHead}>Share this set</div>
+                <div style={colHead}>Share this set{isBatch(selected) ? ' · one QR per center' : ''}</div>
                 {selected.kind === 'base' && (
                   <div style={{ marginBottom: 12 }}>
                     <label style={{ fontSize: 12.5, color: '#374151', marginRight: 8 }}>Center for this QR:</label>
@@ -584,28 +693,48 @@ export default function PacketSetsPage() {
                     </div>
                   </div>
                 )}
-                {!shareUrl ? (
-                  <div style={muted}>
-                    {!shareCenterId ? 'Pick a center to build the QR.'
-                      : 'This center has no slug in the forms registry — the QR link needs center=. Add it to enroll-registry.json first.'}
+                {selected.status === 'archived' && (
+                  <div style={{ fontSize: 11.5, color: '#92400e', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, padding: '7px 10px', marginBottom: 10 }}>
+                    This set is archived — it’s out of the working list. Unarchive it before sharing these codes with families.
                   </div>
+                )}
+                {qrTargets.length === 0 ? (
+                  <div style={muted}>{selected.kind === 'base' ? 'Pick a center to build the QR.' : 'No center to build a QR for.'}</div>
                 ) : (
-                  <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                    <div id="pset-qr" style={{ background: '#fff', padding: 8, border: '1px solid #e4e8e4', borderRadius: 10 }}>
-                      <QRCodeCanvas value={shareUrl} size={512} level="M" marginSize={2} style={{ width: 150, height: 150, display: 'block' }} />
-                    </div>
-                    <div style={{ flex: 1, minWidth: 240 }}>
-                      <div style={{ fontSize: 12.5, color: '#374151', marginBottom: 5 }}>Permanent link — editing the set never changes it:</div>
-                      <code style={{ fontSize: 11.5, color: GREEN, wordBreak: 'break-all', display: 'block', marginBottom: 10 }}>{shareUrl}</code>
-                      <ButtonRow>
-                        <Button variant="primary" onClick={copyBlock}>📋 Copy block</Button>
-                        <Button onClick={() => { navigator.clipboard?.writeText(shareUrl); setNote('Link copied.') }}>🔗 Copy link</Button>
-                        <Button onClick={downloadQr}>⬇ Download QR</Button>
-                      </ButtonRow>
-                      <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 8, lineHeight: 1.5 }}>
-                        The QR carries only the center and this set’s id; parents receive whatever forms are <b>saved</b> in the set, read live from the database.
-                        {dirty && <span style={{ color: '#92400e' }}> Save your changes first — unsaved edits aren’t in the QR yet.</span>}
-                      </div>
+                  <div style={{ display: 'grid', gap: 14 }}>
+                    {qrTargets.map(t => {
+                      const url = qrUrlFor(t)
+                      return (
+                        <div key={canvasIdFor(t)} style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap', ...(qrTargets.length > 1 ? { paddingBottom: 12, borderBottom: '1px dashed #eef1ee' } : null) }}>
+                          {!url ? (
+                            <div style={{ ...muted, flex: 1 }}>
+                              <b>{t.centerNm}</b>: no slug in the forms registry — the QR link needs <code>center=</code>. Add {t.centerNm} to enroll-registry.json first.
+                            </div>
+                          ) : (
+                            <>
+                              <div id={canvasIdFor(t)} style={{ background: '#fff', padding: 8, border: '1px solid #e4e8e4', borderRadius: 10 }}>
+                                <QRCodeCanvas value={url} size={512} level="M" marginSize={2} style={{ width: 150, height: 150, display: 'block' }} />
+                              </div>
+                              <div style={{ flex: 1, minWidth: 240 }}>
+                                {isBatch(selected) && <div style={{ fontSize: 13, fontWeight: 700, color: '#0a3320', marginBottom: 3 }}>{t.centerNm}</div>}
+                                <div style={{ fontSize: 12.5, color: '#374151', marginBottom: 5 }}>Permanent link — editing the set never changes it:</div>
+                                <code style={{ fontSize: 11.5, color: GREEN, wordBreak: 'break-all', display: 'block', marginBottom: 10 }}>{url}</code>
+                                <ButtonRow>
+                                  <Button variant="primary" onClick={() => copyBlockFor(t, url)}>📋 Copy block</Button>
+                                  <Button onClick={() => { navigator.clipboard?.writeText(url); setNote('Link copied.') }}>🔗 Copy link</Button>
+                                  <Button onClick={() => downloadQrFrom(t)}>⬇ Download QR</Button>
+                                </ButtonRow>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )
+                    })}
+                    <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2, lineHeight: 1.5 }}>
+                      {isBatch(selected)
+                        ? <>Each center has its <b>own</b> permanent QR (its own copy). Parents receive whatever forms are <b>saved</b> in the set, read live from the database.</>
+                        : <>The QR carries only the center and this set’s id; parents receive whatever forms are <b>saved</b> in the set, read live from the database.</>}
+                      {dirty && <span style={{ color: '#92400e' }}> Save your changes first — unsaved edits aren’t in the QR yet.</span>}
                     </div>
                   </div>
                 )}
@@ -614,7 +743,7 @@ export default function PacketSetsPage() {
           )}
         </div>
       </div>
-      {qrForm && <FormQrModal formKey={qrForm.formKey} title={qrForm.title} centers={centers} presetSlug={shareSlug} onClose={() => setQrForm(null)} />}
+      {qrForm && <FormQrModal formKey={qrForm.formKey} title={qrForm.title} centers={centers} presetSlug={qrTargets[0]?.slug ?? (currentCenter?.id ? centerSlug[currentCenter.id] : undefined) ?? undefined} onClose={() => setQrForm(null)} />}
     </div>
   )
 }
@@ -664,6 +793,9 @@ const muted: React.CSSProperties = { color: '#9ca3af', fontSize: 13, padding: '8
 const tagBase: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: '#0a3320', background: '#dcfce7', padding: '1px 6px', borderRadius: 5, textTransform: 'uppercase', letterSpacing: '0.04em' }
 const tagCustom: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: '#3730a3', background: '#e0e7ff', padding: '1px 6px', borderRadius: 5, textTransform: 'uppercase', letterSpacing: '0.04em' }
 const tagArchived: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: '#6b7280', background: '#f3f4f6', padding: '1px 6px', borderRadius: 5, textTransform: 'uppercase', letterSpacing: '0.04em' }
+const tagAll: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: '#155e75', background: '#cffafe', padding: '1px 6px', borderRadius: 5, textTransform: 'uppercase', letterSpacing: '0.04em' }
+const showArchivedBtn: React.CSSProperties = { font: 'inherit', fontSize: 11.5, fontWeight: 600, color: '#6b7280', background: 'transparent', border: 'none', cursor: 'pointer', padding: '3px 2px', textAlign: 'left', width: '100%' }
+const scopeBtn = (on: boolean): React.CSSProperties => ({ font: 'inherit', fontSize: 12, fontWeight: 600, flex: 1, color: on ? '#fff' : '#374151', background: on ? GREEN : '#fff', border: `1px solid ${on ? GREEN : '#d7ded7'}`, borderRadius: 7, padding: '6px 8px', cursor: 'pointer' })
 const tagGov: React.CSSProperties = { fontSize: 9.5, fontWeight: 700, color: '#92400e', background: '#fef3c7', padding: '1px 5px', borderRadius: 5, marginLeft: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }
 const tagUnknown: React.CSSProperties = { fontSize: 9.5, fontWeight: 700, color: '#7f1d1d', background: '#fee2e2', padding: '1px 5px', borderRadius: 5, marginLeft: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }
 const tagPending: React.CSSProperties = { fontSize: 9.5, fontWeight: 700, color: '#92400e', background: '#fef3c7', padding: '1px 5px', borderRadius: 5, marginLeft: 6, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }

@@ -8,6 +8,7 @@
 // as a disabled "coming soon" row. QR = qrcode.react (client-side, no external calls).
 import { useEffect, useMemo, useState } from 'react'
 import { QRCodeCanvas } from 'qrcode.react'
+import { supabase } from '@/lib/supabase'
 import { storefrontOnlyUrl, storefrontPacketUrl } from '@/config/showcaseLinks'
 
 const GREEN = '#0f4c35'
@@ -17,6 +18,17 @@ const SETS: { key: string; label: string; sub: string }[] = [
   { key: 'infant', label: 'Infants', sub: 'Returning · addressed' },
   { key: 'school_age', label: 'School-Age', sub: 'Returning · addressed' },
 ]
+
+// An "all centers" DB set (packet_sets, origin_id != null) rendered as a tile of the SAME
+// class as the four above — DB-driven, not hardcoded. This center's own copy carries its own
+// id, so its storefront link (?center=&set=<copy id>) is a permanent per-center QR. The
+// storefront resolves the composition live (resolve_packet_set), so the tile needs no
+// composition of its own — the whole-set Open/Copy/QR just carries the copy id.
+type DbSet = { id: string; name: string; form_keys: string[] }
+// Subtitle: Renewal gets its agreed line; any other all-centers set gets a generic one.
+function dbSetSub(name: string): string {
+  return name.trim().toLowerCase() === 'renewal' ? 'Existing families · annual refresh' : 'All centers · office packet'
+}
 
 type Slot = { key: string; section?: 'mandatory' | 'if_applicable'; label?: string; note?: string; pending?: boolean; handout?: boolean; group?: string }
 type FormRec = { current?: string | null; versions?: Record<string, string | Record<string, string>>; fallbackUrl?: string | null; title?: string }
@@ -44,6 +56,7 @@ export default function AddChildPacketPanel({ center, onClose }: { center: { id:
   const [reg, setReg] = useState<Registry | null>(null)
   const [active, setActive] = useState<string>('starter')
   const [popup, setPopup] = useState<{ title: string; url: string } | null>(null)
+  const [dbSets, setDbSets] = useState<DbSet[]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -54,7 +67,33 @@ export default function AddChildPacketPanel({ center, onClose }: { center: { id:
     return () => { cancelled = true }
   }, [])
 
-  const slots: Slot[] = useMemo(() => reg?.packets?.[active]?.slots ?? [], [reg, active])
+  // "All centers" sets for THIS center (packet_sets copies: origin_id set, active only —
+  // archived stays out of the picker). RLS already scopes to the center; the filter mirrors it.
+  useEffect(() => {
+    let cancelled = false
+    supabase.schema('menumaker').from('packet_sets')
+      .select('id,name,form_keys')
+      .eq('center_id', center.id)
+      .not('origin_id', 'is', null)
+      .eq('status', 'active')
+      .order('name', { ascending: true })
+      .then(({ data, error }) => {
+        // A failed read must not read as "no sets" — but an empty result legitimately means
+        // none exist yet (no all-centers set created). On error, just leave the picker as the
+        // legacy four rather than inventing tiles.
+        if (cancelled || error) return
+        setDbSets((data ?? []) as DbSet[])
+      })
+    return () => { cancelled = true }
+  }, [center.id])
+
+  const activeDb = useMemo(() => dbSets.find(s => s.id === active) ?? null, [dbSets, active])
+  // A DB set's composition is its form_keys (each a bare {key} slot — the storefront resolves
+  // the rest); a legacy set reads its slots from the registry. Same renderer for both.
+  const slots: Slot[] = useMemo(
+    () => activeDb ? activeDb.form_keys.map(k => ({ key: k })) : (reg?.packets?.[active]?.slots ?? []),
+    [reg, active, activeDb],
+  )
 
   // A set's link/QR is the WHOLE set (?center=&set=) — composition is fixed by the set,
   // not by per-form selection; the storefront resolves it and filters if_applicable.
@@ -99,6 +138,22 @@ export default function AddChildPacketPanel({ center, onClose }: { center: { id:
                 </div>
               </div>
             ))}
+            {/* All-centers DB sets (e.g. Renewal) — same tile class, DB-driven. Its own per-center
+                copy id → permanent storefront QR. Honest composition badge ("0 forms" until filled). */}
+            {dbSets.map(s => (
+              <div key={s.id} style={tab(active === s.id)} onClick={() => setActive(s.id)}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 800, fontSize: 14, color: active === s.id ? GREEN : '#14251b' }}>
+                      {s.name}
+                      <span style={{ fontSize: 10, fontWeight: 700, color: '#155e75', background: '#cffafe', borderRadius: 999, padding: '1px 6px', marginLeft: 6 }}>all centers</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: '#6b7280' }}>{dbSetSub(s.name)} · {s.form_keys.length} form{s.form_keys.length === 1 ? '' : 's'}</div>
+                  </div>
+                  {reg && miniQR(`${s.name} packet`, storefrontFor(s.id), 34)}
+                </div>
+              </div>
+            ))}
           </div>
 
           {!reg ? (
@@ -112,6 +167,11 @@ export default function AddChildPacketPanel({ center, onClose }: { center: { id:
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {activeDb && slots.length === 0 && (
+                  <div style={{ fontSize: 12.5, color: '#9ca3af', fontStyle: 'italic', padding: '11px 14px', background: '#fafafa', border: '1px dashed #e5e7eb', borderRadius: 11 }}>
+                    This set has no forms yet — the office is still filling it. The link and QR below already work and will serve whatever gets added.
+                  </div>
+                )}
                 {slots.map(s => {
                   const label = s.label || reg.forms?.[s.key]?.title || s.key
                   // The FILE (director-facing: Print a handout). Never QR-encoded.
@@ -154,7 +214,7 @@ export default function AddChildPacketPanel({ center, onClose }: { center: { id:
               <div style={{ display: 'flex', gap: 9, alignItems: 'center', marginTop: 16, flexWrap: 'wrap' }}>
                 <a href={activeStorefront} target="_blank" rel="noreferrer" style={{ flex: 1, minWidth: 160, padding: '10px 14px', borderRadius: 10, background: GREEN, color: '#fff', textDecoration: 'none', fontWeight: 800, fontSize: 14, textAlign: 'center' }}>Open packet ↗</a>
                 <button onClick={() => navigator.clipboard?.writeText(activeStorefront)} style={{ padding: '10px 14px', borderRadius: 10, background: '#f0f7f4', color: '#1a5c3f', border: '1px solid #d1fae5', cursor: 'pointer', fontWeight: 600, fontSize: 13, fontFamily: 'inherit' }}>Copy link</button>
-                {miniQR(`${SETS.find(s => s.key === active)?.label} packet`, activeStorefront, 40)}
+                {miniQR(`${activeDb?.name ?? SETS.find(s => s.key === active)?.label} packet`, activeStorefront, 40)}
               </div>
               <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 12, lineHeight: 1.5 }}>
                 Returning family? Find them with search (incl. archived) and send an addressed packet — same mechanism, arriving with Resume Family.

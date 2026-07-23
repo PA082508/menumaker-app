@@ -65,3 +65,58 @@ for (const d of NON_REGISTRY_DOCS) KEY_SECTION[d.key] = 'claim_print'
 export function sectionOfKey(key: string): SectionId {
   return KEY_SECTION[key] ?? 'other'
 }
+
+// ── Library "kind" grouping — Part 3 substrate, built UP TO the tabs-vs-relocation fork ──────
+// A document's KIND (sign-online / keep-and-print / government / internal print / claim export)
+// is orthogonal to its SECTION. This classifies + groups any keyed library items by kind in a
+// stable order, so a kind-first Library view can be assembled without re-deriving the buckets.
+//
+// ⚠️ The PRESENTATION fork is deliberately NOT decided here: whether a kind-first view is shown as
+//    TABS inside the Library, or a kind is RELOCATED to its own page, is Nikolay's call ("вкладки
+//    vs переезд"). This file is only the shared classification both options would consume — no
+//    component renders it yet.
+export type DocKind = 'signature' | 'keep' | 'gov' | 'print' | 'export' | 'document' | 'other'
+export const KIND_ORDER: DocKind[] = ['signature', 'keep', 'gov', 'print', 'export', 'document', 'other']
+export const KIND_LABEL: Record<DocKind, string> = {
+  signature: 'Sign online',
+  keep:      'Keep & print',
+  gov:       'Government forms',
+  print:     'Print / claim worksheets',
+  export:    'Claim exports',
+  document:  'Documents',
+  other:     'Other',
+}
+// The minimum an item must carry to be classified — a superset of both the registry FormCard
+// shape (kind/isGovForm/url) and NonRegDoc, so callers pass either without adapting.
+export interface Kindable { key: string; kind?: string | null; isGovForm?: boolean; url?: string | null }
+
+/** Classify a library item into a coarse KIND bucket. Non-registry print/claim docs are
+ *  recognised by key (printable → 'print', generated → 'export'); otherwise the registry `kind`
+ *  wins, with a government signature form promoted to 'gov'. Unknown → 'document' (never dropped). */
+export function kindOfDoc(it: Kindable): DocKind {
+  if (isNonRegistryDoc(it.key)) {
+    // A non-registry doc's printability is a property of the doc itself, not of the passed
+    // item — look it up so classification works whether or not the caller carried `url`.
+    const d = NON_REGISTRY_DOCS.find(x => x.key === it.key)
+    return (d ? d.url : it.url) ? 'print' : 'export'
+  }
+  const k = (it.kind ?? '').toLowerCase()
+  if (k === 'keep') return 'keep'
+  if (k === 'signature') return it.isGovForm ? 'gov' : 'signature'
+  if (k === 'document') return 'document'
+  if (it.isGovForm) return 'gov'
+  return k ? 'other' : 'document'
+}
+
+/** Group keyed items by KIND in KIND_ORDER; empty buckets are dropped, order within a bucket is
+ *  preserved. Nothing is silently discarded — an unclassifiable item lands in 'document'/'other'. */
+export function groupByKind<T extends Kindable>(items: T[]): { kind: DocKind; label: string; items: T[] }[] {
+  const by = new Map<DocKind, T[]>()
+  for (const it of items) {
+    const k = kindOfDoc(it)
+    const arr = by.get(k) ?? []
+    if (!by.has(k)) by.set(k, arr)
+    arr.push(it)
+  }
+  return KIND_ORDER.filter(k => by.has(k)).map(k => ({ kind: k, label: KIND_LABEL[k], items: by.get(k)! }))
+}

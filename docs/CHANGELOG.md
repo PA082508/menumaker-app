@@ -10,6 +10,8 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 
 <!-- newest on top -->
 
+- 2026-07-22 · 🔧 · Fixed a blank-screen: Documents → Library could turn white for a director because one document type (the per-center Parent Handbook, which has a separate file per location) wasn't being resolved to a single file — it now picks the active center's copy. Previously a page reload was the only workaround.
+
 - 2026-07-22 · 🚀 · First help video is live: a 30-second "E-Forms for Directors" walkthrough (narrated, with subtitles) showing how a family's packet becomes an approved child on your roster. It appears two ways: a compact "▶ 0:30" button right next to the Children page title (click for a pop-up player), and a full card with a poster in Documents → Library, next to the Children guide. Both directors and the General Director see it. This is the pilot of a whole series — the same little button will show up on each page as its video is made.
 - 2026-07-22 · 📚 · The written "Children — Full Guide" (all four buttons, Director vs General Director) is now published in Documents → Library, and the old "E-Forms for Directors" guide redirects to it. (Screenshots are being added.)
 

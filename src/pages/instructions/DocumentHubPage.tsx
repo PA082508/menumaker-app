@@ -249,7 +249,9 @@ function ParentFormsQR({ url, title='Parent Forms', onClose }: { url: string; ti
 // the center-scoped form docs; org-view admin (no active center) leaves links
 // generic (they scope by picking a center in the header switcher).
 function scopeToCenter(url: string, slug: string | null | undefined): string {
-  if (!slug) return url
+  // Belt-guard: never call .includes on a non-string (a per-center object should have been
+  // collapsed in resolve(); this keeps a stray object from ever blanking the page again).
+  if (!slug || typeof url !== 'string') return url
   return url + (url.includes('?') ? '&' : '?') + 'center=' + encodeURIComponent(slug)
 }
 
@@ -351,7 +353,19 @@ export default function DocumentHubPage() {
   function resolve(key: string) {
     const f = reg?.forms?.[key]
     const cur = f?.current
-    const url = (cur && f?.versions?.[cur]) || f?.fallbackUrl || (f?.versions ? Object.values(f.versions)[0] : null) || null
+    // A version value is EITHER a plain string URL OR a per-center map {slug: url} (e.g.
+    // parents_book — each centre's own handbook). Collapse it to the active centre's string —
+    // mirrors formUrl() in AddChildPacketPanel — so `url` is ALWAYS a string. A raw object here
+    // used to reach scopeToCenter's `url.includes(...)` and crash the whole page (blank screen).
+    const pickStr = (v: unknown): string | null =>
+      typeof v === 'string' ? v
+        : (v && typeof v === 'object'
+            ? ((v as Record<string, string>)[slug ?? ''] ?? Object.values(v as Record<string, string>)[0] ?? null)
+            : null)
+    const url = (cur ? pickStr(f?.versions?.[cur]) : null)
+      || (typeof f?.fallbackUrl === 'string' ? f.fallbackUrl : null)
+      || (f?.versions ? pickStr(Object.values(f.versions)[0]) : null)
+      || null
     return { url, version: cur || (f?.versions ? Object.keys(f.versions)[0] : null), live: !!cur, title: FORM_LABELS[key] || f?.title || key,
              kind: (f as any)?.kind as string | undefined, futureFormKit: !!(f as any)?.futureFormKit }
   }

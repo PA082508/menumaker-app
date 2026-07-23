@@ -24,6 +24,7 @@ import { useOrg } from '@/contexts/OrgContext'
 import { useFormsLibrary, isDirectorComposable, type FormAccessMap } from '@/lib/formsLibrary'
 import { SECTIONS, sectionOfKey, type SectionId } from '@/lib/documentSections'
 import { storefrontPacketUrl } from '@/config/showcaseLinks'
+import { FormQrModal } from '@/components/FormQrModal'
 import Button, { ButtonRow } from '@/components/ui/Button'
 import BackBar from '@/components/BackBar'
 
@@ -91,6 +92,7 @@ export default function PacketSetsPage() {
   // ── Share (#4): storefront slug per center comes from the registry (never guessed
   // from the center's name — same map embed.js uses), keyed by center_id.
   const [centerSlug, setCenterSlug] = useState<Record<string, string>>({})
+  const [qrForm, setQrForm] = useState<{ formKey: string; title: string } | null>(null)
   const [shareCenterId, setShareCenterId] = useState<string | null>(null)
   useEffect(() => {
     let dead = false
@@ -517,34 +519,41 @@ export default function PacketSetsPage() {
                     <div style={{ maxHeight: 340, overflowY: 'auto' }}>
                       {libShown.map(i => {
                         const on = inSet.has(i.key)
-                        if (on) return (
-                          <div key={i.key} style={{ ...libRow, opacity: 0.55, cursor: 'default' }} title="Already in this set">
+                        const inner = on ? (
+                          <div style={{ ...libRow, flex: 1, minWidth: 0, marginBottom: 0, opacity: 0.55, cursor: 'default' }} title="Already in this set">
                             <span style={{ color: GREEN }}>✓</span>
                             <span style={{ flex: 1 }}>{i.title}</span>
                             {i.isGovForm && <span style={tagGov} title={i.requiringOrg || 'Government form'}>gov</span>}
                             <span style={{ fontSize: 10.5, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em' }}>in set</span>
                           </div>
-                        )
                         // Publish-gate: a form the registry hasn't built yet (PENDING / current:null) is
-                        // shown greyed so the director knows it exists, but can't be added — a family must
-                        // never be sent a link to a form that isn't built. (Separate from the closed-list.)
-                        if (!i.publishable) return (
-                          <div key={i.key} style={{ ...libRow, opacity: 0.6, cursor: 'not-allowed', background: '#fafafa' }}
+                        // shown greyed so the director knows it exists, but can't be added — no QR either.
+                        ) : !i.publishable ? (
+                          <div style={{ ...libRow, flex: 1, minWidth: 0, marginBottom: 0, opacity: 0.6, cursor: 'not-allowed', background: '#fafafa' }}
                             title={`${i.unpublishedReason ?? 'Not published yet'} — can’t be added until it’s built`}>
                             <span style={{ color: '#9ca3af', fontWeight: 700 }}>＋</span>
                             <span style={{ flex: 1, color: '#9ca3af' }}>{i.title}</span>
                             {i.isGovForm && <span style={tagGov} title={i.requiringOrg || 'Government form'}>gov</span>}
                             <span style={tagPending}>{i.unpublishedReason ?? 'not published'}</span>
                           </div>
-                        )
-                        return (
-                          <button key={i.key} disabled={!editable} onClick={() => add(i.key)}
-                            style={{ ...libRow, ...(!editable ? { opacity: 0.5, cursor: 'not-allowed' } : null) }}
+                        ) : (
+                          <button disabled={!editable} onClick={() => add(i.key)}
+                            style={{ ...libRow, flex: 1, minWidth: 0, marginBottom: 0, ...(!editable ? { opacity: 0.5, cursor: 'not-allowed' } : null) }}
                             title={editable ? `Add “${i.title}”` : 'View only — the owner manages this set'}>
                             <span style={{ color: GREEN, fontWeight: 700 }}>＋</span>
                             <span style={{ flex: 1 }}>{i.title}</span>
                             {i.isGovForm && <span style={tagGov} title={i.requiringOrg || 'Government form'}>gov</span>}
                           </button>
+                        )
+                        return (
+                          <div key={i.key} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                            {inner}
+                            {/* Per-form QR (built forms only), scoped to this set's center (picker if none). */}
+                            {i.publishable && (
+                              <button onClick={() => setQrForm({ formKey: i.key, title: i.title })} title="Share this form as a QR"
+                                style={qrRowBtn}>▦</button>
+                            )}
+                          </div>
                         )
                       })}
                     </div>
@@ -605,6 +614,7 @@ export default function PacketSetsPage() {
           )}
         </div>
       </div>
+      {qrForm && <FormQrModal formKey={qrForm.formKey} title={qrForm.title} centers={centers} presetSlug={shareSlug} onClose={() => setQrForm(null)} />}
     </div>
   )
 }
@@ -645,6 +655,7 @@ const setRow: React.CSSProperties = { textAlign: 'left', width: '100%', font: 'i
 const setRowOn: React.CSSProperties = { borderColor: GREEN, background: '#f6fdf9', boxShadow: 'inset 3px 0 0 ' + GREEN }
 const chipRow: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', border: '1px solid #e4e8e4', borderRadius: 8, background: '#fff', marginBottom: 5, fontSize: 13, color: '#374151' }
 const libRow: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', font: 'inherit', fontSize: 13, color: '#374151', cursor: 'pointer', background: '#fff', border: '1px solid #eef1ee', borderRadius: 8, padding: '6px 9px', marginBottom: 4 }
+const qrRowBtn: React.CSSProperties = { font: 'inherit', fontSize: 15, lineHeight: 1, width: 34, height: 34, borderRadius: 8, border: '1px solid #d1fae5', background: '#f0f7f4', color: '#1a5c3f', cursor: 'pointer', flexShrink: 0 }
 const iconBtn: React.CSSProperties = { font: 'inherit', fontSize: 13, lineHeight: 1, width: 26, height: 26, borderRadius: 7, border: '1px solid #d7ded7', background: '#fff', color: GREEN, cursor: 'pointer' }
 const searchBox: React.CSSProperties = { font: 'inherit', fontSize: 13, padding: '7px 10px', border: '1px solid #e5e7eb', borderRadius: 9, background: '#fff', width: '100%', boxSizing: 'border-box', marginBottom: 8 }
 const ctlSmall: React.CSSProperties = { font: 'inherit', fontSize: 13, padding: '6px 9px', border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', minWidth: 160 }

@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import { QRCodeCanvas } from 'qrcode.react'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
-import { PARENT_FORMS_URL, SHOWCASE_ORIGIN, storefrontOnlyUrl } from '@/config/showcaseLinks'
+import { PARENT_FORMS_URL, SHOWCASE_ORIGIN } from '@/config/showcaseLinks'
+import { FormQrModal } from '@/components/FormQrModal'
 import { SEC1, SUTQ_DOCS, SEC2, SEC4_FORMS, OUR_DOCS } from '@/lib/documentSections'
 import { isHiddenFromDirector, type FormAccessMap } from '@/lib/formsLibrary'
 import { HelpVideoCard } from '@/components/HelpVideo'
@@ -293,16 +294,19 @@ const ghostS: React.CSSProperties = { padding: '8px 12px', borderRadius: 8, font
 // storefront "Open packet ↗" CTA); QR is a compact icon, not the word "QR".
 const openGhostS: React.CSSProperties = { flex: 1, padding: '8px 12px', borderRadius: 8, fontSize: 13, fontWeight: 600, background: '#f0f7f4', color: '#1a5c3f', border: '1px solid #d1fae5', textDecoration: 'none', textAlign: 'center', fontFamily: 'inherit' }
 const qrIconBtnS: React.CSSProperties = { padding: '6px 9px', borderRadius: 8, background: '#fff', color: '#1a5c3f', border: '1px solid #d1fae5', cursor: 'pointer', fontFamily: 'inherit', lineHeight: 0, display: 'inline-flex', alignItems: 'center', flex: '0 0 auto' }
+// Enlarged, readable per-form QR tap-target (icon + "QR" label).
+const qrBtnBig: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 9, background: '#f0f7f4', color: '#1a5c3f', border: '1px solid #d1fae5', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, flex: '0 0 auto' }
 const QRGlyph = () => (
   <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path fill="#1a5c3f" d="M1 1h5v5H1V1zm1 1v3h3V2H2zm8-1h5v5h-5V1zm1 1v3h3V2h-3zM1 10h5v5H1v-5zm1 1v3h3v-3H2zm7-1h2v2H9v-2zm4 0h2v2h-2v-2zm-4 3h2v2H9v-2zm2 1h2v2h-2v-2z"/></svg>
 )
 
 export default function DocumentHubPage() {
-  const { org, currentCenter, isOrgAdmin } = useOrg()
+  const { org, currentCenter, isOrgAdmin, centers } = useOrg()
   const [tab, setTab] = useState<'library' | 'newperiod'>('library')
   const [reg, setReg] = useState<Registry | null>(null)
   const [signOpen, setSignOpen] = useState(false)
   const [qrShare, setQrShare] = useState<{ url: string; title: string } | null>(null)
+  const [qrForm, setQrForm] = useState<{ formKey: string; title: string } | null>(null)
   const [count, setCount] = useState<number | null>(null)
   const [scenario, setScenario] = useState('enroll_full')
 
@@ -381,12 +385,9 @@ export default function DocumentHubPage() {
     // of contact — an Ohio CACFP requirement — from ?center=, and Download/Print here
     // was handing it a bare URL, so the card fell back to the org-level line.
     const fileUrl = url ? scopeToCenter(url, slug) : null
-    // Library QR standard: the storefront only= card (never a raw file URL), through the
-    // shared helper — this line used to build the URL itself and dropped `center=` when
-    // no centre was active (Organization mode), so the scan hit the storefront's gate.
-    // No centre → NO QR: a code that dead-ends is worse than no code, because a director
-    // hands it to a family before anyone scans it.
-    const onlyLink = slug ? storefrontOnlyUrl(slug, keyId) : null
+    // Per-form QR (FormQrModal) = the storefront only= card, available for ANY form with a
+    // storefront `url` — INCLUDING Organization view, where the modal asks which center first
+    // (same mechanic as a packet set). Print-only / dark forms (no `url`) get no QR, no stub.
     return (
       <div style={cardS}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
@@ -411,14 +412,14 @@ export default function DocumentHubPage() {
             <>
               <a href={fileUrl} download style={openGhostS}>↓ Download</a>
               <a href={fileUrl} target="_blank" rel="noreferrer" style={ghostS}>Print</a>
-              {onlyLink && <button style={qrIconBtnS} title="Show QR code" aria-label="Show QR code" onClick={() => setQrShare({ url: onlyLink, title })}><QRGlyph /></button>}
+              {url && <button style={qrBtnBig} title="Share this form as a QR" aria-label="Share QR" onClick={() => setQrForm({ formKey: keyId, title })}><QRGlyph /> QR</button>}
             </>
           ) : (
             <>
               <a href={fileUrl} target="_blank" rel="noreferrer" style={openGhostS}>{isDoc ? 'Open / download ↗' : 'Open ↗'}</a>
               {/* QR = the storefront only= card, same as the Keep branch above — a scan
                   must follow registry `current`, never the file live when it printed. */}
-              {onlyLink && <button style={qrIconBtnS} title="Show QR code" aria-label="Show QR code" onClick={() => setQrShare({ url: onlyLink, title })}><QRGlyph /></button>}
+              {url && <button style={qrBtnBig} title="Share this form as a QR" aria-label="Share QR" onClick={() => setQrForm({ formKey: keyId, title })}><QRGlyph /> QR</button>}
             </>
           )}
         </div>
@@ -586,6 +587,7 @@ export default function DocumentHubPage() {
 
       {signOpen && <SignModal onClose={() => setSignOpen(false)} />}
       {qrShare && <ParentFormsQR url={qrShare.url} title={qrShare.title} onClose={() => setQrShare(null)} />}
+      {qrForm && <FormQrModal formKey={qrForm.formKey} title={qrForm.title} centers={centers} presetSlug={slug} onClose={() => setQrForm(null)} />}
     </div>
   )
 }

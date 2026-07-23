@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sectionOfKey, SECTIONS, LIBRARY_SECTIONS, SEC1, SEC2, OUR_DOCS, NON_REGISTRY_DOCS, isNonRegistryDoc } from './documentSections'
+import { sectionOfKey, SECTIONS, LIBRARY_SECTIONS, SEC1, SEC2, OUR_DOCS, NON_REGISTRY_DOCS, isNonRegistryDoc, kindOfDoc, groupByKind, KIND_ORDER } from './documentSections'
 
 describe('documentSections — shared Library taxonomy', () => {
   it('maps known keys to their section', () => {
@@ -31,5 +31,37 @@ describe('documentSections — shared Library taxonomy', () => {
   it('the builder SECTIONS omit claim_print (internal docs are not composable yet), the Library set includes it', () => {
     expect(SECTIONS.some(s => s.id === 'claim_print')).toBe(false)
     expect(LIBRARY_SECTIONS.some(s => s.id === 'claim_print')).toBe(true)
+  })
+})
+
+describe('documentSections — kind grouping (Part 3 substrate, up to the fork)', () => {
+  it('classifies items by registry kind, gov flag, and non-registry key', () => {
+    expect(kindOfDoc({ key: 'wic_information', kind: 'keep' })).toBe('keep')
+    expect(kindOfDoc({ key: 'parent_consent', kind: 'signature' })).toBe('signature')
+    expect(kindOfDoc({ key: 'dcy_01234', kind: 'signature', isGovForm: true })).toBe('gov') // gov promotes
+    expect(kindOfDoc({ key: 'parents_book', kind: 'document' })).toBe('document')
+    expect(kindOfDoc({ key: 'print_food_cost_worksheet' })).toBe('print')  // non-registry, has url
+    expect(kindOfDoc({ key: 'gen_meal_count' })).toBe('export')            // non-registry, generated (url null)
+    expect(kindOfDoc({ key: 'mystery' })).toBe('document')                  // unknown → document, never dropped
+  })
+  it('groupByKind returns KIND_ORDER order, drops empty buckets, preserves within-bucket order, never loses an item', () => {
+    const items = [
+      { key: 'parents_book', kind: 'document' },
+      { key: 'parent_consent', kind: 'signature' },
+      { key: 'wic_information', kind: 'keep' },
+      { key: 'topical_product_consent', kind: 'signature' },
+      { key: 'print_food_cost_worksheet' },
+    ]
+    const groups = groupByKind(items)
+    // order follows KIND_ORDER (signature < keep < print < document); empty buckets absent.
+    const order = groups.map(g => g.kind)
+    expect(order).toEqual([...KIND_ORDER].filter(k => order.includes(k)))
+    expect(order.indexOf('signature')).toBeLessThan(order.indexOf('keep'))
+    expect(order.indexOf('keep')).toBeLessThan(order.indexOf('document'))
+    // within the signature bucket, input order is kept
+    const sig = groups.find(g => g.kind === 'signature')!
+    expect(sig.items.map(i => i.key)).toEqual(['parent_consent', 'topical_product_consent'])
+    // total items conserved
+    expect(groups.reduce((n, g) => n + g.items.length, 0)).toBe(items.length)
   })
 })

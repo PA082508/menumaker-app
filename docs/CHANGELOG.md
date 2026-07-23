@@ -10,6 +10,8 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 
 <!-- newest on top -->
 
+- 2026-07-23 · 🔧 · **Temporary** (until online forms land): the fast manual child-entry is back — on **Children → ⇪ Import** there's now a **"⚡ Quick add a child"** button that opens the search-first Add-Child flow with **"Manual entry — no scan"** (name, birthday, classroom, Date In, FRP, days & meals → files for review → appears on the meal grid). It had become unreachable when ➕ Add Child was switched to the enrollment-packet panel. Directors can use this to enter missing children now; it will be retired when e-forms go live.
+
 - 2026-07-23 · 🔀 · The **Add Child** packet picker now shows **"All centers"** office sets (like **Renewal**) as their own tiles, right beside the four standard packets — same look, but each is **DB-driven** (it appears the moment the office creates the set, no code change) and carries this center's **own permanent QR**. Each tile shows an honest form count ("0 forms" until the office fills it), Open packet / Copy link, and its QR. The four standard tiles are untouched; archived sets don't appear. (Depends on the storefront set-QR fix being live so the link resolves.)
 - 2026-07-23 · 🗄️ · Hardened the database rule for "All centers" packet sets: their per-center copies can now be edited **only** by the owner / General Director (a director can't diverge their center's copy from the shared original). Internal safety net behind the existing on-screen guard; no visible change and zero rows affected today (no all-centers sets exist yet). Applied and verified live.
 

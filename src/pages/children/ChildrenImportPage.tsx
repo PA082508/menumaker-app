@@ -1,8 +1,10 @@
 // src/pages/children/ChildrenImportPage.tsx
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { useOrg } from "@/contexts/OrgContext";
 import BackBar from "@/components/BackBar";
+import AddChildRouterModal from "./AddChildRouter";
 
 interface TargetField {
   field_key: string; label: string; datatype: string;
@@ -44,8 +46,30 @@ function parseCSV(text: string): string[][] {
 }
 
 export default function ChildrenImportPage() {
-  const { org } = useOrg();
+  const { org, currentCenter, isOrgAdmin } = useOrg();
   const orgId = org?.id ?? "";
+  const navigate = useNavigate();
+
+  // ── TEMPORARY (until Nikolay's cancel) ──────────────────────────────────────
+  // The search-first "Add Child" router (with "Manual entry — no scan") is still in the
+  // app, but its trigger was removed when ➕ Add Child became the enrollment-packet panel,
+  // so the fast minimal entry (name/DOB/classroom/Date In/FRP/days+meals → meal grid) was
+  // unreachable. Re-expose it here on Import so directors can quick-enter children until
+  // e-forms land. To retire: delete this block, its button, and the modal mount below.
+  const [showRouter, setShowRouter] = useState(false);
+  const [quickUser, setQuickUser] = useState<{ id: string; name: string } | null>(null);
+  const [quickRooms, setQuickRooms] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      const u = data.user;
+      if (u) setQuickUser({ id: u.id, name: (u.user_metadata?.full_name as string) || u.email?.split("@")[0] || "Director" });
+    });
+  }, []);
+  useEffect(() => {
+    if (!currentCenter?.id) { setQuickRooms([]); return; }
+    supabase.schema("menumaker").from("classrooms").select("id,name,is_roster").eq("center_id", currentCenter.id)
+      .then(({ data }) => setQuickRooms((data ?? []).filter((c: any) => c.is_roster !== false).map((c: any) => ({ id: c.id, name: c.name }))));
+  }, [currentCenter?.id]);
 
   const [tab,  setTab]  = useState<Tab>("import");
   const [step, setStep] = useState<Step>("upload");
@@ -167,6 +191,35 @@ export default function ChildrenImportPage() {
       <div style={{ margin: "-1.5rem -1.5rem 1.25rem" }}>
         <BackBar to="/children" label="Children" />
       </div>
+
+      {/* TEMPORARY (until Nikolay's cancel): quick manual child-entry, resurrected here while
+          ➕ Add Child opens the enrollment-packet panel. Remove with its state/effects above. */}
+      {currentCenter && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "10px 14px", marginBottom: 16 }}>
+          <div style={{ flex: 1, minWidth: 220, fontSize: 13, color: "#92400e", lineHeight: 1.5 }}>
+            <b>Quick add a child (no scan)</b> — enter the essentials (name, birthday, classroom, Date&nbsp;In, FRP, days&nbsp;&amp;&nbsp;meals) so the child lands on the meal grid. Temporary, until online forms go live.
+          </div>
+          <button onClick={() => setShowRouter(true)}
+            style={{ padding: "10px 16px", borderRadius: 9, background: "#0f4c35", color: "#fff", border: "none", fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
+            ⚡ Quick add a child
+          </button>
+        </div>
+      )}
+      {showRouter && currentCenter && quickUser && (
+        <AddChildRouterModal
+          centerId={currentCenter.id}
+          orgId={orgId}
+          classrooms={quickRooms}
+          reviewerId={quickUser.id}
+          reviewerName={quickUser.name}
+          isOrgAdmin={isOrgAdmin}
+          onClose={() => setShowRouter(false)}
+          onReactivated={() => setShowRouter(false)}
+          onNewEnrollment={() => { setShowRouter(false); navigate("/enrollment-inbox"); }}
+          onScan={() => { setShowRouter(false); navigate("/enrollment-inbox"); }}
+          onRawInsert={() => { setShowRouter(false); navigate("/children"); }}
+        />
+      )}
       <h2 style={{ margin: "0 0 1rem", fontSize: "1.1rem", fontWeight: 700, color: "#0f4c35" }}>
         👶 Import Children
       </h2>

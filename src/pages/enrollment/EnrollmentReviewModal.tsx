@@ -4,7 +4,7 @@
 // Save writes back to enrollment_submissions.form_data with an edit-log entry.
 // No roster writes here — Approve/Reject land in slice C.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { supabase } from '@/lib/supabase'
 import { type RecordCtx } from '@/lib/childFieldRegistry'
 import { buildDiff, getPath, setPath, type DiffRow } from '@/lib/enrollmentFieldMap'
@@ -14,10 +14,11 @@ import ReturnWindow from '@/pages/children/ReturnWindow'
 import {
   buildCacfpPatch, decideSchedule, formAsOf, buildIeaFrp, loadCenterRoster, matchRoster,
   approveCacfpInsert, approveCacfpUpdate, approveIea, approveDocument, rejectSubmission,
-  setFeeReceived, isProspect,
+  setFeeReceived, isProspect, insertRosterChild, splitChildName,
   parseIeaFiscalYear, frpExpiryDefault, ieaApproveBlocked,
   type RosterLite, type ApproveResult,
 } from '@/lib/enrollmentApprove'
+import { deriveMealFields } from '@/lib/ageGroups'
 import { countersignSlot, loadSample, adoptSample, type SignatureSample, type SampleOwner } from '@/lib/signatureSamples'
 import SignaturePad from '@/components/signing/SignaturePad'
 
@@ -43,11 +44,15 @@ const BADGE: Record<ValStatus, { dot: string; label: string; fg: string }> = {
 }
 
 export default function EnrollmentReviewModal({
-  submission, reviewerId, reviewerName, onClose, onSaved, onDone,
+  submission, reviewerId, reviewerName, isOrgAdmin = false, onClose, onSaved, onDone,
 }: {
   submission: Submission
   reviewerId: string
   reviewerName: string
+  // Same role signal that gates "Create record directly — admin only" on Add Child
+  // (useOrg().isOrgAdmin). Only an org admin may CREATE a roster child from a
+  // document review; everyone else still links to an existing child by hand.
+  isOrgAdmin?: boolean
   onClose: () => void
   onSaved: () => void
   onDone: (result: ApproveResult) => void
@@ -84,6 +89,22 @@ export default function EnrollmentReviewModal({
   const slot = isIea ? 'sponsor_sig' : countersignSlot(submission.submission_type)
   const alreadyCountersigned = !!slot && !!submission.form_data && !!submission.signatures?.[slot]
   const [docChild, setDocChild] = useState<string | ''>('')      // manual link — no token, no guessing
+
+  // ── "Create new child from this form" (document review, org admin only) ──────
+  // A brand-new applicant whose document arrived with no roster child is otherwise
+  // a dead end: the dropdown only offers EXISTING children. An org admin can mint
+  // the roster child here (prefilled from the recognized form data), which then
+  // becomes the link target for the normal countersign + Approve.
+  const [showCreate, setShowCreate] = useState(false)
+  const [newFirst, setNewFirst] = useState('')
+  const [newLast, setNewLast] = useState('')
+  const [newDob, setNewDob] = useState('')
+  const [newClassroom, setNewClassroom] = useState('')
+  const [classrooms, setClassrooms] = useState<{ id: string; name: string }[]>([])
+  const [creating, setCreating] = useState(false)
+  // A soft dedup warning: a roster child with the same DOB + a fuzzy name match.
+  // Never a hard block — the director confirms "Create anyway".
+  const [dupWarn, setDupWarn] = useState<{ name: string; dob: string | null } | null>(null)
   const [sigDraw, setSigDraw] = useState<string | null>(null)     // this session's stroke
   const [mySample, setMySample] = useState<SignatureSample | null>(null)
   const [useSample, setUseSample] = useState(true)
@@ -202,6 +223,101 @@ export default function EnrollmentReviewModal({
     () => (isCacfp && !resolvedChildId ? matchRoster(candidates, fd?.child_name, fd?.birthdate) : []),
     [isCacfp, resolvedChildId, candidates, fd?.child_name, fd?.birthdate],
   )
+
+  // Only an org admin may create a roster child from a document review (same gate
+  // as "Create record directly" on Add Child). The panel needs the center's
+  // classrooms — a child lands in one (visible in the meal grid), and it is required.
+  //
+  // Coverage is EVERY document-type submission with no resolved child — the general
+  // `isDocument` (= !isCacfp && !isIea), never a per-type list. The live case is
+  // `parent_consent` (online), not only `dcy_01234`; consent, release auth, parents-
+  // book acks, and staff document types all qualify. Nothing here narrows to a type.
+  const canCreateChild = isDocument && !resolvedChildId && isOrgAdmin
+  useEffect(() => {
+    if (!canCreateChild) return
+    let cancelled = false
+    ;(async () => {
+      const { data } = await supabase.schema('menumaker').from('classrooms')
+        .select('id,name,is_roster')
+        .eq('center_id', submission.center_id).eq('is_active', true)
+        .order('sort_order')
+      if (cancelled) return
+      // Exclude non-roster pseudo-classes (Staff etc.) — a child never joins them.
+      const rooms = (data ?? [])
+        .filter((c: any) => c.is_roster !== false && !String(c.name ?? '').toLowerCase().includes('staff'))
+        .map((c: any) => ({ id: c.id as string, name: c.name as string }))
+      setClassrooms(rooms)
+    })()
+    return () => { cancelled = true }
+  }, [canCreateChild, submission.center_id])
+
+  // Open the create panel prefilled from the recognized form data. A document may
+  // carry first_name/last_name, or only a combined child_name (split it — first
+  // token = first, the rest = last), and DOB under dob/child_dob/birthdate/birthday.
+  function openCreateChild() {
+    let first = String(fd?.first_name ?? '').trim()
+    let last = String(fd?.last_name ?? '').trim()
+    if (!first && !last && fd?.child_name) {
+      const s = splitChildName(fd.child_name)
+      first = s.first; last = s.last
+    }
+    const dobRaw = fd?.dob ?? fd?.child_dob ?? fd?.birthdate ?? fd?.birthday ?? ''
+    setNewFirst(first)
+    setNewLast(last)
+    setNewDob(dobRaw ? String(dobRaw).slice(0, 10) : '')
+    setNewClassroom('')
+    setDupWarn(null)
+    setShowCreate(true)
+  }
+
+  // Create the roster child, link it (select it in the dropdown), and let the
+  // normal countersign + Approve proceed. `override` skips the soft dedup guard.
+  async function doCreateChild(override = false) {
+    const first = newFirst.trim(), last = newLast.trim(), birthday = newDob.trim()
+    if (!first || !last || !birthday || !newClassroom) {
+      setErr('First name, last name, date of birth and a classroom are all required.')
+      return
+    }
+    // Soft dedup: an existing child with the SAME DOB and a fuzzy name match.
+    // Warn, don't block — the director confirms "Create anyway".
+    if (!override) {
+      const dupes = matchRoster(candidates, `${first} ${last}`, birthday)
+      if (dupes.length > 0) {
+        const m = dupes[0]
+        setDupWarn({ name: m.child_name || `${m.last_name ?? ''} ${m.first_name ?? ''}`.trim(), dob: m.birthday })
+        return
+      }
+    }
+    setCreating(true); setErr(null)
+    try {
+      const patch = {
+        first_name: first,
+        last_name: last,
+        // Roster canonical order is "Last First" (matches splitChildName /
+        // AddChildModal / buildCacfpPatch, so search + the dropdown read alike).
+        child_name: `${last} ${first}`,
+        birthday,
+        classroom_id: newClassroom,
+        date_in: today,
+        frp: 'F',
+        ...deriveMealFields(birthday),
+      }
+      const newId = await insertRosterChild(submission, patch)
+      // Add it to the candidate list so the dropdown has an option to select, then
+      // select it — resolvedChildId is derived, so setting docChild clears docNeedsChild.
+      setCandidates(prev => [
+        { id: newId, first_name: first, last_name: last, child_name: patch.child_name, birthday, is_active: true },
+        ...prev,
+      ])
+      setDocChild(newId)
+      setShowCreate(false)
+      setDupWarn(null)
+    } catch (e: any) {
+      setErr(e?.message ?? String(e))
+    } finally {
+      setCreating(false)
+    }
+  }
 
   // IEA: FRP determination + per-child roster matches.
   const frpInfo = useMemo(() => (isIea ? buildIeaFrp(fd) : null), [isIea, fd])
@@ -618,24 +734,95 @@ export default function EnrollmentReviewModal({
           )}
 
           {/* ── Documents: link to a child, then countersign ────────────────── */}
+          {/* Searchable combobox (was a native <select>): ~200 roster children is
+              too many to eyeball. Type any part of the first OR last name — same
+              docChild state the <select> set; clearing the input reverts it. */}
           {isDocument && !resolvedChildId && (
-            <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, color: '#374151' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, color: '#374151' }}>
               <span style={{ width: 130, color: '#6b7280' }}>Child</span>
-              <select value={docChild} onChange={e => setDocChild(e.target.value)}
-                style={{ flex: 1, padding: '4px 8px', border: `1px solid ${docChild ? '#e5e7eb' : '#fca5a5'}`, borderRadius: 6, fontSize: 13, fontFamily: 'inherit' }}>
-                <option value="">— choose the child this document belongs to —</option>
-                {candidates.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.child_name}{c.birthday ? ` · ${c.birthday}` : ''}{c.is_active ? '' : ' · departed'}
-                  </option>
-                ))}
-              </select>
-            </label>
+              <div style={{ flex: 1 }}>
+                <ChildCombobox candidates={candidates} value={docChild} onChange={setDocChild} />
+              </div>
+            </div>
           )}
           {isDocument && !resolvedChildId && (
             <div style={{ fontSize: 11, color: '#9ca3af', marginTop: -4 }}>
               This form arrived without a personal link, so nobody can tell whose it is —
               {' '}the name on it does not match the roster on its own. Choose the child by hand.
+            </div>
+          )}
+
+          {/* ── Create a brand-new roster child from this form (org admin only) ──
+              A new applicant is otherwise a dead end: the dropdown only lists
+              existing children. Mint the roster child, prefilled from the form, then
+              the normal countersign + Approve files the document against it. */}
+          {canCreateChild && !showCreate && (
+            <button
+              onClick={openCreateChild}
+              style={{
+                alignSelf: 'flex-start', padding: '7px 12px', borderRadius: 8,
+                border: '1px solid #c0d8c0', background: '#fff', color: '#0f4c35',
+                fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+              }}>
+              ＋ Create new child from this form
+            </button>
+          )}
+
+          {canCreateChild && showCreate && (
+            <div style={{ border: '1.5px solid #c0d8c0', borderRadius: 10, padding: '12px 14px', background: '#f8fdfa', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: '#0f4c35' }}>New child from this form</span>
+                <button onClick={() => { setShowCreate(false); setDupWarn(null) }}
+                  style={{ background: 'transparent', border: 'none', color: '#6b7280', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>×</button>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label style={{ fontSize: 10.5, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 3 }}>First name</label>
+                  <input value={newFirst} onChange={e => setNewFirst(e.target.value)} placeholder="First"
+                    style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid #c0d8c0', fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 10.5, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 3 }}>Last name</label>
+                  <input value={newLast} onChange={e => setNewLast(e.target.value)} placeholder="Last"
+                    style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid #c0d8c0', fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 10.5, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 3 }}>Date of birth</label>
+                  <input type="date" value={newDob} onChange={e => setNewDob(e.target.value)}
+                    style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid #c0d8c0', fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 10.5, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 3 }}>Classroom *</label>
+                  <select value={newClassroom} onChange={e => setNewClassroom(e.target.value)}
+                    style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: `1px solid ${newClassroom ? '#c0d8c0' : '#fca5a5'}`, fontSize: 13, fontFamily: 'inherit', background: '#fff', boxSizing: 'border-box' }}>
+                    <option value="">— pick a classroom —</option>
+                    {classrooms.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {dupWarn && (
+                <div style={{ fontSize: 12, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 10px', color: '#92400e' }}>
+                  Похоже уже есть: «{dupWarn.name}»{dupWarn.dob ? ` ${String(dupWarn.dob).slice(0, 10)}` : ''} — точно новый?
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                {dupWarn ? (
+                  <button onClick={() => doCreateChild(true)} disabled={creating}
+                    style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: creating ? '#d1d5db' : '#b45309', color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: creating ? 'default' : 'pointer', fontFamily: 'inherit' }}>
+                    {creating ? 'Creating…' : 'Create anyway'}
+                  </button>
+                ) : (
+                  <button onClick={() => doCreateChild(false)} disabled={creating}
+                    style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: creating ? '#d1d5db' : '#0f4c35', color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: creating ? 'default' : 'pointer', fontFamily: 'inherit' }}>
+                    {creating ? 'Creating…' : 'Create & link'}
+                  </button>
+                )}
+                <span style={{ fontSize: 11, color: '#9ca3af' }}>
+                  Adds an active roster child (FRP F, meal fields from DOB); you still countersign &amp; Approve.
+                </span>
+              </div>
             </div>
           )}
 
@@ -909,6 +1096,137 @@ export default function EnrollmentReviewModal({
               }}>Approve anyway</button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── ChildCombobox ────────────────────────────────────────────────────────────
+// A lightweight searchable replacement for the native "choose the child" <select>.
+// ~200 roster children is too many to scroll, so the director types any part of the
+// first OR last name and the list filters live. No dependency, no virtualization —
+// plain array filter over the already-loaded candidates.
+//
+// Behavior contract (must match the old <select>): `value` is the selected roster id
+// (docChild); `onChange` sets it. Selecting a row sets it; clearing the input reverts
+// it to ''. Enter selects the highlighted (else first) filtered row; Esc closes the
+// list. Sorted by last name, then first.
+function childLabel(c: RosterLite): string {
+  const name = c.child_name || `${c.last_name ?? ''} ${c.first_name ?? ''}`.trim() || '(no name)'
+  return `${name}${c.birthday ? ` · ${String(c.birthday).slice(0, 10)}` : ''}${c.is_active ? '' : ' · departed'}`
+}
+
+function ChildCombobox({
+  candidates, value, onChange,
+}: {
+  candidates: RosterLite[]
+  value: string
+  onChange: (id: string) => void
+}) {
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const [highlight, setHighlight] = useState(0)
+
+  const selected = useMemo(() => candidates.find(c => c.id === value) ?? null, [candidates, value])
+
+  // Reflect an externally-set selection (e.g. after "Create new child") in the box.
+  useEffect(() => {
+    if (selected) setQuery(childLabel(selected))
+    else if (!value) setQuery('')
+  }, [selected, value])
+
+  // Sort by last name, then first — stable order the director can scan.
+  const sorted = useMemo(() => {
+    const key = (c: RosterLite) => [
+      (c.last_name ?? c.child_name ?? '').toLowerCase(),
+      (c.first_name ?? '').toLowerCase(),
+    ]
+    return [...candidates].sort((a, b) => {
+      const [al, af] = key(a), [bl, bf] = key(b)
+      return al < bl ? -1 : al > bl ? 1 : af < bf ? -1 : af > bf ? 1 : 0
+    })
+  }, [candidates])
+
+  // Substring match on first OR last name, in either order — build both
+  // "first last" and "last first" haystacks plus the stored child_name.
+  const q = query.trim().toLowerCase()
+  const showAll = q === '' || (selected && query === childLabel(selected))
+  const filtered = useMemo(() => {
+    if (showAll) return sorted
+    return sorted.filter(c => {
+      const fn = (c.first_name ?? '').toLowerCase()
+      const ln = (c.last_name ?? '').toLowerCase()
+      const cn = (c.child_name ?? '').toLowerCase()
+      const hay = `${fn} ${ln} ${ln} ${fn} ${cn}`
+      return hay.includes(q)
+    })
+  }, [sorted, q, showAll])
+
+  function pick(c: RosterLite) {
+    onChange(c.id)
+    setQuery(childLabel(c))
+    setOpen(false)
+  }
+
+  function onType(v: string) {
+    setQuery(v)
+    setOpen(true)
+    setHighlight(0)
+    // Typing away from the current selection clears it — the box no longer names a
+    // chosen child, so docChild must not silently keep pointing at one.
+    if (value) onChange('')
+  }
+
+  const inputStyle: CSSProperties = {
+    width: '100%', padding: '4px 8px', borderRadius: 6, fontSize: 13, fontFamily: 'inherit',
+    border: `1px solid ${value ? '#e5e7eb' : '#fca5a5'}`, boxSizing: 'border-box',
+  }
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        value={query}
+        placeholder="— choose the child this document belongs to —"
+        onChange={e => onType(e.target.value)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 120)}  // let a click on a row land first
+        onKeyDown={e => {
+          if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); setHighlight(h => Math.min(h + 1, filtered.length - 1)) }
+          else if (e.key === 'ArrowUp') { e.preventDefault(); setHighlight(h => Math.max(h - 1, 0)) }
+          else if (e.key === 'Enter') { e.preventDefault(); const c = filtered[highlight] ?? filtered[0]; if (c) pick(c) }
+          else if (e.key === 'Escape') { setOpen(false) }
+        }}
+        style={inputStyle}
+      />
+      {open && filtered.length > 0 && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, marginTop: 2,
+          background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, maxHeight: 240,
+          overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+        }}>
+          {filtered.map((c, i) => (
+            <div
+              key={c.id}
+              onMouseDown={e => { e.preventDefault(); pick(c) }}  // mousedown fires before blur
+              onMouseEnter={() => setHighlight(i)}
+              style={{
+                padding: '6px 10px', fontSize: 13, cursor: 'pointer',
+                background: i === highlight ? '#f0fff4' : c.id === value ? '#f9fafb' : '#fff',
+                color: c.is_active ? '#111827' : '#6b7280',
+              }}>
+              {childLabel(c)}
+            </div>
+          ))}
+        </div>
+      )}
+      {open && filtered.length === 0 && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, marginTop: 2,
+          background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 10px',
+          fontSize: 12.5, color: '#9ca3af', boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+        }}>
+          No child matches “{query.trim()}”.
         </div>
       )}
     </div>

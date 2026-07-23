@@ -1,7 +1,11 @@
 -- 20260723_signature_trail.sql — SIGNATURE DIGITAL TRAIL (все 5 строк фикс-плана, ОДИН заход)
 --
--- ⛔ PREPARE — НЕ ПРИМЕНЕНО. DARK. Прокат — ТОЛЬКО словом Николая по live-DB протоколу
---    (prepare → go → apply → read-back вердиктом колонками). Независимо от #40.
+-- ✅ APPLIED 2026-07-23 на прод (Nikolay GO по live-DB протоколу). Post-apply R1–R5 зелёные:
+--    R1 columns=9 · R2 triggers=2 · R3 RPC=1 overload/11 args/DEFINER/anon=true ·
+--    R4 (реальный sha256): hash_len=64 · form_version/esign/sealed-snapshot проставлены ·
+--       UPDATE form_data ЗАБЛОКИРОВАН · DELETE ЗАБЛОКИРОВАН · workflow-update OK · контрподпись OK ·
+--       функц. тест в self-abort DO-блоке → тест-строка откатана (0 residue, 0 sealed rows, 74 total).
+--    Бэкфилл НЕ запускался (печать forward-only; старые 74 строки изменяемы до отдельного слова).
 --
 -- ЗАЧЕМ. Держит письмо спонсору CACFP: подпись должна нести защитимый цифровой след.
 -- Read-back #1 показал: метод/имя/версия-формы/центр/серверный timestamp/оттиск пишутся, но

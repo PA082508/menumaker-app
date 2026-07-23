@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
 import { PARENT_FORMS_URL, SHOWCASE_ORIGIN } from '@/config/showcaseLinks'
 import { FormQrModal } from '@/components/FormQrModal'
-import { SEC1, SUTQ_DOCS, SEC2, SEC4_FORMS, OUR_DOCS } from '@/lib/documentSections'
+import { SEC1, SUTQ_DOCS, SEC2, SEC4_FORMS, OUR_DOCS, LIBRARY_SECTIONS, NON_REGISTRY_DOCS, sectionOfKey, type SectionId, type NonRegDoc } from '@/lib/documentSections'
 import { isHiddenFromDirector, type FormAccessMap } from '@/lib/formsLibrary'
 import { HelpVideoCard } from '@/components/HelpVideo'
 import StaffJdOnboarding from './StaffJdOnboarding'
@@ -303,6 +303,8 @@ const QRGlyph = () => (
 export default function DocumentHubPage() {
   const { org, currentCenter, isOrgAdmin, centers } = useOrg()
   const [tab, setTab] = useState<'library' | 'newperiod'>('library')
+  const [libSearch, setLibSearch] = useState('')
+  const [libSection, setLibSection] = useState<SectionId | 'all'>('all')
   const [reg, setReg] = useState<Registry | null>(null)
   const [signOpen, setSignOpen] = useState(false)
   const [qrShare, setQrShare] = useState<{ url: string; title: string } | null>(null)
@@ -439,8 +441,54 @@ export default function DocumentHubPage() {
     )
   }
 
+  // Non-registry library document (internal CACFP print/claim artifact). Carries the SAME GD
+  // access toggle keyed by its own doc key — pre-wiring: it can't enter a director's set yet
+  // (that's the later 4-surface delta), so the toggle just banks the access state for then.
+  function NonRegCard({ doc }: { doc: NonRegDoc }) {
+    const hiddenNow = isHiddenFromDirector(doc.key, hidden)
+    const fileUrl = doc.url ? scopeToCenter(doc.url, slug) : null
+    return (
+      <div style={cardS}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 15.5, fontWeight: 700, color: '#0a3320', letterSpacing: '-0.01em' }}>{doc.title}</span>
+          <span style={pill('#f1f5f9', '#475569')}>internal</span>
+          {isOrgAdmin && (
+            <button onClick={() => toggleHidden(doc.key)} disabled={hideBusy === doc.key}
+              title={hiddenNow ? 'Closed to directors — click to open for their sets' : 'Open to directors — click to close'}
+              style={{ ...pill(hiddenNow ? '#f3f4f6' : '#dcfce7', hiddenNow ? '#6b7280' : '#166534'), marginLeft: 'auto', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+              {hideBusy === doc.key ? '…' : hiddenNow ? '🚫 closed to directors' : '👁 open to directors'}
+            </button>
+          )}
+        </div>
+        <div style={{ marginTop: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          {fileUrl
+            ? <a href={fileUrl} target="_blank" rel="noreferrer" style={openGhostS}>Open / print ↗</a>
+            : <span style={{ fontSize: 12, color: '#9ca3af', fontStyle: 'italic' }}>Generated from its report page</span>}
+        </div>
+        {isOrgAdmin && (
+          <div style={{ fontSize: 10.5, color: '#9ca3af', lineHeight: 1.4 }}>
+            Access saved for later — these aren’t in a director’s Add-from-library yet (activates when sets can carry non-registry documents).
+          </div>
+        )}
+      </div>
+    )
+  }
+
   const grid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 12 }
   const guides = DOCS.filter(d => !(d as any).parentForms)  // enrollment forms now live in the sections
+  // ── Library search + section filter (same pattern the Packet-Sets builder uses).
+  const titleOfKey = (k: string) => (FORM_LABELS[k] || reg?.forms?.[k]?.title || k)
+  const libQ = libSearch.trim().toLowerCase()
+  const filterActive = !!libQ || libSection !== 'all'
+  const matchReg = (k: string) =>
+    (libSection === 'all' || sectionOfKey(k) === libSection) &&
+    (!libQ || titleOfKey(k).toLowerCase().includes(libQ) || k.toLowerCase().includes(libQ))
+  const matchNonReg = (d: NonRegDoc) =>
+    (libSection === 'all' || libSection === 'claim_print') &&
+    (!libQ || d.title.toLowerCase().includes(libQ) || d.key.toLowerCase().includes(libQ))
+  const ALL_REG_KEYS = [...SEC1, ...SUTQ_DOCS, ...SEC2, ...SEC4_FORMS, ...OUR_DOCS]
+  const flatReg = ALL_REG_KEYS.filter(matchReg)
+  const flatNonReg = NON_REGISTRY_DOCS.filter(matchNonReg)
   const storefront = slug ? `${SHOWCASE_ORIGIN}/parent-forms.html?center=${encodeURIComponent(slug)}` : PARENT_FORMS_URL
   const tabBtn = (on: boolean): React.CSSProperties => ({ padding: '8px 16px', borderRadius: 9, fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', border: on ? '1.5px solid #0f4c35' : '1.5px solid #e5e7eb', background: on ? '#0f4c35' : '#fff', color: on ? '#fff' : '#374151' })
 
@@ -472,6 +520,30 @@ export default function DocumentHubPage() {
 
       {tab === 'library' ? (
         <>
+          {/* Search + section filter — scoped by the shared Library taxonomy. */}
+          <div style={{ display: 'flex', gap: 8, margin: '10px 0 6px', flexWrap: 'wrap' }}>
+            <input value={libSearch} onChange={e => setLibSearch(e.target.value)} placeholder="Search the library…"
+              style={{ flex: '1 1 240px', fontFamily: 'inherit', fontSize: 13, padding: '8px 11px', border: '1px solid #e5e7eb', borderRadius: 9, background: '#fff' }} />
+            <select value={libSection} onChange={e => setLibSection(e.target.value as SectionId | 'all')}
+              style={{ fontFamily: 'inherit', fontSize: 13, padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: 9, background: '#fff' }} title="Filter by section">
+              <option value="all">All sections</option>
+              {LIBRARY_SECTIONS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+            </select>
+            {filterActive && <button onClick={() => { setLibSearch(''); setLibSection('all') }} style={{ ...ghostS, alignSelf: 'center' }}>Clear</button>}
+          </div>
+
+          {filterActive ? (
+            /* Flat search results (registry + non-registry), section-scoped. */
+            (flatReg.length + flatNonReg.length) === 0 ? (
+              <div style={{ padding: '24px', textAlign: 'center', color: '#9ca3af', fontSize: 13.5, background: '#fafafa', borderRadius: 12, border: '1px dashed #e5e7eb' }}>No document matches your search{libSection !== 'all' ? ' in this section' : ''}.</div>
+            ) : (
+              <div style={grid}>
+                {flatReg.map(k => <FormCard key={k} keyId={k} />)}
+                {flatNonReg.map(d => <NonRegCard key={d.key} doc={d} />)}
+              </div>
+            )
+          ) : (
+          <>
           {/* §1 Ohio DCY */}
           <SectionHead num={1} title="Ohio DCY" desc="The state childcare-licensing packet. DCY 01234 is the trigger form; 01236 / 01217 are physician-signed conditionals." />
           <div style={grid}>{SEC1.map(k => <FormCard key={k} keyId={k} />)}</div>
@@ -519,6 +591,10 @@ export default function DocumentHubPage() {
             </Link>
           </div>
 
+          {/* §5 CACFP claim & print — internal (non-registry) documents. Access toggle is pre-wiring. */}
+          <SectionHead num={5} title="CACFP — claim & print" desc="Internal print / claim worksheets. The open/closed toggle banks director-access for when sets can carry these (not yet composable)." />
+          <div style={{ ...grid, marginBottom: 14 }}>{NON_REGISTRY_DOCS.map(d => <NonRegCard key={d.key} doc={d} />)}</div>
+
           {/* Staff onboarding (in-app sign surface) + legacy BYOD self-service */}
           <StaffJdOnboarding />
           <div style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 12, padding: '14px 18px', margin: '16px 0 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
@@ -557,6 +633,8 @@ export default function DocumentHubPage() {
               </div>
             ))}
           </div>
+          </>
+          )}
         </>
       ) : (
         /* ── New Period 2026-27 campaign panel ─────────────────────────────── */

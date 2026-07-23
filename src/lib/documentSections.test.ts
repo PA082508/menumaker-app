@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sectionOfKey, SECTIONS, SEC1, SEC2, OUR_DOCS } from './documentSections'
+import { sectionOfKey, SECTIONS, LIBRARY_SECTIONS, SEC1, SEC2, OUR_DOCS, NON_REGISTRY_DOCS, isNonRegistryDoc } from './documentSections'
 
 describe('documentSections — shared Library taxonomy', () => {
   it('maps known keys to their section', () => {
@@ -17,5 +17,19 @@ describe('documentSections — shared Library taxonomy', () => {
     const ids = new Set(SECTIONS.map(s => s.id))
     expect(ids.has('other')).toBe(true)
     for (const k of [...SEC1, ...SEC2, ...OUR_DOCS]) expect(ids.has(sectionOfKey(k))).toBe(true)
+  })
+
+  it('non-registry docs live in claim_print and are flagged as non-registry', () => {
+    expect(NON_REGISTRY_DOCS.length).toBeGreaterThanOrEqual(13)
+    for (const d of NON_REGISTRY_DOCS) {
+      expect(sectionOfKey(d.key)).toBe('claim_print')
+      expect(isNonRegistryDoc(d.key)).toBe(true)
+    }
+    expect(isNonRegistryDoc('iea')).toBe(false)          // a registry key
+    expect(new Set(NON_REGISTRY_DOCS.map(d => d.key)).size).toBe(NON_REGISTRY_DOCS.length) // unique keys
+  })
+  it('the builder SECTIONS omit claim_print (internal docs are not composable yet), the Library set includes it', () => {
+    expect(SECTIONS.some(s => s.id === 'claim_print')).toBe(false)
+    expect(LIBRARY_SECTIONS.some(s => s.id === 'claim_print')).toBe(true)
   })
 })

@@ -1,7 +1,9 @@
 -- 20260723b_packet_sets_origin_owner_only.sql — RLS hardening: all-centers copies = owner-only edit
 --
--- ⛔ PREPARE — НЕ ПРИМЕНЕНО. DARK. Прокат — ТОЛЬКО словом Николая по live-DB протоколу.
---    Идёт тем же заходом, что и витринный фикс #5 (parent-forms-test.html).
+-- ✅ APPLIED 2026-07-23 на прод (Nikolay «флип #5 + прокат RLS», тем же заходом, что и флип
+--    витрины #5 parent-forms.html). Read-back зелёный: R1 origin_owner_only · RESTRICTIVE ·
+--    UPDATE, using `(origin_id IS NULL OR is_org_owner(org_id))`; 5 политик всего; R3 = 0 строк
+--    с origin_id (размножений ещё нет) → нулевое влияние на текущие данные.
 --
 -- ЗАЧЕМ. Кусок B «All centers» размножает набор в custom-копии по центрам (общий origin_id),
 -- состав правится в ОДНОМ месте и зеркалится. UI уже прячет правку origin-копий от директора

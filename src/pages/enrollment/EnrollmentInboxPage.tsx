@@ -76,7 +76,7 @@ function SourceTag({ source }: { source: string }) {
 }
 
 export default function EnrollmentInboxPage() {
-  const { org, currentCenter, centers, loading: orgLoading } = useOrg()
+  const { org, currentCenter, centers, isOrgAdmin, loading: orgLoading } = useOrg()
   const { roles, user } = useAuth()
 
   const [rows, setRows] = useState<Submission[]>([])
@@ -531,6 +531,7 @@ export default function EnrollmentInboxPage() {
           submission={reviewing}
           reviewerId={user?.id ?? ''}
           reviewerName={(user?.user_metadata?.full_name as string) || (user?.email?.split('@')[0]) || 'Director'}
+          isOrgAdmin={isOrgAdmin}
           onClose={() => setReviewing(null)}
           onSaved={() => { setReviewing(null); setReloadKey(k => k + 1) }}
           onDone={(result) => {

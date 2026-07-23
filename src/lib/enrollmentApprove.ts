@@ -319,16 +319,29 @@ async function restorePending(subId: string, childId: string | null) {
   }).eq('id', subId)
 }
 
+// ─── roster: insert a new active child ───────────────────────────────────────
+// The one place a brand-new roster row is created from an approval flow. Shared by
+// the CACFP Approve path (approveCacfpInsert) and the document-review "create child
+// from this form" action (EnrollmentReviewModal), so both stamp org_id/center_id +
+// is_active identically. Returns the new roster id; the caller decides what to do
+// next (mark the submission approved, link the document, etc.).
+export async function insertRosterChild(
+  sub: { org_id: string; center_id: string },
+  patch: RosterPatch,
+): Promise<string> {
+  const { data, error } = await S().from('roster')
+    .insert({ org_id: sub.org_id, center_id: sub.center_id, is_active: true, ...patch })
+    .select('id').single()
+  if (error) throw error
+  return (data as any).id as string
+}
+
 // ─── CACFP: insert a new roster child ────────────────────────────────────────
 export async function approveCacfpInsert(
   sub: { id: string; org_id: string; center_id: string; child_id: string | null },
   patch: RosterPatch, reviewerId: string, paperSigned: boolean,
 ): Promise<ApproveResult> {
-  const { data, error } = await S().from('roster')
-    .insert({ org_id: sub.org_id, center_id: sub.center_id, is_active: true, ...patch })
-    .select('id').single()
-  if (error) throw error
-  const rosterId = (data as any).id as string
+  const rosterId = await insertRosterChild(sub, patch)
   await markApproved(sub.id, rosterId, reviewerId, paperSigned)
   return {
     message: `Approved — ${patch.child_name} added to roster`,

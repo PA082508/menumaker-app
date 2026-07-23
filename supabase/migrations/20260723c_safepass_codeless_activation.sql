@@ -1,6 +1,10 @@
 -- 20260723c_safepass_codeless_activation.sql — SafePass CODELESS device-trust activation
 --
--- ⛔ PREPARE — НЕ ПРИМЕНЕНО. DARK. Прокат — словом Николая по live-DB протоколу.
+-- ✅ RPC ПРИМЕНЕНЫ на прод 2026-07-23 (аддитивно — до выката UI ничто их не зовёт), чтобы
+--    прогнать ZZTEST. UI (ветка feat/safepass-codeless) — превью, merge словом Николая.
+--    ZZTEST полной цепочки ЗЕЛЁНЫЙ, чистка в 0: activate_device (ok, phone_verified, device-trust
+--    сессия, токен used) → request_handoff (ok) → confirm_handoff (confirmed, Maureen, Red) →
+--    DELETE тест-строк = 0, Deidra phone_verified возвращён в false, Ridge = 1 устройство/0 сессий.
 --
 -- РЕШЕНИЕ (Николай): кодовый путь (родитель ТИПАЕТ 6-значный код) заменяется CODELESS-
 -- активацией. Staff/директор выбирает родителя из ✓Pickup-списка → «Activate this phone» →

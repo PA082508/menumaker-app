@@ -293,9 +293,10 @@ export default function EnrollmentReviewModal({
       const patch = {
         first_name: first,
         last_name: last,
-        // Roster canonical order is "Last First" (matches splitChildName /
-        // AddChildModal / buildCacfpPatch, so search + the dropdown read alike).
-        child_name: `${last} ${first}`,
+        // Ratified 2026-07-23: child_name is a derived "First Last" display string
+        // (matches AddChildModal / buildCacfpPatch insert); this is a brand-new
+        // child, so no meal_week_records rows exist yet — claim-bridge-safe.
+        child_name: `${first} ${last}`,
         birthday,
         classroom_id: newClassroom,
         date_in: today,
@@ -614,8 +615,8 @@ export default function EnrollmentReviewModal({
           )}
           <div style={{ padding: '16px 22px', overflowY: 'auto', flex: 1 }}>
           {(v.missing.length > 0 || v.warnings.length > 0) && (
-            <div style={{ marginBottom: 14, padding: '10px 14px', background: v.status === 'errors' ? '#fef2f2' : '#fffbeb', borderRadius: 10, fontSize: 12.5 }}>
-              {[...v.missing.map(m => ({ t: m, c: '#991b1b', s: '✕' })), ...v.warnings.map(w => ({ t: w, c: '#92400e', s: '⚠︎' }))].map((d, i) => (
+            <div style={{ marginBottom: 14, padding: '10px 14px', background: v.status === 'errors' ? '#fef2f2' : v.status === 'unknown' ? '#f9fafb' : '#fffbeb', borderRadius: 10, fontSize: 12.5 }}>
+              {[...v.missing.map(m => ({ t: m, c: v.status === 'unknown' ? '#6b7280' : '#991b1b', s: v.status === 'unknown' ? 'ℹ' : '✕' })), ...v.warnings.map(w => ({ t: w, c: '#92400e', s: '⚠︎' }))].map((d, i) => (
                 <div key={i} style={{ color: d.c }}>{d.s} {d.t}</div>
               ))}
             </div>

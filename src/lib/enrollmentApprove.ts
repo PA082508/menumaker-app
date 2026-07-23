@@ -154,10 +154,20 @@ export function buildCacfpPatch(
   fd: any, dateIn?: string | null,
   opts?: { formDate?: string | null; existing?: { sched_updated_at?: any; sched_in?: any; sched_out?: any } | null },
 ): RosterPatch {
-  const { first, last, rosterChildName } = splitChildName(fd?.child_name)
+  // Name (2026-07-23, ratified "First Last"): first_name/last_name are the source
+  // of truth; child_name is a DERIVED display string = `${first} ${last}`. When the
+  // form states BOTH first_name and last_name explicitly (every manual/online
+  // submission does), use them VERBATIM — re-splitting the combined child_name
+  // string mis-parses a two-word first name and swaps a correctly-entered pair
+  // (the observed bug: Yuri James → first "James", last "Yuri"). Only fall back to
+  // splitChildName when the form carries the combined string alone (paper/OCR).
+  const split = splitChildName(fd?.child_name)
+  const hasExplicit = !blank(fd?.first_name) && !blank(fd?.last_name)
+  const first = hasExplicit ? String(fd.first_name).trim() : split.first
+  const last = hasExplicit ? String(fd.last_name).trim() : split.last
   const m = fd?.mailing ?? {}
   const addr = [m.street, [m.city, m.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ')
-  const patch: RosterPatch = { child_name: rosterChildName }
+  const patch: RosterPatch = { child_name: `${first} ${last}`.trim() }  // First Last (ratified)
   if (first) patch.first_name = first
   if (last) patch.last_name = last
   if (!blank(fd?.birthdate)) patch.birthday = String(fd.birthdate).slice(0, 10)
@@ -358,9 +368,15 @@ export async function approveCacfpUpdate(
   patch: RosterPatch, reviewerId: string, paperSigned: boolean,
   reactivate = false,
 ): Promise<ApproveResult> {
+  // Claim-bridge protection (invariant until Oct 1): child_name is the identity
+  // key into meal_week_records (cellKey = classroom_id|child_name|monday_date|col).
+  // On an EXISTING child we must NEVER rewrite it, or its already-written meal rows
+  // desync. Strip it here — birthday/classroom/frp/schedule still update. (The
+  // INSERT path keeps First-Last child_name; a brand-new child has no meal rows.)
+  const { child_name: _cn, ...rest } = patch
   // Reactivating a departed match: flip is_active back on in the same write, and
   // capture it in `cols` so undo restores the prior (inactive) state.
-  const effPatch: RosterPatch = reactivate ? { ...patch, is_active: true } : patch
+  const effPatch: RosterPatch = reactivate ? { ...rest, is_active: true } : rest
   const cols = Object.keys(effPatch)
   const { data: prev } = await S().from('roster').select(['id', ...cols].join(',')).eq('id', rosterId).single()
   const { error } = await S().from('roster').update(effPatch).eq('id', rosterId)

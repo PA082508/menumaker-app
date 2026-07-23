@@ -306,7 +306,7 @@ export function validateSubmission(
   if (!v) {
     return {
       status: 'unknown', errors: [], warnings: [],
-      missing: [`No validation rules for "${submissionTypeLabel(submissionType)}" yet`],
+      missing: ['Document type — no field validation rules apply; the form validates itself at submission'],
     }
   }
   return v(formData, opts?.signatureDate, opts?.activeMealSlots ?? null, opts?.source ?? null)

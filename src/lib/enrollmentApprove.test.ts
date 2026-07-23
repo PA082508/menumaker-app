@@ -1,8 +1,32 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+// Record every roster/enrollment_submissions write so the claim-bridge tests can
+// assert exactly what approveCacfpInsert/Update send. A thenable chainable stub
+// stands in for the PostgREST builder (works for both `.eq()`-terminated updates
+// and `.single()`-terminated inserts/selects).
+const h = vi.hoisted(() => ({ calls: [] as { table: string; op: string; payload: any }[] }))
+vi.mock('./supabase', () => {
+  const makeBuilder = (table: string) => {
+    const b: any = {
+      _op: null as string | null,
+      insert(p: any) { b._op = 'insert'; h.calls.push({ table, op: 'insert', payload: p }); return b },
+      update(p: any) { b._op = 'update'; h.calls.push({ table, op: 'update', payload: p }); return b },
+      select() { return b }, eq() { return b }, in() { return b },
+      order() { return b }, limit() { return b },
+      single() { return Promise.resolve({ data: b._op === 'insert' ? { id: 'new-roster-id' } : {}, error: null }) },
+      maybeSingle() { return Promise.resolve({ data: null, error: null }) },
+      then(res: any, rej: any) { return Promise.resolve({ data: {}, error: null }).then(res, rej) },
+    }
+    return b
+  }
+  const from = (table: string) => makeBuilder(table)
+  return { supabase: { schema: () => ({ from }), from } }
+})
+
 import {
   matchRoster, parseIeaFiscalYear, frpExpiryDefault, isoDate,
   parseFormTime, buildSchedulePort, buildCacfpPatch, decideSchedule, scheduleIsStale, formAsOf,
-  ieaCountersignPatch, ieaApproveBlocked,
+  ieaCountersignPatch, ieaApproveBlocked, approveCacfpInsert, approveCacfpUpdate,
   type RosterLite,
 } from './enrollmentApprove'
 
@@ -246,6 +270,75 @@ describe('buildCacfpPatch — schedule', () => {
   })
 })
 
+// ─── name order: ratified "First Last"; explicit fields win over child_name ──
+describe('buildCacfpPatch — name derivation (First Last, no swap)', () => {
+  it('uses explicit first_name/last_name VERBATIM when both are present', () => {
+    // The observed bug: correct explicit Yuri/James, but the old code re-split the
+    // combined child_name and produced first "James" / last "Yuri". Never again.
+    const p = buildCacfpPatch({ child_name: 'Yuri James', first_name: 'Yuri', last_name: 'James' })
+    expect(p.first_name).toBe('Yuri')
+    expect(p.last_name).toBe('James')
+    expect(p.child_name).toBe('Yuri James')     // First Last
+  })
+
+  it('keeps a two-word first name intact from the explicit fields', () => {
+    // splitChildName would call "Rodriguez" the whole first name and "Texidor" the
+    // surname; the explicit fields say otherwise and must be honoured verbatim.
+    const p = buildCacfpPatch({
+      child_name: 'Izabella Rodriguez Texidor', first_name: 'Izabella', last_name: 'Rodriguez Texidor',
+    })
+    expect(p.first_name).toBe('Izabella')
+    expect(p.last_name).toBe('Rodriguez Texidor')
+    expect(p.child_name).toBe('Izabella Rodriguez Texidor')
+  })
+
+  it('falls back to splitChildName when only child_name is present (paper/OCR)', () => {
+    // No explicit fields → last token is the surname; child_name written First Last.
+    const p = buildCacfpPatch({ child_name: 'Yuri James' })
+    expect(p.first_name).toBe('Yuri')
+    expect(p.last_name).toBe('James')
+    expect(p.child_name).toBe('Yuri James')     // First Last (was "James Yuri" before)
+  })
+
+  it('falls back to splitChildName when only ONE explicit field is present', () => {
+    // A partial pair is not trusted as the split — child_name governs.
+    const p = buildCacfpPatch({ child_name: 'Yuri James', first_name: 'Yuri' })
+    expect(p.first_name).toBe('Yuri')
+    expect(p.last_name).toBe('James')
+  })
+})
+
+// ─── claim-bridge: child_name is the meal_week_records identity key ──────────
+// INSERT (brand-new child) sets First-Last child_name; UPDATE (existing matched
+// child) must NEVER rewrite it, or its meal rows desync (invariant until Oct 1).
+describe('approveCacfpInsert / approveCacfpUpdate — claim-bridge protection', () => {
+  beforeEach(() => { h.calls.length = 0 })
+  const patch = () => buildCacfpPatch({ child_name: 'Yuri James', first_name: 'Yuri', last_name: 'James', birthdate: '2021-03-04' })
+
+  it('INSERT sets child_name First-Last on the new roster row', async () => {
+    await approveCacfpInsert({ id: 's1', org_id: 'o1', center_id: 'c1', child_id: null }, patch(), 'rev', false)
+    const ins = h.calls.find(c => c.table === 'roster' && c.op === 'insert')
+    expect(ins?.payload.child_name).toBe('Yuri James')   // First Last
+    expect(ins?.payload.is_active).toBe(true)
+  })
+
+  it('UPDATE never sends child_name (protects the meal_week_records key)', async () => {
+    await approveCacfpUpdate({ id: 's2', child_id: 'k1' }, 'roster-id', patch(), 'rev', false)
+    const upd = h.calls.find(c => c.table === 'roster' && c.op === 'update')
+    expect(upd).toBeTruthy()
+    expect('child_name' in upd!.payload).toBe(false)     // the bridge key is left as-is
+    expect(upd!.payload.first_name).toBe('Yuri')         // but other fields still update
+    expect(upd!.payload.birthday).toBe('2021-03-04')
+  })
+
+  it('UPDATE + reactivate still omits child_name and flips is_active back on', async () => {
+    await approveCacfpUpdate({ id: 's3', child_id: 'k1' }, 'roster-id', patch(), 'rev', false, true)
+    const upd = h.calls.find(c => c.table === 'roster' && c.op === 'update')
+    expect('child_name' in upd!.payload).toBe(false)
+    expect(upd!.payload.is_active).toBe(true)
+  })
+})
+
 // ─── recency rule: on disagreement the LATER date wins (Nikolay, 2026-07-16) ──
 describe('scheduleIsStale', () => {
   it('roster set later than the form → form loses', () => {
@@ -299,7 +392,7 @@ describe('Izabella Rodriguez-Texidor — the live case', () => {
   it('Approve today writes no sched_* key at all — her 17:00 is untouched', () => {
     const p = buildCacfpPatch(fd, null, { formDate: '2026-07-06', existing: roster })
     expect(Object.keys(p).some(k => k.startsWith('sched_'))).toBe(false)
-    expect(p.child_name).toBe('Texidor Izabella Rodriguez')
+    expect(p.child_name).toBe('Izabella Rodriguez Texidor')  // First Last (ratified); no explicit fields → splitChildName fallback
   })
 
   it('a NEW child with no roster schedule always ports', () => {

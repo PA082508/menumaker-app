@@ -154,10 +154,20 @@ export function buildCacfpPatch(
   fd: any, dateIn?: string | null,
   opts?: { formDate?: string | null; existing?: { sched_updated_at?: any; sched_in?: any; sched_out?: any } | null },
 ): RosterPatch {
-  const { first, last, rosterChildName } = splitChildName(fd?.child_name)
+  // Name (2026-07-23, ratified "First Last"): first_name/last_name are the source
+  // of truth; child_name is a DERIVED display string = `${first} ${last}`. When the
+  // form states BOTH first_name and last_name explicitly (every manual/online
+  // submission does), use them VERBATIM — re-splitting the combined child_name
+  // string mis-parses a two-word first name and swaps a correctly-entered pair
+  // (the observed bug: Yuri James → first "James", last "Yuri"). Only fall back to
+  // splitChildName when the form carries the combined string alone (paper/OCR).
+  const split = splitChildName(fd?.child_name)
+  const hasExplicit = !blank(fd?.first_name) && !blank(fd?.last_name)
+  const first = hasExplicit ? String(fd.first_name).trim() : split.first
+  const last = hasExplicit ? String(fd.last_name).trim() : split.last
   const m = fd?.mailing ?? {}
   const addr = [m.street, [m.city, m.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ')
-  const patch: RosterPatch = { child_name: rosterChildName }
+  const patch: RosterPatch = { child_name: `${first} ${last}`.trim() }  // First Last (ratified)
   if (first) patch.first_name = first
   if (last) patch.last_name = last
   if (!blank(fd?.birthdate)) patch.birthday = String(fd.birthdate).slice(0, 10)

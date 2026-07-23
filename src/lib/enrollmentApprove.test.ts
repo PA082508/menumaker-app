@@ -246,6 +246,44 @@ describe('buildCacfpPatch — schedule', () => {
   })
 })
 
+// ─── name order: ratified "First Last"; explicit fields win over child_name ──
+describe('buildCacfpPatch — name derivation (First Last, no swap)', () => {
+  it('uses explicit first_name/last_name VERBATIM when both are present', () => {
+    // The observed bug: correct explicit Yuri/James, but the old code re-split the
+    // combined child_name and produced first "James" / last "Yuri". Never again.
+    const p = buildCacfpPatch({ child_name: 'Yuri James', first_name: 'Yuri', last_name: 'James' })
+    expect(p.first_name).toBe('Yuri')
+    expect(p.last_name).toBe('James')
+    expect(p.child_name).toBe('Yuri James')     // First Last
+  })
+
+  it('keeps a two-word first name intact from the explicit fields', () => {
+    // splitChildName would call "Rodriguez" the whole first name and "Texidor" the
+    // surname; the explicit fields say otherwise and must be honoured verbatim.
+    const p = buildCacfpPatch({
+      child_name: 'Izabella Rodriguez Texidor', first_name: 'Izabella', last_name: 'Rodriguez Texidor',
+    })
+    expect(p.first_name).toBe('Izabella')
+    expect(p.last_name).toBe('Rodriguez Texidor')
+    expect(p.child_name).toBe('Izabella Rodriguez Texidor')
+  })
+
+  it('falls back to splitChildName when only child_name is present (paper/OCR)', () => {
+    // No explicit fields → last token is the surname; child_name written First Last.
+    const p = buildCacfpPatch({ child_name: 'Yuri James' })
+    expect(p.first_name).toBe('Yuri')
+    expect(p.last_name).toBe('James')
+    expect(p.child_name).toBe('Yuri James')     // First Last (was "James Yuri" before)
+  })
+
+  it('falls back to splitChildName when only ONE explicit field is present', () => {
+    // A partial pair is not trusted as the split — child_name governs.
+    const p = buildCacfpPatch({ child_name: 'Yuri James', first_name: 'Yuri' })
+    expect(p.first_name).toBe('Yuri')
+    expect(p.last_name).toBe('James')
+  })
+})
+
 // ─── recency rule: on disagreement the LATER date wins (Nikolay, 2026-07-16) ──
 describe('scheduleIsStale', () => {
   it('roster set later than the form → form loses', () => {
@@ -299,7 +337,7 @@ describe('Izabella Rodriguez-Texidor — the live case', () => {
   it('Approve today writes no sched_* key at all — her 17:00 is untouched', () => {
     const p = buildCacfpPatch(fd, null, { formDate: '2026-07-06', existing: roster })
     expect(Object.keys(p).some(k => k.startsWith('sched_'))).toBe(false)
-    expect(p.child_name).toBe('Texidor Izabella Rodriguez')
+    expect(p.child_name).toBe('Izabella Rodriguez Texidor')  // First Last (ratified); no explicit fields → splitChildName fallback
   })
 
   it('a NEW child with no roster schedule always ports', () => {

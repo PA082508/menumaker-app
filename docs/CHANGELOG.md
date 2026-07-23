@@ -10,6 +10,8 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 
 <!-- newest on top -->
 
+- 2026-07-23 · 🔧 · New manual and online enrolments now keep the family's first and last names in the right order — a name typed as "Yuri James" no longer gets flipped to "James Yuri" on the roster. Names now read **First Last** everywhere the office adds a child from a form.
+
 - 2026-07-23 · 🔀 · New enrolments no longer dead-end at Review. When a scanned or online form is for a **brand-new child** who isn't on the roster yet, the office can now click **"＋ Create new child from this form"** right in the Review panel — it prefills the name and birthday from the form, warns if a child with the same name and birthday already exists, creates the roster child (with the meal age-group set automatically from the birthday), links the document, and then the normal countersign + Approve proceeds. No more detour through the Children page. This covers **every** document-type form, including parent consent, and is admin-only. Also in the same panel: the "choose the child" picker is now a **type-to-search box** (filter by first or last name, sorted by last name) instead of one long dropdown.
 - 2026-07-23 · 🔧 · **Temporary** (until online forms land): the fast manual child-entry is back — on **Children → ⇪ Import** there's now a **"⚡ Quick add a child"** button that opens the search-first Add-Child flow with **"Manual entry — no scan"** (name, birthday, classroom, Date In, FRP, days & meals → files for review → appears on the meal grid). It had become unreachable when ➕ Add Child was switched to the enrollment-packet panel. Directors can use this to enter missing children now; it will be retired when e-forms go live.
 

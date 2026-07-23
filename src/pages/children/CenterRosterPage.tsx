@@ -1035,7 +1035,7 @@ function AddChildModal({ centerId, orgId, classrooms, onDone, onClose }: {
     }
     setSaving(true); setError('')
     try {
-      const child_name = `${form.last_name} ${form.first_name}`
+      const child_name = `${form.first_name} ${form.last_name}`  // First Last (ratified 2026-07-23)
       const { data, error: err } = await supabase.schema('menumaker').from('roster').insert({
         org_id: orgId, center_id: centerId,
         classroom_id: form.classroom_id,

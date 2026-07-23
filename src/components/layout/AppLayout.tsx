@@ -43,6 +43,19 @@ const SECTIONS: Section[] = [
     id: 'dashboard', label: 'Dashboard', icon: '⊞', noFlyout: true,
   },
   {
+    id: 'people', label: 'People', icon: '👥',
+    // IA v2 — the sidebar names WHO; actions (enrollment, issue packet, import,
+    // time log) are buttons on each person's page. Inbox/Issue-Packet/Import/Time-Log
+    // are reached from Children & Staff, not listed here.
+    // Position: directly after Dashboard (both roles) — People is the daily entry point.
+    items: [
+      { path: '/children', label: 'Children', icon: 'ti-baby-carriage' },
+      { path: '/parents',  label: 'Parents',  icon: 'ti-users' },
+      { path: '/issue-renewal', label: 'Issue Renewal', icon: 'ti-send' },
+      { path: '/staff',    label: 'Staff',    icon: 'ti-id-badge' },
+    ],
+  },
+  {
     id: 'operations', label: 'Operations', icon: 'ti-report',
     items: [
       { path: '/meal-count',          label: 'Meal Count — Kitchen',  icon: 'ti-circle-check' },
@@ -63,18 +76,6 @@ const SECTIONS: Section[] = [
       { path: '/purchases',     label: 'Purchases',     icon: 'ti-shopping-cart' },
       { path: '/kitchen-stock', label: 'Kitchen Stock', icon: 'ti-building-store' },
       { path: '/inventory',     label: 'Inventory',     icon: 'ti-box' },
-    ],
-  },
-  {
-    id: 'people', label: 'People', icon: '👥',
-    // IA v2 — the sidebar names WHO; actions (enrollment, issue packet, import,
-    // time log) are buttons on each person's page. Inbox/Issue-Packet/Import/Time-Log
-    // are reached from Children & Staff, not listed here.
-    items: [
-      { path: '/children', label: 'Children', icon: 'ti-baby-carriage' },
-      { path: '/parents',  label: 'Parents',  icon: 'ti-users' },
-      { path: '/issue-renewal', label: 'Issue Renewal', icon: 'ti-send' },
-      { path: '/staff',    label: 'Staff',    icon: 'ti-id-badge' },
     ],
   },
   {

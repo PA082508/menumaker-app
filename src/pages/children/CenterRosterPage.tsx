@@ -13,6 +13,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { displayChildName } from '@/lib/childName'
 import Avatar from '@/components/Avatar'
 import Button, { ButtonRow } from '@/components/ui/Button'
+import { HelpVideoBadge } from '@/components/HelpVideo'
 import { isActiveOn } from '@/lib/childActive'
 import { classifyChild, type MatchKind } from '@/lib/childSearch'
 import AddChildPacketPanel from './AddChildPacketPanel'
@@ -358,8 +359,12 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
 
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 26, color: '#0a3320', marginBottom: 2 }}>
-          {center?.name ?? 'Center'} — Children
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 2 }}>
+          <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 26, color: '#0a3320' }}>
+            {center?.name ?? 'Center'} — Children
+          </div>
+          {/* Tier-2 help video: compact ▶0:30 badge → popover player (no poster on the working page). */}
+          <HelpVideoBadge />
         </div>
         <div style={{ fontSize: 12, color: '#888', display: 'flex', gap: 16 }}>
           <span>{todayStr}</span>

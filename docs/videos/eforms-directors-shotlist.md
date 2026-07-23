@@ -28,18 +28,28 @@ lands, not before. Subtitles are the VO verbatim — one line per shot, ≤11 wo
 Per `platform-standards.md` → *Smoke rows are tagged and swept*: the write goes through
 the **real channel** (public RPC + anon key), never an elevated SQL insert.
 
+> **RPC corrected 2026-07-22 (live-function is truth).** The row must land in
+> `enrollment_submissions` (the inbox). `submit_public_form` no longer does that — today it
+> only handles `special_diet` / `fluid_milk` / `infant_meals` into their own tables and has no
+> `smoke_tag`. The correct anon channel is **`menumaker.submit_enrollment_form`**
+> (`anon_can_exec = true`), which inserts `p_form_data` **verbatim** — so `smoke_tag` survives
+> and the inbox titles by `form_data.child_name`. Ridge: org `3a9a290e-7e49-491e-946b-ad86f2399910`,
+> center `4aed7d5a-00d0-4a4c-ac99-311046ad2027`.
+
 **Prove the delete before the insert.** In order:
 
-1. Insert one row you fully control via `submit_public_form(p_center_slug => 'ridge', …)`
-   with `p_data.smoke_tag = 'ZZSMOKE'`.
-2. Delete it. Read back **three** numbers: `smoke_tag='ZZSMOKE'` count = **0**, table
-   total = **72**, `max(created_at)` = **2026-07-15T20:19:44.757334+00:00** (baseline as of
-   2026-07-15 — re-measure on the day; if the total moved, a real family submitted and the
+1. Insert one throwaway row via the real channel — anon POST to
+   `rest/v1/rpc/submit_enrollment_form` (`Content-Profile: menumaker`), body
+   `{p_org, p_center, p_submission_type:'start_form', p_form_data:{child_name, smoke_tag:'ZZSMOKE'}, p_source:'online'}`.
+2. Delete it by tag (`form_data->>'smoke_tag'='ZZSMOKE'`). Read back **three** numbers in a
+   *fresh* statement (same-statement read sees the pre-delete snapshot): `ZZSMOKE` count = **0**,
+   table total = **74**, `max(created_at)` = **2026-07-20T17:57:36.019519+00:00** (baseline as of
+   2026-07-22 — re-measure on the day; if the total moved, a real family submitted and the
    baseline is not yours).
 3. Only then smoke for real and start filming.
 
-**Baseline at time of writing:** `enrollment_submissions` total **72** · pending **4**
-(Ridge **2**, Alpha 1, Pearl 1) · ZZSMOKE rows **0**.
+**Baseline as of 2026-07-22:** `enrollment_submissions` total **74** · pending **0** ·
+ZZSMOKE rows **0**. (Was 72 · pending 4 on 2026-07-15.)
 
 **Demo child gets a human name** — the Inbox is on camera and "ZZSMOKE Parent" reads as
 test garbage to a director. **Emma Carter**, parent **Sarah Carter**. The tag lives in

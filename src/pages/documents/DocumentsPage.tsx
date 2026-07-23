@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useOrg } from "@/contexts/OrgContext";
+import { FormQrModal } from "@/components/FormQrModal";
 import { loadFormsRegistry, type RegistryForm } from "@/lib/childReadmission";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -350,9 +351,11 @@ export default function DocumentsPage() {
 const INTAKE_LABEL: Record<string, string> = { paper_scan: 'Paper + scan', online: 'Online' };
 
 function FormLibraryCard() {
+  const { centers, currentCenter } = useOrg();
   const [forms, setForms] = useState<RegistryForm[]>([]);
   const [loading, setLoading] = useState(true);
   const [preview, setPreview] = useState<RegistryForm | null>(null);
+  const [qrForm, setQrForm] = useState<{ formKey: string; title: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -415,6 +418,13 @@ function FormLibraryCard() {
                       style={{ ...BTN_SEC, padding: '5px 12px', fontSize: 12, opacity: currentUrl(f) ? 1 : 0.5 }}>
                       Preview
                     </button>
+                    {/* Per-form QR — storefront only= card, center-scoped (picker if no active center). */}
+                    {currentUrl(f) && (
+                      <button onClick={() => setQrForm({ formKey: f.slug, title: f.title })} title="Share this form as a QR"
+                        style={{ ...BTN_SEC, padding: '5px 10px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                        <span aria-hidden>▦</span> QR
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -435,6 +445,8 @@ function FormLibraryCard() {
           </div>
         </div>
       )}
+
+      {qrForm && <FormQrModal formKey={qrForm.formKey} title={qrForm.title} centers={centers} presetSlug={currentCenter?.slug} onClose={() => setQrForm(null)} />}
     </div>
   );
 }

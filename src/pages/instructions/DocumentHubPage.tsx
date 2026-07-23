@@ -6,6 +6,7 @@ import { useOrg } from '@/contexts/OrgContext'
 import { PARENT_FORMS_URL, SHOWCASE_ORIGIN, storefrontOnlyUrl } from '@/config/showcaseLinks'
 import { SEC1, SUTQ_DOCS, SEC2, SEC4_FORMS, OUR_DOCS } from '@/lib/documentSections'
 import { isHiddenFromDirector, type FormAccessMap } from '@/lib/formsLibrary'
+import { HelpVideoCard } from '@/components/HelpVideo'
 import StaffJdOnboarding from './StaffJdOnboarding'
 
 const DOCS = [
@@ -14,8 +15,9 @@ const DOCS = [
   // in config/showcaseLinks.ts so a move off GitHub Pages is a one-line change.
   { id:'parent-forms', title:'Parent Forms', description:'CACFP enrollment & income-eligibility forms for families. Share the link or QR — opens on any device.', audience:'Parent', category:'Enrollment', parentForms:true, driveUrl:PARENT_FORMS_URL },
   { id:'staff-enrollment', title:'Staff Enrollment', description:'New-hire onboarding (§1–§5). Give the link or QR to a new employee — opens on any device; the office reviews & finalizes.', audience:'Staff', category:'Enrollment', parentForms:true, driveUrl:'https://pa082508.github.io/forms/1-data-sources/Staff_Enrollment_v1.html' },
-  // In-app guide (docs/instructions/director-eforms-guide.md), rendered on /instructions.
-  { id:'director-eforms-guide', title:'E-Forms — Director Guide', description:'How to send a packet, share a single form or QR, what the family sees, and how to review what comes in. Five minutes.', audience:'Director', category:'Enrollment', driveUrl:'https://menumaker-app.vercel.app/instructions?doc=director-eforms-guide' },
+  // In-app guide (docs/instructions/children-guide.md), rendered on /instructions.
+  // Replaces the old director-eforms-guide (now a redirect stub) — covers all four Children buttons.
+  { id:'children-guide', title:'Children — Full Guide', description:'All four Children buttons — Add Child, Enrollment, Packet Sets and Import — with the Director / General Director split.', audience:'Director', category:'Enrollment', driveUrl:'https://menumaker-app.vercel.app/instructions?doc=children-guide' },
   { id:'teacher-eforms-checklist', title:'E-Forms — Teacher Checklist', description:'Five things for when a parent asks at the door. You do not send packets — the office does.', audience:'Teacher', category:'Enrollment', driveUrl:'https://menumaker-app.vercel.app/instructions?doc=teacher-eforms-checklist' },
   // In-app guide (docs/instructions/photos-guide.md). Director-only for now: the
   // camera lives on the Children and Staff settings cards, which are office surfaces.
@@ -515,6 +517,8 @@ export default function DocumentHubPage() {
           {/* Guides & portals — operational links (preserved from the flat hub) */}
           <div style={{ fontSize: 13, fontWeight: 700, color: '#0a3320', margin: '4px 0 10px' }}>Guides & portals</div>
           <div style={grid}>
+            {/* Tier-1 help video: rich card with poster + inline player, next to the Children guide. */}
+            <HelpVideoCard />
             {guides.map(doc => (
               <div key={doc.id} style={cardS}>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>

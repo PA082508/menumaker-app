@@ -10,6 +10,7 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 
 <!-- newest on top -->
 
+- 2026-07-23 · 🔧 · In Review, a document-type form (one with no field-checklist, like a signed enrollment or consent) no longer shows a red ✕ "no validation rules yet". It now reads a neutral note: "Document type — no field validation rules apply; the form validates itself at submission." Nothing about approving changes — these forms were never blocked by validation.
 - 2026-07-23 · 🔧 · New manual and online enrolments now keep the family's first and last names in the right order — a name typed as "Yuri James" no longer gets flipped to "James Yuri" on the roster. Names now read **First Last** everywhere the office adds a child from a form.
 
 - 2026-07-23 · 🔀 · New enrolments no longer dead-end at Review. When a scanned or online form is for a **brand-new child** who isn't on the roster yet, the office can now click **"＋ Create new child from this form"** right in the Review panel — it prefills the name and birthday from the form, warns if a child with the same name and birthday already exists, creates the roster child (with the meal age-group set automatically from the birthday), links the document, and then the normal countersign + Approve proceeds. No more detour through the Children page. This covers **every** document-type form, including parent consent, and is admin-only. Also in the same panel: the "choose the child" picker is now a **type-to-search box** (filter by first or last name, sorted by last name) instead of one long dropdown.

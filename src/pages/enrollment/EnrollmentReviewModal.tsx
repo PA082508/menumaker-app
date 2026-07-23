@@ -4,7 +4,7 @@
 // Save writes back to enrollment_submissions.form_data with an edit-log entry.
 // No roster writes here — Approve/Reject land in slice C.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { supabase } from '@/lib/supabase'
 import { type RecordCtx } from '@/lib/childFieldRegistry'
 import { buildDiff, getPath, setPath, type DiffRow } from '@/lib/enrollmentFieldMap'
@@ -227,6 +227,11 @@ export default function EnrollmentReviewModal({
   // Only an org admin may create a roster child from a document review (same gate
   // as "Create record directly" on Add Child). The panel needs the center's
   // classrooms — a child lands in one (visible in the meal grid), and it is required.
+  //
+  // Coverage is EVERY document-type submission with no resolved child — the general
+  // `isDocument` (= !isCacfp && !isIea), never a per-type list. The live case is
+  // `parent_consent` (online), not only `dcy_01234`; consent, release auth, parents-
+  // book acks, and staff document types all qualify. Nothing here narrows to a type.
   const canCreateChild = isDocument && !resolvedChildId && isOrgAdmin
   useEffect(() => {
     if (!canCreateChild) return
@@ -729,19 +734,16 @@ export default function EnrollmentReviewModal({
           )}
 
           {/* ── Documents: link to a child, then countersign ────────────────── */}
+          {/* Searchable combobox (was a native <select>): ~200 roster children is
+              too many to eyeball. Type any part of the first OR last name — same
+              docChild state the <select> set; clearing the input reverts it. */}
           {isDocument && !resolvedChildId && (
-            <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, color: '#374151' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, color: '#374151' }}>
               <span style={{ width: 130, color: '#6b7280' }}>Child</span>
-              <select value={docChild} onChange={e => setDocChild(e.target.value)}
-                style={{ flex: 1, padding: '4px 8px', border: `1px solid ${docChild ? '#e5e7eb' : '#fca5a5'}`, borderRadius: 6, fontSize: 13, fontFamily: 'inherit' }}>
-                <option value="">— choose the child this document belongs to —</option>
-                {candidates.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.child_name}{c.birthday ? ` · ${c.birthday}` : ''}{c.is_active ? '' : ' · departed'}
-                  </option>
-                ))}
-              </select>
-            </label>
+              <div style={{ flex: 1 }}>
+                <ChildCombobox candidates={candidates} value={docChild} onChange={setDocChild} />
+              </div>
+            </div>
           )}
           {isDocument && !resolvedChildId && (
             <div style={{ fontSize: 11, color: '#9ca3af', marginTop: -4 }}>
@@ -1094,6 +1096,137 @@ export default function EnrollmentReviewModal({
               }}>Approve anyway</button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── ChildCombobox ────────────────────────────────────────────────────────────
+// A lightweight searchable replacement for the native "choose the child" <select>.
+// ~200 roster children is too many to scroll, so the director types any part of the
+// first OR last name and the list filters live. No dependency, no virtualization —
+// plain array filter over the already-loaded candidates.
+//
+// Behavior contract (must match the old <select>): `value` is the selected roster id
+// (docChild); `onChange` sets it. Selecting a row sets it; clearing the input reverts
+// it to ''. Enter selects the highlighted (else first) filtered row; Esc closes the
+// list. Sorted by last name, then first.
+function childLabel(c: RosterLite): string {
+  const name = c.child_name || `${c.last_name ?? ''} ${c.first_name ?? ''}`.trim() || '(no name)'
+  return `${name}${c.birthday ? ` · ${String(c.birthday).slice(0, 10)}` : ''}${c.is_active ? '' : ' · departed'}`
+}
+
+function ChildCombobox({
+  candidates, value, onChange,
+}: {
+  candidates: RosterLite[]
+  value: string
+  onChange: (id: string) => void
+}) {
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const [highlight, setHighlight] = useState(0)
+
+  const selected = useMemo(() => candidates.find(c => c.id === value) ?? null, [candidates, value])
+
+  // Reflect an externally-set selection (e.g. after "Create new child") in the box.
+  useEffect(() => {
+    if (selected) setQuery(childLabel(selected))
+    else if (!value) setQuery('')
+  }, [selected, value])
+
+  // Sort by last name, then first — stable order the director can scan.
+  const sorted = useMemo(() => {
+    const key = (c: RosterLite) => [
+      (c.last_name ?? c.child_name ?? '').toLowerCase(),
+      (c.first_name ?? '').toLowerCase(),
+    ]
+    return [...candidates].sort((a, b) => {
+      const [al, af] = key(a), [bl, bf] = key(b)
+      return al < bl ? -1 : al > bl ? 1 : af < bf ? -1 : af > bf ? 1 : 0
+    })
+  }, [candidates])
+
+  // Substring match on first OR last name, in either order — build both
+  // "first last" and "last first" haystacks plus the stored child_name.
+  const q = query.trim().toLowerCase()
+  const showAll = q === '' || (selected && query === childLabel(selected))
+  const filtered = useMemo(() => {
+    if (showAll) return sorted
+    return sorted.filter(c => {
+      const fn = (c.first_name ?? '').toLowerCase()
+      const ln = (c.last_name ?? '').toLowerCase()
+      const cn = (c.child_name ?? '').toLowerCase()
+      const hay = `${fn} ${ln} ${ln} ${fn} ${cn}`
+      return hay.includes(q)
+    })
+  }, [sorted, q, showAll])
+
+  function pick(c: RosterLite) {
+    onChange(c.id)
+    setQuery(childLabel(c))
+    setOpen(false)
+  }
+
+  function onType(v: string) {
+    setQuery(v)
+    setOpen(true)
+    setHighlight(0)
+    // Typing away from the current selection clears it — the box no longer names a
+    // chosen child, so docChild must not silently keep pointing at one.
+    if (value) onChange('')
+  }
+
+  const inputStyle: CSSProperties = {
+    width: '100%', padding: '4px 8px', borderRadius: 6, fontSize: 13, fontFamily: 'inherit',
+    border: `1px solid ${value ? '#e5e7eb' : '#fca5a5'}`, boxSizing: 'border-box',
+  }
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        value={query}
+        placeholder="— choose the child this document belongs to —"
+        onChange={e => onType(e.target.value)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 120)}  // let a click on a row land first
+        onKeyDown={e => {
+          if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); setHighlight(h => Math.min(h + 1, filtered.length - 1)) }
+          else if (e.key === 'ArrowUp') { e.preventDefault(); setHighlight(h => Math.max(h - 1, 0)) }
+          else if (e.key === 'Enter') { e.preventDefault(); const c = filtered[highlight] ?? filtered[0]; if (c) pick(c) }
+          else if (e.key === 'Escape') { setOpen(false) }
+        }}
+        style={inputStyle}
+      />
+      {open && filtered.length > 0 && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, marginTop: 2,
+          background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, maxHeight: 240,
+          overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+        }}>
+          {filtered.map((c, i) => (
+            <div
+              key={c.id}
+              onMouseDown={e => { e.preventDefault(); pick(c) }}  // mousedown fires before blur
+              onMouseEnter={() => setHighlight(i)}
+              style={{
+                padding: '6px 10px', fontSize: 13, cursor: 'pointer',
+                background: i === highlight ? '#f0fff4' : c.id === value ? '#f9fafb' : '#fff',
+                color: c.is_active ? '#111827' : '#6b7280',
+              }}>
+              {childLabel(c)}
+            </div>
+          ))}
+        </div>
+      )}
+      {open && filtered.length === 0 && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, marginTop: 2,
+          background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 10px',
+          fontSize: 12.5, color: '#9ca3af', boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+        }}>
+          No child matches “{query.trim()}”.
         </div>
       )}
     </div>

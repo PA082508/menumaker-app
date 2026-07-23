@@ -6,6 +6,7 @@ import { useOrg } from '@/contexts/OrgContext'
 import { PARENT_FORMS_URL, SHOWCASE_ORIGIN, storefrontOnlyUrl } from '@/config/showcaseLinks'
 import { SEC1, SUTQ_DOCS, SEC2, SEC4_FORMS, OUR_DOCS } from '@/lib/documentSections'
 import { isHiddenFromDirector, type FormAccessMap } from '@/lib/formsLibrary'
+import { HelpVideoCard } from '@/components/HelpVideo'
 import StaffJdOnboarding from './StaffJdOnboarding'
 
 const DOCS = [
@@ -516,6 +517,8 @@ export default function DocumentHubPage() {
           {/* Guides & portals — operational links (preserved from the flat hub) */}
           <div style={{ fontSize: 13, fontWeight: 700, color: '#0a3320', margin: '4px 0 10px' }}>Guides & portals</div>
           <div style={grid}>
+            {/* Tier-1 help video: rich card with poster + inline player, next to the Children guide. */}
+            <HelpVideoCard />
             {guides.map(doc => (
               <div key={doc.id} style={cardS}>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>

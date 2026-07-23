@@ -13,11 +13,19 @@
       "Bash(gh api *)",
       "Bash(npx vitest *)",
       "Bash(python3 -c ' *)",
-      "Bash(gh pr create --draft --base main --head feat/packet-set-builder-crud --title 'feat\\(packet-sets\\): Set Builder CRUD + map-gate [PREVIEW — do not merge]' --body ' *)"
+      "Bash(gh pr create --draft --base main --head feat/packet-set-builder-crud --title 'feat\\(packet-sets\\): Set Builder CRUD + map-gate [PREVIEW — do not merge]' --body ' *)",
+      "Bash(exit 1)",
+      "Bash(node docs/videos/record-eforms.mjs rehearse)",
+      "Bash(rm -f ~/Downloads/eforms-vo/raw/*.webm && echo \"defective webm deleted\"; ls ~/Downloads/eforms-vo/raw/)",
+      "Bash(ffmpeg -hide_banner -buildconf)",
+      "Bash(brew list *)",
+      "Bash(python3 -c \"import PIL, PIL.Image; print\\('PIL', PIL.__version__\\)\")",
+      "Read(//System/Library/Fonts/Supplemental/**)"
     ],
     "additionalDirectories": [
       "/Users/nikolaykutsenko/Downloads",
-      "/private/tmp"
+      "/private/tmp",
+      "/Users/nikolaykutsenko/Downloads/eforms-vo/raw"
     ]
   }
 }

@@ -368,9 +368,15 @@ export async function approveCacfpUpdate(
   patch: RosterPatch, reviewerId: string, paperSigned: boolean,
   reactivate = false,
 ): Promise<ApproveResult> {
+  // Claim-bridge protection (invariant until Oct 1): child_name is the identity
+  // key into meal_week_records (cellKey = classroom_id|child_name|monday_date|col).
+  // On an EXISTING child we must NEVER rewrite it, or its already-written meal rows
+  // desync. Strip it here — birthday/classroom/frp/schedule still update. (The
+  // INSERT path keeps First-Last child_name; a brand-new child has no meal rows.)
+  const { child_name: _cn, ...rest } = patch
   // Reactivating a departed match: flip is_active back on in the same write, and
   // capture it in `cols` so undo restores the prior (inactive) state.
-  const effPatch: RosterPatch = reactivate ? { ...patch, is_active: true } : patch
+  const effPatch: RosterPatch = reactivate ? { ...rest, is_active: true } : rest
   const cols = Object.keys(effPatch)
   const { data: prev } = await S().from('roster').select(['id', ...cols].join(',')).eq('id', rosterId).single()
   const { error } = await S().from('roster').update(effPatch).eq('id', rosterId)

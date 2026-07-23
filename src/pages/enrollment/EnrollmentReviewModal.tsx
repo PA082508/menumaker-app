@@ -293,9 +293,10 @@ export default function EnrollmentReviewModal({
       const patch = {
         first_name: first,
         last_name: last,
-        // Roster canonical order is "Last First" (matches splitChildName /
-        // AddChildModal / buildCacfpPatch, so search + the dropdown read alike).
-        child_name: `${last} ${first}`,
+        // Ratified 2026-07-23: child_name is a derived "First Last" display string
+        // (matches AddChildModal / buildCacfpPatch insert); this is a brand-new
+        // child, so no meal_week_records rows exist yet — claim-bridge-safe.
+        child_name: `${first} ${last}`,
         birthday,
         classroom_id: newClassroom,
         date_in: today,

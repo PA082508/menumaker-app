@@ -1,6 +1,8 @@
 -- 20260724a_safepass_number_gate.sql — SafePass B: NUMBER-GATE activation (replaces codeless-QR default)
 --
--- ⛔ PREPARE ONLY — НЕ ПРИМЕНЕНО. Применять только по отдельному слову Николая, затем read-back ниже.
+-- ✅ ПРИМЕНЕНО на прод (menumaker trrmyqfpxntmgxnqkikp) 2026-07-24 через apply_migration
+--    (name: safepass_number_gate_20260724a). Read-back R1/R2 OK; ZZTEST asserts 1..7 green, чистка=0.
+--    Рычаг B (✓Pickup) — variant 3 (Николай): INACTIVE BY DECISION на пилот; long-term триггер внутри «право забирать v4».
 -- forward-only: 20260723c НЕ редактируется; здесь новая миграция поверх.
 --
 -- РЕШЕНИЕ (Николай, 2026-07-24, ядро B): QR/код-минт заменяется на «номер = registered в центре».
@@ -204,16 +206,15 @@ grant  execute on function menumaker.safepass_revoke_parent_trust(text) to authe
 commit;
 
 -- ═══════════════════════════════════════════════════════════════════════════════
--- READ-BACK (вписать после apply)
+-- READ-BACK (выполнено 2026-07-24)
 -- ═══════════════════════════════════════════════════════════════════════════════
--- R1. Колонки registered_at/registered_by есть на safepass_trusted_persons.
--- R2. 4 функции есть; activate_device: сигнатура (text,text,text) с параметрами (p_phone,p_center,p_device_id),
---     токен-версия отсутствует; grants: activate/resume = anon+auth, mark/revoke = auth only (anon/public revoked).
--- R3. ZZTEST полной цепочки на Bates (Khaza d0909487 в Red, phone +1...), чистка в 0 — см. отдельный скрипт
---     docs/prepare/20260724a_safepass_number_gate_ZZTEST.sql:
---       L-A (kick):  mark_registered → activate(number) ok → request_handoff → confirm(Maureen,Red) confirmed
---                    → revoke_parent_trust → resume() ok:false, activate() 'not_registered' (доступ умер),
---                    child_guardian.can_pickup НЕ изменён (Pickup остаётся). Чистка → 0.
---       L-B (✓Pickup): снять can_pickup в Family (child_guardian) → activate()/resume() ДОЛЖЕН падать.
---                    ОЖИДАЕМО СЕЙЧАС: доступ ВЫЖИВАЕТ (Family развязан) — это репортим как finding,
---                    НЕ как зелёный. Проводка Family→SafePass — отдельное решение (см. докладную).
+-- R1. ✅ registered_at / registered_by есть на safepass_trusted_persons.
+-- R2. ✅ 5 функций; activate_device = (p_phone text, p_center text, p_device_id text), токен-версии НЕТ;
+--     grants: activate/resume = anon+authenticated, mark/pickup_candidates/revoke = authenticated only.
+-- R3. ✅ ZZTEST (docs/prepare/20260724a_safepass_number_gate_ZZTEST.sql), Bates/Bryant +12166477477, Red:
+--       asserts 1..7 PASSED — gate-closed→Register→gate-open(verified,session=1)→resume→request_handoff→
+--       dup-guard('ambiguous')→LEVER A kick(доступ мёртв, is_active остаётся, can_pickup не тронут).
+--       L-B: activate.ok=true после снятия ✓Pickup ⇒ ✓Pickup-рычаг INACTIVE BY DECISION (variant 3), не bug.
+--       Само-rollback → чистка=0 (проверено: 22 активных tp без изменений, 0 тест-сессий, Bryant baseline).
+--     ПОБОЧНЫЙ ФАКТ (в п.4 доразбор): у Bates Khaza (roster.id d0909487) НЕТ строк в child_guardian под этим id
+--       ⇒ домены child_id расходятся (trusted.child_id=roster.id ≠ child_guardian.child_id) — вероятная причина 0/22.

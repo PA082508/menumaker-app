@@ -10,6 +10,8 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 
 <!-- newest on top -->
 
+- 2026-07-24 · 🗄️ · Saved signatures are now private to the person who made them. A director's or the General Director's stored signature stamp can no longer be read by anyone else in the organization — each saved signature is visible and reusable only to its own owner. (Security fix on the signature-samples table; applied to production. Table was empty, so nothing was exposed in practice.)
+
 - 2026-07-24 · 🔀 · When reviewing an online enrollment submission (starting with the DCY 01234 form), directors can now tap "View original form" to see the actual official state form filled in with the family's answers and the parent's signature in place — not just a table of fields. It prints as the real 2-page government form. (Approve modal; other form types get this as their replicas are added.)
 
 - 2026-07-24 · 🔀 · SafePass parent sign-in went live: a parent opens the center's link and types their own phone number — no QR, no 6-digit code — and they're in, but only after staff taps "Register" for them once. The staff screen now has Register and Revoke (Revoke instantly signs a phone out everywhere); once a parent is in, closing and reopening the app keeps them signed in. (merge feat/safepass-number-gate)

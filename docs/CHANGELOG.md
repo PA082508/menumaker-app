@@ -10,6 +10,8 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 
 <!-- newest on top -->
 
+- 2026-07-24 · 🔀 · When reviewing an online enrollment submission (starting with the DCY 01234 form), directors can now tap "View original form" to see the actual official state form filled in with the family's answers and the parent's signature in place — not just a table of fields. It prints as the real 2-page government form. (Approve modal; other form types get this as their replicas are added.)
+
 - 2026-07-24 · 🔀 · SafePass parent sign-in went live: a parent opens the center's link and types their own phone number — no QR, no 6-digit code — and they're in, but only after staff taps "Register" for them once. The staff screen now has Register and Revoke (Revoke instantly signs a phone out everywhere); once a parent is in, closing and reopening the app keeps them signed in. (merge feat/safepass-number-gate)
 - 2026-07-24 · 🗄️ · SafePass sign-in for parents is being simplified: instead of a QR or a 6-digit code, a parent just types their own phone number on the center's link and they're in — but only after staff taps "Register" for them once. Staff can also "Revoke" a phone to instantly sign it out everywhere. Database groundwork applied to production today; the parent/staff screens go live when the branch is merged. (migration 20260724a; number-gate)
 - 2026-07-23 · 🔧 · In Review, a document-type form (one with no field-checklist, like a signed enrollment or consent) no longer shows a red ✕ "no validation rules yet". It now reads a neutral note: "Document type — no field validation rules apply; the form validates itself at submission." Nothing about approving changes — these forms were never blocked by validation.

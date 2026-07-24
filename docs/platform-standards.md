@@ -38,13 +38,25 @@ The map goes **into the report before any edit.** A design that skipped the map 
 
 ---
 
-## The original form is the review artifact (2026-07-24)
+## The original form is the review artifact, not just its fields (2026-07-24)
 
-An online submission is **not** a table of fields — it is a filled-in copy of the official
-form. The artifact under review is therefore the **original form itself**: rendered from the
-submitted data with every signature in its real place on the page, and printed as the real
-government sheets. Review, countersignature, and archive all act on that original, never on a
-redrawn or summarized surface. A field table may assist, but it is never the thing approved.
+An online submission is OUR HTML replica of an official blank; the entered data
+and the parent signature are what was signed. Reviewing it as a field-table alone
+hides "what I signed."
+
+- Approve shows BOTH: the ORIGINAL form ("what I signed") beside the field-diff
+  ("what changes in the roster"). They are not interchangeable.
+- The original view is 1:1 the official form — the same official-scan overlay and
+  the same field coordinates as the storefront kit, rendered READ-ONLY from the
+  FILED form_data + signatures. No redesign, no re-typeset substitute.
+- A type with no replica shows the scan (paper) or the field-diff — never a
+  fabricated look. Replicas register in the same forms registry/version ladder;
+  no parallel path.
+- Print emits ONLY the official pages (scans are content <img>, not CSS
+  background; scaled one form-page = one sheet).
+- Integrity = the signed data is sealed (content_hash/sealed_signatures); the
+  inspection/print artifact is a SNAPSHOT of the replica at Approve — drift of the
+  live template never changes what the record shows. (Steps 2–3.)
 
 ## Ready-made forms first (2026-07-24)
 

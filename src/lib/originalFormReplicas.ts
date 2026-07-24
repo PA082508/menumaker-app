@@ -7,14 +7,15 @@
 // Types NOT listed have no "View original form" button — the modal keeps the scan preview
 // (paper) or just the field-diff (online, no replica).
 //
-// `version` = the edition the replica reproduces (matches the submission's form edition,
-// e.g. dcy v6). When a second edition ships, key the map by version and pick the one that
-// matches the submission's form_version / form_data.<type>_version.
+// `version` = the REPLICA revision (its own file version), not only the form edition. The
+// replica reproduces storefront kit v6; revision v7 adds the director countersign render +
+// on-form attribution and the read-only annual-review rows (Step 2). When a second FORM
+// edition ships, key the map by the submission's form_version / form_data.<type>_version.
 
 export type OriginalReplica = { url: string; title: string; version: string }
 
 const REPLICAS: Record<string, OriginalReplica> = {
-  dcy_01234: { url: '/forms/DCY_01234_v6_original.html', title: 'DCY 01234 — Child Enrollment & Health', version: 'v6' },
+  dcy_01234: { url: '/forms/DCY_01234_v7_original.html', title: 'DCY 01234 — Child Enrollment & Health', version: 'v7' },
 }
 
 /** True when a local read-only replica exists for this submission type. */

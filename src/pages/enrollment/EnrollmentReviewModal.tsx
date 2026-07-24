@@ -19,10 +19,21 @@ import {
   type RosterLite, type ApproveResult,
 } from '@/lib/enrollmentApprove'
 import { deriveMealFields } from '@/lib/ageGroups'
-import { countersignSlot, loadSample, adoptSample, type SignatureSample, type SampleOwner } from '@/lib/signatureSamples'
+import { countersignSlot, loadSample, adoptSample, type SignatureSample, type SampleOwner, type SigMethod } from '@/lib/signatureSamples'
 import SignaturePad from '@/components/signing/SignaturePad'
+import { SIG_FACES, faceByKey, renderTypedSignature } from '@/lib/typedSignature'
 import OriginalFormViewer from './OriginalFormViewer'
 import { hasOriginalReplica } from '@/lib/originalFormReplicas'
+
+// The countersignature's on-form attribution role. The slot names the signing role:
+// sponsor_sig is the General Director (income path); program_sig/admin_sig is the center
+// Director. Kept as a label only — the legal author is the auth.uid that approves.
+const signerRoleFor = (slot: string | null): string =>
+  slot === 'sponsor_sig' ? 'General Director' : 'Director'
+
+// What a CountersignField emits: the chosen image (drawn or typed), how it was made, and
+// whether to remember it as the signer's shelf sample. `null` image = nothing signed yet.
+type CsResult = { image: string | null; method: SigMethod; adopt: boolean }
 
 // roster.sched_days bitmask — Mon=1 Tue=2 Wed=4 Thu=8 Fri=16 (20260716c)
 const SCHED_DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
@@ -107,10 +118,11 @@ export default function EnrollmentReviewModal({
   // A soft dedup warning: a roster child with the same DOB + a fuzzy name match.
   // Never a hard block — the director confirms "Create anyway".
   const [dupWarn, setDupWarn] = useState<{ name: string; dob: string | null } | null>(null)
-  const [sigDraw, setSigDraw] = useState<string | null>(null)     // this session's stroke
   const [mySample, setMySample] = useState<SignatureSample | null>(null)
   const [useSample, setUseSample] = useState(true)
-  const [adoptMine, setAdoptMine] = useState(false)               // remember it as my shelf
+  // The drawn/typed countersignature this session, from <CountersignField>. When a saved
+  // sample is applied (useSample), this is ignored in favour of mySample.
+  const [csResult, setCsResult] = useState<CsResult>({ image: null, method: 'drawn', adopt: false })
   const [feeOn, setFeeOn] = useState(!!submission.fee_received_at)
 
   // The signer's OWN shelf — read under their login, never from a form on the
@@ -141,7 +153,8 @@ export default function EnrollmentReviewModal({
     status: submission.status,
     fee_received_at: submission.fee_received_at,
   })
-  const countersignImage = useSample && mySample ? mySample.signature_image : sigDraw
+  const countersignImage = useSample && mySample ? mySample.signature_image : csResult.image
+  const countersignMethod: SigMethod = useSample && mySample ? mySample.signature_method : csResult.method
 
   // Resolve the existing child (matched by child_id column, or a uuid inside
   // form_data). New applicants have neither → right column stays empty.
@@ -343,6 +356,24 @@ export default function EnrollmentReviewModal({
   // Sponsor value; the director confirms or overrides it. When Sponsor is empty
   // the director can still pick a value — that unblocks accumulated forms.
   const today = new Date().toISOString().slice(0, 10)
+
+  // "View original form" shows the countersignature ON the form as it is being applied:
+  // merge the pending director signature + attribution into the signatures fed to the
+  // replica, so the director sees it land in the real slot before Approve. Once actually
+  // countersigned (alreadyCountersigned) the stored signatures already carry it.
+  const previewSignatures = useMemo(() => {
+    const base = (submission.signatures ?? {}) as Record<string, any>
+    if (alreadyCountersigned || !slot || !countersignImage) return base
+    return {
+      ...base,
+      [slot]: countersignImage,
+      countersign_meta: {
+        ...((base.countersign_meta ?? {}) as Record<string, any>),
+        [slot]: { by: reviewerId, name: reviewerName, role: signerRoleFor(slot), method: countersignMethod, at: today },
+      },
+    }
+  }, [submission.signatures, alreadyCountersigned, slot, countersignImage, countersignMethod, reviewerId, reviewerName, today])
+
   const [frpChoice, setFrpChoice] = useState('')
   const [frpExpiry, setFrpExpiry] = useState('')
   const [frpTouched, setFrpTouched] = useState(false)
@@ -473,7 +504,8 @@ export default function EnrollmentReviewModal({
         // drawn/typed here as fallback. Optional: the determination, not the image, is
         // what Approve records under her uid.
         const ieaCs = slot && countersignImage && !ieaSponsorOnForm
-          ? { slot, image: countersignImage, signedBy: reviewerId, signedName: reviewerName }
+          ? { slot, image: countersignImage, signedBy: reviewerId, signedName: reviewerName,
+              signerRole: signerRoleFor(slot), method: countersignMethod, signedAt: new Date().toISOString() }
           : null
         result = await approveIea(
           submission,
@@ -487,12 +519,12 @@ export default function EnrollmentReviewModal({
         // Remember it as MY sponsor sample, if asked — onto the `sponsor` shelf, never
         // the center director shelf. Deliberate: adoption is not a side effect of one
         // signature. The determination is already applied; a failed remember is not fatal.
-        if (ieaCs && adoptMine && !useSample && sigDraw) {
+        if (ieaCs && csResult.adopt && !useSample && csResult.image) {
           try {
             await adoptSample({
               owner: { scope: 'sponsor', authId: reviewerId },
               orgId: submission.org_id, centerId: submission.center_id,
-              ownerName: reviewerName, image: sigDraw, method: 'drawn',
+              ownerName: reviewerName, image: csResult.image, method: csResult.method,
               sourceSubmissionId: null,   // the GD mints under her login, not from a form
               adoptedBy: reviewerId,
             })
@@ -505,19 +537,20 @@ export default function EnrollmentReviewModal({
         // roster write — that is the CACFP/IEA path.
         const target = resolvedChildId ?? (docChild || null)
         const cs = slot && countersignImage
-          ? { slot, image: countersignImage, signedBy: reviewerId, signedName: reviewerName }
+          ? { slot, image: countersignImage, signedBy: reviewerId, signedName: reviewerName,
+              signerRole: signerRoleFor(slot), method: countersignMethod, signedAt: new Date().toISOString() }
           : null
         result = await approveDocument(submission, target, reviewerId, paperSigned, cs)
 
         // Remember it as MY shelf, if asked. Adoption is deliberate: the sample
         // is what later forms will apply without redrawing, so it is never a
         // side effect of one signature.
-        if (cs && adoptMine && !useSample && sigDraw) {
+        if (cs && csResult.adopt && !useSample && csResult.image) {
           try {
             await adoptSample({
               owner: { scope: 'director', authId: reviewerId },
               orgId: submission.org_id, centerId: submission.center_id,
-              ownerName: reviewerName, image: sigDraw, method: 'drawn',
+              ownerName: reviewerName, image: csResult.image, method: csResult.method,
               sourceSubmissionId: null,   // a director mints under their login, not from a form
               adoptedBy: reviewerId,
             })
@@ -833,27 +866,11 @@ export default function EnrollmentReviewModal({
           )}
 
           {isDocument && slot && !alreadyCountersigned && (
-            <div style={{ fontSize: 12.5 }}>
-              <div style={{ fontWeight: 600, color: '#374151', marginBottom: 6 }}>
-                Your signature <span style={{ color: '#9ca3af', fontWeight: 400 }}>— this form has a director's slot ({slot})</span>
-              </div>
-              {mySample && (
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <input type="checkbox" checked={useSample} onChange={e => setUseSample(e.target.checked)} />
-                  <span>Apply my signature</span>
-                  <img src={mySample.signature_image} alt="" style={{ height: 28, background: '#fafff9', border: '1px solid #e5e7eb', borderRadius: 4 }} />
-                </label>
-              )}
-              {!useSample && (
-                <>
-                  <SignaturePad onChange={setSigDraw} hint={`Sign as ${reviewerName}`} disabled={busy} />
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                    <input type="checkbox" checked={adoptMine} onChange={e => setAdoptMine(e.target.checked)} />
-                    <span style={{ color: '#6b7280' }}>Remember this as my signature — apply it with one tap next time</span>
-                  </label>
-                </>
-              )}
-            </div>
+            <CountersignField
+              slotLabel={`this form has a director's slot (${slot})`}
+              mySample={mySample} useSample={useSample} setUseSample={setUseSample}
+              reviewerName={reviewerName} disabled={busy} onResult={setCsResult}
+            />
           )}
 
           {isDocument && slot && alreadyCountersigned && (
@@ -966,27 +983,11 @@ export default function EnrollmentReviewModal({
             </div>
           )}
           {isIea && slot && !ieaSponsorOnForm && (
-            <div style={{ fontSize: 12.5 }}>
-              <div style={{ fontWeight: 600, color: '#374151', marginBottom: 6 }}>
-                Your signature <span style={{ color: '#9ca3af', fontWeight: 400 }}>— General Director's slot ({slot}) · optional</span>
-              </div>
-              {mySample && (
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <input type="checkbox" checked={useSample} onChange={e => setUseSample(e.target.checked)} />
-                  <span>Apply my signature</span>
-                  <img src={mySample.signature_image} alt="" style={{ height: 28, background: '#fafff9', border: '1px solid #e5e7eb', borderRadius: 4 }} />
-                </label>
-              )}
-              {!useSample && (
-                <>
-                  <SignaturePad onChange={setSigDraw} hint={`Sign as ${reviewerName}`} disabled={busy} />
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                    <input type="checkbox" checked={adoptMine} onChange={e => setAdoptMine(e.target.checked)} />
-                    <span style={{ color: '#6b7280' }}>Remember this as my signature — apply it with one tap next time</span>
-                  </label>
-                </>
-              )}
-            </div>
+            <CountersignField
+              slotLabel={`General Director's slot (${slot}) · optional`}
+              mySample={mySample} useSample={useSample} setUseSample={setUseSample}
+              reviewerName={reviewerName} disabled={busy} onResult={setCsResult}
+            />
           )}
 
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#374151' }}>
@@ -1117,9 +1118,111 @@ export default function EnrollmentReviewModal({
         <OriginalFormViewer
           submissionType={submission.submission_type}
           formData={submission.form_data}
-          signatures={submission.signatures}
+          signatures={previewSignatures}
           onClose={() => setShowOriginal(false)}
         />
+      )}
+    </div>
+  )
+}
+
+// ─── CountersignField ─────────────────────────────────────────────────────────
+// The director's countersignature, three DocuSign-style ways (Nikolay 24.07):
+//   • one-tap a saved sample (their shelf, if they have one)
+//   • DRAW a live stroke in the slot
+//   • TYPE their name → rendered in a script face (2–3 to choose)
+// Any of the three can be remembered as their shelf sample ("Remember…"). The result
+// (image + method + adopt) is lifted to the modal, which stamps it into signatures[slot]
+// + the on-form attribution at Approve. A pad reads only its own shelf, never falls back.
+function CountersignField({
+  slotLabel, mySample, useSample, setUseSample, reviewerName, disabled, onResult,
+}: {
+  slotLabel: string
+  mySample: SignatureSample | null
+  useSample: boolean
+  setUseSample: (v: boolean) => void
+  reviewerName: string
+  disabled: boolean
+  onResult: (r: CsResult) => void
+}) {
+  const [mode, setMode] = useState<'draw' | 'type'>('draw')
+  const [draw, setDraw] = useState<string | null>(null)
+  const [typedName, setTypedName] = useState(reviewerName || '')
+  const [faceKey, setFaceKey] = useState(SIG_FACES[0].key)
+  const [typedImg, setTypedImg] = useState<string | null>(null)
+  const [adopt, setAdopt] = useState(false)
+
+  // Re-raster the typed name whenever the text or face changes (typed mode only).
+  useEffect(() => {
+    if (mode !== 'type') return
+    let cancelled = false
+    ;(async () => {
+      const img = await renderTypedSignature(typedName, faceByKey(faceKey))
+      if (!cancelled) setTypedImg(img || null)
+    })()
+    return () => { cancelled = true }
+  }, [mode, typedName, faceKey])
+
+  // Lift the consolidated result to the modal.
+  const image = mode === 'draw' ? draw : typedImg
+  useEffect(() => {
+    onResult({ image: image ?? null, method: mode === 'draw' ? 'drawn' : 'typed', adopt })
+  }, [image, mode, adopt])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div style={{ fontSize: 12.5 }}>
+      <div style={{ fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+        Your signature <span style={{ color: '#9ca3af', fontWeight: 400 }}>— {slotLabel}</span>
+      </div>
+      {mySample && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <input type="checkbox" checked={useSample} onChange={e => setUseSample(e.target.checked)} />
+          <span>Apply my signature</span>
+          <img src={mySample.signature_image} alt="" style={{ height: 28, background: '#fafff9', border: '1px solid #e5e7eb', borderRadius: 4 }} />
+        </label>
+      )}
+      {!useSample && (
+        <>
+          <div style={{ display: 'inline-flex', border: '1px solid #d1d5db', borderRadius: 8, overflow: 'hidden', marginBottom: 8 }}>
+            {(['draw', 'type'] as const).map(m => (
+              <button key={m} type="button" onClick={() => setMode(m)} disabled={disabled}
+                style={{ padding: '5px 14px', border: 'none', fontSize: 12.5, fontWeight: 700, cursor: disabled ? 'default' : 'pointer', fontFamily: 'inherit',
+                  background: mode === m ? '#0f4c35' : '#fff', color: mode === m ? '#fff' : '#374151' }}>
+                {m === 'draw' ? '✍︎ Draw' : '⌨ Type'}
+              </button>
+            ))}
+          </div>
+
+          {mode === 'draw' ? (
+            <SignaturePad onChange={setDraw} hint={`Sign as ${reviewerName}`} disabled={disabled} />
+          ) : (
+            <div>
+              <input value={typedName} onChange={e => setTypedName(e.target.value)} placeholder="Type your full name" disabled={disabled}
+                style={{ width: '100%', padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', marginBottom: 8 }} />
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                {SIG_FACES.map(f => (
+                  <button key={f.key} type="button" onClick={() => setFaceKey(f.key)} disabled={disabled}
+                    title={f.label}
+                    style={{ padding: '2px 12px', borderRadius: 8, cursor: disabled ? 'default' : 'pointer',
+                      border: faceKey === f.key ? '2px solid #0f4c35' : '1px solid #d1d5db', background: '#fff',
+                      fontFamily: f.stack, fontSize: 22, color: '#0f4c35', lineHeight: 1.3 }}>
+                    {((typedName || 'Signature').split(/\s+/)[0]) || 'Abc'}
+                  </button>
+                ))}
+              </div>
+              <div style={{ height: 56, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fafff9', display: 'flex', alignItems: 'center', padding: '0 8px' }}>
+                {typedImg
+                  ? <img src={typedImg} alt="typed signature preview" style={{ maxHeight: 48, maxWidth: '100%', objectFit: 'contain' }} />
+                  : <span style={{ color: '#9ca3af' }}>Your typed signature appears here</span>}
+              </div>
+            </div>
+          )}
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+            <input type="checkbox" checked={adopt} onChange={e => setAdopt(e.target.checked)} />
+            <span style={{ color: '#6b7280' }}>Remember this as my signature — apply it with one tap next time</span>
+          </label>
+        </>
       )}
     </div>
   )

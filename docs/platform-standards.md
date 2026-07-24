@@ -38,6 +38,27 @@ The map goes **into the report before any edit.** A design that skipped the map 
 
 ---
 
+## The original form is the review artifact (2026-07-24)
+
+An online submission is **not** a table of fields — it is a filled-in copy of the official
+form. The artifact under review is therefore the **original form itself**: rendered from the
+submitted data with every signature in its real place on the page, and printed as the real
+government sheets. Review, countersignature, and archive all act on that original, never on a
+redrawn or summarized surface. A field table may assist, but it is never the thing approved.
+
+## Ready-made forms first (2026-07-24)
+
+Before creating ANY blank, render, print view, or screen form:
+1. MANDATORY check for an existing ready-made original, in order:
+   `enroll-registry.json` (edition registry) → forms repo `pa082508.github.io` →
+   `forms/3-library` → `public/forms/` (local copies).
+2. A ready-made exists → use it byte-for-byte (copy carries an origin header comment:
+   source, edition, storefront commit, date). Redesign of originals is FORBIDDEN.
+3. None exists → build the new one to kit standards and REGISTER it in the
+   registry/library upon acceptance — it becomes the ready-made for next time.
+4. Every report involving a form carries the line
+   `template source: <registry key + edition>` as this rule's read-back.
+
 ## Smallest move first (2026-07-22)
 
 **The first thing formulated is the smallest solution to the essence of the order** — then
@@ -461,6 +482,17 @@ acknowledgment signed that way is a forged signature.
 - Smoke that must stay green, in all four directions: parent shelf → parent offers,
   staff does not; staff shelf → staff offers, parent does not; both shelves → each pad
   from its own; legacy unscoped key → parent honours it, staff ignores it.
+
+**The DB enforces owner-scoping, not just the client (2026-07-24).** Client discipline
+(`loadSample`/`adoptSample` filtering to the logged-in owner) is not a security boundary —
+RLS is. The `signature_samples` table now binds the **login shelves** (`director`, `sponsor`)
+to `owner_auth_id = auth.uid()` in both `USING` and `WITH CHECK` (migration `20260724b`): a
+director can read/write **only their own** stamp, and the General Director's `sponsor` stamp
+never surfaces to a director (or vice-versa). The **no-login shelves** (`parent`, `staff`,
+which carry no `auth.uid`) stay staff-managed on behalf, org-fenced, with the adopter stamped
+(`adopted_by = auth.uid()`). Parents apply their own sample through a SECURITY DEFINER RPC
+(token path), which is unaffected. `service_role` (edge/backend) bypasses RLS as before — the
+only non-owner read of a login shelf that exists.
 
 ## The app registry mirror ships with the flip (2026-07-15)
 

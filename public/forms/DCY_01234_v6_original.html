@@ -25,10 +25,13 @@
   *{box-sizing:border-box}
   body{margin:0;background:#5a6b60;font-family:Arial,Helvetica,sans-serif}
   .doc{padding:14px 0 60px}
-  .page{position:relative;width:1275px;height:1650px;margin:0 auto 20px;background:#fff no-repeat;
-    background-size:1275px 1650px;box-shadow:0 6px 24px rgba(0,0,0,.35)}
-  .page.p1{background-image:url("DCY01234_2026_page-1.png")}
-  .page.p2{background-image:url("DCY01234_2026_page-2.png")}
+  .page{position:relative;width:1275px;height:1650px;margin:0 auto 20px;background:#fff;
+    box-shadow:0 6px 24px rgba(0,0,0,.35)}
+  /* Official scans are CONTENT <img> (not CSS background) so they always print, without the
+     browser's "Background graphics" toggle. print-color-adjust keeps the ink at print time. */
+  .page .bg{position:absolute;top:0;left:0;width:1275px;height:1650px;z-index:0;
+    print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  .page .layer{position:absolute;top:0;left:0;width:1275px;height:1650px;z-index:1}
   /* read-only value cell — same footprint as the kit's .f input, no edit affordance */
   .rv{position:absolute;font-family:Arial,sans-serif;font-size:15px;color:#111;
     background:rgba(255,253,150,0.45);padding:1px 4px;overflow:hidden;white-space:nowrap;
@@ -43,12 +46,16 @@
     font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#0f4c35;
     background:#fff;border:1.5px solid #0f4c35;border-radius:6px;padding:4px 9px;box-shadow:0 1px 4px rgba(0,0,0,.2)}
   @media print{
-    body{background:#fff}
-    .stamp{display:none!important}
-    .doc{padding:0}
-    .page{box-shadow:none;margin:0}
-    .rv,.rv.area{background:transparent}
     @page{size:8.5in 11in;margin:0}
+    html,body{background:#fff;margin:0;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+    .stamp{display:none!important}
+    .doc{padding:0;zoom:1}
+    /* 1275px = Letter @150dpi; CSS px is 96dpi → scale each page to 8.5×11in (816×1056 CSS px)
+       so ONE form page == ONE printed sheet (no overflow, no 3rd sheet). zoom reflows the box
+       so page-break lands cleanly. */
+    .page{zoom:0.64;box-shadow:none;margin:0;page-break-after:always;break-after:page}
+    .page:last-child{page-break-after:auto;break-after:auto}
+    .rv,.rv.area{background:transparent}
   }
 </style>
 </head>
@@ -56,8 +63,8 @@
   <div class="stamp">Copy — what was signed</div>
 
   <div class="doc" id="doc">
-    <div class="page p1" id="page1"></div>
-    <div class="page p2" id="page2"></div>
+    <div class="page" id="page1"><img class="bg" src="DCY01234_2026_page-1.png" alt="DCY 01234 page 1"><div class="layer" id="layer1"></div></div>
+    <div class="page" id="page2"><img class="bg" src="DCY01234_2026_page-2.png" alt="DCY 01234 page 2"><div class="layer" id="layer2"></div></div>
   </div>
 
 <script>
@@ -136,7 +143,7 @@ function txt(v){ return (v===undefined||v===null)?'':String(v); }
 
 function render(formData, signatures){
   var fd = formData||{}, sg = signatures||{};
-  var pg = {1:document.getElementById('page1'), 2:document.getElementById('page2')};
+  var pg = {1:document.getElementById('layer1'), 2:document.getElementById('layer2')};  // overlay layer; img.bg stays
   pg[1].innerHTML=''; pg[2].innerHTML='';
 
   document.querySelectorAll('[data-meta="center"]').forEach(function(el){ el.textContent = txt(fd.center_code)||'—'; });

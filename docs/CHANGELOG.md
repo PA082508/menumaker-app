@@ -10,6 +10,7 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 
 <!-- newest on top -->
 
+- 2026-07-24 · 🗄️ · SafePass sign-in for parents is being simplified: instead of a QR or a 6-digit code, a parent just types their own phone number on the center's link and they're in — but only after staff taps "Register" for them once. Staff can also "Revoke" a phone to instantly sign it out everywhere. Database groundwork applied to production today; the parent/staff screens go live when the branch is merged. (migration 20260724a; number-gate)
 - 2026-07-23 · 🔧 · In Review, a document-type form (one with no field-checklist, like a signed enrollment or consent) no longer shows a red ✕ "no validation rules yet". It now reads a neutral note: "Document type — no field validation rules apply; the form validates itself at submission." Nothing about approving changes — these forms were never blocked by validation.
 - 2026-07-23 · 🔧 · New manual and online enrolments now keep the family's first and last names in the right order — a name typed as "Yuri James" no longer gets flipped to "James Yuri" on the roster. Names now read **First Last** everywhere the office adds a child from a form.
 

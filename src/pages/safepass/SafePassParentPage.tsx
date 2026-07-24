@@ -10,12 +10,23 @@ const C = {
   text:'#f0f2ff', muted:'#6b7299', green:'#00e896', greenDim:'rgba(0,232,150,0.1)',
   amber:'#ffb740', amberDim:'rgba(255,183,64,0.1)', red:'#ff4d6a', blue:'#5b8bff',
 }
+// Device-trust must survive a browser restart, so it lives in localStorage now (was
+// sessionStorage — wiped on close, which is why a "trusted" parent had to re-enter every time).
 function devId() {
   try {
-    let d = sessionStorage.getItem('sp_dev')
-    if (!d) { d = 'dev-' + Math.random().toString(36).slice(2); sessionStorage.setItem('sp_dev', d) }
+    let d = localStorage.getItem('sp_dev')
+    if (!d) { d = 'dev-' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('sp_dev', d) }
     return d
   } catch { return 'dev-fallback' }
+}
+const TRUST_PHONE_KEY = 'sp_phone'   // last activated number → lets us resume without re-asking
+function rememberPhone(np: string) { try { localStorage.setItem(TRUST_PHONE_KEY, np) } catch { /* private mode */ } }
+function recallPhone(): string | null { try { return localStorage.getItem(TRUST_PHONE_KEY) } catch { return null } }
+function forgetPhone() { try { localStorage.removeItem(TRUST_PHONE_KEY) } catch { /* noop */ } }
+// Shared center link is /safepass/parent?center=<uuid>. Absent → '' so the gate resolves the
+// center from the phone's own registration instead of forcing one.
+function centerFromUrl(): string {
+  try { const c = new URLSearchParams(window.location.search).get('center'); return c && c.trim() ? c.trim() : '' } catch { return '' }
 }
 type Screen = 'howto'|'phone'|'otp'|'activating'|'agreement'|'child_select'|'home'|'waiting'|'confirmed'
 type Child = { child_id:string; child_name:string; classroom_id:string; classroom_name:string; center_id:string }
@@ -57,14 +68,24 @@ export default function SafePassParentPage() {
 
   const normPhone = (p:string) => '+1' + p.replace(/\D/g,'').slice(-10)
 
-  // The code is issued by staff (safepass_issue_login_code) and given to the parent
-  // out of band — never generated in this browser. So "Get Code" just advances to
-  // the entry screen; there is nothing to send from here. Real SMS, when it exists,
-  // will call the same issue RPC server-side and text the code.
-  function sendOTP() {
+  // NUMBER-GATE sign-in (primary path). The parent opens the center's shared link and types
+  // their OWN registered number — no code, no QR. The gate passes only if staff has tapped
+  // Register for this number in this center and the person is active and in their access window.
+  async function activateByNumber() {
     if (phone.replace(/\D/g,'').length < 10) return
-    setOtpErr('')
-    setScreen('otp')
+    setScreen('activating'); setOtpErr('')
+    const np = normPhone(phone)
+    const { data, error } = await supabase.schema('menumaker')
+      .rpc('safepass_activate_device', { p_phone: np, p_center: centerFromUrl(), p_device_id: devId() })
+    if (error || !data?.ok) {
+      setScreen('phone')
+      setOtpErr(data?.error === 'ambiguous'
+        ? 'We could not confirm this number. Please see Play Academy staff.'
+        : 'This number is not registered yet. Ask Play Academy staff to register your phone, then try again.')
+      return
+    }
+    rememberPhone(np)            // device now trusted → next time we resume without asking
+    await continueAfterAuth(np)
   }
 
   async function verifyOTP() {
@@ -82,24 +103,7 @@ export default function SafePassParentPage() {
     await continueAfterAuth(np)
   }
 
-  // CODELESS activation (primary path). Staff mints a one-time link (QR) for a ✓Pickup
-  // parent; the parent opens it on THEIR phone. Nothing is typed — physical presence is the
-  // verification. The token is consumed, the device is trusted, phone_verified is set, then
-  // we continue exactly like a verified login.
-  async function autoActivate(rawPhone: string, token: string) {
-    setScreen('activating'); setOtpErr('')
-    const np = normPhone(rawPhone)
-    const { data, error } = await supabase.schema('menumaker')
-      .rpc('safepass_activate_device', { p_phone: np, p_token: token, p_device_id: devId() })
-    if (error || !data?.ok) {
-      setPhone(rawPhone.replace(/\D/g,''))
-      setOtpErr('This activation link is invalid or expired. Please ask Play Academy staff to activate your phone again.')
-      setScreen('phone'); return
-    }
-    await continueAfterAuth(np)
-  }
-
-  // Shared continuation once the phone is authenticated (codeless or typed): load children,
+  // Shared continuation once the phone is authenticated (number-gate or typed fallback): load children,
   // gate on the active policy, then route to home / child picker.
   async function continueAfterAuth(np: string) {
     setVerifying(true)
@@ -144,12 +148,21 @@ export default function SafePassParentPage() {
     else setScreen('agreement')
   }
 
-  // Codeless deep-link from the staff screen's QR: /safepass/parent?p=<phone>&a=<token>.
+  // Resume a trusted device on load: if this device activated a number before, re-validate the
+  // server session (kick / expiry / de-registration all revoke it) and skip straight in — the
+  // registered parent never sees howto or the number prompt again.
   useEffect(() => {
     if (didAuto.current) return
-    const q = new URLSearchParams(window.location.search)
-    const p = q.get('p'), a = q.get('a')
-    if (p && a) { didAuto.current = true; autoActivate(p, a) }
+    didAuto.current = true
+    const np = recallPhone()
+    if (!np) return
+    setScreen('activating')
+    ;(async () => {
+      const { data } = await supabase.schema('menumaker')
+        .rpc('safepass_resume_session', { p_phone: np, p_device_id: devId() })
+      if (data?.ok) { await continueAfterAuth(np) }
+      else { forgetPhone(); setScreen('howto') }
+    })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -291,8 +304,8 @@ export default function SafePassParentPage() {
     <div style={W}>{HDR}<div style={CARD}>
       <div style={{textAlign:'center',marginTop:48}}>
         <div style={{fontSize:48,marginBottom:16}}>🔒</div>
-        <div style={{fontSize:20,fontWeight:800}}>Activating this phone…</div>
-        <div style={{fontSize:14,color:C.muted,marginTop:8,lineHeight:1.6}}>One moment — setting up SafePass on your device. No code needed.</div>
+        <div style={{fontSize:20,fontWeight:800}}>Signing you in…</div>
+        <div style={{fontSize:14,color:C.muted,marginTop:8,lineHeight:1.6}}>One moment — checking your number.</div>
       </div>
     </div></div>
   )
@@ -304,11 +317,15 @@ export default function SafePassParentPage() {
         <div style={{fontSize:22,fontWeight:800}}>Welcome to SafePass</div>
         <div style={{fontSize:14,color:C.muted,marginTop:8}}>Enter your registered phone number</div>
       </div>
-      <input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="(555) 000-0000" style={INP} onKeyDown={e=>e.key==='Enter'&&sendOTP()}/>
-      <div style={{fontSize:11,color:C.muted,textAlign:'center',margin:'8px 0 20px'}}>Play Academy staff will give you a 6-digit code</div>
-      <button onClick={sendOTP} disabled={phone.replace(/\D/g,'').length<10}
+      <input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="(555) 000-0000" style={INP} onKeyDown={e=>e.key==='Enter'&&activateByNumber()}/>
+      {otpErr&&<div style={{color:C.red,fontSize:13,textAlign:'center',marginTop:10,lineHeight:1.5}}>{otpErr}</div>}
+      <div style={{fontSize:11,color:C.muted,textAlign:'center',margin:'10px 0 20px'}}>Use the number Play Academy has on file for pickup.</div>
+      <button onClick={activateByNumber} disabled={phone.replace(/\D/g,'').length<10}
         style={BTN(C.bg,phone.replace(/\D/g,'').length>=10?C.green:C.border)}>
-        I have a code →
+        Continue →
+      </button>
+      <button onClick={()=>{setOtpErr('');setScreen('otp')}} style={{...BTN(C.muted,'transparent'),marginTop:12,border:`1px solid ${C.border}`,fontSize:13}}>
+        Given a one-time code? Enter it
       </button>
     </div></div>
   )
@@ -318,7 +335,7 @@ export default function SafePassParentPage() {
       <div style={{textAlign:'center',marginBottom:28,marginTop:20}}>
         <div style={{fontSize:48,marginBottom:12}}>💬</div>
         <div style={{fontSize:22,fontWeight:800}}>Enter Code</div>
-        <div style={{fontSize:14,color:C.muted,marginTop:8}}>Enter the 6-digit code Play Academy gave you<br/><span style={{fontSize:12}}>Valid for 15 minutes</span></div>
+        <div style={{fontSize:14,color:C.muted,marginTop:8}}>Enter the one-time code Play Academy gave you<br/><span style={{fontSize:12}}>Valid for 15 minutes</span></div>
       </div>
       <input type="number" value={otp} onChange={e=>setOtp(e.target.value)} placeholder="000000"
         style={{...INP,fontSize:32,letterSpacing:'0.3em'}} onKeyDown={e=>e.key==='Enter'&&verifyOTP()}/>

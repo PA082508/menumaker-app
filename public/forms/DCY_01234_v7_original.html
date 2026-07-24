@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<!--
+  DCY_01234_v7_original.html — LOCAL, same-origin, READ-ONLY 1:1 replica of the storefront
+  DCY 01234 fillable kit, for the in-app "View original form" (Steps 1–2).
+
+  ORIGIN (canon of provenance — "ready-made forms first"):
+    source     : pa082508.github.io / forms/1-data-sources/DCY_01234_v6.html  (storefront kit)
+    edition    : storefront kit v6 (same official ODCY scans + same FIELDS[] coordinates)
+    replica rev: v7 — adds the DIRECTOR COUNTERSIGN render (program_sig) + the on-form
+                 attribution line "Signed by <name>, <role>, <date>" from
+                 signatures.countersign_meta; and keeps the annual-review rows read-only
+                 (they are filled only on the storefront at yearly renewal, never here).
+    date       : 2026-07-24
+
+  It is the SAME official-form OVERLAY as the storefront: the official ODCY page scans are the
+  background (DCY01234_2026_page-1/2.png), and the submitted values are placed at the SAME
+  FIELDS[] coordinates as the live kit — so the reviewer sees the recognizable government form,
+  1:1, with both signatures in their real place. NO redesign, NO form-kit engine, NO inputs
+  (everything is read-only). Interactivity (submit/clear/gate/prefill/masks) is stripped.
+
+  Contract (same as CACFP report iframe):
+    parent → iframe:  postMessage({ type:'original-render', formData:{...}, signatures:{...} }, '*')
+    standalone:       ?data=<uri JSON {formData, signatures}>
+  Chrome (stamp / print) lives OUTSIDE the sheet; @media print emits ONLY the pages.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DCY 01234 — filed original</title>
+<style>
+  /* ---- overlay geometry copied verbatim from the storefront kit (v6) ---- */
+  :root{ --line:#0066cc; }
+  *{box-sizing:border-box}
+  body{margin:0;background:#5a6b60;font-family:Arial,Helvetica,sans-serif}
+  .doc{padding:14px 0 60px}
+  .page{position:relative;width:1275px;height:1650px;margin:0 auto 20px;background:#fff;
+    box-shadow:0 6px 24px rgba(0,0,0,.35)}
+  /* Official scans are CONTENT <img> (not CSS background) so they always print, without the
+     browser's "Background graphics" toggle. print-color-adjust keeps the ink at print time. */
+  .page .bg{position:absolute;top:0;left:0;width:1275px;height:1650px;z-index:0;
+    print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  .page .layer{position:absolute;top:0;left:0;width:1275px;height:1650px;z-index:1}
+  /* read-only value cell — same footprint as the kit's .f input, no edit affordance */
+  .rv{position:absolute;font-family:Arial,sans-serif;font-size:15px;color:#111;
+    background:rgba(255,253,150,0.45);padding:1px 4px;overflow:hidden;white-space:nowrap;
+    display:flex;align-items:center;line-height:1.1}
+  .rv.area{white-space:pre-wrap;align-items:flex-start;line-height:1.35;padding:3px 5px;background:rgba(255,253,150,0.35)}
+  .rmark{position:absolute;width:18px;height:18px;display:flex;align-items:center;justify-content:center;
+    font-size:16px;font-weight:800;color:#0f4c35}
+  .rsig{position:absolute;object-fit:contain;background:transparent}
+  /* on-form attribution for a countersigned slot — seated just inside the bottom of the
+     signature box (this dense form has no blank strip beneath it). Part of what was signed,
+     so it prints; a faint white backing keeps it legible over the box. */
+  .rattr{position:absolute;font-family:Arial,sans-serif;font-size:9px;font-style:italic;
+    color:#0f4c35;white-space:nowrap;overflow:hidden;line-height:1;
+    background:rgba(255,255,255,0.72);padding:0 2px;border-radius:2px}
+  /* stamp — OUTSIDE the sheet, a corner badge (Print/Close come from the in-app viewer header);
+     screen-only so print emits ONLY the official pages. */
+  .stamp{position:fixed;top:10px;right:12px;z-index:50;font-family:Inter,Arial,sans-serif;
+    font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#0f4c35;
+    background:#fff;border:1.5px solid #0f4c35;border-radius:6px;padding:4px 9px;box-shadow:0 1px 4px rgba(0,0,0,.2)}
+  @media print{
+    @page{size:8.5in 11in;margin:0}
+    html,body{background:#fff;margin:0;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+    .stamp{display:none!important}
+    .doc{padding:0;zoom:1}
+    /* 1275px = Letter @150dpi; CSS px is 96dpi → scale each page to 8.5×11in (816×1056 CSS px)
+       so ONE form page == ONE printed sheet (no overflow, no 3rd sheet). zoom reflows the box
+       so page-break lands cleanly. */
+    .page{zoom:0.64;box-shadow:none;margin:0;page-break-after:always;break-after:page}
+    .page:last-child{page-break-after:auto;break-after:auto}
+    .rv,.rv.area{background:transparent}
+  }
+</style>
+</head>
+<body>
+  <div class="stamp">Copy — what was signed</div>
+
+  <div class="doc" id="doc">
+    <div class="page" id="page1"><img class="bg" src="DCY01234_2026_page-1.png" alt="DCY 01234 page 1"><div class="layer" id="layer1"></div></div>
+    <div class="page" id="page2"><img class="bg" src="DCY01234_2026_page-2.png" alt="DCY 01234 page 2"><div class="layer" id="layer2"></div></div>
+  </div>
+
+<script>
+/* Field map (id/page/type/coords) copied VERBATIM from the storefront kit v6 — same 1:1 layout.
+   t: 'text'|'area'|'cb'|'sig' · p: page 1|2 */
+var FIELDS = [
+  {id:'child_name',p:1,t:'text',x:58,y:255,w:560,h:34},
+  {id:'dob',p:1,t:'text',x:652,y:255,w:258,h:34},
+  {id:'first_day',p:1,t:'text',x:938,y:255,w:270,h:34},
+  {id:'address',p:1,t:'text',x:58,y:332,w:1150,h:32},
+  {id:'city',p:1,t:'text',x:58,y:410,w:575,h:32},
+  {id:'state',p:1,t:'text',x:658,y:410,w:258,h:32},
+  {id:'zip',p:1,t:'text',x:948,y:410,w:248,h:32},
+  {id:'p1_name',p:1,t:'text',x:58,y:485,w:560,h:32},
+  {id:'p1_phone',p:1,t:'text',x:652,y:485,w:556,h:32},
+  {id:'p1_same',p:1,t:'cb',x:219,y:521},
+  {id:'p1_address',p:1,t:'text',x:58,y:566,w:560,h:26},
+  {id:'p1_city',p:1,t:'text',x:658,y:558,w:295,h:28},
+  {id:'p1_state',p:1,t:'text',x:965,y:558,w:88,h:28},
+  {id:'p1_zip',p:1,t:'text',x:1094,y:558,w:106,h:28},
+  {id:'p1_email',p:1,t:'text',x:58,y:630,w:575,h:28},
+  {id:'p1_cell',p:1,t:'text',x:658,y:630,w:550,h:28},
+  {id:'p1_work',p:1,t:'text',x:58,y:705,w:575,h:28},
+  {id:'p1_work_ph',p:1,t:'text',x:658,y:705,w:550,h:28},
+  {id:'p2_na',p:1,t:'cb',x:60,y:787},
+  {id:'p2_name',p:1,t:'text',x:180,y:777,w:438,h:32},
+  {id:'p2_phone',p:1,t:'text',x:652,y:777,w:556,h:32},
+  {id:'p2_same',p:1,t:'cb',x:212,y:817},
+  {id:'p2_address',p:1,t:'text',x:58,y:860,w:560,h:26},
+  {id:'p2_city',p:1,t:'text',x:658,y:852,w:295,h:28},
+  {id:'p2_state',p:1,t:'text',x:965,y:852,w:88,h:28},
+  {id:'p2_zip',p:1,t:'text',x:1094,y:852,w:106,h:28},
+  {id:'p2_email',p:1,t:'text',x:58,y:924,w:575,h:28},
+  {id:'p2_cell',p:1,t:'text',x:658,y:924,w:550,h:28},
+  {id:'p2_work',p:1,t:'text',x:58,y:999,w:575,h:28},
+  {id:'p2_work_ph',p:1,t:'text',x:658,y:999,w:550,h:28},
+  {id:'ec1_name',p:1,t:'text',x:58,y:1084,w:560,h:22},
+  {id:'ec2_na',p:1,t:'cb',x:661,y:1091},
+  {id:'ec2_name',p:1,t:'text',x:812,y:1090,w:396,h:20},
+  {id:'ec1_phone',p:1,t:'text',x:58,y:1140,w:560,h:20},
+  {id:'ec2_phone',p:1,t:'text',x:658,y:1140,w:550,h:20},
+  {id:'ec1_other',p:1,t:'text',x:322,y:1190,w:316,h:22},
+  {id:'ec2_other',p:1,t:'text',x:922,y:1190,w:300,h:22},
+  {id:'ec1_rel_y',p:1,t:'cb',x:60,y:1274},
+  {id:'ec1_rel_n',p:1,t:'cb',x:60,y:1297},
+  {id:'ec2_rel_y',p:1,t:'cb',x:661,y:1274},
+  {id:'ec2_rel_n',p:1,t:'cb',x:661,y:1297},
+  {id:'health_y',p:1,t:'cb',x:60,y:1433},
+  {id:'health_n',p:1,t:'cb',x:60,y:1456},
+  {id:'child_name2',p:2,t:'text',x:58,y:130,w:800,h:36},
+  {id:'dob2',p:2,t:'text',x:892,y:130,w:301,h:36},
+  {id:'development',p:2,t:'area',x:58,y:228,w:1150,h:22},
+  {id:'na_dev',p:2,t:'cb',x:62,y:270},
+  {id:'accommod',p:2,t:'area',x:58,y:322,w:1150,h:38},
+  {id:'na_acc',p:2,t:'cb',x:62,y:372},
+  {id:'svc_y',p:2,t:'cb',x:64,y:452},
+  {id:'svc_n',p:2,t:'cb',x:62,y:478},
+  {id:'svc_provider',p:2,t:'text',x:58,y:558,w:1150,h:16},
+  {id:'na_svc',p:2,t:'cb',x:62,y:581},
+  {id:'trans_yes',p:2,t:'cb',x:62,y:646},
+  {id:'trans_no',p:2,t:'cb',x:62,y:751},
+  {id:'trans_action',p:2,t:'text',x:58,y:795,w:1150,h:26},
+  {id:'parent_sig',p:2,t:'sig',x:58,y:1015,w:780,h:56},
+  {id:'parent_sig_dt',p:2,t:'text',x:902,y:1020,w:291,h:34},
+  {id:'program_sig',p:2,t:'sig',x:58,y:1178,w:780,h:52},
+  {id:'program_sig_dt',p:2,t:'text',x:902,y:1183,w:291,h:34},
+  {id:'pg_init_1',p:2,t:'text',x:58,y:1268,w:255,h:26},{id:'pg_rev_1',p:2,t:'text',x:335,y:1268,w:228,h:26},
+  {id:'adm_init_1',p:2,t:'text',x:572,y:1268,w:290,h:26},{id:'adm_rev_1',p:2,t:'text',x:885,y:1268,w:308,h:26},
+  {id:'pg_init_2',p:2,t:'text',x:58,y:1348,w:255,h:26},{id:'pg_rev_2',p:2,t:'text',x:335,y:1348,w:228,h:26},
+  {id:'adm_init_2',p:2,t:'text',x:572,y:1348,w:290,h:26},{id:'adm_rev_2',p:2,t:'text',x:885,y:1348,w:308,h:26},
+  {id:'pg_init_3',p:2,t:'text',x:58,y:1428,w:255,h:26},{id:'pg_rev_3',p:2,t:'text',x:335,y:1428,w:228,h:26},
+  {id:'adm_init_3',p:2,t:'text',x:572,y:1428,w:290,h:26},{id:'adm_rev_3',p:2,t:'text',x:885,y:1428,w:308,h:26},
+];
+
+function txt(v){ return (v===undefined||v===null)?'':String(v); }
+
+// A signature-date text cell whose value comes from the COUNTERSIGN META, not form_data
+// (the director's date is set at Approve, never by the parent's submission).
+var SIG_DT_FROM_META = { program_sig_dt: 'program_sig' };
+
+// YYYY-MM-DD or full ISO → MM/DD/YYYY; anything else passes through.
+function fmtDate(s){
+  if(!s) return '';
+  var m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? (m[2]+'/'+m[3]+'/'+m[1]) : String(s);
+}
+
+function render(formData, signatures){
+  var fd = formData||{}, sg = signatures||{};
+  var meta = sg.countersign_meta || {};
+  var pg = {1:document.getElementById('layer1'), 2:document.getElementById('layer2')};  // overlay layer; img.bg stays
+  pg[1].innerHTML=''; pg[2].innerHTML='';
+
+  document.querySelectorAll('[data-meta="center"]').forEach(function(el){ el.textContent = txt(fd.center_code)||'—'; });
+
+  FIELDS.forEach(function(f){
+    var host = pg[f.p]; if(!host) return;
+    if(f.t==='cb'){
+      if(txt(fd[f.id]).trim()!==''){        // checked only when the value is present
+        var m=document.createElement('div'); m.className='rmark';
+        m.style.left=f.x+'px'; m.style.top=f.y+'px'; m.textContent='✓';
+        host.appendChild(m);
+      }
+    } else if(f.t==='sig'){
+      var src = sg[f.id];
+      if(src && String(src).indexOf('data:image')===0){
+        var img=document.createElement('img'); img.className='rsig';
+        img.style.cssText='left:'+f.x+'px;top:'+f.y+'px;width:'+f.w+'px;height:'+f.h+'px';
+        img.src=src; host.appendChild(img);
+      }
+      // On-form attribution under a countersigned slot: "Signed by <name>, <role>, <date>".
+      var mt = meta[f.id];
+      if(mt && (mt.name||mt.role||mt.at)){
+        var parts=[]; if(mt.name) parts.push('Signed by '+mt.name); if(mt.role) parts.push(mt.role);
+        var d=fmtDate(mt.at); if(d) parts.push(d);
+        var cap=document.createElement('div'); cap.className='rattr';
+        cap.style.cssText='left:'+(f.x+2)+'px;top:'+(f.y+f.h-12)+'px;max-width:'+(f.w-4)+'px';
+        cap.textContent=parts.join(', '); host.appendChild(cap);
+      }
+    } else {
+      var v = txt(fd[f.id]);
+      if(v.trim()==='' && SIG_DT_FROM_META[f.id]){ v = fmtDate((meta[SIG_DT_FROM_META[f.id]]||{}).at); }
+      if(v.trim()==='') return;
+      var dv=document.createElement('div'); dv.className = 'rv' + (f.t==='area'?' area':'');
+      dv.style.cssText='left:'+f.x+'px;top:'+f.y+'px;width:'+f.w+'px;height:'+f.h+'px';
+      dv.textContent=v; host.appendChild(dv);
+    }
+  });
+}
+window.renderOriginal = render;
+
+// fit-to-width on screen (real 1275px form scaled down); actual size for print.
+function fit(){
+  var s = Math.min(1, (document.documentElement.clientWidth - 8) / 1275);
+  document.getElementById('doc').style.zoom = s;
+}
+window.addEventListener('resize', fit);
+window.addEventListener('beforeprint', function(){ document.getElementById('doc').style.zoom = 1; });
+window.addEventListener('afterprint', fit);
+
+// React iframe channel
+window.addEventListener('message', function(e){
+  var d=e.data; if(d && d.type==='original-render'){ render(d.formData, d.signatures); fit(); }
+});
+// Standalone preview
+(function(){
+  try{
+    var q=new URLSearchParams(location.search).get('data');
+    if(q){ var p=JSON.parse(q); render(p.formData||p, p.signatures||{}); }
+    else render({},{});
+  }catch(err){ render({},{}); }
+  fit();
+})();
+</script>
+</body>
+</html>

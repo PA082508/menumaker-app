@@ -600,6 +600,13 @@ export interface Countersign {
   image: string
   signedBy: string
   signedName: string
+  /** On-form attribution ("Signed by <name>, <role>, <date>"). Persisted in the mutable
+   *  `signatures.countersign_meta[slot]` — never in form_data/signature_date (both sealed).
+   *  The legal author is `signedBy` = the auth.uid that approved. */
+  signerRole?: string | null
+  method?: 'drawn' | 'typed' | null
+  /** ISO timestamp of the countersignature; defaults to now. */
+  signedAt?: string | null
 }
 
 export async function approveDocument(
@@ -625,8 +632,24 @@ export async function approveDocument(
     if (!countersign.image?.startsWith('data:image/')) throw new Error('The countersignature must be an image')
     const before = ((prev as any)?.signatures ?? {}) as Record<string, any>
     if (before[countersign.slot]) throw new Error(`This form is already countersigned in ${countersign.slot}`)
-    // Merge, never replace: the parent's signature keeps its exact bytes.
-    patch.signatures = { ...before, [countersign.slot]: countersign.image }
+    // Merge, never replace: the parent's signature keeps its exact bytes. The attribution
+    // rides alongside in `countersign_meta` (same mutable signatures jsonb the seal-guard
+    // leaves writable) so the on-form line "Signed by <name>, <role>, <date>" and the PDF
+    // snapshot can name the author — while form_data/signature_date stay sealed.
+    patch.signatures = {
+      ...before,
+      [countersign.slot]: countersign.image,
+      countersign_meta: {
+        ...((before.countersign_meta ?? {}) as Record<string, any>),
+        [countersign.slot]: {
+          by: countersign.signedBy,
+          name: countersign.signedName,
+          role: countersign.signerRole ?? null,
+          method: countersign.method ?? null,
+          at: countersign.signedAt ?? nowIso(),
+        },
+      },
+    }
   }
 
   const { data, error } = await S().from('enrollment_submissions')

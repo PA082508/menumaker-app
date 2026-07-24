@@ -71,6 +71,29 @@ Before creating ANY blank, render, print view, or screen form:
 4. Every report involving a form carries the line
    `template source: <registry key + edition>` as this rule's read-back.
 
+## A date beside a signature is a stamp, not a field (2026-07-24)
+
+**A date beside a signature is a STAMP, not a field — auto-set at the moment of signing,
+read-only, cleared with the signature. Data dates are unaffected.**
+
+The stamp is bound **strictly 1:1** to its own stroke: the date appears only next to the
+signature/initials actually entered, at the moment of entry. An empty signature slot (or
+empty initials row) means an **empty** date cell — nothing is pre-filled beforehand, and
+neighbouring rows are never touched. Clearing a specific stroke clears only its own date.
+In a renewal, only the active row of the review being signed is stamped.
+
+- **Signing dates that are stamps:** Signature Date, Date of Review, the director's
+  countersign date, the adoption-sample date. Never manual, never back-datable, never
+  pre-filled on load.
+- **Data dates that are NOT touched:** DOB, First Day, effective-from / effective-to, and
+  any date that is a fact about the child/enrolment rather than a mark of when a signature
+  was made.
+- The director side already satisfies this: the in-app countersign date is set to `now`
+  at Approve (`signatures.countersign_meta[slot].at`), under the approver's `auth.uid`.
+- Applies to every live signing kit (enroll, iea, staff, parent_consent, usda_waiver,
+  start_form, dcy_01234 review rows). Rolling it in bumps each form's edition in the
+  registry, syncs its replica, and writes a history entry — form by form, flipped by word.
+
 ## Smallest move first (2026-07-22)
 
 **The first thing formulated is the smallest solution to the essence of the order** — then

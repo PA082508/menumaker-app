@@ -10,6 +10,8 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 
 <!-- newest on top -->
 
+- 2026-07-24 · 📘 · Canon: a date next to a signature is a **stamp**, not a typed field — it appears the moment that signature (or those initials) are made, is read-only, and clears if the signature is cleared; it's never pre-filled or back-datable. Data dates (birthday, first day, effective dates) are unaffected. Applied to the DCY 01234 form now; rolling to the other signing forms one at a time. (platform-standards.md)
+
 - 2026-07-24 · 📘 · Canon written down: a repo-level CLAUDE.md now points at the platform standards and the working protocol (prepare→show→go→apply→read-back, forward-only, release only by word). Two form rules are recorded — the review artifact is the original form itself (not a field table), and ready-made forms come first (never rebuild a form when a ready-made original exists; use it byte-for-byte). Docs only. (platform-standards.md, CLAUDE.md)
 
 - 2026-07-24 · 🗄️ · Saved signatures are now private to the person who made them. A director's or the General Director's stored signature stamp can no longer be read by anyone else in the organization — each saved signature is visible and reusable only to its own owner. (Security fix on the signature-samples table; applied to production. Table was empty, so nothing was exposed in practice.)

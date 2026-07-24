@@ -74,7 +74,7 @@ Before creating ANY blank, render, print view, or screen form:
 ## A date beside a signature is a stamp, not a field (2026-07-24)
 
 **A date beside a signature is a STAMP, not a field — auto-set at the moment of signing,
-read-only, cleared with the signature. Data dates are unaffected.**
+read-only, cleared with the signature, bound 1:1 to its own mark. Data dates are unaffected.**
 
 The stamp is bound **strictly 1:1** to its own stroke: the date appears only next to the
 signature/initials actually entered, at the moment of entry. An empty signature slot (or

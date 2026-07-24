@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<!--
+  DCY_01234_original.html — LOCAL, same-origin, READ-ONLY replica of the DCY 01234
+  Child Enrollment & Health form, for the in-app "View original form" (Step 1).
+
+  It renders the SUBMITTED data + the parent signature exactly as filed — this is the
+  "what I signed" artifact that sits beside the field-diff in the Approve modal.
+
+  Contract (mirrors the CACFP report iframe):
+    parent → iframe:  postMessage({ type:'original-render', formData:{...}, signatures:{...} }, '*')
+    standalone preview: ?data=<uriEncoded JSON {formData, signatures}>
+  It NEVER writes anywhere and has no inputs — display + print only.
+  Signature slots: parent_sig (parent) + program_sig (director countersign, Step 2).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DCY 01234 — Child Enrollment (filed original)</title>
+<style>
+  :root { --ink:#111827; --muted:#6b7280; --line:#d1d5db; --head:#0f4c35; --wash:#f9fafb; }
+  * { box-sizing: border-box; }
+  html,body { margin:0; padding:0; background:#eef1f4; color:var(--ink);
+    font-family:'Inter',-apple-system,Segoe UI,Roboto,sans-serif; font-size:13px; }
+  .page { max-width:820px; margin:16px auto; background:#fff; padding:26px 30px 34px;
+    box-shadow:0 1px 6px rgba(0,0,0,.12); }
+  .topbar { display:flex; align-items:center; justify-content:space-between; gap:12px;
+    border-bottom:2px solid var(--head); padding-bottom:10px; margin-bottom:6px; }
+  .title { font-size:16px; font-weight:800; color:var(--head); }
+  .sub { font-size:11px; color:var(--muted); margin-top:2px; }
+  .stamp { font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
+    color:var(--muted); border:1px solid var(--line); border-radius:6px; padding:3px 8px; white-space:nowrap; }
+  .btns { margin:0 auto 14px; max-width:820px; display:flex; gap:8px; padding:0 4px; }
+  .btns button { font:inherit; font-size:12px; font-weight:700; padding:7px 14px; border-radius:8px;
+    border:1px solid var(--line); background:#fff; color:var(--ink); cursor:pointer; }
+  .btns .print { background:var(--head); color:#fff; border-color:var(--head); }
+  section { margin-top:16px; }
+  h2 { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em;
+    color:var(--head); background:var(--wash); border:1px solid var(--line); border-radius:6px 6px 0 0;
+    padding:6px 10px; margin:0; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:0; border:1px solid var(--line); border-top:none;
+    border-radius:0 0 6px 6px; overflow:hidden; }
+  .grid.one { grid-template-columns:1fr; }
+  .cell { padding:7px 10px; border-top:1px solid #eef0f3; }
+  .cell:nth-child(odd) { border-right:1px solid #eef0f3; }
+  .k { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
+  .v { font-size:13px; font-weight:600; margin-top:1px; min-height:16px; white-space:pre-wrap; word-break:break-word; }
+  .v.empty { color:#c5cad3; font-weight:400; }
+  .sigrow { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:14px; }
+  .sigbox { border:1px solid var(--line); border-radius:8px; padding:10px 12px; }
+  .sigbox .k { margin-bottom:6px; }
+  .sigimg { height:56px; max-width:100%; object-fit:contain; display:block; }
+  .sigwait { height:56px; display:flex; align-items:center; color:#c5cad3; font-style:italic; font-size:12px; }
+  .sigmeta { font-size:11px; color:var(--muted); margin-top:6px; border-top:1px dashed var(--line); padding-top:6px; }
+  .foot { margin-top:22px; font-size:10.5px; color:var(--muted); border-top:1px solid var(--line); padding-top:8px; line-height:1.5; }
+  @media print {
+    html,body { background:#fff; }
+    .btns { display:none; }
+    .page { box-shadow:none; margin:0; max-width:none; padding:0 6px; }
+  }
+</style>
+</head>
+<body>
+  <div class="btns">
+    <button class="print" onclick="window.print()">🖨 Print</button>
+  </div>
+
+  <div class="page">
+    <div class="topbar">
+      <div>
+        <div class="title">DCY 01234 — Child Enrollment &amp; Health</div>
+        <div class="sub">Filed original · rendered from the signed submission · <span data-meta="center">—</span> · form <span data-meta="version">—</span></div>
+      </div>
+      <div class="stamp">Copy — what was signed</div>
+    </div>
+
+    <section>
+      <h2>Child</h2>
+      <div class="grid">
+        <div class="cell"><div class="k">Child name</div><div class="v" data-f="child_name"></div></div>
+        <div class="cell"><div class="k">Date of birth</div><div class="v" data-f="dob|birthdate"></div></div>
+        <div class="cell"><div class="k">Home address</div><div class="v" data-f="address"></div></div>
+        <div class="cell"><div class="k">City / State / ZIP</div><div class="v" data-join="city,state,zip"></div></div>
+        <div class="cell"><div class="k">First day</div><div class="v" data-f="first_day"></div></div>
+        <div class="cell"><div class="k">Center</div><div class="v" data-f="center_code"></div></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Parent / Guardian 1</h2>
+      <div class="grid">
+        <div class="cell"><div class="k">Name</div><div class="v" data-f="p1_name"></div></div>
+        <div class="cell"><div class="k">Same address as child</div><div class="v" data-f="p1_same"></div></div>
+        <div class="cell"><div class="k">Address</div><div class="v" data-f="p1_address"></div></div>
+        <div class="cell"><div class="k">City / State / ZIP</div><div class="v" data-join="p1_city,p1_state,p1_zip"></div></div>
+        <div class="cell"><div class="k">Phone</div><div class="v" data-f="p1_phone"></div></div>
+        <div class="cell"><div class="k">Cell</div><div class="v" data-f="p1_cell"></div></div>
+        <div class="cell"><div class="k">Email</div><div class="v" data-f="p1_email"></div></div>
+        <div class="cell"><div class="k">Work phone</div><div class="v" data-f="p1_work_ph|p1_work"></div></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Parent / Guardian 2</h2>
+      <div class="grid">
+        <div class="cell"><div class="k">Name</div><div class="v" data-f="p2_name"></div></div>
+        <div class="cell"><div class="k">Same address as child</div><div class="v" data-f="p2_same"></div></div>
+        <div class="cell"><div class="k">Address</div><div class="v" data-f="p2_address"></div></div>
+        <div class="cell"><div class="k">City / State / ZIP</div><div class="v" data-join="p2_city,p2_state,p2_zip"></div></div>
+        <div class="cell"><div class="k">Phone</div><div class="v" data-f="p2_phone"></div></div>
+        <div class="cell"><div class="k">Cell</div><div class="v" data-f="p2_cell"></div></div>
+        <div class="cell"><div class="k">Email</div><div class="v" data-f="p2_email"></div></div>
+        <div class="cell"><div class="k">Work phone</div><div class="v" data-f="p2_work_ph|p2_work"></div></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Emergency contacts (may pick up)</h2>
+      <div class="grid">
+        <div class="cell"><div class="k">Contact 1</div><div class="v" data-f="ec1_name"></div></div>
+        <div class="cell"><div class="k">Phone / relationship</div><div class="v" data-join="ec1_phone,ec1_other"></div></div>
+        <div class="cell"><div class="k">Contact 2</div><div class="v" data-f="ec2_name"></div></div>
+        <div class="cell"><div class="k">Phone / relationship</div><div class="v" data-join="ec2_phone,ec2_other"></div></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Health &amp; services</h2>
+      <div class="grid">
+        <div class="cell"><div class="k">Health condition</div><div class="v" data-yn="health_y,health_n"></div></div>
+        <div class="cell"><div class="k">Special services</div><div class="v" data-yn="svc_y,svc_n"></div></div>
+        <div class="cell"><div class="k">Service provider</div><div class="v" data-f="svc_provider"></div></div>
+        <div class="cell"><div class="k">Development notes</div><div class="v" data-f="development"></div></div>
+        <div class="cell"><div class="k">Accommodations</div><div class="v" data-f="accommod"></div></div>
+        <div class="cell"><div class="k">Transportation</div><div class="v" data-yn="trans_yes,trans_no"></div></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Signatures</h2>
+      <div class="sigrow">
+        <div class="sigbox">
+          <div class="k">Parent / Guardian</div>
+          <img class="sigimg" data-sig="parent_sig" alt="" style="display:none" />
+          <div class="sigwait" data-sigwait="parent_sig">No signature on file</div>
+          <div class="sigmeta">Signed <span data-f="parent_sig_dt" class="inline"></span></div>
+        </div>
+        <div class="sigbox">
+          <div class="k">Director (countersign)</div>
+          <img class="sigimg" data-sig="program_sig" alt="" style="display:none" />
+          <div class="sigwait" data-sigwait="program_sig">Awaiting director countersign</div>
+          <div class="sigmeta">Countersigned <span data-f="program_sig_dt" class="inline"></span></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="foot">
+      This is a read-only rendering of the submitted enrollment data and the signature captured at the time of signing.
+      It reproduces the filed content for review, the inspector's file, and the child's record — it is not an editable form.
+    </div>
+  </div>
+
+<script>
+(function () {
+  var EMPTY = '—';
+  function txt(v) { return (v === undefined || v === null || String(v).trim() === '') ? '' : String(v); }
+
+  function setVal(el, raw) {
+    var s = txt(raw);
+    if (s === '') { el.textContent = EMPTY; el.classList.add('empty'); }
+    else { el.textContent = s; el.classList.remove('empty'); }
+  }
+
+  function render(formData, signatures) {
+    var fd = formData || {}, sg = signatures || {};
+
+    // meta
+    document.querySelectorAll('[data-meta]').forEach(function (el) {
+      var m = el.getAttribute('data-meta');
+      if (m === 'center') setVal(el, fd.center_code);
+      if (m === 'version') setVal(el, fd.dcy_version || fd.dcy_form || 'v6');
+    });
+
+    // single field (supports "a|b" fallback chain)
+    document.querySelectorAll('[data-f]').forEach(function (el) {
+      var keys = el.getAttribute('data-f').split('|');
+      var val = '';
+      for (var i = 0; i < keys.length; i++) { if (txt(fd[keys[i]]) !== '') { val = fd[keys[i]]; break; } }
+      setVal(el, val);
+    });
+
+    // joined fields ("a,b,c" → non-empty joined by space)
+    document.querySelectorAll('[data-join]').forEach(function (el) {
+      var parts = el.getAttribute('data-join').split(',').map(function (k) { return txt(fd[k.trim()]); }).filter(Boolean);
+      setVal(el, parts.join('  '));
+    });
+
+    // yes/no pairs ("yesKey,noKey")
+    document.querySelectorAll('[data-yn]').forEach(function (el) {
+      var pair = el.getAttribute('data-yn').split(',');
+      var yes = txt(fd[pair[0].trim()]) !== '', no = txt(fd[pair[1].trim()]) !== '';
+      setVal(el, yes ? 'Yes' : (no ? 'No' : ''));
+    });
+
+    // signatures (data URLs)
+    document.querySelectorAll('[data-sig]').forEach(function (img) {
+      var key = img.getAttribute('data-sig');
+      var wait = document.querySelector('[data-sigwait="' + key + '"]');
+      var src = sg[key];
+      if (src && String(src).indexOf('data:image') === 0) {
+        img.src = src; img.style.display = 'block'; if (wait) wait.style.display = 'none';
+      } else {
+        img.style.display = 'none'; if (wait) wait.style.display = 'flex';
+      }
+    });
+  }
+  window.renderOriginal = render;
+
+  // React iframe channel
+  window.addEventListener('message', function (e) {
+    var d = e.data;
+    if (d && d.type === 'original-render') render(d.formData, d.signatures);
+  });
+
+  // Standalone preview: ?data=<uri-encoded JSON {formData, signatures}>
+  try {
+    var q = new URLSearchParams(location.search).get('data'); // already URL-decoded
+    if (q) { var parsed = JSON.parse(q); render(parsed.formData || parsed, parsed.signatures || {}); }
+    else { render({}, {}); }
+  } catch (err) { render({}, {}); }
+})();
+</script>
+</body>
+</html>

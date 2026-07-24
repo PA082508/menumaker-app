@@ -21,6 +21,8 @@ import {
 import { deriveMealFields } from '@/lib/ageGroups'
 import { countersignSlot, loadSample, adoptSample, type SignatureSample, type SampleOwner } from '@/lib/signatureSamples'
 import SignaturePad from '@/components/signing/SignaturePad'
+import OriginalFormViewer from './OriginalFormViewer'
+import { hasOriginalReplica } from '@/lib/originalFormReplicas'
 
 // roster.sched_days bitmask — Mon=1 Tue=2 Wed=4 Thu=8 Fri=16 (20260716c)
 const SCHED_DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
@@ -170,6 +172,9 @@ export default function EnrollmentReviewModal({
   // Phase 1.5 — photographed paper form. Resolve the scan for side-by-side review,
   // and collect the OCR low-confidence field set so those rows read "verify".
   const [scanUrl, setScanUrl] = useState<string | null>(null)
+  // Step 1 "View original form" — a local read-only replica beside the field-diff.
+  const [showOriginal, setShowOriginal] = useState(false)
+  const canViewOriginal = hasOriginalReplica(submission.submission_type)
   useEffect(() => {
     let cancelled = false
     ;(async () => {
@@ -1004,6 +1009,12 @@ export default function EnrollmentReviewModal({
               : v.status === 'errors' ? 'Resolve required fields before approving.' : dupUnresolved ? 'Choose a duplicate resolution above.' : chosenInactive ? 'Reactivate & admit the matched child first, then Approve attaches this scan.' : 'Nothing is written to the roster until you Approve.'}
           </span>}
           <button onClick={onClose} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Close</button>
+          {canViewOriginal && (
+            <button onClick={() => setShowOriginal(true)} title="See the filed form with the parent signature, exactly as submitted"
+              style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #c0d8c0', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: '#fff', color: '#0f4c35' }}>
+              📄 View original form
+            </button>
+          )}
           <button onClick={save} disabled={!dirty || saving} style={{
             padding: '8px 14px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, fontWeight: 600,
             background: '#fff', color: dirty && !saving ? '#0f4c35' : '#d1d5db',
@@ -1098,6 +1109,17 @@ export default function EnrollmentReviewModal({
             </div>
           </div>
         </div>
+      )}
+
+      {showOriginal && canViewOriginal && (
+        // The ORIGINAL = what the parent signed → submission.form_data as filed, not the
+        // director-edited `fd` (the field-diff already shows edits vs the record).
+        <OriginalFormViewer
+          submissionType={submission.submission_type}
+          formData={submission.form_data}
+          signatures={submission.signatures}
+          onClose={() => setShowOriginal(false)}
+        />
       )}
     </div>
   )

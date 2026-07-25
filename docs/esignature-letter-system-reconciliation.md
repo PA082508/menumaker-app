@@ -36,7 +36,7 @@ mature than it is.
 | "Monthly claim data is assembled … with **rates applied by the reporting period in effect**" | period-effective rate resolution is a **spec, not confirmed implemented** | Present claim assembly as **in development**; do not assert period-effective rates are live until verified. |
 | "signature method … recorded"; "IP address, and device are recorded" | signature method recorded on the form (in the sealed signature payload); IP + device server-recorded **for enrollment**; the 3 dedicated public forms (special diet / fluid milk / infant) do **not** yet capture IP/UA | True for enrollment. If citing the 3 public forms, note IP/device capture is being added with their seal (below). |
 | "Every record can be **printed on demand in the state form layout**" | print/replica path exists for the registered replica forms | Fair as stated for forms that have a registered replica. |
-| "cryptographically sealed … cannot be edited or deleted — any **correction creates a new linked record with a stated reason**" | true for `enrollment_submissions` (`supersedes_id` + required `correction_reason`); the **3 dedicated public forms are not yet sealed** | Closing now: mirror the same seal onto special-diet / fluid-milk / infant-meal forms (`submit_public_form`). |
+| "cryptographically sealed … cannot be edited or deleted — any **correction creates a new linked record with a stated reason**" | true for `enrollment_submissions`; **and now for the 3 dedicated public forms** (special diet / fluid milk / infant) — `content_hash` + server `sealed_at` + immutable-when-sealed + no-delete + `supersedes_id`/`correction_reason` | ✅ **Closed 2026-07-25** (migration `20260725b_public_forms_seal`; read-back R1–R4 green). |
 
 ## Evidence (2026-07-25)
 
@@ -51,10 +51,11 @@ mature than it is.
 
 ## Checklist — DUE 2026-09-15 (before Oct 1 program year)
 
-- [ ] **`submit_public_form` seal** — mirror the tamper-evidence onto the 3 dedicated public
-  forms (special diet / fluid milk / infant meals): `content_hash` + server `sealed_at` +
-  seal-guard (no edit/delete of sealed rows) + forward-only correction
-  (`supersedes_id` + `correction_reason`). *In progress this session (GO given).*
+- [x] **`submit_public_form` seal** — ✅ **DONE 2026-07-25** (migration `20260725b_public_forms_seal`,
+  applied to prod, R1–R4 green): the 3 dedicated public forms (special diet / fluid milk /
+  infant meals) now get `content_hash` + server `sealed_at` + immutable-when-sealed + no-delete
+  + forward-only correction (`supersedes_id` + `correction_reason`). *(form_version /
+  esign_consent parity for these 3 follows with their form-kit, 2026-09-15.)*
 - [ ] **Storefront consent checkbox** on the parent form (form-kit, `pa082508.github.io`) +
   **emit `esignConsent: true`** in `save` → `embed.js` already forwards it. Coordinated
   **kit-bust** (`?v=<N>` bumped in all includes, same commit).

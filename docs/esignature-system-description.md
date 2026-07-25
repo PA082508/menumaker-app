@@ -92,6 +92,12 @@ tamper-evident for **every** application role:
 The director's working countersignature column stays mutable (that is how Approve adds the
 countersignature), which is why sealing does not break review/approval.
 
+The **same seal now covers the three dedicated public parent forms** — special-diet, fluid-milk
+substitution, and infant-meal — applied 2026-07-25. Those forms have no post-submit workflow,
+so each sealed record is **fully immutable and cannot be deleted**; a correction is a new linked
+record (`supersedes_id` + `correction_reason`), and the server sets the hash, `sealed_at`, and
+submission context.
+
 ## §6. Server-side capture — *Implemented*
 
 The following are set by the **server**, from the request context — the form/browser cannot

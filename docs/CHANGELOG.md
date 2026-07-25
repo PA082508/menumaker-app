@@ -10,6 +10,10 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 
 <!-- newest on top -->
 
+- 2026-07-25 · 📘 · Step 3 marked **Implemented** in the e-signature description (§11) and the reconciliation — the frozen approved-form snapshot (capture at Approve, view/print from the snapshot, child-Documents entry, one-tap backfill) is live and **verified end-to-end on production by record** (snapshot row + bucket object + edge-function log; sha matched). Demo screencast scenario updated to **v2** (Part 0 Setup + parent FKPad + office + Part 3 Retrieval) — still awaiting approval before recording. (docs.)
+
+- 2026-07-25 · 🔧 · After "Create snapshot" succeeds, the row now immediately shows "🔒 Snapshot on file" instead of staying stale on "no snapshot yet" — the old badge lagged behind a just-created snapshot (a read raced the write), which had invited repeat taps. (fix/snapshot-badge-optimistic.)
+
 - 2026-07-25 · 🔧 · Fixed "Create snapshot" crashing the page (it bounced the director to the dashboard). The snapshot was being captured at twice the official form's native resolution, which used ~4× the memory and crashed the tab on memory-limited devices like an iPad. It now captures at the form's native resolution — same crispness, a quarter of the memory. (fix/snapshot-scale-oom.)
 
 - 2026-07-25 · 🔧 · Made the "frozen copy" (snapshot) honest about itself. "Create snapshot" now shows a visible result — a green line with the copy's fingerprint on success, or a red message with the actual reason on failure — instead of quietly doing nothing. Freezing the copy at Approve now shows a "Freezing a copy…" note and, if it can't save, a clear "Approved — frozen copy not saved" banner (the approval still stands; you can recreate it from the child's Documents). And the viewer now says which it is: a real snapshot shows the green "Snapshot at Approve" bar with its fingerprint, while a live fallback render is labelled "Live render — no snapshot on file" — so the two can never be mistaken for each other. (merge feat/snapshot-observability.)

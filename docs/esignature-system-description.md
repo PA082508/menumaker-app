@@ -159,6 +159,24 @@ practice** today; **automated enforcement** of retention/disposition schedules i
 
 ---
 
+## §11. Frozen approved-form snapshot (archive & print) — *Implemented (2026-07-25)*
+
+When a director approves a form that has an official replica (starting DCY 01234), the platform
+captures a **client-side, same-origin snapshot** of the exact signed pages — the recognizable
+government form with the parent signature and the director countersign in place — and stores it in
+a **private bucket** (`enrollment-snapshots`), written only by the `enrollment-snapshot` edge
+function (service role). Each snapshot is **pinned** in `menumaker.enrollment_snapshots` to its
+form type, replica edition, the submission, a SHA-256 of the image bytes, and the sealed
+submission's content hash. From then on, **"View original form" and Print serve the frozen
+snapshot** — the official pages 1:1, with an on-screen "COPY — WHAT WAS SIGNED · Snapshot at
+Approve" banner that **never prints**; if no snapshot exists the viewer falls back to a live render
+**explicitly labelled "Live render — no snapshot on file"** (an artifact declares its source). The
+snapshot is reachable from the child's **Documents** tab (child → document → print), and any
+approved-without-snapshot form can be frozen with a one-tap **backfill**. Verified end-to-end on
+production (snapshot row + bucket object + edge-function 200 in logs).
+
+---
+
 ## Status summary
 
 | Capability | Status |
@@ -166,6 +184,7 @@ practice** today; **automated enforcement** of retention/disposition schedules i
 | Tamper-evidence (hash + seal + no-delete + forward-only correction) | **Implemented** — prod 2026-07-23 |
 | Server-set context (IP/UA/hash) | **Implemented** |
 | Server seal timestamp (`sealed_at`) | **Implemented** — prod 2026-07-25 |
+| Frozen approved-form snapshot (archive & print, Documents entry, backfill) | **Implemented** — prod 2026-07-25 (DCY 01234; other types as replicas are added) |
 | Form version on record (`form_version`) | **Implemented for new submissions** (from 2026-07-25) |
 | Signer identity (claimed + token/DOB + center-lock) | **Implemented** — *not* government-ID verification |
 | E-signature consent capture | **Planned** — platform-side wired; form-side emission by 2026-09-15 |

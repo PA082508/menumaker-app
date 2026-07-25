@@ -24,6 +24,7 @@ import SignaturePad from '@/components/signing/SignaturePad'
 import { SIG_FACES, faceByKey, renderTypedSignature } from '@/lib/typedSignature'
 import OriginalFormViewer from './OriginalFormViewer'
 import { hasOriginalReplica } from '@/lib/originalFormReplicas'
+import { captureAndUploadSnapshot } from '@/lib/enrollmentSnapshot'
 
 // The countersignature's on-form attribution role. The slot names the signing role:
 // sponsor_sig is the General Director (income path); program_sig/admin_sig is the center
@@ -560,6 +561,18 @@ export default function EnrollmentReviewModal({
             setErr(`Filed and countersigned, but your signature was not saved for next time: ${e?.message ?? e}`)
           }
         }
+      }
+      // Step 3: freeze the approved original as a snapshot (form_data + parent signature +
+      // the director countersign now in previewSignatures). Fire-and-forget — the helper owns
+      // its own offscreen DOM, so it survives this modal unmounting; a failed capture is
+      // backfillable one-tap from the child's Documents. Never blocks or fails the approval.
+      if (hasOriginalReplica(submission.submission_type)) {
+        void captureAndUploadSnapshot({
+          submissionId: submission.id,
+          submissionType: submission.submission_type,
+          formData: fd,
+          signatures: previewSignatures,
+        }).catch(err => console.warn('[snapshot] capture failed (backfillable from Documents):', err))
       }
       onDone(result)
     } catch (e: any) { setErr(e?.message ?? String(e)); setBusy(false) }

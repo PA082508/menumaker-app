@@ -30,7 +30,13 @@ mature than it is.
 
 | Claim (verbatim) | System today | Honest framing |
 |------------------|--------------|----------------|
-| "**none of the electronic forms have been placed into production use**" | `enrollment_submissions` already holds 83 rows (25 online / 56 paper / 2 manual, latest 2026-07-24) | **Confirm scope before relying on this sentence:** those rows are test/import/pre-approval data; **no CACFP claim has been filed from them** (claim bridge is protected until Oct 1). If the agency reads "production use" strictly, be ready to explain the existing rows are not claim-filing use. |
+| "**none of the electronic forms have been placed into production use**" | `enrollment_submissions` already holds 83 rows (25 online / 56 paper / 2 manual, latest 2026-07-24) | **Accurate under the working rule (below):** those rows are **test / migration / parallel-run** data; **no CACFP claim has been filed from them**. Official records remain paper until Office approval. |
+
+**Working rule — production use (in force until Office approval), mirror of description:**
+- **CACFP forms (enrollment, IEA)** are **not** filed electronically into the official
+  record — **parallel-run to paper only**; paper remains the official record and claim source.
+- **DCY licensing forms + internal consents** are **outside** the Office of Nutrition's
+  jurisdiction and are used normally.
 | "all records are **retained for three years plus the current year**" | retention is a **documented operational practice**; no automated retention/disposition enforcement | Description §10: "documented operational practice; automated enforcement planned." Do not imply automated enforcement is in force. |
 | "Child attendance is **anchored by a documented hand-off** … (SafePass) … staff clock in and out … documenting supervision hours and ratios" | SafePass is **pilot-stage** (loop does not fully close; live teacher path can bypass the handoff); staff-clock/ratio documentation is partial | Present SafePass/attendance-anchoring as **piloted / rolling out**, not fully operational org-wide. Ties to #4 (GatePulse). |
 | "Monthly claim data is assembled … with **rates applied by the reporting period in effect**" | period-effective rate resolution is a **spec, not confirmed implemented** | Present claim assembly as **in development**; do not assert period-effective rates are live until verified. |

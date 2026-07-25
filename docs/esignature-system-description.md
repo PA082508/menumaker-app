@@ -15,6 +15,23 @@ system facts; supersedes the earlier out-of-repo draft) · **Owner:** Nikolay
 
 ---
 
+## Production use status
+
+The electronic forms are **not in official production use.** Records currently in the
+database are **test, migration, and parallel-run** records only — **none has been used for
+official filing or CACFP claims.** Official records remain on **paper** until the Office of
+Nutrition's review and approval.
+
+**Working rule — in force until Office approval:**
+
+- **CACFP forms (enrollment, income eligibility / IEA)** are **not** filed electronically
+  into the official record. They run **parallel to paper** only; **paper remains the
+  official record** and the source for any claim.
+- **DCY licensing forms and internal consents** are **outside** the Office of Nutrition's
+  jurisdiction and are used normally in the ordinary course of operations.
+
+---
+
 ## §1. Scope
 
 Play Academy centers collect CACFP/enrollment packet forms from parents. This document

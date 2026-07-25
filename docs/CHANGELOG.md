@@ -10,6 +10,8 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 
 <!-- newest on top -->
 
+- 2026-07-25 · 🧰 · The guided demo recorder is now part of the repo (`scripts/record-demo.mjs`): it opens the live app in a persistent browser profile, lets the director log in **off-camera**, then **rehearses every selector of the Part 0→3 arc and prints ✓/✗ per beat before a single frame is recorded**. Only after that does it record one pass to `demo-out/`. The two beats a person must own — drawing the parent signature on the FKPad and tapping Submit — pause and wait for a human on camera instead of being faked. Tooling only; no product or form behaviour changed. Scenario v2 approved for recording.
+
 - 2026-07-25 · 📘 · Step 3 marked **Implemented** in the e-signature description (§11) and the reconciliation — the frozen approved-form snapshot (capture at Approve, view/print from the snapshot, child-Documents entry, one-tap backfill) is live and **verified end-to-end on production by record** (snapshot row + bucket object + edge-function log; sha matched). Demo screencast scenario updated to **v2** (Part 0 Setup + parent FKPad + office + Part 3 Retrieval) — still awaiting approval before recording. (docs.)
 
 - 2026-07-25 · 🔧 · After "Create snapshot" succeeds, the row now immediately shows "🔒 Snapshot on file" instead of staying stale on "no snapshot yet" — the old badge lagged behind a just-created snapshot (a read raced the write), which had invited repeat taps. (fix/snapshot-badge-optimistic.)

@@ -11,6 +11,10 @@ import { startMealMarkAutoSync } from '@/lib/mealMarkQueue'
 // before React hydrates so an offline reload always has the shell available.
 registerSW({ immediate: true })
 
+// Build marker for deploy checks: read `window.__build` (commit sha) in the console to
+// confirm which build is live and rule out a stale cache.
+;(window as any).__build = __BUILD_SHA__
+
 // Resume draining meal-count marks that were queued offline in a previous
 // session — fires now if already online, and again on every 'online' event.
 startMealMarkAutoSync()

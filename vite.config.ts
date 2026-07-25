@@ -54,6 +54,8 @@ export default defineConfig({
   ],
   define: {
     __BUILD_ID__: JSON.stringify(buildId),
+    // commit sha for deploy checks (Vercel sets VERCEL_GIT_COMMIT_SHA at build; 'dev' locally)
+    __BUILD_SHA__: JSON.stringify(process.env.VERCEL_GIT_COMMIT_SHA ?? 'dev'),
   },
   resolve: {
     alias: {

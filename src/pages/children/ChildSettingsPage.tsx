@@ -17,6 +17,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { parseIeaFiscalYear, frpExpiryDefault, recordDetermination } from '@/lib/enrollmentApprove'
 import ChildExportPanel from './ChildExportPanel'
 import ChildDocumentsTab from './ChildDocumentsTab'
+import { fmtDateOnly } from '@/lib/dateOnly'
 
 // registry helpers don't export isEmpty — mirror it locally for the filled-indicator.
 const isEmptyVal = (v: any) => v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0)
@@ -413,7 +414,7 @@ export default function ChildSettingsPage({
             </div>
             <div style={{ color:'rgba(255,255,255,0.6)', fontSize:12, marginTop:2 }}>
               {classrooms.find(c=>c.id===child.classroom_id)?.name ?? '—'}
-              {child.birthday ? ` · b. ${new Date(child.birthday).toLocaleDateString('en-US')}` : ''}
+              {child.birthday ? ` · b. ${fmtDateOnly(child.birthday)}` : ''}
             </div>
           </div>
           {/* Progress */}
@@ -563,7 +564,7 @@ export default function ChildSettingsPage({
           )}
 
           {/* ── TAB 7: Documents ── */}
-          {tab === 7 && <ChildDocumentsTab childDbId={child.child_id ?? childId} />}
+          {tab === 7 && <ChildDocumentsTab childDbId={child.child_id ?? childId} rosterId={childId} />}
         </div>
 
         {/* Footer */}

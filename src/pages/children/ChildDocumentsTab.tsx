@@ -118,6 +118,7 @@ function ApprovedEnrollmentForms({ rosterId }: { rosterId: string }) {
   const [subs, setSubs] = useState<ApprovedSub[] | null>(null)
   const [viewer, setViewer] = useState<ApprovedSub | null>(null)
   const [busyId, setBusyId] = useState<string>('')
+  const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
 
   async function load() {
     const { data } = await supabase.schema('menumaker').from('enrollment_submissions')
@@ -135,12 +136,15 @@ function ApprovedEnrollmentForms({ rosterId }: { rosterId: string }) {
   useEffect(() => { load() }, [rosterId])
 
   async function backfill(s: ApprovedSub) {
-    setBusyId(s.id)
+    setBusyId(s.id); setMsg(null)
     try {
-      await captureAndUploadSnapshot({ submissionId: s.id, submissionType: s.submission_type, formData: s.form_data, signatures: s.signatures })
+      const res = await captureAndUploadSnapshot({ submissionId: s.id, submissionType: s.submission_type, formData: s.form_data, signatures: s.signatures })
       await load()
-    } catch (e) {
-      console.warn('[snapshot] backfill failed:', e)
+      // Visible result — never a silent no-op. A persisted snapshot shows its sha here and the
+      // row flips to "🔒 Snapshot on file".
+      setMsg({ kind: 'ok', text: `🔒 Snapshot on file · Snapshot at Approve · sha ${String(res?.content_sha ?? '').slice(0, 10)}…` })
+    } catch (e: any) {
+      setMsg({ kind: 'err', text: `Snapshot failed: ${e?.message ?? String(e)}` })
     } finally {
       setBusyId('')
     }
@@ -151,6 +155,11 @@ function ApprovedEnrollmentForms({ rosterId }: { rosterId: string }) {
   return (
     <div style={{ marginBottom: 18 }}>
       <div style={{ fontSize: 13, fontWeight: 700, color: '#0f4c35', marginBottom: 12, paddingBottom: 6, borderBottom: '1.5px solid #e8f0e8' }}>Enrollment forms (approved)</div>
+      {msg && (
+        <div style={{ fontSize: 12, fontWeight: 600, padding: '8px 12px', borderRadius: 8, marginBottom: 8,
+          background: msg.kind === 'ok' ? '#f0fff4' : '#fef2f2', color: msg.kind === 'ok' ? '#0f4c35' : '#dc2626',
+          border: `1.5px solid ${msg.kind === 'ok' ? '#bbf7d0' : '#fecaca'}` }}>{msg.text}</div>
+      )}
       {subs.map(s => (
         <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, border: '1.5px solid #e8f0e8', marginBottom: 8, background: '#fff' }}>
           <span style={{ fontSize: 18 }}>📄</span>

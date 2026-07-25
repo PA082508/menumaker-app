@@ -11,12 +11,15 @@ import { useEffect, useRef } from 'react'
 import { originalReplica } from '@/lib/originalFormReplicas'
 
 export default function OriginalFormViewer({
-  submissionType, formData, signatures, onClose,
+  submissionType, formData, signatures, onClose, note,
 }: {
   submissionType: string
   formData: any
   signatures: Record<string, any> | null | undefined
   onClose: () => void
+  // On-screen provenance marker (canon: an artifact declares its source). e.g. a live render
+  // that is NOT a frozen snapshot passes "Live render — no snapshot on file". Never printed.
+  note?: string
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const replica = originalReplica(submissionType)
@@ -53,7 +56,10 @@ export default function OriginalFormViewer({
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: '#0f4c35', color: '#fff' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 800, fontSize: 14 }}>Original form</div>
+            <div style={{ fontWeight: 800, fontSize: 14 }}>
+              Original form
+              {note && <span style={{ marginLeft: 10, fontSize: 10.5, fontWeight: 800, letterSpacing: '.04em', background: '#fef3c7', color: '#92400e', padding: '2px 8px', borderRadius: 6 }}>{note}</span>}
+            </div>
             <div style={{ fontSize: 11, color: '#bfe8d4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{replica.title}</div>
           </div>
           <button

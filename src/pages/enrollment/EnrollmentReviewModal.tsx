@@ -83,6 +83,9 @@ export default function EnrollmentReviewModal({
   const [dateIn, setDateIn] = useState('')
   const [paperSigned, setPaperSigned] = useState(false)
   const [busy, setBusy] = useState(false)
+  // Step 3 snapshot capture status — awaited + visible, never a silent miss.
+  const [snapBusy, setSnapBusy] = useState(false)
+  const [snapFail, setSnapFail] = useState<{ result: ApproveResult; message: string } | null>(null)
   const [candidates, setCandidates] = useState<RosterLite[]>([])
   const [chosenMatch, setChosenMatch] = useState<string | 'new' | null>(null)
   const [rejecting, setRejecting] = useState(false)
@@ -563,16 +566,25 @@ export default function EnrollmentReviewModal({
         }
       }
       // Step 3: freeze the approved original as a snapshot (form_data + parent signature +
-      // the director countersign now in previewSignatures). Fire-and-forget — the helper owns
-      // its own offscreen DOM, so it survives this modal unmounting; a failed capture is
-      // backfillable one-tap from the child's Documents. Never blocks or fails the approval.
+      // the director countersign now in previewSignatures). AWAITED and never silent — a
+      // silent miss produced a look-alike fallback that read as success. The approval is
+      // already committed above; a capture failure is surfaced (snapFail banner) and stays
+      // backfillable one-tap from the child's Documents, so it never fails the approval itself.
       if (hasOriginalReplica(submission.submission_type)) {
-        void captureAndUploadSnapshot({
-          submissionId: submission.id,
-          submissionType: submission.submission_type,
-          formData: fd,
-          signatures: previewSignatures,
-        }).catch(err => console.warn('[snapshot] capture failed (backfillable from Documents):', err))
+        setSnapBusy(true)
+        try {
+          await captureAndUploadSnapshot({
+            submissionId: submission.id,
+            submissionType: submission.submission_type,
+            formData: fd,
+            signatures: previewSignatures,
+          })
+        } catch (e: any) {
+          setSnapBusy(false); setBusy(false)
+          setSnapFail({ result, message: e?.message ?? String(e) })
+          return   // hold for the director to acknowledge → then onDone(result)
+        }
+        setSnapBusy(false)
       }
       onDone(result)
     } catch (e: any) { setErr(e?.message ?? String(e)); setBusy(false) }
@@ -634,6 +646,21 @@ export default function EnrollmentReviewModal({
         maxHeight: '90vh', display: 'flex', flexDirection: 'column',
         boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
       }}>
+        {/* Step 3 snapshot capture — visible, never silent */}
+        {snapBusy && (
+          <div style={{ background: '#0f4c35', color: '#fff', fontSize: 12.5, fontWeight: 600, padding: '8px 22px', borderRadius: '16px 16px 0 0' }}>
+            🔒 Freezing a copy of the signed form…
+          </div>
+        )}
+        {snapFail && (
+          <div style={{ background: '#fef3c7', color: '#92400e', padding: '12px 22px', borderRadius: '16px 16px 0 0', fontSize: 13, display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <strong>Approved.</strong> The frozen copy wasn't saved: {snapFail.message}. Create it from {childName}'s Documents → “Create snapshot”.
+            </div>
+            <button onClick={() => { const r = snapFail.result; setSnapFail(null); onDone(r) }}
+              style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: '#92400e', color: '#fff', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', whiteSpace: 'nowrap' }}>Done</button>
+          </div>
+        )}
         {/* header */}
         <div style={{ background: '#0f4c35', padding: '18px 22px', borderRadius: '16px 16px 0 0', display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ flex: 1 }}>

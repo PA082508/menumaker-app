@@ -80,7 +80,14 @@ export async function captureAndUploadSnapshot(opts: {
     const { data, error } = await supabase.functions.invoke('enrollment-snapshot', {
       body: { submission_id: opts.submissionId, replica_edition: replica.version, pages },
     })
-    if (error) throw error
+    if (error) {
+      // Surface the edge function's own error text (non-2xx bodies), not just the generic
+      // "Edge Function returned a non-2xx status code" — a silent/opaque failure is what let
+      // a missing snapshot read as success.
+      let detail = (error as any)?.message ?? String(error)
+      try { const body = await (error as any)?.context?.json?.(); if (body?.error) detail = body.error } catch { /* keep detail */ }
+      throw new Error(detail)
+    }
     return data as CaptureResult
   } finally {
     iframe.remove()

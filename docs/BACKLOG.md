@@ -6,6 +6,19 @@ Tracked, not-yet-started work. Owner: Nikolay. Newest context at top of each ite
 > (v2, approved 2026-07-03 — includes the SafePass-channel decision). Imported into the
 > repo 2026-07-04 so the spec is version-controlled here, not only in `~/Downloads`.
 
+## Signature trail §2 — form-side consent emission (due 2026-09-15)
+
+**Platform half is DONE & applied (2026-07-25, commit `feat(signature-trail)`):** the RPC
+`submit_enrollment_form` writes `esign_consent_at` from `p_esign_consent`, and `embed.js`
+already passes `p_esign_consent: !!msg.esignConsent`. **Missing half:** the storefront
+form-kit (external repo `pa082508.github.io`) must (a) render an e-signature **consent
+checkbox** on the parent form and (b) **emit** `esignConsent: true` in its `save`
+postMessage payload. Until then, `esign_consent_at` stays NULL for real parent submits and
+the system description keeps consent as **Planned** — wording: *"platform-side capture
+wired; form-side emission scheduled."* This is a coordinated **kit-bust**: any form-kit
+change bumps `?v=<N>` in all includes in the same commit ([[kit-bust rule]]). Do **only by
+Nikolay's word** (storefront repo release). Target: **2026-09-15**.
+
 ## Publish v2 — post-publication actions
 
 **Scheduled after** current priorities (Deactivate → migration → Фаза 1). OK to land as

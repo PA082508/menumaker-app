@@ -1,6 +1,7 @@
 // src/components/settings/MealCountSettings.tsx
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
+import { fmtDateOnly } from "@/lib/dateOnly";
 
 interface MealCountConfig {
   center_id: string;
@@ -162,10 +163,10 @@ export default function MealCountSettings() {
               }}>
                 <span>{isExpired?"⚠️":"✅"} CACFP Approved</span>
                 {cfg.approved_by && <span>by <b>{cfg.approved_by}</b></span>}
-                <span>on <b>{new Date(cfg.approved_date).toLocaleDateString()}</b></span>
+                <span>on <b>{fmtDateOnly(cfg.approved_date)}</b></span>
                 {cfg.approval_expires && (
                   <span style={{marginLeft:"auto"}}>
-                    {isExpired ? "⚠️ Expired:" : "Expires:"} <b>{new Date(cfg.approval_expires).toLocaleDateString()}</b>
+                    {isExpired ? "⚠️ Expired:" : "Expires:"} <b>{fmtDateOnly(cfg.approval_expires)}</b>
                   </span>
                 )}
               </div>

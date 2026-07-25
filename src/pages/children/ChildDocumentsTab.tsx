@@ -21,7 +21,7 @@ const fmtDate = (s?: string) => s ? new Date(s).toLocaleDateString('en-US', { mo
 const cleanName = (n: string) => n.replace(/^\d{10,}_/, '')
 const iconFor = (n: string) => /\.(png|jpe?g|gif|webp|heic)$/i.test(n) ? '🖼️' : /\.pdf$/i.test(n) ? '📄' : '📎'
 
-export default function ChildDocumentsTab({ childDbId }: { childDbId: string }) {
+export default function ChildDocumentsTab({ childDbId, rosterId }: { childDbId: string; rosterId?: string }) {
   const dir = `children/${childDbId}`
   const [files, setFiles] = useState<FileRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -70,7 +70,7 @@ export default function ChildDocumentsTab({ childDbId }: { childDbId: string }) 
   return (
     <div>
       {/* Step 3: approved enrollment forms → view/print the frozen original (child → document → print). */}
-      <ApprovedEnrollmentForms childDbId={childDbId} />
+      <ApprovedEnrollmentForms rosterId={rosterId ?? childDbId} />
       <div style={{ fontSize: 13, fontWeight: 700, color: '#0f4c35', marginBottom: 12, paddingBottom: 6, borderBottom: '1.5px solid #e8f0e8' }}>Child Documents</div>
 
       {/* Upload dropzone */}
@@ -111,7 +111,10 @@ export default function ChildDocumentsTab({ childDbId }: { childDbId: string }) 
 // resolves for roster-linked children (the enrollment path).
 type ApprovedSub = { id: string; submission_type: string; form_data: any; signatures: any; reviewed_at: string | null; created_at: string; hasSnap: boolean }
 
-function ApprovedEnrollmentForms({ childDbId }: { childDbId: string }) {
+// rosterId = menumaker.roster.id — this is what enrollment_submissions.child_id references
+// (NOT child.child_id / the child-table link). ChildSettingsPage passes its roster row id here;
+// filtering on the wrong id silently hid the section whenever roster.child_id was set.
+function ApprovedEnrollmentForms({ rosterId }: { rosterId: string }) {
   const [subs, setSubs] = useState<ApprovedSub[] | null>(null)
   const [viewer, setViewer] = useState<ApprovedSub | null>(null)
   const [busyId, setBusyId] = useState<string>('')
@@ -119,7 +122,7 @@ function ApprovedEnrollmentForms({ childDbId }: { childDbId: string }) {
   async function load() {
     const { data } = await supabase.schema('menumaker').from('enrollment_submissions')
       .select('id,submission_type,form_data,signatures,reviewed_at,created_at')
-      .eq('child_id', childDbId).eq('status', 'approved')
+      .eq('child_id', rosterId).eq('status', 'approved')
       .order('reviewed_at', { ascending: false })
     const withReplica = (data ?? []).filter((s: any) => hasOriginalReplica(s.submission_type))
     const rows: ApprovedSub[] = []
@@ -129,7 +132,7 @@ function ApprovedEnrollmentForms({ childDbId }: { childDbId: string }) {
     }
     setSubs(rows)
   }
-  useEffect(() => { load() }, [childDbId])
+  useEffect(() => { load() }, [rosterId])
 
   async function backfill(s: ApprovedSub) {
     setBusyId(s.id)

@@ -5,6 +5,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import ChildSettingsPage from './ChildSettingsPage'
+import { fmtDateOnly } from '@/lib/dateOnly'
 import EmergencyPopup from './EmergencyPopup'
 import AddChildRouterModal from './AddChildRouter'
 import { useOrg } from '@/contexts/OrgContext'
@@ -466,7 +467,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                 const frpLabel = child.frp?.trim().toUpperCase().slice(0,1)
                 const vals: string[] = [String(i+1), child.last_name??'', child.first_name??'']
                 if(listCols.classroom) vals.push(room?.name??'')
-                if(listCols.birthday) vals.push(child.birthday ? new Date(child.birthday).toLocaleDateString('en-US') : '')
+                if(listCols.birthday) vals.push(child.birthday ? fmtDateOnly(child.birthday) : '')
                 if(listCols.age) vals.push(child.birthday ? `${ageY}y` : '')
                 if(listCols.frp) vals.push(frpLabel==='F'?'Free':frpLabel==='R'?'Reduced':frpLabel==='P'?'Paid':'')
                 if(listCols.milk) vals.push(child.milk_kind??'')
@@ -552,7 +553,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                             </td>
                             <td style={{ padding:'7px 12px', color:'#1a2e1a' }}>{child.first_name ?? '—'}</td>
                             {listCols.classroom && <td style={{ padding:'7px 12px', color:'#555' }}>{room?.name ?? '—'}</td>}
-                            {listCols.birthday && <td style={{ padding:'7px 12px', color:'#555', whiteSpace:'nowrap' }}>{child.birthday ? new Date(child.birthday).toLocaleDateString('en-US') : '—'}</td>}
+                            {listCols.birthday && <td style={{ padding:'7px 12px', color:'#555', whiteSpace:'nowrap' }}>{child.birthday ? fmtDateOnly(child.birthday) : '—'}</td>}
                             {listCols.age && <td style={{ padding:'7px 12px', color:'#555', textAlign:'center' }}>{child.birthday ? `${ageY}y` : '—'}</td>}
                             {listCols.frp && <td style={{ padding:'7px 12px', textAlign:'center' }}><span style={{ fontWeight:700, color:frpColor, background:frpBg, padding:'2px 8px', borderRadius:6, fontSize:12 }}>{frpLabel==='F'?'Free':frpLabel==='R'?'Reduced':frpLabel==='P'?'Paid':'—'}</span></td>}
                             {listCols.milk && <td style={{ padding:'7px 12px', color:'#555' }}>{child.milk_kind ?? '—'}</td>}

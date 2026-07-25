@@ -3,3 +3,4 @@
 
 // Injected by vite.config.ts `define` — the deployed build id (git SHA / 'dev').
 declare const __BUILD_ID__: string
+declare const __BUILD_SHA__: string

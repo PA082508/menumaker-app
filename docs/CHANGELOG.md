@@ -10,6 +10,8 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 
 <!-- newest on top -->
 
+- 2026-07-25 · 📘 · Written down in-repo: the **e-signature / enrollment system description** (built on the NurturePulse platform) and the **letter↔system reconciliation** table. States honestly what is live — tamper-evident sealed records, a trusted server seal timestamp (`sealed_at`) kept distinct from the parent's entered date, form version on new records, claimed-identity + center-lock (explicitly *not* government-ID verification) — versus what is Planned: form-side consent capture (by 2026-09-15), a hard meal-eligibility gate (with the GatePulse rollout), and automated retention enforcement. (docs/esignature-system-description.md + esignature-letter-system-reconciliation.md)
+
 - 2026-07-25 · 🗄️ · Every enrollment submission now carries a trusted server-stamped moment of sealing (`sealed_at`) — set by the server, never by the form — kept separate from the parent-entered signature date. Once a submission is sealed this stamp can never be changed. Applied to production today. (Signature trail §1; migration 20260725.)
 
 - 2026-07-25 · 🔧 · Enrollment records now capture which exact form version was signed, and (platform side) whether the parent gave e-signature consent — so the record matches what the letter to the state describes. The embedded form also stopped mis-tagging its source: submissions now file correctly as "online" instead of being rejected (old v9 embed bug). Manual (no-scan) entries are honestly marked "manual_entry". Goes live on merge; the form-side consent checkbox is a scheduled follow-up (by 2026-09-15). (Signature trail §2/§3 wiring; embed.js + AddChildRouter.)

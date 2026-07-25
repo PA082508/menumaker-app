@@ -140,8 +140,12 @@ function ApprovedEnrollmentForms({ rosterId }: { rosterId: string }) {
     try {
       const res = await captureAndUploadSnapshot({ submissionId: s.id, submissionType: s.submission_type, formData: s.form_data, signatures: s.signatures })
       await load()
-      // Visible result — never a silent no-op. A persisted snapshot shows its sha here and the
-      // row flips to "🔒 Snapshot on file".
+      // OPTIMISTIC flip — we KNOW it persisted (res returned with a content_sha). Don't depend on
+      // the read-back: an authenticated getLatestSnapshot right after the service-role write can
+      // race and return null, leaving the row stale ("no snapshot yet") — which made the badge lie
+      // and invited duplicate taps. The row now flips to "🔒 Snapshot on file" immediately (and the
+      // "Create snapshot" button disappears), so the artifact declares its source without a reload.
+      setSubs(prev => prev ? prev.map(x => x.id === s.id ? { ...x, hasSnap: true } : x) : prev)
       setMsg({ kind: 'ok', text: `🔒 Snapshot on file · Snapshot at Approve · sha ${String(res?.content_sha ?? '').slice(0, 10)}…` })
     } catch (e: any) {
       setMsg({ kind: 'err', text: `Snapshot failed: ${e?.message ?? String(e)}` })

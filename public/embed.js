@@ -177,7 +177,10 @@
         p_form_data: msg.formData || {},
         p_signatures: msg.signatures || {},
         p_signature_date: msg.signatureDate || null,
-        p_source: 'embed'
+        p_source: 'online',                                    // flag#1: 'embed' отвергался RPC (v9 backlog) → 'online'
+        p_form_version: version,                               // §3: эдиция реестра — embed уже знает версию формы
+        p_esign_consent: !!msg.esignConsent,                   // §2: форма сообщает согласие (form-kit follow-up шлёт флаг)
+        p_signature_sample_id: msg.signatureSampleId || null   // §2: след adopt-образца, когда форма его шлёт
       };
       fetch(sb.url + '/rest/v1/rpc/submit_enrollment_form', {
         method: 'POST', credentials: 'omit',

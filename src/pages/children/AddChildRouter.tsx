@@ -283,6 +283,8 @@ function ManualEntryModal({ centerId, orgId, classrooms, reviewerName, onDone }:
       const { error: err } = await (supabase.schema('menumaker').rpc as any)('submit_enrollment_form', {
         p_org: orgId, p_center: centerId, p_submission_type: 'cacfp_enrollment',
         p_form_data: form_data, p_signatures: {}, p_signature_date: null, p_source: 'manual_entry',
+        p_form_version: 'manual_entry',   // §3: НЕ эдиция реестра — директор ввёл вручную (честный маркер)
+        // p_esign_consent опущен → false: у ручного ввода нет родительского э-согласия (бумага/устно)
       })
       if (err) throw err
       onDone()

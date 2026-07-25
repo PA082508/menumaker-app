@@ -70,11 +70,17 @@ export async function captureAndUploadSnapshot(opts: {
 
     const pages: string[] = []
     for (const el of pageEls) {
-      const canvas = await html2canvas(el, {
-        scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false,
+      // scale 1 = the official scan background's NATIVE resolution (1275×1650). scale 2 upsampled
+      // that fixed-size background to 2550×3300 for zero real detail but 4× the canvas memory
+      // (~33MB/page) — two of those crashed the renderer tab on memory-limited devices (iPad
+      // Safari), which recovered by reloading the SPA to the dashboard. At scale 1 (~8MB/page)
+      // the DOM text/signature overlays still render crisply at 150 DPI print.
+      let canvas: HTMLCanvasElement | null = await html2canvas(el, {
+        scale: 1, useCORS: true, backgroundColor: '#ffffff', logging: false,
         windowWidth: 1275, windowHeight: 1650,
       })
       pages.push(canvas.toDataURL('image/png').split(',')[1])
+      canvas = null // free the largest allocation before capturing the next page
     }
 
     const { data, error } = await supabase.functions.invoke('enrollment-snapshot', {

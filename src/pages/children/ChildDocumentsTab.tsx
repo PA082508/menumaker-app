@@ -9,6 +9,9 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { detectAndCrop } from '@/lib/detectAndCrop'
+import { hasOriginalReplica, originalReplica } from '@/lib/originalFormReplicas'
+import { captureAndUploadSnapshot, getLatestSnapshot } from '@/lib/enrollmentSnapshot'
+import ApprovedFormViewer from '@/pages/enrollment/ApprovedFormViewer'
 
 type FileRow = { name: string; id?: string; created_at?: string; metadata?: { size?: number } | null }
 
@@ -66,6 +69,8 @@ export default function ChildDocumentsTab({ childDbId }: { childDbId: string }) 
 
   return (
     <div>
+      {/* Step 3: approved enrollment forms → view/print the frozen original (child → document → print). */}
+      <ApprovedEnrollmentForms childDbId={childDbId} />
       <div style={{ fontSize: 13, fontWeight: 700, color: '#0f4c35', marginBottom: 12, paddingBottom: 6, borderBottom: '1.5px solid #e8f0e8' }}>Child Documents</div>
 
       {/* Upload dropzone */}
@@ -94,6 +99,73 @@ export default function ChildDocumentsTab({ childDbId }: { childDbId: string }) 
           <button onClick={() => remove(f.name)} title="Delete" style={{ padding: '5px 10px', borderRadius: 6, border: '1.5px solid #f0c0c0', background: '#fff', color: '#dc2626', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' }}>🗑</button>
         </div>
       ))}
+    </div>
+  )
+}
+
+// ── Step 3: approved enrollment forms with a replica → view/print the frozen original ─────────
+// Lists the child's APPROVED submissions that have an original-form replica. "View original
+// form" opens the frozen snapshot (or a live render if none yet). When a snapshot is missing
+// (older approval / capture failed), a one-tap "Create snapshot" backfills it — same client
+// capture the Approve flow uses. enrollment_submissions.child_id references roster(id); this
+// resolves for roster-linked children (the enrollment path).
+type ApprovedSub = { id: string; submission_type: string; form_data: any; signatures: any; reviewed_at: string | null; created_at: string; hasSnap: boolean }
+
+function ApprovedEnrollmentForms({ childDbId }: { childDbId: string }) {
+  const [subs, setSubs] = useState<ApprovedSub[] | null>(null)
+  const [viewer, setViewer] = useState<ApprovedSub | null>(null)
+  const [busyId, setBusyId] = useState<string>('')
+
+  async function load() {
+    const { data } = await supabase.schema('menumaker').from('enrollment_submissions')
+      .select('id,submission_type,form_data,signatures,reviewed_at,created_at')
+      .eq('child_id', childDbId).eq('status', 'approved')
+      .order('reviewed_at', { ascending: false })
+    const withReplica = (data ?? []).filter((s: any) => hasOriginalReplica(s.submission_type))
+    const rows: ApprovedSub[] = []
+    for (const s of withReplica as any[]) {
+      const snap = await getLatestSnapshot(s.id)
+      rows.push({ ...s, hasSnap: !!snap })
+    }
+    setSubs(rows)
+  }
+  useEffect(() => { load() }, [childDbId])
+
+  async function backfill(s: ApprovedSub) {
+    setBusyId(s.id)
+    try {
+      await captureAndUploadSnapshot({ submissionId: s.id, submissionType: s.submission_type, formData: s.form_data, signatures: s.signatures })
+      await load()
+    } catch (e) {
+      console.warn('[snapshot] backfill failed:', e)
+    } finally {
+      setBusyId('')
+    }
+  }
+
+  if (!subs || subs.length === 0) return null
+  const btn: React.CSSProperties = { padding: '5px 12px', borderRadius: 6, border: '1.5px solid #0f4c35', background: '#fff', color: '#0f4c35', cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'inherit' }
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: '#0f4c35', marginBottom: 12, paddingBottom: 6, borderBottom: '1.5px solid #e8f0e8' }}>Enrollment forms (approved)</div>
+      {subs.map(s => (
+        <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, border: '1.5px solid #e8f0e8', marginBottom: 8, background: '#fff' }}>
+          <span style={{ fontSize: 18 }}>📄</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#1a2e1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{originalReplica(s.submission_type)?.title ?? s.submission_type}</div>
+            <div style={{ fontSize: 11, color: s.hasSnap ? '#0f4c35' : '#b45309' }}>{s.hasSnap ? '🔒 Snapshot on file' : 'Live render — no snapshot yet'}</div>
+          </div>
+          {!s.hasSnap && (
+            <button onClick={() => backfill(s)} disabled={busyId === s.id}
+              style={{ ...btn, borderColor: '#e5e7eb', color: '#6b7280' }}>{busyId === s.id ? 'Capturing…' : 'Create snapshot'}</button>
+          )}
+          <button onClick={() => setViewer(s)} style={btn}>View original form</button>
+        </div>
+      ))}
+      {viewer && (
+        <ApprovedFormViewer submissionId={viewer.id} submissionType={viewer.submission_type}
+          formData={viewer.form_data} signatures={viewer.signatures} onClose={() => setViewer(null)} />
+      )}
     </div>
   )
 }

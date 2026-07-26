@@ -193,11 +193,30 @@ export default function SafePassParentPage() {
   // `error`, a hard permission denial looked exactly like a quiet no-op. Errors are
   // bound here and surfaced in the red banner; a parent must never be left thinking
   // the teacher was notified when nothing was written.
-  async function loadSessions(child: Child) {
+  // An honest refusal must not wear the connection's coat. The RPC answers 'not_authorized'
+  // when this phone is no longer on THAT child's pickup list — a fact no amount of retrying
+  // changes, and "check your connection" is a claim we did not establish. It happens for real:
+  // a PWA left open keeps `selectedChild` after the child was removed from the list, so the
+  // refusal is also self-healing — land on a child we ARE authorized for, and say so.
+  // `notice` carries the switch explanation through the one retry: a successful load must not
+  // wipe the reason the child changed under the parent's hands.
+  async function loadSessions(child: Child, notice?: string) {
     const { data, error } = await supabase.schema('menumaker')
       .rpc('safepass_parent_sessions', { p_phone: personId, p_child_id: child.child_id })
-    if (error || !data?.ok) { setFatal('Could not load today’s record. Check your connection.'); return }
-    setFatal('')
+    if (error) { setFatal('Could not load today’s record. Check your connection.'); return }
+    if (!data?.ok) {
+      if (data?.error !== 'not_authorized') { setFatal('Could not load today’s record. Check your connection.'); return }
+      const fallback = children.find(c => c.child_id !== child.child_id) ?? null
+      if (!notice && fallback) {          // stale selection → land on a child we ARE authorized for
+        setSelectedChild(fallback)
+        await loadSessions(fallback, `You’re no longer authorized for ${child.child_name} — showing ${fallback.child_name}.`)
+        return
+      }
+      setFatal('You’re no longer authorized for this child. Please see the office.')
+      setTodaySessions([])
+      return
+    }
+    setFatal(notice ?? '')
     setTodaySessions((data.sessions ?? []) as Session[])
   }
 

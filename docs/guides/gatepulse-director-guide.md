@@ -83,6 +83,29 @@ therefore watches for the gap and tells you rather than hoping:
 
 Reminders belong in the one Action Center with every other urgent task, not in a separate inbox.
 
+## 7. Lunch breaks during nap time — what the rule actually allows
+
+Ohio permits the staff/child ratio to be **doubled during nap**, which is what makes lunch cover
+without a floater lawful. **OAC 5180:2-12-20(A)(7)**, effective 2026-07-01, verbatim: *"Ratio may
+be doubled for no more than two hours during nap time, and shall only be doubled if all of the
+children in the group are on cots or on mats, if the group does not include any infants and if
+there are enough child care staff members in the building to meet staff/child ratio pursuant to
+rule 5180:2-12-18 of the Administrative Code for the group."*
+
+Read it as four conditions, all required: **children on cots/mats · two hours maximum · no
+infants in the group · building-level staffing still meets the ordinary ratio.** Related floor,
+from 5180:2-12-18: *"There shall be at least one other employee or child care staff member at the
+center if there are seven or more children in the building."* Note that doubling the **ratio** is
+not permission for one adult to hold a group of any size — a 1:12 room becomes 1:24, not 1:∞.
+
+The same rule keeps the rest area **lighted for visual supervision at all times** and requires a
+**clear path to each resting child**.
+
+**In the app:** the teacher going on break checks out, the one returning checks in, so the tiles
+match the room. A single tile during nap is expected. **The platform does not model the nap
+exception yet** — Capacity & Ratio computes against the ordinary ratio only, so do not expect it
+to know that a legally-staffed nap hour is legal. *[ships with teacher release]*
+
 ## 6. Your pocket
 
 Every corrective gesture here is built **mobile-first for your iPhone** — reassign a teacher,

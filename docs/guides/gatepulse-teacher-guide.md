@@ -63,6 +63,24 @@ app access for someone already on the list.
 
 ---
 
+## 6. Lunch breaks during nap time
+
+Ohio lets a room run on fewer adults during nap — within limits. Your partner can take their
+break **without a floater covering the room**, as long as **all four** are true:
+
+- **every** child in the group is resting on a cot or a mat;
+- it lasts **no longer than two hours**;
+- the group has **no infants** in it;
+- your group is inside the **doubled** ratio for its age — doubling the ratio is not the same as
+  "one adult, any number of children" — and there are still enough staff **in the building** to
+  meet the normal ratio for the group.
+
+**Check out when you leave and check in when you come back.** The tiles then show who is really
+in the room, which is the whole point of them. **One tile during nap is a normal state, not an
+error** — you are allowed to be the only adult in the room under the conditions above.
+
+*Rule: OAC 5180:2-12-20(A)(7), effective 2026-07-01.* *[ships with teacher release]*
+
 ### Quick answers
 
 | Situation | Do this |

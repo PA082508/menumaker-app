@@ -76,14 +76,34 @@ type TransportRun = {
   status: string; departed_at: string | null; arrived_at: string | null
 }
 
+// Not-in-service plaque. Both duty panels are views with nothing behind them: dutyChildren is
+// never populated, and their buttons used to answer with a toast that claimed a transfer, a
+// pickup or an escalation that was never recorded anywhere. A stub gets no exemption from
+// "an interface never claims a fact it did not establish" — so the claim is gone and the screen
+// says what it is. Built for real in move 2-Д, after the transport arm.
+function NotInServiceYet({ what, C }: { what: string; C: Record<string,string> }) {
+  return (
+    <div role="note" style={{
+      background: C.amberDim, border: `1.5px solid ${C.amber}`, color: C.amber,
+      borderRadius: 12, padding: '12px 16px', fontSize: 15, fontWeight: 700, marginBottom: 6,
+    }}>
+      ⓘ {what} is not in service yet — this screen shows nothing and records nothing.
+      <span style={{ display: 'block', fontWeight: 400, fontSize: 13, marginTop: 3 }}>
+        Keep using the paper panel for these children. The office knows.
+      </span>
+    </div>
+  )
+}
+
 function EarlyCarePanelView({ dutyChildren, onTransfer, onEscalate, C }: {
   dutyChildren: DutyChild[]; onTransfer: (c: DutyChild) => void
   onEscalate: (c: DutyChild) => void; C: Record<string,string>
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
+      <NotInServiceYet what="Early Care" C={C} />
       <div style={{ fontSize: 13, fontWeight: 700, color: C.muted, textTransform: 'uppercase' as const, letterSpacing: '0.06em', marginBottom: 4 }}>
-        Early Care — {dutyChildren.length} children · Ohio minimum ratios apply
+        Early Care — {dutyChildren.length} children
       </div>
       {dutyChildren.length === 0 ? (
         <div style={{ textAlign: 'center' as const, padding: '32px 0', color: C.muted, fontSize: 13 }}>No children in Early Care yet</div>
@@ -117,8 +137,10 @@ function LateCarePanelView({ dutyChildren, onParentArrived, onEscalate, C }: {
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
+      <NotInServiceYet what="Late Care" C={C} />
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: C.muted, textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>Late Care — {dutyChildren.length} children</div>
+        {/* plaque sits above; the header keeps only what is true */}
         {dutyChildren.length > 0 && <div style={{ fontSize: 11, color: C.amber, fontWeight: 600 }}>🔒 Cannot close shift</div>}
       </div>
       {dutyChildren.length > 0 && (
@@ -127,7 +149,7 @@ function LateCarePanelView({ dutyChildren, onParentArrived, onEscalate, C }: {
         </div>
       )}
       {dutyChildren.length === 0
-        ? <div style={{ textAlign: 'center' as const, padding: '32px 0', color: C.green, fontSize: 13, fontWeight: 700 }}>✓ All children picked up — shift can close</div>
+        ? <div style={{ textAlign: 'center' as const, padding: '32px 0', color: C.muted, fontSize: 13 }}>No children in Late Care</div>
         : dutyChildren.map(child => {
           const mins = child.minutes_waiting
           const urgent = mins >= 45; const warn = mins >= 15
@@ -667,8 +689,8 @@ export default function SafePassTeacherPage() {
         </label>
       </div>
 
-      {mode==='early_care' && <div style={{ padding: '20px', maxWidth: 800, margin: '0 auto' }}><EarlyCarePanelView dutyChildren={dutyChildren} onTransfer={c=>flashToast(c.child_name+' transferred')} onEscalate={c=>flashToast('Escalating: '+c.child_name,true)} C={C}/></div>}
-      {mode==='late_care' && <div style={{ padding: '20px', maxWidth: 800, margin: '0 auto' }}><LateCarePanelView dutyChildren={dutyChildren} onParentArrived={c=>flashToast(c.child_name+' picked up')} onEscalate={c=>flashToast('Escalating: '+c.child_name,true)} C={C}/></div>}
+      {mode==='early_care' && <div style={{ padding: '20px', maxWidth: 800, margin: '0 auto' }}><EarlyCarePanelView dutyChildren={dutyChildren} onTransfer={()=>flashToast('Early Care is not in service yet — nothing was recorded',true)} onEscalate={()=>flashToast('Early Care is not in service yet — nothing was recorded',true)} C={C}/></div>}
+      {mode==='late_care' && <div style={{ padding: '20px', maxWidth: 800, margin: '0 auto' }}><LateCarePanelView dutyChildren={dutyChildren} onParentArrived={()=>flashToast('Late Care is not in service yet — nothing was recorded',true)} onEscalate={()=>flashToast('Late Care is not in service yet — nothing was recorded',true)} C={C}/></div>}
       {mode==='transport' && <div style={{ padding: '20px', maxWidth: 800, margin: '0 auto' }}><TransportPanelView runs={transportRuns} onConfirmRun={async id=>{await supabase.schema('menumaker').from('safepass_transport_runs').update({status:'completed'}).eq('id',id);flashToast('Run completed ✓')}} C={C}/></div>}
 
       {mode==='regular' && <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', minHeight: 'calc(100vh - 77px)' }}>

@@ -176,3 +176,61 @@ export async function registerDevice(
   if (error) throw error
   return data as string
 }
+
+// ── driver arm (move 2-T) ────────────────────────────────────────────────────
+// The driver's own phone is a registered DEVICE (device_kind='driver', no classroom); the PIN
+// identifies the person on every call. Nothing here trusts the client with an identity.
+export type DriverBoot = { org_id: string; center_id: string; center_name: string; device_label: string | null }
+export type DriverRun = {
+  run_id: string; run_type: string; vehicle: string | null; capacity: number
+  status: string; started_at: string | null; aboard: number; alighted: number; listed: number
+}
+export type RunChild = {
+  child_id: string; child_name: string; school_name: string | null
+  status: 'pending' | 'boarded' | 'delivered' | 'absent'
+  boarded_at: string | null; alighted_at: string | null; over_capacity: boolean
+}
+
+const call = async (fn: string, args: Record<string, unknown>) => {
+  const { data, error } = await mm().rpc(fn, args)
+  if (error) {
+    if (/invalid pin/i.test(error.message)) throw new InvalidPinError()
+    throw error
+  }
+  return data as any
+}
+
+/** Boot: the centre id is the PIN salt, so this runs before a PIN can even be asked. */
+export async function driverBoot(token: string): Promise<DriverBoot> {
+  const d = await call('safepass_driver_boot', { p_token: token })
+  if (!d?.ok) throw new Error(d?.error ?? 'device_not_registered')
+  return d as DriverBoot
+}
+export const driverRunsToday = (token: string, pin: string) =>
+  call('safepass_driver_runs_today', { p_token: token, p_pin_hash: pin })
+export const driverOpenRun = (token: string, pin: string, runType: string, vehicle: string, capacity: number) =>
+  call('safepass_driver_open_run', { p_token: token, p_pin_hash: pin, p_run_type: runType, p_vehicle: vehicle, p_capacity: capacity })
+export const driverRunChildren = (token: string, run: string) =>
+  call('safepass_driver_run_children', { p_token: token, p_run: run })
+export const driverAddChild = (token: string, pin: string, run: string, childId: string, childName: string, school: string) =>
+  call('safepass_driver_add_child', { p_token: token, p_pin_hash: pin, p_run: run, p_child: childId, p_child_name: childName, p_school: school })
+/** force=true only ever on a deliberate SECOND tap, after capacity_reached came back. */
+export const driverTap = (token: string, pin: string, run: string, childId: string, kind: 'on_bus' | 'off', force = false) =>
+  call('safepass_driver_tap', { p_token: token, p_pin_hash: pin, p_run: run, p_child: childId, p_kind: kind, p_force: force })
+export const driverCompleteRun = (token: string, pin: string, run: string) =>
+  call('safepass_driver_complete_run', { p_token: token, p_pin_hash: pin, p_run: run })
+export const driverAttachSheet = (token: string, pin: string, run: string, photoPath: string) =>
+  call('safepass_driver_attach_sheet', { p_token: token, p_pin_hash: pin, p_run: run, p_photo_path: photoPath })
+
+/** Mini-Devices (tail of 2-T): mint a token for a classroom pad or a driver's phone.
+ *  The raw token comes back ONCE — the database stores only its sha256. */
+export async function registerDeviceKind(
+  orgId: string, centerId: string, classroomId: string | null, label: string | null,
+  kind: 'classroom' | 'driver',
+): Promise<string> {
+  const { data, error } = await mm().rpc('safepass_register_device', {
+    p_org: orgId, p_center: centerId, p_classroom: classroomId, p_label: label, p_kind: kind,
+  })
+  if (error) throw error
+  return data as string
+}

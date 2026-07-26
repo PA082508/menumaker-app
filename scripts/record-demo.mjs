@@ -406,14 +406,22 @@ async function main () {
   // Part 2 — office
   await rp.goto(`${APP}/enrollment-inbox`, { waitUntil: 'domcontentloaded' }); await rp.waitForTimeout(2000)
 
-  // BEAT 4 — the demo child must be IN the inbox. This is also the name-safety beat: we look for
-  // Emma Carter specifically, never "any new row".
+  // BEAT 4 — the demo child must be IN the inbox. This is also the name-safety beat, and since
+  // 27.07 the risk is removed BY CONSTRUCTION rather than managed: the first thing on camera is
+  // typing "Emma" into the Inbox search, so exactly one row is left on screen. Cutting real names
+  // in the edit was a mitigation; filtering them off the frame is a guarantee.
   await beat(
     `Part 2 · "${DEMO_CHILD}" is in the Inbox`,
-    `Find the new "${DEMO_CHILD}" submission and open it. Do not linger on other rows — they are real children.`,
+    `FIRST type "Emma" into the Inbox search — one row must remain on screen. THEN open that ` +
+    `"${DEMO_CHILD}" submission. Never scroll the unfiltered list: the other rows are real children.`,
     async () => {
+      const total = await rp.getByRole('button', { name: /^Review$/i }).count()
       const ok = (await rp.locator(`text=/${DEMO_CHILD}/i`).count()) > 0
-      return { ok, detail: ok ? `${DEMO_CHILD} present in the Inbox` : `${DEMO_CHILD} is not in the Inbox — the submission never arrived` }
+      if (!ok) return { ok: false, detail: `${DEMO_CHILD} is not in the Inbox — the submission never arrived` }
+      if (total > 1) {
+        return { ok: false, detail: `${total} rows are on screen — the search is not applied, and the other rows are real children. Type "Emma" in the Inbox search and press ENTER again.` }
+      }
+      return { ok: true, detail: `${DEMO_CHILD} present, and the only row on screen` }
     },
   )
 

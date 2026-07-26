@@ -47,7 +47,7 @@ Setup** and **Part 3 Retrieval** (the frozen approved-form snapshot) now that St
 
 | # | Beat | On screen | Screen-rule |
 |---|------|-----------|-------------|
-| 8 | Inbox | Director opens the enrollment Inbox; the new **Emma Carter `ZZSMOKE`** is at the top | filter/scroll to the ZZSMOKE row |
+| 8 | Inbox | Director opens the enrollment Inbox and **types "Emma" into the search FIRST** — exactly **one row** stays on screen — then opens it | **name safety by construction** (word of Nikolay, 27.07): the unfiltered list holds real children of other centres, so it is never framed. The recorder refuses the beat if more than one row is visible |
 | 9 | View original form | Tap **"View original form"** — the real official state form, filled with Emma's answers + the parent's signature in place (not a field table) | the "see the real thing" beat |
 | 10 | Countersign | Director signs the "Program Administrator / Designee" slot — one tap on a saved signature (or draw); date stamps itself | note saved-signature reuse |
 | 11 | Approve | Tap **"✓ Approve"** → a brief **"🔒 Freezing a copy of the signed form…"** flashes as the snapshot is captured | ⚠️ selector gotcha: the check glyph in "✓ Approve" — rehearse headless ([[screencast protocol]]); catch the freezing status |

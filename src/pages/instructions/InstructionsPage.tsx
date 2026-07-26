@@ -145,12 +145,36 @@ export default function InstructionsPage() {
         ))}
       </aside>
 
+      {/* Print rail: a guide is handed out as paper or a PDF (Print → Save as PDF), so printing
+          drops the app chrome and prints a branded header instead. No PDF generator involved —
+          the same print rail every other document in this app uses. */}
+      <style>{`
+        @media print {
+          aside, .no-print { display: none !important; }
+          main { max-width: none !important; padding: 0 !important; }
+          .print-header { display: block !important; }
+          a { text-decoration: none; color: #000; }
+          table { page-break-inside: avoid; }
+        }
+        .print-header { display: none; }
+      `}</style>
+
       {/* Right: rendered markdown */}
       <main style={{ flex: 1, padding: '28px 40px', maxWidth: 900 }}>
         {!selected ? (
           <div style={{ color: '#888', fontSize: 14 }}>Select a module on the left.</div>
         ) : (
           <>
+            <div className="print-header" style={{ borderBottom: `2px solid ${GREEN}`, paddingBottom: 8, marginBottom: 16 }}>
+              <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 20, color: GREEN }}>Play Academy · {selected.title}</div>
+              <div style={{ fontSize: 11, color: '#555' }}>Rule #1: the safety of your child. Everything below exists for that rule alone.</div>
+            </div>
+            <div className="no-print" style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+              <button onClick={() => window.print()}
+                style={{ padding: '7px 14px', borderRadius: 8, border: `1px solid ${GREEN}`, background: '#fff', color: GREEN, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                🖨 Print / Save as PDF
+              </button>
+            </div>
             {selected.video && <VideoEmbed url={selected.video} />}
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS as any}>
               {selected.body}

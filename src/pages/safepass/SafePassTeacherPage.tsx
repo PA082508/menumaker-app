@@ -9,7 +9,7 @@
 // on menumaker.safepass_sessions. Accept/Release → confirm the session.
 // ============================================================
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
 import { useAuth } from '@/hooks/useAuth'
@@ -17,7 +17,8 @@ import Avatar from '@/components/Avatar'
 import PinPad from './shared/PinPad'
 import {
   adoptDeviceTokenFromUrl, fetchDeviceContext, confirmHandoff,
-  type DeviceContext, type HandoffResult,
+  fetchCheckedInToday, staffCheckIn, staffCheckOut,
+  type DeviceContext, type HandoffResult, type CheckedInTeacher,
 } from '@/lib/safepassDevice'
 
 // org_id (3a9a290e-7e49-491e-946b-ad86f2399910) is stamped on INSERT by the
@@ -227,6 +228,11 @@ export default function SafePassTeacherPage() {
   const [deviceError, setDeviceError] = useState<string | null>(null)
   const [pending, setPending] = useState<Session | null>(null)
 
+  // Who is in THIS room today. Move 1 of the teacher entry: the list is read-only here,
+  // and is the source the named confirmation tiles will be built on in move 2.
+  const [checkedIn, setCheckedIn] = useState<CheckedInTeacher[]>([])
+  const [shiftPad, setShiftPad] = useState<'in' | 'out' | null>(null)
+
   // Gathering room — MANUAL switch, off by default. The morning intake happens in
   // one room for the whole centre, so the queue must be scoped by centre rather
   // than by class; every other room keeps its per-class behaviour untouched.
@@ -385,6 +391,32 @@ export default function SafePassTeacherPage() {
     toastTimer.current = setTimeout(() => setToast(null), 2600)
   }
 
+  // Who is checked into the room on screen. classId (not the device's own room) is passed
+  // on purpose: a floater standing at a shared centre pad checks into the room they picked.
+  const loadCheckedIn = useCallback(async () => {
+    if (!deviceToken || !classId) { setCheckedIn([]); return }
+    try { setCheckedIn(await fetchCheckedInToday(deviceToken, classId)) }
+    catch { /* a device error already has its own banner; don't double-shout */ }
+  }, [deviceToken, classId])
+  useEffect(() => { loadCheckedIn() }, [loadCheckedIn])
+
+  async function verifyShift(hash: string): Promise<HandoffResult> {
+    return shiftPad === 'in'
+      ? staffCheckIn(deviceToken!, hash, classId)
+      : staffCheckOut(deviceToken!, hash)
+  }
+
+  function onShiftDone(r: HandoffResult & { already?: boolean; error?: string }) {
+    const wasIn = shiftPad === 'in'
+    setShiftPad(null)
+    // 'not_checked_in' comes back ok:false — say so plainly instead of a silent no-op.
+    if (r?.ok === false) { flashToast('You are not checked in right now', true); return }
+    flashToast(wasIn
+      ? (r.already ? `${r.staff_name} — already checked in` : `${r.staff_name} checked in`)
+      : `${r.staff_name} checked out`)
+    loadCheckedIn()
+  }
+
   // A handoff is confirmed ONLY through safepass_confirm_handoff: device token
   // + staff PIN. The direct .from('safepass_sessions').update(...) this function
   // used to do is gone — it bypassed both, and stamped every handoff with the
@@ -527,6 +559,59 @@ export default function SafePassTeacherPage() {
           onVerify={verifyHandoff}
           onSuccess={onHandoffConfirmed}
           onCancel={() => setPending(null)}
+        />
+      )}
+
+      {/* Shift strip — who is in this room today. The tiles of move 2 are built on this list;
+          for now it is read-only plus the two shift buttons. Duty (first check-in) is shown
+          first and marked, which is ORDER only: it never gates who may confirm a handoff. */}
+      {deviceCtx && classId && (
+        <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: '10px 20px',
+                      display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' as const }}>
+          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: C.muted }}>
+            In this room today
+          </span>
+          {checkedIn.length === 0 ? (
+            <span style={{ fontSize: 13, color: C.muted }}>Nobody checked in yet</span>
+          ) : checkedIn.map(t => (
+            <span key={t.staff_id}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, background: C.surface2,
+                       border: `1px solid ${t.is_duty ? C.green : C.border}`, borderRadius: 999,
+                       padding: t.is_duty ? '6px 14px' : '4px 12px',
+                       fontSize: t.is_duty ? 15 : 13, fontWeight: t.is_duty ? 800 : 600 }}>
+              {t.name}
+              {t.is_duty && <span style={{ fontSize: 10, fontWeight: 700, color: C.green }}>DUTY</span>}
+              <span style={{ fontSize: 11, color: C.muted }}>{hhmm(t.checked_in_at)}</span>
+            </span>
+          ))}
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+            <button onClick={() => setShiftPad('in')}
+              style={{ padding: '8px 16px', borderRadius: 10, border: 'none', background: C.green, color: C.bg,
+                       fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+              Check in
+            </button>
+            <button onClick={() => setShiftPad('out')} disabled={checkedIn.length === 0}
+              style={{ padding: '8px 16px', borderRadius: 10, background: 'transparent',
+                       border: `1px solid ${checkedIn.length === 0 ? C.border : C.muted}`,
+                       color: checkedIn.length === 0 ? C.border : C.muted,
+                       fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
+                       cursor: checkedIn.length === 0 ? 'not-allowed' : 'pointer' }}>
+              Check out
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* PIN gate for the shift itself. Entering a shift is not signing a handoff, so this
+          pad stays whatever the strict option is set to later. */}
+      {shiftPad && deviceCtx && (
+        <PinPad
+          centerId={deviceCtx.center_id}
+          title={shiftPad === 'in' ? `Check in — ${classrooms.find(c => c.id === classId)?.name ?? 'this room'}` : 'Check out'}
+          subtitle="Enter your 4-digit staff PIN"
+          onVerify={verifyShift}
+          onSuccess={onShiftDone}
+          onCancel={() => setShiftPad(null)}
         />
       )}
 

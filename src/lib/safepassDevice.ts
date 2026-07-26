@@ -117,6 +117,55 @@ export async function confirmHandoff(
   return data as HandoffResult
 }
 
+// ── teacher check-in (move 1 of the teacher entry) ───────────────────────────
+// The tablet presents its TOKEN, the PIN identifies the person. Entering a shift is not
+// signing a handoff, so the PIN stays here whatever the strict option is set to.
+export type CheckedInTeacher = {
+  staff_id: string
+  name: string
+  checked_in_at: string
+  is_duty: boolean          // first check-in of the shift — ORDER only, never a gate
+}
+
+/** Who is in this room today. This is the source the name tiles will be built on. */
+export async function fetchCheckedInToday(
+  token: string, classroomId?: string,
+): Promise<CheckedInTeacher[]> {
+  const { data, error } = await mm().rpc('safepass_checked_in_today', {
+    p_token: token, ...(classroomId ? { p_classroom: classroomId } : {}),
+  })
+  if (error) throw error
+  return (data?.teachers ?? []) as CheckedInTeacher[]
+}
+
+/** classroomId is passed explicitly so a floater checking in on a shared centre pad lands
+ *  in the room they actually work, not in the room the tablet belongs to. */
+export async function staffCheckIn(
+  token: string, pinHashHex: string, classroomId?: string,
+): Promise<HandoffResult> {
+  const { data, error } = await mm().rpc('safepass_staff_check_in', {
+    p_token: token, p_pin_hash: pinHashHex, ...(classroomId ? { p_classroom: classroomId } : {}),
+  })
+  if (error) {
+    if (/invalid pin/i.test(error.message)) throw new InvalidPinError()
+    throw error
+  }
+  return data as HandoffResult
+}
+
+export async function staffCheckOut(token: string, pinHashHex: string): Promise<HandoffResult> {
+  const { data, error } = await mm().rpc('safepass_staff_check_out', {
+    p_token: token, p_pin_hash: pinHashHex,
+  })
+  if (error) {
+    if (/invalid pin/i.test(error.message)) throw new InvalidPinError()
+    throw error
+  }
+  // 'not_checked_in' is an honest answer, not a failure: surface it as a non-ok result
+  // rather than a thrown error the pad would read as a wrong PIN.
+  return data as HandoffResult
+}
+
 /** Director-only (caller must be authenticated). Returns the raw token ONCE. */
 export async function registerDevice(
   orgId: string, centerId: string, classroomId: string, label: string | null,

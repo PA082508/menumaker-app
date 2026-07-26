@@ -35,9 +35,9 @@ target: Pages-репо (не Drive) + карточка Hub одним заход
 
 Dear Play Academy Wickliffe Families,
 
-The safety of your child is at the heart of everything we do at Play Academy
-Wickliffe. We are proud to introduce **SafePass** — our new digital child safety
-system — exclusively at our Wickliffe location.
+**Rule #1 at Play Academy Wickliffe: the safety of your child. Everything below
+exists for that rule alone.** We are proud to introduce **SafePass** — our new
+digital child safety system — exclusively at our Wickliffe location.
 
 Play Academy Wickliffe is the first center to launch this initiative. Your
 participation and feedback will shape how we bring SafePass to Play Academy
@@ -126,8 +126,25 @@ Who may collect your child is decided by you and recorded by our director — it
 is separate from registering your own phone, and it stays under our control
 rather than an app's.
 
-*Please note: for the safety of your child, teachers may request a photo ID from
-any authorized person they do not personally recognize.*
+**A photo on file for every authorized adult.** When an authorized adult is
+registered at the front desk, we take their photo — one minute, on the spot. It
+is there for one purpose: so the teacher at the door can see the face of the
+person collecting your child and be certain. From that day until your child's
+last day with us, that photo does the quiet work of recognising someone our
+staff may not know by sight.
+
+Each adult gives their own consent before the photo is taken. The photo is kept
+privately inside our management system, visible only to our staff for
+identification, and it is deleted if that person's access is withdrawn or if
+they ask us to remove it. **We never use these photos publicly** — not on our
+website, not in social media, not in anything we send out — without asking that
+person separately. **No face-recognition technology is used at any point:** the
+comparison is made by a person looking at a face.
+
+*If an authorized adult prefers not to be photographed, that is their choice and
+it does not affect their right to collect your child — our teachers will simply
+ask for a photo ID instead. Teachers may also request a photo ID from any
+authorized person they do not personally recognize.*
 
 ## Our Staff and Their Devices
 

@@ -40,6 +40,7 @@ import { pathToFileURL } from 'node:url'
 
 const APP = process.env.APP_ORIGIN || 'https://menumaker-app.vercel.app'
 const ZZDEMO_CENTER = '0de1b5a4-e6d8-4e34-a5e4-e3dde23e1c6c'
+const DEMO_CHILD = 'Emma Carter'   // the ONLY child name allowed in frame — canon: no real names
 const PROFILE = path.resolve(process.env.DEMO_PROFILE || './.demo-profile')
 const OUTDIR = path.resolve(process.env.DEMO_OUTDIR || './demo-out')
 
@@ -129,7 +130,7 @@ async function main () {
   rl.on('close', () => { stdinGone = true })
   const ask = (q) => new Promise((resolve, reject) => {
     if (stdinGone) return reject(new Error('stdin closed — this script must be run interactively in a terminal'))
-    rl.question(q, () => resolve())
+    rl.question(q, (answer) => resolve(String(answer || '').trim()))
   })
 
   // pre-flight BEFORE the first launch, so a crashed previous run never costs a second attempt
@@ -225,6 +226,27 @@ async function main () {
   // that can honestly be rehearsed here — the human opens the row on camera.
   await probe('View original form / Approve controls (checked live during the drive)', async () => ({ ok: true, detail: 'presence-only by design' }))
 
+  // B5 — NAME SAFETY. Canon: no real child or family name reaches demo material. The Inbox is
+  // org-wide, so it shows other centers' pending submissions — real children. This counts them
+  // and names the screen, so the operator knows not to hold on it and the edit knows to cut it.
+  // Rows are plain divs with inline styles — no table, no stable class — so the only sound
+  // anchor is the per-row "Review" button. A selector that matches nothing must report that it
+  // could not read the screen; it must NEVER report "clean", which is how this check first lied.
+  await probe('name safety — real names currently on the Inbox screen', async () => {
+    const rowCount = await page.getByRole('button', { name: /^Review$/i }).count()
+    const demoHits = await page.locator(`text=/${DEMO_CHILD}/i`).count()
+    if (rowCount === 0) {
+      const empty = (await page.locator('text=/no submissions|nothing pending|all caught up/i').count()) > 0
+      return { ok: true, detail: empty ? 'inbox is empty' : 'could not read any submission row — UNVERIFIED, check the screen by eye before filming it' }
+    }
+    const foreign = Math.max(0, rowCount - demoHits)
+    if (foreign > 0) {
+      log(`   ⚠ ${foreign} of ${rowCount} submission row(s) here are NOT the demo child — real children of other centers.`)
+      log('     Do not hold on the Inbox; the montage must cut every Inbox frame that is not ' + DEMO_CHILD + '.')
+    }
+    return { ok: true, detail: `${rowCount} row(s) on screen, ${foreign} not the demo child` }
+  })
+
   const failed = results.filter(r => !r.ok)
   const blocked = failed.filter(r => r.blocker)
   if (blocked.length) {
@@ -267,47 +289,183 @@ async function main () {
   log('\n=== PHASE 3 — RECORDING ===')
   const recCtx = await openProfile(PROFILE, { record: true })
   const rp = recCtx.pages()[0] || await recCtx.newPage()
+
+  // ── TRACE-CHECKED BEATS ─────────────────────────────────────────────────────────────────────
+  //
+  // Take 2 (2026-07-25) ran to the end and produced 7 minutes of footage in which the arc never
+  // happened: the packet was opened, and nothing after it. Nobody was told, because a manual beat
+  // advanced on ENTER whether or not the action had occurred. The rehearse phase had grown teeth
+  // by then; the RECORDING phase had none.
+  //
+  // So every manual beat now names the TRACE it must leave, and the trace is looked for after the
+  // pause. No trace → the beat is NOT counted: the script says so loudly and repeats the pause.
+  // An empty arc can no longer reach the end of a take unnoticed.
+  //
+  // Traces are read from the UI — what the camera sees — not from the database: this script holds
+  // no service key, and a beat that "happened in the database but not on screen" is worthless to
+  // a screencast anyway.
+  //
+  // The escape hatch is deliberate and loud: typing `skip` accepts an UNVERIFIED beat (a broken
+  // verifier must never trap someone mid-take). Every skip is listed again at the end, so a take
+  // that leaned on one is never mistaken for a clean one.
+  const unverified = []
+  const beat = async (label, instruction, verify) => {
+    log('\n⏸  BEAT — ' + label)
+    log('   ' + instruction)
+    for (let attempt = 1; ; attempt++) {
+      const answer = await ask('   Do it in the browser, then press ENTER (or type `skip`)… ')
+      if (/^skip$/i.test(answer)) {
+        unverified.push(label)
+        log('   ⚠ BEAT ACCEPTED WITHOUT PROOF — recorded as unverified: ' + label)
+        return { ok: false, skipped: true }
+      }
+      let r
+      try { r = await verify() } catch (e) { r = { ok: false, detail: 'check itself failed: ' + (e.message || String(e)).split('\n')[0].slice(0, 70) } }
+      if (r && r.ok) { log('   ✓ trace found: ' + (r.detail || 'confirmed')); return r }
+      log('   ✗ БИТ НЕ ЗАСЧИТАН — trace not found: ' + ((r && r.detail) || 'nothing to confirm it happened'))
+      log(`   The recording is still running. Do the step, then press ENTER again (attempt ${attempt + 1}).`)
+    }
+  }
+
+  // A plain pause, for beats that only move the camera and leave no trace of their own.
   const manual = async (msg) => { log('\n⏸  MANUAL BEAT: ' + msg); await ask('   Do it in the browser, then press ENTER to resume recording… ') }
+
+  // Where the form lives: it may be an iframe in the app, or a tab opened from the packet link.
+  const formSurfaces = () => {
+    const out = [rp.frameLocator('iframe').first()]
+    for (const p of recCtx.pages()) { if (p !== rp) { out.push(p.frameLocator('iframe').first()); out.push(p) } }
+    return out
+  }
+  const anywhere = async (fn) => {                    // true if fn() is true on ANY surface
+    for (const s of formSurfaces()) { try { if (await fn(s)) return true } catch {} }
+    return false
+  }
 
   // Part 0 — title card is added in post. Part 1 — parent path via in-app embed:
   await rp.goto(`${APP}/center/${ZZDEMO_CENTER}`, { waitUntil: 'domcontentloaded' }); await rp.waitForTimeout(1200)
   // ➕ Add Child opens the enrollment-PACKET panel (link + QR for the family) — it is not the
   // form itself. The form is what the family gets from that link, which is exactly the story:
   // director hands over the packet, parent opens it.
-  await manual('Part 1: ➕ Add Child → the packet panel (link + QR) → open the packet link so the DCY 01234 form comes up. We frame on the form area.')
-  // The embedded form fields (confirmed by rehearsal): fill inside the form iframe.
-  try {
-    const f = rp.frameLocator('iframe').first()
+  // BEAT 1 — the form must actually be on screen. Take 2 died here: the packet panel was opened
+  // and browsed, the link was never followed, and the take sailed on regardless.
+  await beat(
+    'Part 1 · the enrollment form is open',
+    '➕ Add Child → the packet panel (link + QR) → open the packet link so DCY 01234 comes up. Frame on the form.',
+    async () => {
+      const found = await anywhere(async s => (await s.locator('#f_child_name').count()) > 0)
+      return { ok: found, detail: found ? 'DCY 01234 form is on screen' : 'no enrollment form anywhere — the packet link was not opened' }
+    },
+  )
+
+  // Fill what can be filled from here (the form may be in an iframe or in its own tab).
+  let formSurface = null
+  for (const s of formSurfaces()) { try { if (await s.locator('#f_child_name').count()) { formSurface = s; break } } catch {} }
+  if (formSurface) {
+    const f = formSurface
     const fill = async (id, v) => { const l = f.locator('#' + id); if (await l.count()) await l.fill(v).catch(()=>{}) }
-    await fill('f_child_name','Emma Carter'); await fill('f_dob','03/14/2022'); await fill('f_first_day','08/01/2026')
+    await fill('f_child_name', DEMO_CHILD); await fill('f_dob','03/14/2022'); await fill('f_first_day','08/01/2026')
     await fill('f_address','123 Demo Lane'); await fill('f_city','Wickliffe'); await fill('f_state','OH'); await fill('f_zip','44092')
     await fill('f_p1_name','Jordan Carter'); await fill('f_p1_phone','(555) 010-2233'); await fill('f_p1_email','jordan@example.com')
     await f.locator('#f_p1_same').check().catch(()=>{}); await f.locator('#f_p2_na').check().catch(()=>{}); await f.locator('#f_health_n').check().catch(()=>{})
-    await fill('f_child_name2','Emma Carter'); await fill('f_dob2','03/14/2022')
+    await fill('f_child_name2', DEMO_CHILD); await fill('f_dob2','03/14/2022')
     for (const c of ['f_na_dev','f_na_acc','f_svc_n','f_na_svc','f_trans_no']) await f.locator('#' + c).check().catch(()=>{})
     log('Part 1: fields filled (guided entry)')
-    // FKPad parent signature (confirmed flow): tap the siglock → draw on the big pad → "Use"
     await f.locator('#lock_parent_sig').click().catch(()=>{}); await rp.waitForTimeout(700)
-    await manual('Part 1 FKPad (wow beat): draw the parent signature big on the pad, then tap "Use". (Auto-draw is unreliable across the iframe — do this by hand on camera.)')
-  } catch (e) { await manual('Part 1: fill + sign the form by hand (auto-fill could not reach the iframe: ' + (e.message||e).slice(0,50) + ')') }
-  await manual('Part 1: Submit the form (host footer). Wait for the confirmation.')
+  }
+
+  // BEAT 2 — the signature must be INKED, not merely attempted. An empty pad looks the same as a
+  // signed one to a script that only waits for ENTER.
+  await beat(
+    'Part 1 · the parent signature is on the form',
+    'FKPad (wow beat): draw the parent signature big on the pad, then tap "Use". Auto-draw is unreliable across the iframe — do it by hand, on camera.',
+    async () => {
+      const inked = await anywhere(async s => {
+        const slot = s.locator('#lock_parent_sig, [id*="parent_sig"], canvas[id*="sig"]').first()
+        if (!(await slot.count())) return false
+        // an inked slot renders the signature: either an <img>/canvas with pixels, or a signed marker
+        const shot = await slot.screenshot({ timeout: 4000 }).catch(() => null)
+        if (!shot) return false
+        // a blank slot compresses to almost nothing; an inked one carries real detail
+        return shot.length > 3000
+      })
+      return { ok: inked, detail: inked ? 'signature slot carries ink' : 'the signature slot still looks blank' }
+    },
+  )
+
+  // BEAT 3 — Submit must produce a confirmation, not just a click.
+  await beat(
+    'Part 1 · the form is submitted',
+    'Submit the form (host footer) and wait for the confirmation to appear.',
+    async () => {
+      const ok = await anywhere(async s =>
+        (await s.locator('text=/thank you|submitted|received|отправлено|спасибо/i').count()) > 0)
+      return { ok, detail: ok ? 'submission confirmation on screen' : 'no confirmation — the form was not accepted' }
+    },
+  )
 
   // Part 2 — office
-  await rp.goto(`${APP}/enrollment-inbox`, { waitUntil: 'domcontentloaded' }); await rp.waitForTimeout(1500)
-  await manual('Part 2: open the new "Emma Carter (ZZSMOKE)" submission in the Inbox.')
-  await manual('Part 2: tap "View original form" → countersign the Program slot → tap "✓ Approve". Catch the "🔒 Freezing a copy…" flash.')
+  await rp.goto(`${APP}/enrollment-inbox`, { waitUntil: 'domcontentloaded' }); await rp.waitForTimeout(2000)
+
+  // BEAT 4 — the demo child must be IN the inbox. This is also the name-safety beat: we look for
+  // Emma Carter specifically, never "any new row".
+  await beat(
+    `Part 2 · "${DEMO_CHILD}" is in the Inbox`,
+    `Find the new "${DEMO_CHILD}" submission and open it. Do not linger on other rows — they are real children.`,
+    async () => {
+      const ok = (await rp.locator(`text=/${DEMO_CHILD}/i`).count()) > 0
+      return { ok, detail: ok ? `${DEMO_CHILD} present in the Inbox` : `${DEMO_CHILD} is not in the Inbox — the submission never arrived` }
+    },
+  )
+
+  // BEAT 5 — Approve must leave the freeze behind it.
+  await beat(
+    'Part 2 · approved, and the copy is frozen',
+    'Tap "View original form" → countersign the Program slot → tap "✓ Approve". Catch the "🔒 Freezing a copy…" flash.',
+    async () => {
+      await rp.waitForTimeout(1500)
+      const ok = (await rp.locator('text=/Snapshot on file|Snapshot at Approve|Freezing a copy|approved/i').count()) > 0
+      return { ok, detail: ok ? 'approval / snapshot state visible' : 'nothing on screen says the form was approved and frozen' }
+    },
+  )
 
   // Part 3 — retrieval from snapshot
-  await rp.goto(`${APP}/center/${ZZDEMO_CENTER}`, { waitUntil: 'domcontentloaded' }); await rp.waitForTimeout(1200)
-  await manual('Part 3: open Emma Carter → Documents tab → "Enrollment forms (approved)" shows 🔒 Snapshot on file.')
-  await manual('Part 3: "View original form" → the green "Snapshot at Approve · sha" bar → Print → 2 clean official pages.')
+  await rp.goto(`${APP}/center/${ZZDEMO_CENTER}`, { waitUntil: 'domcontentloaded' }); await rp.waitForTimeout(1500)
+
+  // BEAT 6 — the whole point of Step 3: the frozen copy is reachable from the child.
+  await beat(
+    'Part 3 · the snapshot is on file for the child',
+    `Open ${DEMO_CHILD} → Documents tab → "Enrollment forms (approved)".`,
+    async () => {
+      const ok = (await rp.locator('text=/Snapshot on file/i').count()) > 0
+      return { ok, detail: ok ? '🔒 Snapshot on file is showing' : 'no "Snapshot on file" badge — nothing was frozen for this child' }
+    },
+  )
+
+  // BEAT 7 — and it serves the frozen pages, saying so.
+  await beat(
+    'Part 3 · the frozen copy opens and prints',
+    '"View original form" → the green "Snapshot at Approve · sha" bar → Print → 2 clean official pages.',
+    async () => {
+      const ok = (await rp.locator('text=/Snapshot at Approve/i').count()) > 0
+      return { ok, detail: ok ? 'the viewer declares its source: Snapshot at Approve' : 'the green snapshot bar is not on screen' }
+    },
+  )
 
   log('\nStopping recording…')
   await recCtx.close() // flushes the video
   rl.close()
   const vids = fs.readdirSync(OUTDIR).filter(f => f.endsWith('.webm'))
   log('\n✓ DONE. Video(s) in ' + OUTDIR + ':\n  ' + vids.join('\n  '))
-  log('Next: post (amy VO + burn-in captions) → send to Nikolay for acceptance. Then sweep the ZZSMOKE trail.')
+  if (unverified.length) {
+    log('\n⚠ THIS TAKE IS NOT CLEAN — these beats were accepted without proof:')
+    for (const u of unverified) log('   · ' + u)
+    log('  Do not send it for acceptance as a complete arc until they are re-shot or verified by hand.')
+  } else {
+    log('\n✓ Every beat left the trace it was supposed to leave — the arc is complete on tape.')
+  }
+  log('\nMontage rules (canon): no real child or family name in frame — the Inbox holds other')
+  log('centers\' real children, so cut every Inbox frame that is not ' + DEMO_CHILD + '.')
+  log('Next: post (amy VO + burn-in captions) → Nikolay for acceptance. Then sweep the ZZSMOKE trail.')
 }
 
 // run only when executed directly — importing this file (the phase-transition test does) must not

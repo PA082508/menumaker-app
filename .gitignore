@@ -15,3 +15,8 @@ import/
 
 # Supabase CLI local state
 supabase/.temp/
+
+# Demo recorder — the browser profile holds a live director session (cookies), and the
+# recordings are large binaries. Neither belongs in git.
+.demo-profile/
+demo-out/

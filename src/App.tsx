@@ -34,6 +34,7 @@ import SafePassTeacherPage from './pages/safepass/SafePassTeacherPage'
 import SafePassParentPage from './pages/safepass/SafePassParentPage'
 import SafePassEnrollDevice from './pages/safepass/SafePassEnrollDevice'
 import SafePassDriverPage from './pages/safepass/SafePassDriverPage'
+import SafePassDevicesPage from './pages/safepass/SafePassDevicesPage'
 import SafePassIssueCode from './pages/safepass/SafePassIssueCode'
 import SafePassHelpPage from './pages/safepass/SafePassHelpPage'
 import MealCountHelpPage from './pages/meal-count/MealCountHelpPage'
@@ -177,6 +178,7 @@ export default function App() {
               <Route path="cacfp-checklist" element={<CACFPChecklistPage />} />
               <Route path="safepass/teacher" element={<SafePassTeacherPage />} />
               <Route path="safepass/help" element={<SafePassHelpPage />} />
+              <Route path="settings/safepass-devices" element={<SafePassDevicesPage />} />
               <Route path="meal-count/help" element={<MealCountHelpPage />} />
               <Route path="kitchen-report"      element={<KitchenPlanningReport />} />
               <Route path="receipt-review"     element={<ReceiptReviewPage />} />

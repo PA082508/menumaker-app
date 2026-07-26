@@ -221,3 +221,16 @@ export const driverCompleteRun = (token: string, pin: string, run: string) =>
   call('safepass_driver_complete_run', { p_token: token, p_pin_hash: pin, p_run: run })
 export const driverAttachSheet = (token: string, pin: string, run: string, photoPath: string) =>
   call('safepass_driver_attach_sheet', { p_token: token, p_pin_hash: pin, p_run: run, p_photo_path: photoPath })
+
+/** Mini-Devices (tail of 2-T): mint a token for a classroom pad or a driver's phone.
+ *  The raw token comes back ONCE — the database stores only its sha256. */
+export async function registerDeviceKind(
+  orgId: string, centerId: string, classroomId: string | null, label: string | null,
+  kind: 'classroom' | 'driver',
+): Promise<string> {
+  const { data, error } = await mm().rpc('safepass_register_device', {
+    p_org: orgId, p_center: centerId, p_classroom: classroomId, p_label: label, p_kind: kind,
+  })
+  if (error) throw error
+  return data as string
+}

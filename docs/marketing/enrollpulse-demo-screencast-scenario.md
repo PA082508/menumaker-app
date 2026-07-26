@@ -27,7 +27,7 @@ Setup** and **Part 3 Retrieval** (the frozen approved-form snapshot) now that St
 
 | # | Beat | Notes |
 |---|------|-------|
-| 0a | ZZ Demo center exists (`zzdemo`), registry deployed, `window.__build` = current sha | verify deploy, rule out cache |
+| 0a | **Checked, not assumed** (canon «a label is not the content»): `GET pa082508.github.io/enroll-registry.json` contains `zzdemo`, **and** `parent-forms.html?center=zzdemo` renders **≥1 card** with a centre-specific header (not the generic «PLAY ACADEMY · ENROLLMENT PACKET»). `window.__build` = current sha | Takes 2 and 3 both died here: the app's own copy of the registry knew `zzdemo`, the **deployed** one did not, so the packet rendered empty and there was no form to open. Fixed 2026-07-27 (Pages `3695e64`). The rehearsal now counts the cards and blocks the run |
 | 0b | Director "Alex Rivera" logged in on desktop/Chrome | the office/retrieval parts need the director session |
 | 0c | Fictional data sheet ready (Emma Carter, Jordan Carter, 555 numbers) | no real PII on screen |
 

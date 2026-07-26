@@ -232,20 +232,31 @@ async function main () {
   // B1 — still signed in? (an expired session renders a login page that has none of our controls)
   await probe('the demo packet actually has forms in it', storefrontCards, { blocker: true })
 
-  // The Add Child panel does NOT read packet_sets: it renders the legacy packets of
-  // enroll-registry.json (only 'all centres' DB copies join them). Its 'Starter' tile is
-  // parent_consent · start_form · dcy_01305 — no DCY 01234 at all, which is why the take asked
-  // for a form the chosen tile never contained. So the tile the beat names is checked here, in
-  // the DEPLOYED registry the app actually serves — the app's local copy is not the fact.
-  await probe('the ADMISSION tile really contains dcy_01234', async () => {
-    const r = await ctx.request.get(`${APP}/enroll-registry.json?t=${Date.now()}`, { timeout: 15000 })
-    if (!r.ok()) return { ok: false, detail: `registry HTTP ${r.status()}` }
-    const j = await r.json()
-    const slots = (j?.packets?.admission?.slots ?? []).map(x => x.key)
-    const ok = slots.includes('dcy_01234')
-    return { ok, detail: ok
-      ? `admission = ${slots.length} forms, dcy_01234 present`
-      : `admission has NO dcy_01234 (${slots.join(', ')}) — beat 1 would ask for a form the tile cannot produce` }
+  // A REGISTRY KEY IS NOT A TILE. I asserted an 'Admission tile' in the ➕ Add Child panel from
+  // the registry's packets.admission — the panel has no such tile: its four are hardcoded as
+  // starter / toddler_preschool / infant / school_age, and starter is parent_consent ·
+  // start_form · dcy_01305, with no DCY 01234. Measured, not assumed:
+  //   ?center=zzdemo                 → 3 cards, NO dcy_01234
+  //   ?center=zzdemo&only=dcy_01234  → 1 card
+  //   ?center=zzdemo&set=<Admission (Starter)>  → 2 cards, dcy_01234 present   ← the beat's path
+  // So the rehearsal now checks THE EXACT LINK THE OPERATOR WILL OPEN, and asserts the DCY card
+  // is on it by its visible name.
+  const ADMISSION_SET = 'cda83b04-0180-4fe0-a86a-49f9239cc3ab'   // base "Admission (Starter)"
+  const SET_LINK = `https://pa082508.github.io/parent-forms.html?center=zzdemo&set=${ADMISSION_SET}`
+  await probe('the set link the beat names really shows the DCY 01234 card', async () => {
+    const sp = await ctx.newPage()
+    try {
+      await sp.goto(SET_LINK, { waitUntil: 'networkidle', timeout: 20000 })
+      await sp.waitForTimeout(1500)
+      const cards = await sp.locator('.card, [data-form], a[href*="forms/"]').count()
+      const txt = await sp.locator('body').innerText()
+      const hasDcy = /Child Enrollment & Health|DCY 01234/i.test(txt)
+      return { ok: cards > 0 && hasDcy, detail: cards > 0 && hasDcy
+        ? `${cards} card(s), DCY 01234 on screen`
+        : `${cards} card(s), DCY 01234 ${hasDcy ? 'present' : 'MISSING'} — beat 1 would ask for a form this link cannot show` }
+    } catch (e) {
+      return { ok: false, detail: 'set link did not load: ' + (e.message || String(e)).split('\n')[0].slice(0, 60) }
+    } finally { await sp.close().catch(() => {}) }
   }, { blocker: true })
 
   await probe('signed in (not bounced to /login)', async () => {
@@ -452,14 +463,15 @@ async function main () {
   // and browsed, the link was never followed, and the take sailed on regardless.
   await beat(
     'Part 1 · the enrollment form is open',
-    '➕ Add Child → tile ADMISSION (not Starter — Starter has no DCY 01234) → hold a beat on the ' +
-    'packet contents, resting on the Income Eligibility line → open the packet link → card ' +
-    '"Child Enrollment & Health (DCY 01234)" → Open. Frame on the form.',
+    'Packet Sets → set "Admission (Starter)" → panel "Share this set" → Center: ZZ Demo → open that ' +
+    'link (or scan its QR) → on the storefront, card "Child Enrollment & Health (DCY 01234)" → Open. ' +
+    'Frame on the form. (The ➕ Add Child panel has NO Admission tile — its four tiles are Starter / ' +
+    'Toddler-Preschool / Infants / School-Age, and Starter carries no DCY 01234.)',
     async () => {
       const found = await anywhere(async s => (await s.locator('#f_child_name').count()) > 0)
       return { ok: found, detail: found ? 'DCY 01234 form is on screen' : 'no enrollment form anywhere — the packet link was not opened' }
     },
-    'Нажмите ➕ Add Child → выберите плитку ADMISSION (НЕ Starter: в Starter нет DCY 01234!) → задержитесь на секунду на составе пакета, особенно на строке Income Eligibility (это акцент для садиков) → откройте ССЫЛКУ пакета → на витрине нажмите Open у карточки «Child Enrollment & Health (DCY 01234)». На экране должна быть сама форма.'
+    'Откройте Packet Sets → набор «Admission (Starter)» → блок «Share this set» → в списке Center выберите ZZ Demo → откройте полученную ссылку (или отсканируйте QR) → на витрине нажмите Open у карточки «Child Enrollment & Health (DCY 01234)». На экране должна быть сама форма. ВНИМАНИЕ: в панели ➕ Add Child плитки Admission НЕТ — там четыре другие, и в Starter нет DCY 01234.'
   )
 
   // Fill what can be filled from here (the form may be in an iframe or in its own tab).

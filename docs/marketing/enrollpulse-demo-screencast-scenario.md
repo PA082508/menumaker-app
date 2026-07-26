@@ -8,6 +8,27 @@
 [`enrollpulse-product-description.md`](./enrollpulse-product-description.md). v2 adds **Part 0
 Setup** and **Part 3 Retrieval** (the frozen approved-form snapshot) now that Step 3 is verified.
 
+## Rule added 2026-07-27 — a beat may name only what is ON THE OPERATOR'S SCREEN
+
+Takes 3–5 were lost to beats that named things which did not exist there. The last one was mine:
+I read `packets.admission` out of the registry and wrote «tile ADMISSION» into the beat — the
+➕ Add Child panel has no such tile, its four are hardcoded and one of them silently lacks the
+form the whole arc depends on.
+
+So, in force from now on:
+
+1. **A beat names screen elements, not data keys.** A registry key, a DB row and a set name are
+   not tiles. If it was not seen on the operator's screen (or in his screenshot), it is not
+   written into a beat.
+2. **The rehearsal checks the exact path the beat names** — the same link, the same click — and
+   asserts the target by its **visible name**, not by an id that only the code knows.
+3. **A screenshot outranks the registry, the spec and me.** When they disagree, the screen is the
+   fact and everything else is a claim to be re-measured.
+4. **Nothing is staged for the camera.** If an element the script wants to highlight is not on the
+   chosen path, the accent is dropped or moved to another film — never imitated.
+
+---
+
 ## Conventions (fictional)
 
 - **Center:** **"ZZ Demo"** — a **one-time demo center** (not live): minimal slot/QR setup, its
@@ -35,7 +56,7 @@ Setup** and **Part 3 Retrieval** (the frozen approved-form snapshot) now that St
 
 | # | Beat | On screen | Screen-rule |
 |---|------|-----------|-------------|
-| 1 | Hand over the packet | ➕ Add Child → tile **ADMISSION** — **not Starter**: the Starter tile is `parent_consent · start_form · dcy_01305` and contains **no DCY 01234**, which cost takes 3–5. **Hold a beat on the packet contents, resting on the Income Eligibility line** — that is the line that convinces a centre (VO: *«…including CACFP income eligibility for the food program»*). Then open the packet link → card **Child Enrollment & Health (DCY 01234)** → **Open**; the official form loads, pre-scoped | The rehearsal blocks the run unless the deployed registry's ADMISSION tile really contains `dcy_01234`. **The income form itself stays out of this take** — IEA is under the «not placed into production use» gate until 1 Oct; the sweep must leave `income_eligibility` untouched. Video #2 (ClaimPulse) picks it up after that date |
+| 1 | Hand over the packet | **Packet Sets → set «Admission (Starter)» → panel «Share this set» → Center: ZZ Demo → open that link (or scan its QR)** → on the storefront, card **Child Enrollment & Health (DCY 01234)** → **Open**; the official form loads, pre-scoped | **The ➕ Add Child panel has NO «Admission» tile** — its four are hardcoded Starter / Toddler-Preschool / Infants / School-Age, and **Starter is `parent_consent · start_form · dcy_01305`, without DCY 01234**. Measured 27.07: `?center=zzdemo` → 3 cards, no DCY; `&set=<Admission (Starter)>` → **2 cards with DCY 01234**. The rehearsal opens **that exact link** and asserts the card by its visible name. **No income accent in this take** — Income Eligibility is not on this path at all (measured), and IEA stays under its «not placed into production use» gate until 1 Oct; the whole income story moves to video #2 |
 | 2 | Guided entry | Child + parent details; DOB date picker; phone/address validation catches a bad phone, then accepts a good one | pause on the validation catch — the "fewer errors" beat |
 | 3 | Meal times | Pick care days + meal times from the center's schedule | brief |
 | 4 | Sign — draw (**FKPad**) | Tap the parent slot → **FKPad** opens; parent **draws big**, it **scales to fit** the small slot (bbox scale-to-fit, no clipping) | **wow beat #1** — draw-big/fits-small |

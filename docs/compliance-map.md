@@ -8,6 +8,38 @@ Status legend: ✅ Built · 🟡 Partial · 🟣 Planned · ⚪ Gap · ⛔ Out o
 
 ---
 
+## Source: OAC 5180:2-12 — licensing: nap-time ratio (read 2026-07-26)
+
+**Added 2026-07-26, read via browser path from codes.ohio.gov (primary source, not memory) —
+same method as the enacted SUTQ Appendix A.**
+
+**Verdict, one line: the nap-time ratio relief is REAL and conditional — the staff/child ratio
+may be DOUBLED for no more than two hours during nap, only if every child in the group is on a
+cot or mat, only if the group contains no infants, and only while there are still enough staff
+IN THE BUILDING to meet the normal ratio for that group.**
+
+| Item | Fact |
+|---|---|
+| Rule | **5180:2-12-20** — *Sleeping and napping requirements for a licensed child care center*, **effective July 1, 2026** |
+| Provision | **(A)(7)**, verbatim: *"Ratio may be doubled for no more than two hours during nap time, and shall only be doubled if all of the children in the group are on cots or on mats, if the group does not include any infants and if there are enough child care staff members in the building to meet staff/child ratio pursuant to rule 5180:2-12-18 of the Administrative Code for the group."* |
+| Conditions | ≤ **2 hours** · **all** children on cots/mats · **no infants** in the group · building-level staffing still meets 5180:2-12-18 for that group |
+| Supervision, same rule | rest areas **"lighted to allow for visual supervision of all children at all times"** (A)(3); **"a clear path to each resting child"** (A)(5) |
+| Base ratios | **5180:2-12-18** — *Group size and ratios*, effective **October 29, 2021**; the table itself lives in **appendix A to that rule** (must be re-read before use, like SUTQ Appendix A) |
+| Second-adult floor | 5180:2-12-18: *"There shall be at least one other employee or child care staff member at the center if there are seven or more children in the building."* No "within call / same floor" wording found in the rule text |
+
+**Platform status:** 🟡 Partial — the nap exception is **not modelled** anywhere. Capacity &
+Ratio computes `ratio_actual` against the ordinary ratio only, so a legally-staffed nap hour
+would read as understaffed if the module ever alerts on it.
+
+**Consequence already true of GatePulse (no build required):** a room legitimately held by ONE
+adult during nap is normal, not an anomaly — one checked-in teacher = one name tile, and the
+tile mechanics already survive it. The system must never treat a single tile as a defect.
+
+**Not yet written into the guides** — the operational note ("lunch cover during nap without a
+floater") goes into the teacher/director guides only on a separate word.
+
+---
+
 ## Source: OAC 5180:2-17 — Step Up To Quality (SUTQ)
 
 **Added 2026-07-25; deepened from the enacted Appendix A (2026-07-25).** SUTQ = Ohio's

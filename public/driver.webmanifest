@@ -1,0 +1,15 @@
+{
+  "name": "Trip — GatePulse",
+  "short_name": "Trip",
+  "description": "The bus run: who is on board, who got off, signed by the driver.",
+  "start_url": "/safepass/driver",
+  "scope": "/safepass/driver",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f6fa",
+  "theme_color": "#05603a",
+  "icons": [
+    { "src": "/driver-icon-180.png", "sizes": "180x180", "type": "image/png", "purpose": "any" },
+    { "src": "/driver-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

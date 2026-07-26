@@ -49,6 +49,28 @@ export default function SafePassDriverPage() {
   const [newCapacity, setNewCapacity] = useState('')
   const [newType, setNewType] = useState<string>('morning_to_school')
 
+  // Installable as an app, without an App Store and without touching any other route. The tags
+  // are attached only while this screen is mounted: the driver's phone gets "Trip", nobody else's
+  // home screen changes. iOS reads apple-touch-icon and the apple-mobile-* metas; Chrome reads
+  // the manifest — so both are set.
+  useEffect(() => {
+    const added: HTMLElement[] = []
+    const put = (tag: string, attrs: Record<string, string>) => {
+      const el = document.createElement(tag)
+      Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v))
+      document.head.appendChild(el); added.push(el)
+    }
+    put('link', { rel: 'manifest', href: '/driver.webmanifest' })
+    put('link', { rel: 'apple-touch-icon', sizes: '180x180', href: '/driver-icon-180.png' })
+    put('meta', { name: 'apple-mobile-web-app-capable', content: 'yes' })
+    put('meta', { name: 'apple-mobile-web-app-title', content: 'Trip' })
+    put('meta', { name: 'apple-mobile-web-app-status-bar-style', content: 'default' })
+    put('meta', { name: 'theme-color', content: '#05603a' })
+    const prevTitle = document.title
+    document.title = 'Trip'
+    return () => { added.forEach(el => el.remove()); document.title = prevTitle }
+  }, [])
+
   useEffect(() => {
     if (!token) { setFatal('This phone is not registered — ask the director for a registration link.'); return }
     driverBoot(token).then(setBoot).catch(() => setFatal('This phone is not registered, or its access was revoked.'))
@@ -175,6 +197,15 @@ export default function SafePassDriverPage() {
           border: `1.5px solid ${notice.kind === 'refused' ? C.amber : C.green}`,
           color: notice.kind === 'refused' ? C.amber : C.green, fontSize: KEY.banner, fontWeight: 700 }}>
           {notice.kind === 'refused' ? '⚠️ ' : '✓ '}{notice.text}
+        </div>
+      )}
+
+      {/* Install hint: shown only in a browser tab, never inside the installed app. */}
+      {typeof window !== 'undefined' && !window.matchMedia?.('(display-mode: standalone)').matches
+        && !(navigator as any).standalone && (
+        <div style={{ ...card, background: C.blueDim, border: `1.5px solid ${C.blue}`, color: C.blue, fontSize: 13, fontWeight: 600 }}>
+          📲 Put this on your home screen: tap <b>Share</b> in Safari, then <b>Add to Home Screen</b>.
+          It then opens like an app — full screen, no address bar.
         </div>
       )}
 

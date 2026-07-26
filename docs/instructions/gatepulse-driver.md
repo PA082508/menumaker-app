@@ -21,6 +21,21 @@ center, and **your PIN** says it is you — on every single tap. No app store, n
 
 Open **/safepass/driver**, type your 4-digit staff PIN, and you are in.
 
+## 1a. Put it on your home screen — once
+
+After the link opens, the screen is already yours. Make it an **app**, so you never look for it in
+a browser again:
+
+![Add Trip to the iPhone home screen: Share, then Add to Home Screen, then the Trip icon](/guides/driver-add-to-home.png)
+
+1. With the Trip screen open, tap **Share** at the bottom of Safari.
+2. Choose **Add to Home Screen**, then **Add**.
+3. A 🚌 **Trip** icon appears on your home screen. It opens **full screen** — no address bar, no
+   tabs, nothing but the bus.
+
+No App Store, no account, no download. Your phone stays signed in to the device; the PIN is still
+asked for the run itself. *[ships — move 2-T]*
+
 ## 2. Start the run
 
 Pick **Morning — to school**, **Afternoon — from school** or **Field trip**, type the bus and

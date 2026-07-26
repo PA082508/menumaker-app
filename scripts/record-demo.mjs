@@ -243,10 +243,17 @@ async function main () {
     const btn = page.getByRole('button', { name: /add child/i }).first()
     const c = await clickable(btn)
     if (!c.ok) return c
-    await btn.click({ timeout: 5000 })
-    await page.waitForTimeout(1200)
     const panel = page.locator('text=/Add Child — enrollment packet/i').first()
-    const opened = (await panel.count()) > 0
+    // The panel renders after the centre object resolves, so a cold page can lose the race and
+    // report a closed gate that is in fact open — seen twice on 27.07, red then green with no
+    // change in between. Wait for the panel instead of sampling once, and give the click a second
+    // go: a flaky BLOCKER is worse than no blocker, because it stops a take for nothing.
+    let opened = false
+    for (let attempt = 1; attempt <= 2 && !opened; attempt++) {
+      await btn.click({ timeout: 5000 }).catch(() => {})
+      opened = await panel.waitFor({ state: 'visible', timeout: 6000 }).then(() => true).catch(() => false)
+      if (!opened) await page.waitForTimeout(800)
+    }
     if (opened) {                                   // undo — rehearse must leave no state behind
       await page.keyboard.press('Escape').catch(() => {})
       await page.waitForTimeout(400)

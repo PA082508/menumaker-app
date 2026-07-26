@@ -111,7 +111,11 @@ whatever was convenient, not what happened.
 - **Transport arm — custody at the school door.** For school-age children the boundary of care is
   the school door itself: the driver taps each child aboard at the school and off at the school,
   and that tap — **signed by the driver, by name** — is what lands in the record. The trip sheet
-  prints per run in the same official layout as the classroom sheets. *Planned.*
+  prints in the same official layout as the classroom sheets. **Capacity is a property of the
+  vehicle, not a number baked into the product** — each bus carries its own seat count, a trip
+  cannot be planned past it, and the printed sheet has exactly that many rows, so the paper itself
+  cannot hold an over-capacity trip. A **driver-qualification match** (the licence category a
+  driver holds against the class of vehicle they are assigned) gates the assignment. *Planned.*
 
 **Draft B2B theses** *(for review, not yet positioning copy)*
 

@@ -34,6 +34,7 @@ const DOCS = [
 
   // ── SafePass ──────────────────────────────────────────────────────────────
   { id:'safepass-parent-letter', title:'SafePass — Parent Letter (Wickliffe)', description:'Pilot announcement. Registration July 1–14, mandatory July 15.', audience:'Parent', category:'SafePass', driveUrl:'https://drive.google.com/file/d/1pDFFpKA462Cffs_-AS5rfCMRLk37QkGh/view?usp=sharing' },
+  { id:'gatepulse-parent-guide', title:'GatePulse — Parent One-Pager', description:'One page for families: register once, sign in with your own number, two taps a day, wait for the green ✓. Print it or save as PDF.', audience:'Parent', category:'SafePass', driveUrl:'https://menumaker-app.vercel.app/instructions?doc=gatepulse-parent' },
   { id:'safepass-parent-app', title:'SafePass — Parent App (Wickliffe)', description:'Wickliffe parents: drop-off and pick-up. Open on your phone.', audience:'Parent', category:'SafePass', driveUrl:'https://menumaker-app.vercel.app/safepass/parent' },
   { id:'safepass-teacher-guide', title:'SafePass — Teacher Quick Guide', description:'iPad guide: drop-off, pick-up, unknown person protocol.', audience:'Teacher', category:'SafePass', driveUrl:'https://drive.google.com/file/d/1XkL64gCrgtLj4e-8nLdG4FSD9S580l1i/view?usp=sharing' },
   { id:'safepass-teacher-app', title:'SafePass — Teacher View (App)', description:'Accept and release children. Early Care, Late Care, Transport modes.', audience:'Teacher', category:'SafePass', driveUrl:'https://menumaker-app.vercel.app/safepass/teacher' },

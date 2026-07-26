@@ -103,6 +103,16 @@ whatever was convenient, not what happened.
   they aren't assigned to produces a named, one-tap-fixable prompt — because a release record is
   only as true as the assignments behind it. *[ships with teacher release]*
 
+- **It ports to any center without configuring anything.** The half of the day a mark belongs to
+  is decided by the **actual time of the event** against the center's own noon, and the record
+  never depends on a school calendar or a term schedule: different schools simply produce
+  different facts. A center can start on a Monday with no timetable set up, and the sheets come
+  out right. *[ships with teacher release]*
+- **Transport arm — custody at the school door.** For school-age children the boundary of care is
+  the school door itself: the driver taps each child aboard at the school and off at the school,
+  and that tap — **signed by the driver, by name** — is what lands in the record. The trip sheet
+  prints per run in the same official layout as the classroom sheets. *Planned.*
+
 **Draft B2B theses** *(for review, not yet positioning copy)*
 
 1. *Sell the signature, not the check-in.* Competitors sell attendance; the defensible asset is

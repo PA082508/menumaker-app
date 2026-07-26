@@ -25,6 +25,21 @@ const writeLock = (until: number): void => {
   try { until ? localStorage.setItem(LOCK_KEY, String(until)) : localStorage.removeItem(LOCK_KEY) } catch { /* noop */ }
 }
 
+// Database sentences never reach a teacher's screen. Each case says what did not happen and
+// who can fix it; anything unrecognised falls back to a plain, honest sentence rather than to
+// whatever Postgres wrote.
+export function humanPinError(raw: string): string {
+  const s = raw.toLowerCase()
+  if (!s) return 'Could not reach the server — check the connection and try again.'
+  if (s.includes('device not registered')) return 'This tablet is not registered — ask the director to register it.'
+  if (s.includes('no classroom')) return 'This tablet has no room assigned — ask the director to re-register it.'
+  if (s.includes('violates check constraint') || s.includes('violates foreign key'))
+    return 'The system could not record this yet — tell the office; nothing was saved.'
+  if (s.includes('failed to fetch') || s.includes('networkerror') || s.includes('timeout'))
+    return 'No connection — nothing was saved. Try again, or use the paper panel.'
+  return 'Could not record this — nothing was saved. Try again, or tell the office.'
+}
+
 export default function PinPad({
   centerId, title, subtitle, onVerify, onSuccess, onCancel,
 }: {
@@ -78,9 +93,15 @@ export default function PinPad({
           setError(`Wrong PIN — ${MAX_ATTEMPTS - next} ${MAX_ATTEMPTS - next === 1 ? 'try' : 'tries'} left`)
         }
       } else {
-        // network / server error — do NOT burn an attempt
+        // network / server error — do NOT burn an attempt.
+        // A raw Postgres sentence is not a message to a teacher: on 27.07 a check-constraint
+        // violation reached the tablet verbatim ('new row for relation "staff_time_events"
+        // violates check constraint …'). Say what happened in words the room can act on, and
+        // keep the technical text in the console for us.
         setPin('')
-        setError((e as Error)?.message || 'Could not verify — try again')
+        const raw = (e as Error)?.message ?? ''
+        if (raw) console.error('[PinPad] server error:', raw)
+        setError(humanPinError(raw))
       }
     } finally {
       setBusy(false); submitting.current = false

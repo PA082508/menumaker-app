@@ -604,7 +604,7 @@ export default function SafePassTeacherPage() {
               background: shiftNotice.kind === 'refused' ? C.amberDim : C.greenDim,
               border: `1.5px solid ${shiftNotice.kind === 'refused' ? C.amber : C.green}`,
               color: shiftNotice.kind === 'refused' ? C.amber : C.green,
-              fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 10,
+              fontSize: KEY.banner, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 10,
             }}>
               <span style={{ flex: 1 }}>{shiftNotice.kind === 'refused' ? '⚠️ ' : '✓ '}{shiftNotice.text}</span>
               <button onClick={() => setShiftNotice(null)} aria-label="Dismiss"

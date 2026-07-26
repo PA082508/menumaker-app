@@ -6,107 +6,311 @@
 //      PHASE 1 — LOGIN (NOT recorded): log in as the director (Alex Rivera / demo director)
 //      and switch the active center to "ZZ Demo". Then return to this terminal and press ENTER.
 //   3) PHASE 2 — REHEARSE (NOT recorded): the script checks every selector for the Part 0–3 arc
-//      and prints ✓/✗ per beat. If anything is ✗ it STOPS before recording (fix, re-run).
-//   4) PHASE 3 — RECORD: one auto-drive pass writes the arc to ./demo-out/<ts>.webm.
-//      Any beat whose selector wasn't confirmed pauses and prompts you to do it by hand while
-//      recording continues (graceful fallback), then press ENTER to resume.
+//      and prints ✓/✗ per beat. Unconfirmed beats become manual pauses (they do not abort).
+//   4) PHASE 3 — RECORD: the login window is CLOSED, then the SAME profile is relaunched with
+//      video on, and one pass writes the arc to ./demo-out/<ts>.webm. The login survives the
+//      close — it lives in the profile directory on disk, not in the browser process.
 //
 // Data: creates Emma Carter (ZZSMOKE) in ZZ Demo (Part 1). Sweep after acceptance (see report).
 // Honest captions are burned in during post, never here.
 //
-// NOTE: This is written from the app's known routes/components; the PHASE-2 rehearse is the
-// safety net that catches any selector drift before a single frame is recorded.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// WHY PHASE 3 USED TO DIE WITH "Opening in existing browser session" + kill EPERM
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// A Chromium user-data-dir may be driven by exactly ONE browser process. The old code launched
+// a SECOND launchPersistentContext() on the same ./.demo-profile while the PHASE-1/2 context was
+// still alive (it closed the first one only after recording). Chromium's second process saw the
+// profile's SingletonLock, printed "Opening in existing browser session", handed the request to
+// the FIRST browser and exited immediately. Playwright was left holding the pid of that
+// already-gone launcher: its teardown called process.kill(pid) and the OS answered EPERM —
+// the pid is no longer a process this script owns (exited/reaped, or now owned by the surviving
+// browser's process group). So EPERM was never a permissions problem to chase; it is the tail
+// end of "the profile was already busy — with ourselves".
+//
+// FIX: close → wait for the profile to be released → relaunch the same profile with recordVideo.
+// Plus a pre-flight latch that clears a STALE lock (owner pid dead) and refuses, in one plain
+// sentence, when the lock's owner is genuinely alive.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
 
 import { chromium } from 'playwright'
 import readline from 'node:readline'
 import fs from 'node:fs'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 const APP = process.env.APP_ORIGIN || 'https://menumaker-app.vercel.app'
 const ZZDEMO_CENTER = '0de1b5a4-e6d8-4e34-a5e4-e3dde23e1c6c'
-const PROFILE = path.resolve('./.demo-profile')
-const OUTDIR = path.resolve('./demo-out')
-fs.mkdirSync(OUTDIR, { recursive: true })
+const PROFILE = path.resolve(process.env.DEMO_PROFILE || './.demo-profile')
+const OUTDIR = path.resolve(process.env.DEMO_OUTDIR || './demo-out')
 
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-const ask = (q) => new Promise(r => rl.question(q, () => r()))
+// --rehearse-only → run PHASE 2 against the live app and exit with the verdict. No prompts,
+// no recording. This is the check to run before handing the machine to whoever is on camera.
+const REHEARSE_ONLY = process.argv.includes('--rehearse-only')
+
 const log = (...a) => console.log(...a)
+const SINGLETONS = ['SingletonLock', 'SingletonCookie', 'SingletonSocket']
 
-// ── launch a persistent, headed context (login survives; PHASE 1 not recorded) ───────────────
-const ctx = await chromium.launchPersistentContext(PROFILE, {
-  headless: false,
-  viewport: { width: 1440, height: 900 },
-  recordVideo: undefined, // recording is turned on only for PHASE 3, via a fresh page below
-})
-let page = ctx.pages()[0] || await ctx.newPage()
-await page.goto(APP, { waitUntil: 'domcontentloaded' })
+// ── profile lock helpers (exported so the phase transition can be tested without recording) ───
 
-log('\n=== PHASE 1 — LOGIN (not recorded) ===')
-log('In the browser: log in as the demo director and switch the active center to "ZZ Demo".')
-await ask('When you are logged in and on ZZ Demo, press ENTER here to rehearse… ')
-
-// ── PHASE 2 — rehearse every selector, report, abort on any miss ─────────────────────────────
-log('\n=== PHASE 2 — REHEARSE (not recorded) ===')
-const results = []
-const probe = async (label, fn) => { try { const ok = await fn(); results.push([label, ok]); log((ok ? '✓' : '✗') + ' ' + label) } catch (e) { results.push([label, false]); log('✗ ' + label + '  (' + (e.message||e).slice(0,60) + ')') } }
-
-await probe('roster route loads (ZZ Demo)', async () => { await page.goto(`${APP}/center/${ZZDEMO_CENTER}`, { waitUntil: 'domcontentloaded' }); await page.waitForTimeout(1500); return (await page.locator('text=/Add Child|Roster|Capacity/i').count()) > 0 })
-await probe('Add Child entry', async () => (await page.getByRole('button', { name: /add child/i }).count()) > 0 || (await page.locator('text=/Add Child/i').count()) > 0)
-await probe('enrollment inbox route', async () => { await page.goto(`${APP}/enrollment-inbox`, { waitUntil: 'domcontentloaded' }); await page.waitForTimeout(1500); return (await page.locator('text=/Inbox|pending|review/i').count()) > 0 })
-await probe('View original form control (needs a pending row open)', async () => (await page.locator('text=/View original form/i').count()) >= 0) // presence checked live during drive
-await probe('Approve control', async () => (await page.locator('text=/Approve/i').count()) >= 0)
-
-const missing = results.filter(([, ok]) => !ok).map(([l]) => l)
-if (missing.length) {
-  log('\n✗ Rehearse found unconfirmed selectors:\n  - ' + missing.join('\n  - '))
-  log('These beats will PAUSE for a manual click during recording (graceful fallback).')
-} else {
-  log('\n✓ All rehearsed selectors present.')
+/** Read the profile's SingletonLock. Chromium writes it as a symlink named "<host>-<pid>". */
+export function profileLockState (profile) {
+  const lock = path.join(profile, 'SingletonLock')
+  let target
+  try { target = fs.readlinkSync(lock) } catch {
+    // not a symlink, or absent — absent is the normal free case
+    if (fs.existsSync(lock)) return { locked: true, pid: null, alive: true, target: '(unreadable lock file)' }
+    return { locked: false, pid: null, alive: false, target: null }
+  }
+  const pid = Number(String(target).split('-').pop())
+  if (!Number.isInteger(pid) || pid <= 0) return { locked: true, pid: null, alive: true, target }
+  let alive
+  try { process.kill(pid, 0); alive = true }              // signal 0 = existence probe, kills nothing
+  catch (e) { alive = e.code === 'EPERM' }                // EPERM here = alive but not ours; ESRCH = gone
+  return { locked: true, pid, alive, target }
 }
-await ask('Press ENTER to START RECORDING the Part 0→3 arc… ')
 
-// ── PHASE 3 — record: a fresh recorded page in the SAME (logged-in) context ───────────────────
-log('\n=== PHASE 3 — RECORDING ===')
-const recCtx = await chromium.launchPersistentContext(PROFILE, {
-  headless: false, viewport: { width: 1440, height: 900 },
-  recordVideo: { dir: OUTDIR, size: { width: 1440, height: 900 } },
-})
-const rp = recCtx.pages()[0] || await recCtx.newPage()
-const manual = async (msg) => { log('\n⏸  MANUAL BEAT: ' + msg); await ask('   Do it in the browser, then press ENTER to resume recording… ') }
+/** Remove a stale lock (owner pid dead). Returns true if it cleared something. */
+export function clearDeadLock (profile) {
+  const st = profileLockState(profile)
+  if (!st.locked || st.alive) return false
+  for (const f of SINGLETONS) { try { fs.unlinkSync(path.join(profile, f)) } catch {} }
+  return true
+}
 
-// Part 0 — title card is added in post. Part 1 — parent path via in-app embed:
-await rp.goto(`${APP}/center/${ZZDEMO_CENTER}`, { waitUntil: 'domcontentloaded' }); await rp.waitForTimeout(1200)
-await manual('Part 1: Add Child → New enrollment → the DCY 01234 form opens (embedded). We frame on the form area.')
-// The embedded form fields (confirmed by rehearsal): fill inside the form iframe.
-try {
-  const f = rp.frameLocator('iframe').first()
-  const fill = async (id, v) => { const l = f.locator('#' + id); if (await l.count()) await l.fill(v).catch(()=>{}) }
-  await fill('f_child_name','Emma Carter'); await fill('f_dob','03/14/2022'); await fill('f_first_day','08/01/2026')
-  await fill('f_address','123 Demo Lane'); await fill('f_city','Wickliffe'); await fill('f_state','OH'); await fill('f_zip','44092')
-  await fill('f_p1_name','Jordan Carter'); await fill('f_p1_phone','(555) 010-2233'); await fill('f_p1_email','jordan@example.com')
-  await f.locator('#f_p1_same').check().catch(()=>{}); await f.locator('#f_p2_na').check().catch(()=>{}); await f.locator('#f_health_n').check().catch(()=>{})
-  await fill('f_child_name2','Emma Carter'); await fill('f_dob2','03/14/2022')
-  for (const c of ['f_na_dev','f_na_acc','f_svc_n','f_na_svc','f_trans_no']) await f.locator('#' + c).check().catch(()=>{})
-  log('Part 1: fields filled (guided entry)')
-  // FKPad parent signature (confirmed flow): tap the siglock → draw on the big pad → "Use"
-  await f.locator('#lock_parent_sig').click().catch(()=>{}); await rp.waitForTimeout(700)
-  await manual('Part 1 FKPad (wow beat): draw the parent signature big on the pad, then tap "Use". (Auto-draw is unreliable across the iframe — do this by hand on camera.)')
-} catch (e) { await manual('Part 1: fill + sign the form by hand (auto-fill could not reach the iframe: ' + (e.message||e).slice(0,50) + ')') }
-await manual('Part 1: Submit the form (host footer). Wait for the confirmation.')
+/** Wait until the profile is driveable. Clears a stale lock; never kills a live browser. */
+export async function waitForProfileFree (profile, timeoutMs = 15000, tickMs = 250) {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    const st = profileLockState(profile)
+    if (!st.locked) return { ok: true, waitedFor: 'free' }
+    if (!st.alive) { clearDeadLock(profile); return { ok: true, waitedFor: 'stale-lock-cleared' } }
+    if (Date.now() > deadline) return { ok: false, pid: st.pid }
+    await new Promise(r => setTimeout(r, tickMs))
+  }
+}
 
-// Part 2 — office
-await rp.goto(`${APP}/enrollment-inbox`, { waitUntil: 'domcontentloaded' }); await rp.waitForTimeout(1500)
-await manual('Part 2: open the new "Emma Carter (ZZSMOKE)" submission in the Inbox.')
-await manual('Part 2: tap "View original form" → countersign the Program slot → tap "✓ Approve". Catch the "🔒 Freezing a copy…" flash.')
+/** Pre-flight latch: stale lock → clear it and say so; live lock → one human sentence, then stop. */
+export function preflightProfileLatch (profile, { exitOnBusy = true } = {}) {
+  if (!fs.existsSync(profile)) return { ok: true, state: 'new-profile' }
+  const st = profileLockState(profile)
+  if (!st.locked) return { ok: true, state: 'free' }
+  if (!st.alive) {
+    clearDeadLock(profile)
+    log(`↺ Cleared a leftover lock on the demo profile (the browser that held it, pid ${st.pid ?? '?'}, is gone).`)
+    return { ok: true, state: 'stale-lock-cleared' }
+  }
+  log('')
+  log(`✗ The demo profile is already open in another browser window (pid ${st.pid ?? '?'}).`)
+  log('  Close that Chromium window — or, if you cannot find it, run these two lines and start again:')
+  log(`     pkill -f "${profile}"`)
+  log(`     rm -f "${path.join(profile, 'Singleton')}"*`)
+  if (exitOnBusy) process.exit(1)
+  return { ok: false, state: 'busy', pid: st.pid }
+}
 
-// Part 3 — retrieval from snapshot
-await rp.goto(`${APP}/center/${ZZDEMO_CENTER}`, { waitUntil: 'domcontentloaded' }); await rp.waitForTimeout(1200)
-await manual('Part 3: open Emma Carter → Documents tab → "Enrollment forms (approved)" shows 🔒 Snapshot on file.')
-await manual('Part 3: "View original form" → the green "Snapshot at Approve · sha" bar → Print → 2 clean official pages.')
+/** The one place a browser is launched. `record: true` turns the video on for that launch. */
+export async function openProfile (profile, { record = false, outDir = OUTDIR, headless = false } = {}) {
+  return chromium.launchPersistentContext(profile, {
+    headless,
+    viewport: { width: 1440, height: 900 },
+    // persistent-context video can only be set AT LAUNCH — this is why PHASE 3 must relaunch
+    recordVideo: record ? { dir: outDir, size: { width: 1440, height: 900 } } : undefined,
+  })
+}
 
-log('\nStopping recording…')
-await recCtx.close() // flushes the video
-await ctx.close(); rl.close()
-const vids = fs.readdirSync(OUTDIR).filter(f => f.endsWith('.webm'))
-log('\n✓ DONE. Video(s) in ' + OUTDIR + ':\n  ' + vids.join('\n  '))
-log('Next: post (amy VO + burn-in captions) → send to Nikolay for acceptance. Then sweep the ZZSMOKE trail.')
+// ── the guided run ────────────────────────────────────────────────────────────────────────────
+
+async function main () {
+  fs.mkdirSync(OUTDIR, { recursive: true })
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+  // This recorder is driven by a human at a terminal. If stdin is gone (piped, closed, run from
+  // a job), say so in one line instead of throwing ERR_USE_AFTER_CLOSE from inside readline.
+  let stdinGone = false
+  rl.on('close', () => { stdinGone = true })
+  const ask = (q) => new Promise((resolve, reject) => {
+    if (stdinGone) return reject(new Error('stdin closed — this script must be run interactively in a terminal'))
+    rl.question(q, () => resolve())
+  })
+
+  // pre-flight BEFORE the first launch, so a crashed previous run never costs a second attempt
+  preflightProfileLatch(PROFILE)
+
+  let ctx = await openProfile(PROFILE, { record: false })
+  let page = ctx.pages()[0] || await ctx.newPage()
+  await page.goto(APP, { waitUntil: 'domcontentloaded' })
+
+  log('\n=== PHASE 1 — LOGIN (not recorded) ===')
+  if (REHEARSE_ONLY) {
+    log('(--rehearse-only: assuming the profile is already signed in; no prompts, no recording)')
+  } else {
+    log('In the browser: log in as the demo director and switch the active center to "ZZ Demo".')
+    await ask('When you are logged in and on ZZ Demo, press ENTER here to rehearse… ')
+  }
+
+  // ── PHASE 2 — rehearse ──────────────────────────────────────────────────────────────────────
+  //
+  // WHY THIS PHASE GREW TEETH (2026-07-25). The first version asked only "is the text there?".
+  // It passed on ZZ Demo while ➕ Add Child was, in fact, dead: the click landed on the right
+  // element, React ran the handler, and NOTHING happened, because the panel renders behind
+  // `showPacket && center` and `center` is looked up in the app's center list — which did not
+  // contain ZZ Demo. A presence check cannot see that. Neither can a clickability check: the
+  // button IS visible, enabled, unobstructed and passes Playwright's trial click. Only the
+  // EFFECT check ("after the click, did the panel appear?") sees it.
+  //
+  // So beats are rehearsed at three strengths, and each one is honest about what it proves:
+  //   present  — the control exists (all a live-drive beat needs before a human takes over)
+  //   clickable— visible + enabled + nothing on top of it + passes a no-op trial click
+  //   effect   — actually click it and assert the thing it should open appeared, then undo
+  // A failed BLOCKER stops the run: recording an arc whose first beat cannot happen is waste.
+  log('\n=== PHASE 2 — REHEARSE (not recorded) ===')
+  const results = []
+  const note = (label, ok, blocker, extra = '') => { results.push({ label, ok, blocker }); log((ok ? '✓' : '✗') + ' ' + label + (extra ? '  — ' + extra : '')) }
+
+  const probe = async (label, fn, { blocker = false } = {}) => {
+    try { const r = await fn(); const ok = r === true || (r && r.ok); note(label, !!ok, blocker, r && r.detail ? r.detail : '') }
+    catch (e) { note(label, false, blocker, (e.message || String(e)).split('\n')[0].slice(0, 70)) }
+  }
+
+  /** visible + enabled + hit-testable + passes a trial (no-op) click */
+  const clickable = async (loc) => {
+    if (!(await loc.count())) return { ok: false, detail: 'not present' }
+    if (!(await loc.isVisible())) return { ok: false, detail: 'present but not visible' }
+    if (!(await loc.isEnabled())) return { ok: false, detail: 'present but disabled' }
+    try { await loc.click({ trial: true, timeout: 4000 }) }
+    catch (e) { return { ok: false, detail: 'not clickable: ' + (e.message || String(e)).split('\n')[0].slice(0, 60) } }
+    return { ok: true }
+  }
+
+  await page.goto(`${APP}/center/${ZZDEMO_CENTER}`, { waitUntil: 'domcontentloaded' })
+  await page.waitForTimeout(2500)
+
+  // B1 — still signed in? (an expired session renders a login page that has none of our controls)
+  await probe('signed in (not bounced to /login)', async () => {
+    const onLogin = /\/login/.test(page.url()) || (await page.locator('input[type="password"]').count()) > 0
+    return { ok: !onLogin, detail: onLogin ? 'session expired — log in again in the window' : page.url().replace(APP, '') }
+  }, { blocker: true })
+
+  // B2 — THE ONE THAT WAS MISSING. The roster renders from the URL id, so it looks fine even
+  // when the app cannot resolve this center in its own list; the header is the tell. Everything
+  // gated on `center` (the Add Child packet panel above all) is dead in that state.
+  await probe('demo center is resolved by the app (not just by URL)', async () => {
+    const header = (await page.locator('text=/— Children/').first().innerText().catch(() => '')).trim()
+    const resolved = header.length > 0 && !/^Center\s+—/.test(header)
+    return { ok: resolved, detail: header || '(no header found)' }
+  }, { blocker: true })
+
+  // B3 — effect check: the click must OPEN THE PANEL, not merely land.
+  await probe('➕ Add Child actually opens the packet panel', async () => {
+    const btn = page.getByRole('button', { name: /add child/i }).first()
+    const c = await clickable(btn)
+    if (!c.ok) return c
+    await btn.click({ timeout: 5000 })
+    await page.waitForTimeout(1200)
+    const panel = page.locator('text=/Add Child — enrollment packet/i').first()
+    const opened = (await panel.count()) > 0
+    if (opened) {                                   // undo — rehearse must leave no state behind
+      await page.keyboard.press('Escape').catch(() => {})
+      await page.waitForTimeout(400)
+      if (await panel.count()) { await page.mouse.click(12, 12).catch(() => {}); await page.waitForTimeout(400) }
+    }
+    return { ok: opened, detail: opened ? 'opened and closed again' : 'click landed but no panel — the center gate is closed' }
+  }, { blocker: true })
+
+  // B4 — the office half of the arc
+  await probe('enrollment inbox route', async () => {
+    await page.goto(`${APP}/enrollment-inbox`, { waitUntil: 'domcontentloaded' }); await page.waitForTimeout(2000)
+    return { ok: (await page.locator('text=/Inbox|pending|review/i').count()) > 0 }
+  })
+  // Live-drive beats: these controls only exist once a submission is open, so presence is all
+  // that can honestly be rehearsed here — the human opens the row on camera.
+  await probe('View original form / Approve controls (checked live during the drive)', async () => ({ ok: true, detail: 'presence-only by design' }))
+
+  const failed = results.filter(r => !r.ok)
+  const blocked = failed.filter(r => r.blocker)
+  if (blocked.length) {
+    log('\n✗ REHEARSE STOPPED — a beat the recording depends on cannot happen:')
+    for (const b of blocked) log('   · ' + b.label)
+    if (blocked.some(b => /resolved by the app|opens the packet panel/.test(b.label))) {
+      log('\n   Most likely cause: this center is not in the account\'s center list, so every')
+      log('   control gated on the center object is inert (the page still renders from the URL).')
+      log('   A center reaches that list only when it is active AND flagged as a meal site,')
+      log('   and the signed-in account must have access to it. Fix that first — nothing in')
+      log('   Part 1 can be recorded until ➕ Add Child opens its panel.')
+    }
+    rl.close(); await ctx.close(); process.exit(1)
+  }
+  if (failed.length) {
+    log('\n✗ Unconfirmed (non-blocking) — these pause for a manual click while recording:\n  - ' + failed.map(f => f.label).join('\n  - '))
+  } else {
+    log('\n✓ Every rehearsed beat confirmed — including that ➕ Add Child really opens its panel.')
+  }
+  if (REHEARSE_ONLY) {
+    log('\n--rehearse-only: stopping here. Nothing was recorded.')
+    rl.close(); await ctx.close(); process.exit(failed.length ? 1 : 0)
+  }
+  await ask('Press ENTER to START RECORDING the Part 0→3 arc… ')
+
+  // ── PHASE TRANSITION — close the login window, then relaunch the SAME profile with video ────
+  // Your login is NOT lost: it lives in the profile directory on disk. The window blinks once.
+  log('\nClosing the login window (a profile can only be driven by one browser at a time)…')
+  await ctx.close()
+  ctx = null
+  const freed = await waitForProfileFree(PROFILE)
+  if (!freed.ok) {
+    log(`✗ The demo profile is still held by pid ${freed.pid} after 15s — not starting the recording.`)
+    log('  Close that window (or run the two lines printed at startup) and re-run the script.')
+    rl.close(); process.exit(1)
+  }
+  log(`✓ Profile released (${freed.waitedFor}). Reopening it with the recorder on…`)
+
+  // ── PHASE 3 — record ────────────────────────────────────────────────────────────────────────
+  log('\n=== PHASE 3 — RECORDING ===')
+  const recCtx = await openProfile(PROFILE, { record: true })
+  const rp = recCtx.pages()[0] || await recCtx.newPage()
+  const manual = async (msg) => { log('\n⏸  MANUAL BEAT: ' + msg); await ask('   Do it in the browser, then press ENTER to resume recording… ') }
+
+  // Part 0 — title card is added in post. Part 1 — parent path via in-app embed:
+  await rp.goto(`${APP}/center/${ZZDEMO_CENTER}`, { waitUntil: 'domcontentloaded' }); await rp.waitForTimeout(1200)
+  // ➕ Add Child opens the enrollment-PACKET panel (link + QR for the family) — it is not the
+  // form itself. The form is what the family gets from that link, which is exactly the story:
+  // director hands over the packet, parent opens it.
+  await manual('Part 1: ➕ Add Child → the packet panel (link + QR) → open the packet link so the DCY 01234 form comes up. We frame on the form area.')
+  // The embedded form fields (confirmed by rehearsal): fill inside the form iframe.
+  try {
+    const f = rp.frameLocator('iframe').first()
+    const fill = async (id, v) => { const l = f.locator('#' + id); if (await l.count()) await l.fill(v).catch(()=>{}) }
+    await fill('f_child_name','Emma Carter'); await fill('f_dob','03/14/2022'); await fill('f_first_day','08/01/2026')
+    await fill('f_address','123 Demo Lane'); await fill('f_city','Wickliffe'); await fill('f_state','OH'); await fill('f_zip','44092')
+    await fill('f_p1_name','Jordan Carter'); await fill('f_p1_phone','(555) 010-2233'); await fill('f_p1_email','jordan@example.com')
+    await f.locator('#f_p1_same').check().catch(()=>{}); await f.locator('#f_p2_na').check().catch(()=>{}); await f.locator('#f_health_n').check().catch(()=>{})
+    await fill('f_child_name2','Emma Carter'); await fill('f_dob2','03/14/2022')
+    for (const c of ['f_na_dev','f_na_acc','f_svc_n','f_na_svc','f_trans_no']) await f.locator('#' + c).check().catch(()=>{})
+    log('Part 1: fields filled (guided entry)')
+    // FKPad parent signature (confirmed flow): tap the siglock → draw on the big pad → "Use"
+    await f.locator('#lock_parent_sig').click().catch(()=>{}); await rp.waitForTimeout(700)
+    await manual('Part 1 FKPad (wow beat): draw the parent signature big on the pad, then tap "Use". (Auto-draw is unreliable across the iframe — do this by hand on camera.)')
+  } catch (e) { await manual('Part 1: fill + sign the form by hand (auto-fill could not reach the iframe: ' + (e.message||e).slice(0,50) + ')') }
+  await manual('Part 1: Submit the form (host footer). Wait for the confirmation.')
+
+  // Part 2 — office
+  await rp.goto(`${APP}/enrollment-inbox`, { waitUntil: 'domcontentloaded' }); await rp.waitForTimeout(1500)
+  await manual('Part 2: open the new "Emma Carter (ZZSMOKE)" submission in the Inbox.')
+  await manual('Part 2: tap "View original form" → countersign the Program slot → tap "✓ Approve". Catch the "🔒 Freezing a copy…" flash.')
+
+  // Part 3 — retrieval from snapshot
+  await rp.goto(`${APP}/center/${ZZDEMO_CENTER}`, { waitUntil: 'domcontentloaded' }); await rp.waitForTimeout(1200)
+  await manual('Part 3: open Emma Carter → Documents tab → "Enrollment forms (approved)" shows 🔒 Snapshot on file.')
+  await manual('Part 3: "View original form" → the green "Snapshot at Approve · sha" bar → Print → 2 clean official pages.')
+
+  log('\nStopping recording…')
+  await recCtx.close() // flushes the video
+  rl.close()
+  const vids = fs.readdirSync(OUTDIR).filter(f => f.endsWith('.webm'))
+  log('\n✓ DONE. Video(s) in ' + OUTDIR + ':\n  ' + vids.join('\n  '))
+  log('Next: post (amy VO + burn-in captions) → send to Nikolay for acceptance. Then sweep the ZZSMOKE trail.')
+}
+
+// run only when executed directly — importing this file (the phase-transition test does) must not
+// open a browser or grab stdin
+const isDirectRun = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
+if (isDirectRun) await main()

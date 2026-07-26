@@ -8,14 +8,18 @@
 // slows PIN-guessing on that iPad without punishing a specific staff member.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { pinHash, InvalidPinError, type HandoffResult } from '@/lib/safepassDevice'
+import { safePassPalette, KEY } from './theme'
 
 const MAX_ATTEMPTS = 4
 const COOLDOWN_MS = 45_000
 const LOCK_KEY = 'sp_pin_lock'
 
+// Palette comes from the shared module (light by default) — the pad is the surface a teacher
+// reads under pressure, with a parent waiting, so it is the last place to be clever with colour.
+const P = safePassPalette()
 const C = {
-  scrim: 'rgba(4,6,12,0.72)', surface: '#1a1d27', surface2: '#22263a', border: '#2e3350',
-  text: '#f0f2ff', muted: '#7b82a6', green: '#00e896', red: '#ff4d6a', key: '#272c42',
+  scrim: 'rgba(8,12,20,0.55)', surface: P.surface, surface2: P.surface2, border: P.border,
+  text: P.text, muted: P.muted, green: P.green, red: P.red, key: P.surface2, onAccent: P.onAccent,
 }
 
 const readLock = (): number => {
@@ -127,10 +131,10 @@ export default function PinPad({
     }}>
       <div onClick={e => e.stopPropagation()} style={{
         width: 320, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 20,
-        padding: '22px 22px 18px', boxShadow: '0 24px 70px rgba(0,0,0,0.5)',
+        padding: '22px 22px 18px', boxShadow: '0 24px 70px rgba(0,0,0,0.22)',
       }}>
         <div style={{ textAlign: 'center', marginBottom: 4 }}>
-          <div style={{ color: C.text, fontWeight: 700, fontSize: 17 }}>{title}</div>
+          <div style={{ color: C.text, fontWeight: 800, fontSize: KEY.action }}>{title}</div>
           {subtitle && <div style={{ color: C.muted, fontSize: 12.5, marginTop: 3 }}>{subtitle}</div>}
         </div>
 
@@ -146,7 +150,10 @@ export default function PinPad({
           ))}
         </div>
 
-        <div style={{ height: 20, textAlign: 'center', fontSize: 12.5, marginBottom: 10,
+        <div role={error || locked ? 'alert' : undefined} style={{ minHeight: 34, textAlign: 'center',
+          fontSize: error || locked ? KEY.banner : 12.5, fontWeight: error || locked ? 700 : 400,
+          lineHeight: 1.3, marginBottom: 10, padding: error || locked ? '4px 6px' : 0,
+          borderRadius: 8, background: error || locked ? C.red + '14' : 'transparent',
           color: locked ? C.red : error ? C.red : C.muted }}>
           {locked ? `Locked — try again in ${secsLeft}s` : (error ?? (busy ? 'Checking…' : 'Enter your 4-digit PIN'))}
         </div>
@@ -167,6 +174,6 @@ export default function PinPad({
 
 const keyStyle: React.CSSProperties = {
   height: 58, borderRadius: 14, border: '1px solid #2e3350', background: '#272c42',
-  color: '#f0f2ff', fontSize: 22, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+  color: C.text, fontSize: 24, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
   WebkitUserSelect: 'none', userSelect: 'none',
 }

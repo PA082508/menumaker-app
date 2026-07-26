@@ -15,6 +15,7 @@ import { useOrg } from '@/contexts/OrgContext'
 import { useAuth } from '@/hooks/useAuth'
 import Avatar from '@/components/Avatar'
 import PinPad from './shared/PinPad'
+import { safePassPalette, KEY } from './shared/theme'
 import {
   adoptDeviceTokenFromUrl, fetchDeviceContext, confirmHandoff,
   fetchCheckedInToday, staffCheckIn, staffCheckOut,
@@ -24,15 +25,11 @@ import {
 // org_id (3a9a290e-7e49-491e-946b-ad86f2399910) is stamped on INSERT by the
 // parent flow (Step 4); the teacher view only reads/confirms existing sessions.
 
-// ─── palette (from safepass-teacher-v2.html) ──────────────────────────────────
-const C = {
-  bg: '#0f1117', surface: '#1a1d27', surface2: '#22263a', border: '#2e3350',
-  text: '#f0f2ff', muted: '#7b82a6',
-  green: '#00e896', greenDim: 'rgba(0,232,150,0.12)',
-  amber: '#ffb740', amberDim: 'rgba(255,183,64,0.12)',
-  red: '#ff4d6a', redDim: 'rgba(255,77,106,0.12)',
-  blue: '#5b8bff', blueDim: 'rgba(91,139,255,0.12)',
-}
+// ─── palette ──────────────────────────────────────────────────────────────────
+// One source for every SafePass surface (shared/theme.ts): LIGHT by default, dark only when the
+// device asks for it. The old near-black constant lived here and made the room say
+// "красиво, но не видно"; contrast is now measured by scripts/check-contrast.mjs, not judged.
+const C = safePassPalette()
 
 // ─── types ─────────────────────────────────────────────────────────────────────
 type Classroom = { id: string; name: string; center_id: string }
@@ -94,7 +91,7 @@ function EarlyCarePanelView({ dutyChildren, onTransfer, onEscalate, C }: {
         const mins = child.minutes_waiting
         const urgent = mins >= 45; const warn = mins >= 15
         return (
-          <div key={child.session_id} style={{ background: urgent ? 'rgba(255,77,106,0.08)' : warn ? 'rgba(255,183,64,0.08)' : C.surface, border: `1.5px solid ${urgent ? C.red : warn ? C.amber : C.border}`, borderRadius: 12, padding: '14px 16px' }}>
+          <div key={child.session_id} style={{ background: urgent ? C.redDim : warn ? C.amberDim : C.surface, border: `1.5px solid ${urgent ? C.red : warn ? C.amber : C.border}`, borderRadius: 12, padding: '14px 16px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
               <div>
                 <div style={{ fontWeight: 700, fontSize: 15 }}>{child.child_name}</div>
@@ -125,7 +122,7 @@ function LateCarePanelView({ dutyChildren, onParentArrived, onEscalate, C }: {
         {dutyChildren.length > 0 && <div style={{ fontSize: 11, color: C.amber, fontWeight: 600 }}>🔒 Cannot close shift</div>}
       </div>
       {dutyChildren.length > 0 && (
-        <div style={{ background: 'rgba(255,183,64,0.08)', border: `1px solid ${C.amber}`, borderRadius: 10, padding: '10px 14px', fontSize: 12, color: C.amber, marginBottom: 4 }}>
+        <div style={{ background: C.amberDim, border: `1px solid ${C.amber}`, borderRadius: 10, padding: '10px 14px', fontSize: 12, color: C.amber, marginBottom: 4 }}>
           ⚠️ Shift cannot be closed while children are present.
         </div>
       )}
@@ -135,7 +132,7 @@ function LateCarePanelView({ dutyChildren, onParentArrived, onEscalate, C }: {
           const mins = child.minutes_waiting
           const urgent = mins >= 45; const warn = mins >= 15
           return (
-            <div key={child.session_id} style={{ background: urgent ? 'rgba(255,77,106,0.08)' : warn ? 'rgba(255,183,64,0.08)' : C.surface, border: `1.5px solid ${urgent ? C.red : warn ? C.amber : C.border}`, borderRadius: 12, padding: '14px 16px' }}>
+            <div key={child.session_id} style={{ background: urgent ? C.redDim : warn ? C.amberDim : C.surface, border: `1.5px solid ${urgent ? C.red : warn ? C.amber : C.border}`, borderRadius: 12, padding: '14px 16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                 <div>
                   <div style={{ fontWeight: 700, fontSize: 15 }}>{child.child_name}</div>
@@ -552,7 +549,7 @@ export default function SafePassTeacherPage() {
 
       {/* Device gate — visible, not silent: without it nothing can be confirmed */}
       {deviceError && (
-        <div style={{ background: '#3a1420', borderBottom: `1px solid ${C.border}`, padding: '10px 20px', color: '#ff4d6a', fontSize: 13, fontWeight: 600 }}>
+        <div style={{ background: C.redDim, borderBottom: `2px solid ${C.red}`, padding: '12px 20px', color: C.red, fontSize: KEY.banner, fontWeight: 700 }}>
           ⚠️ {deviceError} Accept / Release are disabled until it is registered.
         </div>
       )}
@@ -562,7 +559,7 @@ export default function SafePassTeacherPage() {
         </div>
       )}
       {deviceLocked && !classId && classrooms.length > 0 && (
-        <div style={{ background: '#3a1420', borderBottom: `1px solid ${C.border}`, padding: '10px 20px', color: '#ff4d6a', fontSize: 13, fontWeight: 600 }}>
+        <div style={{ background: C.redDim, borderBottom: `2px solid ${C.red}`, padding: '12px 20px', color: C.red, fontSize: KEY.banner, fontWeight: 700 }}>
           ⚠️ This pad is registered to “{deviceCtx?.classroom_name}”, which is not an active room in {centerName}. Nothing is shown — ask the director to re-register the tablet.
         </div>
       )}
@@ -595,7 +592,7 @@ export default function SafePassTeacherPage() {
               style={{ display: 'flex', alignItems: 'center', gap: 6, background: C.surface2,
                        border: `1px solid ${t.is_duty ? C.green : C.border}`, borderRadius: 999,
                        padding: t.is_duty ? '6px 14px' : '4px 12px',
-                       fontSize: t.is_duty ? 15 : 13, fontWeight: t.is_duty ? 800 : 600 }}>
+                       fontSize: t.is_duty ? KEY.tileName + 2 : KEY.tileName, fontWeight: t.is_duty ? 800 : 600 }}>
               {t.name}
               {t.is_duty && <span style={{ fontSize: 10, fontWeight: 700, color: C.green }}>DUTY</span>}
               <span style={{ fontSize: 11, color: C.muted }}>{hhmm(t.checked_in_at)}</span>
@@ -695,7 +692,7 @@ export default function SafePassTeacherPage() {
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '18px 18px 12px' }}>
                   <div style={{ width: 52, height: 52, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0, background: drop ? C.blueDim : C.amberDim, border: `2px solid ${drop ? C.blue : C.amber}` }}>{drop ? '🧒' : '👋'}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 19, fontWeight: 700, letterSpacing: -0.3 }}>{s.child_name}</div>
+                    <div style={{ fontSize: KEY.childName, fontWeight: 800, letterSpacing: -0.3 }}>{s.child_name}</div>
                     {gathering && s.classroom_id !== classId && (
                       <div style={{ fontSize: 12, fontWeight: 700, color: C.blue }}>
                         {classrooms.find(c => c.id === s.classroom_id)?.name ?? 'another class'}
@@ -714,7 +711,7 @@ export default function SafePassTeacherPage() {
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, borderTop: `1px solid ${C.border}`, background: C.border }}>
                   <button onClick={() => skip(s.id)} style={{ padding: 15, fontSize: 14, fontWeight: 700, border: 'none', cursor: 'pointer', background: C.surface2, color: C.muted, borderRadius: '0 0 0 16px', fontFamily: 'inherit' }}>Skip</button>
-                  <button onClick={() => confirm(s)} disabled={!deviceCtx} style={{ padding: 15, fontSize: 14, fontWeight: 700, border: 'none', cursor: deviceCtx ? 'pointer' : 'not-allowed', background: !deviceCtx ? C.surface2 : (drop ? C.blue : C.amber), color: !deviceCtx ? C.muted : (drop ? '#fff' : C.bg), borderRadius: '0 0 16px 0', fontFamily: 'inherit' }}>{drop ? '✓ Accept' : '✓ Release'}</button>
+                  <button onClick={() => confirm(s)} disabled={!deviceCtx} style={{ padding: 15, fontSize: KEY.action, fontWeight: 700, border: 'none', cursor: deviceCtx ? 'pointer' : 'not-allowed', background: !deviceCtx ? C.surface2 : (drop ? C.blue : C.amber), color: !deviceCtx ? C.muted : C.onAccent, borderRadius: '0 0 16px 0', fontFamily: 'inherit' }}>{drop ? '✓ Accept' : '✓ Release'}</button>
                 </div>
               </div>
             )
@@ -757,7 +754,7 @@ export default function SafePassTeacherPage() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {confirmed.length === 0 && <div style={{ fontSize: 12, color: C.amber, opacity: 0.7 }}>Nothing confirmed yet.</div>}
                 {confirmed.map(s => (
-                  <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '6px 0', borderBottom: '1px solid rgba(255,183,64,0.2)' }}>
+                  <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '6px 0', borderBottom: `1px solid ${C.border}` }}>
                     <span style={{ color: C.text }}>{s.child_name}</span>
                     <span style={{ color: C.amber, fontWeight: 700 }}>{s.action_type === 'drop_off' ? 'IN' : 'OUT'} {hhmm(s.teacher_confirmed_at)}</span>
                   </div>
@@ -797,7 +794,7 @@ export default function SafePassTeacherPage() {
       {/* TOAST */}
 
       {toast && (
-        <div style={{ position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)', background: toast.amber ? C.amber : C.green, color: C.bg, fontSize: 15, fontWeight: 700, padding: '14px 28px', borderRadius: 100, zIndex: 999, whiteSpace: 'nowrap', boxShadow: '0 8px 30px rgba(0,0,0,0.4)' }}>
+        <div style={{ position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)', background: toast.amber ? C.amber : C.green, color: C.onAccent, fontSize: KEY.banner, fontWeight: 700, padding: '14px 28px', borderRadius: 100, zIndex: 999, whiteSpace: 'nowrap', boxShadow: '0 8px 30px rgba(0,0,0,0.18)' }}>
           {toast.text}
         </div>
       )}

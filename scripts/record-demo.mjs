@@ -124,6 +124,21 @@ export async function openProfile (profile, { record = false, outDir = OUTDIR, h
 async function main () {
   fs.mkdirSync(OUTDIR, { recursive: true })
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+
+  // Ctrl+C was a trap on take 3: readline intercepts SIGINT and, with no handler, merely emits an
+  // event — so node stayed alive, the browser stayed open and the video was never finalised. Now
+  // an interrupt closes the recording context (which is what flushes the .webm), drops readline
+  // and exits, so an aborted take leaves a playable file and a free profile behind it.
+  let closeRecording = null            // set once the recording context exists
+  const bail = async (why) => {
+    log(`\n⏹  ${why} — closing the recording so the video is finalised…`)
+    try { if (closeRecording) await closeRecording() } catch {}
+    try { rl.close() } catch {}
+    log('   done. The profile is free; whatever was filmed is in ' + OUTDIR)
+    process.exit(130)
+  }
+  rl.on('SIGINT', () => { void bail('Interrupted (Ctrl+C)') })
+  process.on('SIGINT', () => { void bail('Interrupted') })
   // This recorder is driven by a human at a terminal. If stdin is gone (piped, closed, run from
   // a job), say so in one line instead of throwing ERR_USE_AFTER_CLOSE from inside readline.
   let stdinGone = false
@@ -164,12 +179,33 @@ async function main () {
   //   effect   — actually click it and assert the thing it should open appeared, then undo
   // A failed BLOCKER stops the run: recording an arc whose first beat cannot happen is waste.
   log('\n=== PHASE 2 — REHEARSE (not recorded) ===')
+
   const results = []
   const note = (label, ok, blocker, extra = '') => { results.push({ label, ok, blocker }); log((ok ? '✓' : '✗') + ' ' + label + (extra ? '  — ' + extra : '')) }
 
   const probe = async (label, fn, { blocker = false } = {}) => {
     try { const r = await fn(); const ok = r === true || (r && r.ok); note(label, !!ok, blocker, r && r.detail ? r.detail : '') }
     catch (e) { note(label, false, blocker, (e.message || String(e)).split('\n')[0].slice(0, 70)) }
+  }
+
+  // PRECONDITION, learnt from take 3: the beat "open the enrollment form" failed four times and
+  // the detector was RIGHT — the demo centre's packet had no forms in it, so there was nothing to
+  // open. "The link exists" is not the fact we need; "the packet has cards" is. Presence-only is
+  // banned here for the same reason it was banned on ➕ Add Child. Blocker: recording without it
+  // repeats take 3 exactly.
+  const STOREFRONT = 'https://pa082508.github.io/parent-forms.html?center=zzdemo&only=dcy_01234'
+  const storefrontCards = async () => {
+    const sp = await ctx.newPage()
+    try {
+      await sp.goto(STOREFRONT, { waitUntil: 'networkidle', timeout: 20000 })
+      await sp.waitForTimeout(1200)
+      const cards = await sp.locator('.card, [data-form], a[href*="forms/"]').count()
+      return { ok: cards > 0, detail: cards > 0
+        ? `${cards} card(s) on the demo storefront`
+        : 'the demo packet is EMPTY — 0 cards. Open Packet Sets with ZZ Demo as the ACTIVE centre and create a set containing dcy_01234; until then the form beat cannot pass' }
+    } catch (e) {
+      return { ok: false, detail: 'storefront did not load: ' + (e.message || String(e)).split('\n')[0].slice(0, 60) }
+    } finally { await sp.close().catch(() => {}) }
   }
 
   /** visible + enabled + hit-testable + passes a trial (no-op) click */
@@ -186,6 +222,8 @@ async function main () {
   await page.waitForTimeout(2500)
 
   // B1 — still signed in? (an expired session renders a login page that has none of our controls)
+  await probe('the demo packet actually has forms in it', storefrontCards, { blocker: true })
+
   await probe('signed in (not bounced to /login)', async () => {
     const onLogin = /\/login/.test(page.url()) || (await page.locator('input[type="password"]').count()) > 0
     return { ok: !onLogin, detail: onLogin ? 'session expired — log in again in the window' : page.url().replace(APP, '') }
@@ -288,6 +326,7 @@ async function main () {
   // ── PHASE 3 — record ────────────────────────────────────────────────────────────────────────
   log('\n=== PHASE 3 — RECORDING ===')
   const recCtx = await openProfile(PROFILE, { record: true })
+  closeRecording = () => recCtx.close()      // Ctrl+C now finalises the .webm instead of orphaning it
   const rp = recCtx.pages()[0] || await recCtx.newPage()
 
   // ── TRACE-CHECKED BEATS ─────────────────────────────────────────────────────────────────────
@@ -320,7 +359,14 @@ async function main () {
         return { ok: false, skipped: true }
       }
       let r
-      try { r = await verify() } catch (e) { r = { ok: false, detail: 'check itself failed: ' + (e.message || String(e)).split('\n')[0].slice(0, 70) } }
+      // A check that takes long must never look like a hang: it is capped, and says so.
+      const CHECK_MS = 10_000
+      try {
+        r = await Promise.race([
+          verify(),
+          new Promise(res => setTimeout(() => res({ ok: false, detail: `the check did not finish in ${CHECK_MS / 1000}s — the page may still be loading` }), CHECK_MS)),
+        ])
+      } catch (e) { r = { ok: false, detail: 'check itself failed: ' + (e.message || String(e)).split('\n')[0].slice(0, 70) } }
       if (r && r.ok) { log('   ✓ trace found: ' + (r.detail || 'confirmed')); return r }
       log('   ✗ БИТ НЕ ЗАСЧИТАН — trace not found: ' + ((r && r.detail) || 'nothing to confirm it happened'))
       log(`   The recording is still running. Do the step, then press ENTER again (attempt ${attempt + 1}).`)

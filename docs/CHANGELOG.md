@@ -10,6 +10,8 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 
 <!-- newest on top -->
 
+- 2026-07-27 · 🧰 · Take 3 of the demo stopped four times on «open the enrollment form», and the detector was right: the demo center's packet had **no forms in it at all**, so there was nothing on screen to open. The rehearsal now opens the real parent link and **counts the cards** before anyone films — an empty packet stops the run with the fix written out, instead of being discovered by a person with a camera. Ctrl+C also stopped being a trap: it used to be swallowed, leaving the browser open and the video unfinished, and now it closes the recording properly so an aborted take still leaves a playable file. Every trace check is capped at ten seconds, so «slow» can never look like «frozen» again. (Tooling only.)
+
 - 2026-07-27 · 🧰 · Demo recorder: no real child's name can be in frame any more, by construction rather than by care. The Inbox beat now starts with typing «Emma» into the search, and the recorder REFUSES the beat while more than one row is on screen — it says how many rows it sees and asks for the filter. Cutting other centres' children out in the edit was a mitigation; leaving them off the frame is a guarantee. (Tooling only; scenario v2 beat 8 rewritten to match.)
 
 - 2026-07-27 · 🚀 · The driver's screen is now an app on the phone. After the director's link is opened once, the driver taps Share → Add to Home Screen and gets a 🚌 **Trip** icon that opens full screen — no address bar, no tabs, no App Store, no account. The tags that make that possible are attached only while the trip screen is open, so nobody else's home screen changes. The driver guide now shows the three-step gesture as a picture. (PWA manifest + iOS icon.)

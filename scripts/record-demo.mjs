@@ -332,6 +332,28 @@ async function main () {
 
   // ── PHASE 3 — record ────────────────────────────────────────────────────────────────────────
   log('\n=== PHASE 3 — RECORDING ===')
+  // ── БРИФИНГ ПЕРЕД ЗАПИСЬЮ ───────────────────────────────────────────────────────────────────
+  // Takes 3 and 4 were lost to this and not to any bug: the operator did not know that the pauses
+  // are HIS to act on. He pressed ENTER expecting the script to drive, the script honestly refused
+  // ("no trace"), and both sides waited for each other. A tool that needs a briefing and does not
+  // give one is unfinished — so the briefing is now part of the tool.
+  log('\n' + '═'.repeat(78))
+  log('  КАК ЭТО РАБОТАЕТ — прочитайте, это важно')
+  log('═'.repeat(78))
+  log('  Скрипт — СУФЛЁР, а не автопилот. Он НЕ нажимает ничего за вас.')
+  log('')
+  log('    1. Скрипт называет сцену и говорит, что сделать.')
+  log('    2. ВЫ играете её МЫШКОЙ в окне браузера — по-настоящему, на камеру.')
+  log('    3. И только потом жмёте ENTER здесь. ENTER означает «я сделал, проверь».')
+  log('')
+  log('  ENTER без действия = отказ: скрипт не найдёт следа и попросит сделать шаг.')
+  log('  Это не поломка — так он не даёт снять пустой дубль.')
+  log('')
+  log('  Запись НЕ останавливается на отказе. Спокойно доиграйте шаг и нажмите ENTER снова.')
+  log('  Ctrl+C в любой момент — корректно закроет запись, видео сохранится.')
+  log('═'.repeat(78))
+  await ask('  Понятно? Нажмите ENTER, чтобы начать запись… ')
+
   const recCtx = await openProfile(PROFILE, { record: true })
   closeRecording = () => recCtx.close()      // Ctrl+C now finalises the .webm instead of orphaning it
   const rp = recCtx.pages()[0] || await recCtx.newPage()
@@ -355,9 +377,10 @@ async function main () {
   // verifier must never trap someone mid-take). Every skip is listed again at the end, so a take
   // that leaned on one is never mistaken for a clean one.
   const unverified = []
-  const beat = async (label, instruction, verify) => {
+  const beat = async (label, instruction, verify, ru) => {
     log('\n⏸  BEAT — ' + label)
     log('   ' + instruction)
+    if (ru) log('   ▶ ПО-РУССКИ: ' + ru)
     for (let attempt = 1; ; attempt++) {
       const answer = await ask('   Do it in the browser, then press ENTER (or type `skip`)… ')
       if (/^skip$/i.test(answer)) {
@@ -376,7 +399,9 @@ async function main () {
       } catch (e) { r = { ok: false, detail: 'check itself failed: ' + (e.message || String(e)).split('\n')[0].slice(0, 70) } }
       if (r && r.ok) { log('   ✓ trace found: ' + (r.detail || 'confirmed')); return r }
       log('   ✗ БИТ НЕ ЗАСЧИТАН — trace not found: ' + ((r && r.detail) || 'nothing to confirm it happened'))
-      log(`   The recording is still running. Do the step, then press ENTER again (attempt ${attempt + 1}).`)
+      log('   ⚠ ПЕРВАЯ ПОМОЩЬ: сначала сделайте шаг САМИ, МЫШКОЙ В ОКНЕ БРАУЗЕРА, и только потом ENTER.')
+      log('     Скрипт ничего не нажимает за вас — он лишь проверяет, что след остался.')
+      log(`   Запись идёт. Доиграйте шаг и нажмите ENTER ещё раз (попытка ${attempt + 1}).`)
     }
   }
 
@@ -408,6 +433,7 @@ async function main () {
       const found = await anywhere(async s => (await s.locator('#f_child_name').count()) > 0)
       return { ok: found, detail: found ? 'DCY 01234 form is on screen' : 'no enrollment form anywhere — the packet link was not opened' }
     },
+    'Нажмите ➕ Add Child → в панели пакета откройте ССЫЛКУ (или отсканируйте QR) → на витрине нажмите Open у карточки «Child Enrollment & Health (DCY 01234)». На экране должна быть сама форма.'
   )
 
   // Fill what can be filled from here (the form may be in an iframe or in its own tab).
@@ -443,6 +469,7 @@ async function main () {
       })
       return { ok: inked, detail: inked ? 'signature slot carries ink' : 'the signature slot still looks blank' }
     },
+    'В форме нажмите слот подписи родителя → на пэде нарисуйте подпись КРУПНО пальцем/мышью → нажмите Use. Подпись должна появиться в слоте.'
   )
 
   // BEAT 3 — Submit must produce a confirmation, not just a click.
@@ -454,6 +481,7 @@ async function main () {
         (await s.locator('text=/thank you|submitted|received|отправлено|спасибо/i').count()) > 0)
       return { ok, detail: ok ? 'submission confirmation on screen' : 'no confirmation — the form was not accepted' }
     },
+    'Нажмите Submit внизу формы и дождитесь подтверждения об отправке.'
   )
 
   // Part 2 — office
@@ -476,6 +504,7 @@ async function main () {
       }
       return { ok: true, detail: `${DEMO_CHILD} present, and the only row on screen` }
     },
+    'СНАЧАЛА введите «Emma» в поиск Inbox — на экране должна остаться ОДНА строка. Затем откройте её. Не листайте нефильтрованный список: там реальные дети других центров.'
   )
 
   // BEAT 5 — Approve must leave the freeze behind it.
@@ -487,6 +516,7 @@ async function main () {
       const ok = (await rp.locator('text=/Snapshot on file|Snapshot at Approve|Freezing a copy|approved/i').count()) > 0
       return { ok, detail: ok ? 'approval / snapshot state visible' : 'nothing on screen says the form was approved and frozen' }
     },
+    'Нажмите View original form → поставьте контрподпись в слоте Program → нажмите ✓ Approve. Должна мелькнуть плашка «🔒 Freezing a copy…».'
   )
 
   // Part 3 — retrieval from snapshot
@@ -500,6 +530,7 @@ async function main () {
       const ok = (await rp.locator('text=/Snapshot on file/i').count()) > 0
       return { ok, detail: ok ? '🔒 Snapshot on file is showing' : 'no "Snapshot on file" badge — nothing was frozen for this child' }
     },
+    'Откройте ростер → карточку ребёнка Emma Carter → вкладку Documents. Там должна быть строка одобренной формы со снимком.'
   )
 
   // BEAT 7 — and it serves the frozen pages, saying so.
@@ -510,6 +541,7 @@ async function main () {
       const ok = (await rp.locator('text=/Snapshot at Approve/i').count()) > 0
       return { ok, detail: ok ? 'the viewer declares its source: Snapshot at Approve' : 'the green snapshot bar is not on screen' }
     },
+    'Нажмите View original form → убедитесь в зелёной плашке «Snapshot at Approve · sha» → нажмите Print: должны выйти 2 чистые официальные страницы.'
   )
 
   log('\nStopping recording…')

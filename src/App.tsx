@@ -33,6 +33,7 @@ import CACFPChecklistPage from './pages/cacfp-reports/CACFPChecklistPage'
 import SafePassTeacherPage from './pages/safepass/SafePassTeacherPage'
 import SafePassParentPage from './pages/safepass/SafePassParentPage'
 import SafePassEnrollDevice from './pages/safepass/SafePassEnrollDevice'
+import SafePassDriverPage from './pages/safepass/SafePassDriverPage'
 import SafePassIssueCode from './pages/safepass/SafePassIssueCode'
 import SafePassHelpPage from './pages/safepass/SafePassHelpPage'
 import MealCountHelpPage from './pages/meal-count/MealCountHelpPage'
@@ -131,6 +132,8 @@ export default function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/purchaser-app" element={<PurchaserApp />} />
             <Route path="/safepass/parent" element={<SafePassParentPage />} />
+            {/* Driver phone: PUBLIC like the parent screen — the gate is the device token + PIN, not a login. */}
+            <Route path="/safepass/driver" element={<SafePassDriverPage />} />
             {/* Tablet charging — token as a path segment, no '?' to be truncated. */}
             <Route path="/t/:token" element={<SafePassEnrollDevice />} />
             <Route path="/portal/:role/:center" element={<PortalPage />} />

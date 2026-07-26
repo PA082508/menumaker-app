@@ -35,7 +35,7 @@ Setup** and **Part 3 Retrieval** (the frozen approved-form snapshot) now that St
 
 | # | Beat | On screen | Screen-rule |
 |---|------|-----------|-------------|
-| 1 | Open the link | Parent opens the ZZ Demo QR/link on a phone; the official enrollment form loads, pre-scoped | show the URL is pre-scoped (center already set) |
+| 1 | Hand over the packet | ➕ Add Child → tile **ADMISSION** — **not Starter**: the Starter tile is `parent_consent · start_form · dcy_01305` and contains **no DCY 01234**, which cost takes 3–5. **Hold a beat on the packet contents, resting on the Income Eligibility line** — that is the line that convinces a centre (VO: *«…including CACFP income eligibility for the food program»*). Then open the packet link → card **Child Enrollment & Health (DCY 01234)** → **Open**; the official form loads, pre-scoped | The rehearsal blocks the run unless the deployed registry's ADMISSION tile really contains `dcy_01234`. **The income form itself stays out of this take** — IEA is under the «not placed into production use» gate until 1 Oct; the sweep must leave `income_eligibility` untouched. Video #2 (ClaimPulse) picks it up after that date |
 | 2 | Guided entry | Child + parent details; DOB date picker; phone/address validation catches a bad phone, then accepts a good one | pause on the validation catch — the "fewer errors" beat |
 | 3 | Meal times | Pick care days + meal times from the center's schedule | brief |
 | 4 | Sign — draw (**FKPad**) | Tap the parent slot → **FKPad** opens; parent **draws big**, it **scales to fit** the small slot (bbox scale-to-fit, no clipping) | **wow beat #1** — draw-big/fits-small |

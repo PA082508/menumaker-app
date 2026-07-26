@@ -153,7 +153,15 @@ async function main () {
 
   let ctx = await openProfile(PROFILE, { record: false })
   let page = ctx.pages()[0] || await ctx.newPage()
-  await page.goto(APP, { waitUntil: 'domcontentloaded' })
+  // A cold first navigation aborts now and then (net::ERR_ABORTED, seen 27.07). One retry costs
+  // a second; a crash at the very first step costs the evening.
+  const gotoRetry = async (pg, url, tries = 3) => {
+    for (let i = 1; ; i++) {
+      try { await pg.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 }); return }
+      catch (e) { if (i >= tries) throw e; await pg.waitForTimeout(800) }
+    }
+  }
+  await gotoRetry(page, APP)
 
   log('\n=== PHASE 1 — LOGIN (not recorded) ===')
   if (REHEARSE_ONLY) {
@@ -218,11 +226,27 @@ async function main () {
     return { ok: true }
   }
 
-  await page.goto(`${APP}/center/${ZZDEMO_CENTER}`, { waitUntil: 'domcontentloaded' })
+  await gotoRetry(page, `${APP}/center/${ZZDEMO_CENTER}`)
   await page.waitForTimeout(2500)
 
   // B1 — still signed in? (an expired session renders a login page that has none of our controls)
   await probe('the demo packet actually has forms in it', storefrontCards, { blocker: true })
+
+  // The Add Child panel does NOT read packet_sets: it renders the legacy packets of
+  // enroll-registry.json (only 'all centres' DB copies join them). Its 'Starter' tile is
+  // parent_consent · start_form · dcy_01305 — no DCY 01234 at all, which is why the take asked
+  // for a form the chosen tile never contained. So the tile the beat names is checked here, in
+  // the DEPLOYED registry the app actually serves — the app's local copy is not the fact.
+  await probe('the ADMISSION tile really contains dcy_01234', async () => {
+    const r = await ctx.request.get(`${APP}/enroll-registry.json?t=${Date.now()}`, { timeout: 15000 })
+    if (!r.ok()) return { ok: false, detail: `registry HTTP ${r.status()}` }
+    const j = await r.json()
+    const slots = (j?.packets?.admission?.slots ?? []).map(x => x.key)
+    const ok = slots.includes('dcy_01234')
+    return { ok, detail: ok
+      ? `admission = ${slots.length} forms, dcy_01234 present`
+      : `admission has NO dcy_01234 (${slots.join(', ')}) — beat 1 would ask for a form the tile cannot produce` }
+  }, { blocker: true })
 
   await probe('signed in (not bounced to /login)', async () => {
     const onLogin = /\/login/.test(page.url()) || (await page.locator('input[type="password"]').count()) > 0
@@ -264,7 +288,7 @@ async function main () {
 
   // B4 — the office half of the arc
   await probe('enrollment inbox route', async () => {
-    await page.goto(`${APP}/enrollment-inbox`, { waitUntil: 'domcontentloaded' }); await page.waitForTimeout(2000)
+    await gotoRetry(page, `${APP}/enrollment-inbox`); await page.waitForTimeout(2000)
     return { ok: (await page.locator('text=/Inbox|pending|review/i').count()) > 0 }
   })
   // Live-drive beats: these controls only exist once a submission is open, so presence is all
@@ -428,12 +452,14 @@ async function main () {
   // and browsed, the link was never followed, and the take sailed on regardless.
   await beat(
     'Part 1 · the enrollment form is open',
-    '➕ Add Child → the packet panel (link + QR) → open the packet link so DCY 01234 comes up. Frame on the form.',
+    '➕ Add Child → tile ADMISSION (not Starter — Starter has no DCY 01234) → hold a beat on the ' +
+    'packet contents, resting on the Income Eligibility line → open the packet link → card ' +
+    '"Child Enrollment & Health (DCY 01234)" → Open. Frame on the form.',
     async () => {
       const found = await anywhere(async s => (await s.locator('#f_child_name').count()) > 0)
       return { ok: found, detail: found ? 'DCY 01234 form is on screen' : 'no enrollment form anywhere — the packet link was not opened' }
     },
-    'Нажмите ➕ Add Child → в панели пакета откройте ССЫЛКУ (или отсканируйте QR) → на витрине нажмите Open у карточки «Child Enrollment & Health (DCY 01234)». На экране должна быть сама форма.'
+    'Нажмите ➕ Add Child → выберите плитку ADMISSION (НЕ Starter: в Starter нет DCY 01234!) → задержитесь на секунду на составе пакета, особенно на строке Income Eligibility (это акцент для садиков) → откройте ССЫЛКУ пакета → на витрине нажмите Open у карточки «Child Enrollment & Health (DCY 01234)». На экране должна быть сама форма.'
   )
 
   // Fill what can be filled from here (the form may be in an iframe or in its own tab).

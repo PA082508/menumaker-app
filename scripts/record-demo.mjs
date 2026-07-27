@@ -48,6 +48,32 @@ const OUTDIR = path.resolve(process.env.DEMO_OUTDIR || './demo-out')
 // no recording. This is the check to run before handing the machine to whoever is on camera.
 const REHEARSE_ONLY = process.argv.includes('--rehearse-only')
 
+// The rehearsal writes ONE throwaway through the real anon submit channel (see the DELIVERY
+// probe below). On by default: a beat that ends in Submit is not rehearsed by looking at the
+// button. --no-probe-submit turns it off and the run says, in the report, that it did.
+const PROBE_SUBMIT = !process.argv.includes('--no-probe-submit')
+
+// Probe rows are PERMANENT (the table's seal guard forbids DELETE), so every rehearsal adds one
+// and the totals drift upward run after run. They are therefore counted as their own line, never
+// folded into the take's numbers: a clean arc is 9 snapshots / 84 submissions / 1 for ZZ Demo
+// EXCLUDING probes. Nikolay's word, 2026-07-27. The tag below is what a read-back subtracts by.
+const PROBE_TAG = 'ZZSMOKE'
+const PROBE_MARK = 'rehearsal-submit-channel'
+let probesFired = 0
+const probeAccounting = () => {
+  if (!PROBE_SUBMIT) return '  probe rows written this run: 0 — the delivery probe was switched off (--no-probe-submit).'
+  return [
+    `  probe rows written this run: ${probesFired}   (tag ${PROBE_TAG} · probe="${PROBE_MARK}", centre ZZ Demo)`,
+    '  These are NOT part of the take. Any read-back or sweep counts them as a SEPARATE line and',
+    '  subtracts them: the clean arc is 9 / 84 / 1 (snapshots / submissions org-wide / ZZ Demo)',
+    '  WITHOUT probes. They cannot be deleted — the seal guard forbids it; the demo centre is the',
+    '  disposal unit. Read-back that separates them:',
+    `    select count(*) filter (where form_data->>'probe' = '${PROBE_MARK}') as probe_rows,`,
+    `           count(*) filter (where form_data->>'probe' is distinct from '${PROBE_MARK}') as take_rows`,
+    "    from menumaker.enrollment_submissions where center_id = '" + ZZDEMO_CENTER + "';",
+  ].join('\n')
+}
+
 const log = (...a) => console.log(...a)
 const SINGLETONS = ['SingletonLock', 'SingletonCookie', 'SingletonSocket']
 
@@ -259,6 +285,104 @@ async function main () {
     } finally { await sp.close().catch(() => {}) }
   }, { blocker: true })
 
+  // ── DELIVERY, NOT PRESENCE ────────────────────────────────────────────────────────────────
+  // Take 6 cleared every check above and then died on the press. The form was complete, the
+  // signature was in the slot, "All required fields complete ✓" was on screen — and ✔ Submit
+  // answered nothing, four times. Cause: form-kit.js carries its OWN hardcoded CENTERS map,
+  // and only enroll-registry.json ever learnt `zzdemo` (Pages 3695e64). The kit could not
+  // resolve a centre, so it refused — with a DISABLED button, which swallows the click and
+  // says nothing back. Two probes now stand where that hole was:
+  //   ARMED     — open the form the operator's own click opens, and ask the kit whether a
+  //               press would really reach the RPC. Cheap, no writes, catches centre drift.
+  //   DELIVERED — actually push one throwaway through the live anon channel and require a
+  //               row id back. Nothing else proves the channel is open end to end.
+  const formHrefFromStorefront = async (sp) => {
+    await sp.goto(SET_LINK, { waitUntil: 'networkidle', timeout: 20000 })
+    await sp.waitForTimeout(1500)
+    // the operator's real click, not a URL typed by me: the DCY card's own "Open"
+    const card = sp.locator('.card[data-key]').filter({ hasText: /Child Enrollment & Health|DCY 01234/i }).first()
+    if (!(await card.count())) return null
+    return card.locator('a.open').first().getAttribute('href')
+  }
+
+  let armedFormUrl = null
+  await probe('the form that Open leads to can really file (submit channel ARMED)', async () => {
+    const sp = await ctx.newPage()
+    try {
+      const href = await formHrefFromStorefront(sp)
+      if (!href) return { ok: false, detail: 'no DCY 01234 card with an Open link on the set page' }
+      const url = new URL(href, SET_LINK).href
+      const fp = await ctx.newPage()
+      try {
+        await fp.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 })
+        await fp.waitForFunction(() => window.FormKit && typeof window.FormKit.armed === 'function', null, { timeout: 15000 })
+          .catch(() => {})
+        const st = await fp.evaluate(() => {
+          const K = window.FormKit
+          if (!K) return { up: false }
+          const b = document.querySelector('[data-formkit="submit"]')
+          return {
+            up: true, kit: K.KIT ?? null, armed: typeof K.armed === 'function' ? K.armed() : null,
+            code: K.centerCode(), uuid: K.centerUuid(), why: typeof K.whyNotArmed === 'function' ? K.whyNotArmed() : '',
+            btnDisabled: b ? b.disabled : null,
+          }
+        })
+        if (!st.up) return { ok: false, detail: 'form-kit never came up on ' + url.slice(0, 70) }
+        if (st.kit !== 12) return { ok: false, detail: `the browser got form-kit build ${st.kit}, not 12 — the deployed ?v= bust is stale, so this is NOT the build under test` }
+        if (!st.armed) return { ok: false, detail: `centre "${st.code || '(none)'}" does not resolve in form-kit → Submit would refuse. ${st.why.slice(0, 90)}` }
+        if (st.btnDisabled) return { ok: false, detail: 'armed, but ✔ Submit is disabled — a click would be swallowed with no answer' }
+        armedFormUrl = url
+        return { ok: true, detail: `${st.code} → ${st.uuid.slice(0, 8)}…, kit v${st.kit}, Submit live` }
+      } finally { await fp.close().catch(() => {}) }
+    } catch (e) {
+      return { ok: false, detail: 'arming check failed: ' + (e.message || String(e)).split('\n')[0].slice(0, 70) }
+    } finally { await sp.close().catch(() => {}) }
+  }, { blocker: true })
+
+  // The honest shape of the throwaway. In the first film the probe was insert→delete; here it
+  // CANNOT be, and pretending otherwise would be the same kind of lie we are removing from the
+  // UI. `menumaker.enrollment_submissions` carries a BEFORE DELETE seal guard
+  // (trg_enr_sub_seal_del) — no role can remove a row, by design. That is precisely why the
+  // recording lives in a throwaway centre: the probe row lands in ZZ Demo, which is not part of
+  // any claim and is deactivated after the take. It is tagged ZZSMOKE and named so that no one
+  // could mistake it for a child. Skip with --no-probe-submit and the rehearsal says so out loud.
+  if (PROBE_SUBMIT) {
+    await probe('a throwaway really lands through the live anon submit channel', async () => {
+      if (!armedFormUrl) return { ok: false, detail: 'skipped — the arming check did not pass, so there is no channel to test' }
+      const fp = await ctx.newPage()
+      try {
+        await fp.goto(armedFormUrl, { waitUntil: 'domcontentloaded', timeout: 25000 })
+        await fp.waitForFunction(() => window.FormKit && window.FormKit.supa, null, { timeout: 15000 })
+        // fired from INSIDE the form page: same origin, same anon key, same headers, same RPC
+        // the parent's press would use. A different transport would prove a different channel.
+        const r = await fp.evaluate(async () => {
+          const K = window.FormKit
+          const res = await fetch(K.supa.url + '/rest/v1/rpc/submit_enrollment_form', {
+            method: 'POST', headers: K.supa.headers,
+            body: JSON.stringify({
+              p_org: K.ORG, p_center: K.centerUuid(), p_submission_type: 'dcy_01234',
+              p_form_data: {
+                smoke_tag: 'ZZSMOKE', probe: 'rehearsal-submit-channel',
+                child_name: 'ZZSMOKE Rehearsal Probe', note: 'not a child — proves the submit channel is open',
+              },   // keep `probe` spelled exactly as PROBE_MARK — the read-back subtracts by it
+              p_signatures: {}, p_signature_date: null, p_source: 'online',
+              p_idempotency_key: crypto.randomUUID(),
+            }),
+          })
+          return { ok: res.ok, status: res.status, body: (await res.text()).slice(0, 200) }
+        })
+        if (!r.ok) return { ok: false, detail: `the channel REFUSED the write: HTTP ${r.status} ${r.body}` }
+        probesFired++
+        const id = String(r.body).replace(/[^0-9a-f-]/gi, '').slice(0, 8)
+        return { ok: true, detail: `row ${id}… accepted — the channel is open (probe row #${probesFired} this run; counted separately, never part of the take)` }
+      } catch (e) {
+        return { ok: false, detail: 'delivery probe failed: ' + (e.message || String(e)).split('\n')[0].slice(0, 70) }
+      } finally { await fp.close().catch(() => {}) }
+    }, { blocker: true })
+  } else {
+    log('  ⏭  submit-channel delivery probe SKIPPED (--no-probe-submit). Presence of a button was never the fact we needed.')
+  }
+
   await probe('signed in (not bounced to /login)', async () => {
     const onLogin = /\/login/.test(page.url()) || (await page.locator('input[type="password"]').count()) > 0
     return { ok: !onLogin, detail: onLogin ? 'session expired — log in again in the window' : page.url().replace(APP, '') }
@@ -346,6 +470,8 @@ async function main () {
   } else {
     log('\n✓ Every rehearsed beat confirmed — including that ➕ Add Child really opens its panel.')
   }
+  log('\nProbe accounting (said out loud every run — these rows outlive the rehearsal):')
+  log(probeAccounting())
   if (REHEARSE_ONLY) {
     log('\n--rehearse-only: stopping here. Nothing was recorded.')
     rl.close(); await ctx.close(); process.exit(failed.length ? 1 : 0)
@@ -596,7 +722,9 @@ async function main () {
   }
   log('\nMontage rules (canon): no real child or family name in frame — the Inbox holds other')
   log('centers\' real children, so cut every Inbox frame that is not ' + DEMO_CHILD + '.')
-  log('Next: post (amy VO + burn-in captions) → Nikolay for acceptance. Then sweep the ZZSMOKE trail.')
+  log('\nProbe accounting (said out loud every run — these rows outlive the take):')
+  log(probeAccounting())
+  log('\nNext: post (amy VO + burn-in captions) → Nikolay for acceptance. Then sweep the ZZSMOKE trail.')
 }
 
 // run only when executed directly — importing this file (the phase-transition test does) must not

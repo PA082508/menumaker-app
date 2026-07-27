@@ -58,11 +58,21 @@ So, in force from now on:
 |---|------|-----------|-------------|
 | 1 | Hand over the packet | **Packet Sets → set «Admission (Starter)» → panel «Share this set» → Center: ZZ Demo → open that link (or scan its QR)** → on the storefront, card **Child Enrollment & Health (DCY 01234)** → **Open**; the official form loads, pre-scoped | **The ➕ Add Child panel has NO «Admission» tile** — its four are hardcoded Starter / Toddler-Preschool / Infants / School-Age, and **Starter is `parent_consent · start_form · dcy_01305`, without DCY 01234**. Measured 27.07: `?center=zzdemo` → 3 cards, no DCY; `&set=<Admission (Starter)>` → **2 cards with DCY 01234**. The rehearsal opens **that exact link** and asserts the card by its visible name. **No income accent in this take** — Income Eligibility is not on this path at all (measured), and IEA stays under its «not placed into production use» gate until 1 Oct; the whole income story moves to video #2 |
 | 2 | Guided entry | Child + parent details; DOB date picker; phone/address validation catches a bad phone, then accepts a good one | pause on the validation catch — the "fewer errors" beat |
-| 3 | Meal times | Pick care days + meal times from the center's schedule | brief |
+| ~~3~~ | ~~Meal times~~ | **REMOVED 27.07 (Nikolay's word)** — see the note below the table | — |
 | 4 | Sign — draw (**FKPad**) | Tap the parent slot → **FKPad** opens; parent **draws big**, it **scales to fit** the small slot (bbox scale-to-fit, no clipping) | **wow beat #1** — draw-big/fits-small |
 | 5 | Date auto-stamps | The date beside the signature **fills itself**, read-only | **wow beat #2** — linger 1s |
 | 6 | (Optional) Type instead | Quick cut: clear, **type** the name, pick a script style — same result | keep short |
 | 7 | Submit | Submit → confirmation | **assert Submit visible by measured contrast** ([[submit assert]]); screenshot confirmation |
+
+> **Beat 3 removed, 27.07 — the rule above catching its own author again.** «Meal times: pick
+> care days + meal times from the center's schedule» named something that is not on the operator's
+> screen: **DCY 01234 v7 has no meal-time fields at all** (measured — zero matches for the week /
+> meal block in the form). The centre's schedule is a form-kit feature other packet forms use; on
+> this form there is nothing to point at. Dropped rather than staged, per rule 4. Related and also
+> decided: **`meal_schedule` for `zzdemo` stays unseeded** — the demo centre has zero rows there,
+> and since the beat is gone nothing in frame depends on it, so no DB write is made for a picture
+> nobody sees. Later beat numbers are deliberately **not** renumbered: 4–17 keep the ids other
+> notes already reference.
 
 ## Part 2 — Office / Director path
 
@@ -93,6 +103,20 @@ So, in force from now on:
   which is why the recording lives in a disposable demo center. `is_active=false` afterward;
   nothing touches a claim.
 - Keep captions honest (Planned ≠ in force).
+- **Count the rehearsal's probe rows separately.** Every rehearsal pushes one throwaway through
+  the live anon submit channel (that is the only thing that proves the channel is open — take 6
+  died with a form that looked perfect and a button that answered nothing). Those rows are tagged
+  `smoke_tag=ZZSMOKE` with `probe='rehearsal-submit-channel'`, they are sealed like every other
+  submission, and they accumulate run after run. **A clean arc is 9 / 84 / 1** — snapshots /
+  submissions org-wide / ZZ Demo submissions — **excluding probes**. The recorder prints the
+  probe count out loud at the end of every run; a read-back separates them:
+
+  ```sql
+  select count(*) filter (where form_data->>'probe' = 'rehearsal-submit-channel') as probe_rows,
+         count(*) filter (where form_data->>'probe' is distinct from 'rehearsal-submit-channel') as take_rows
+  from menumaker.enrollment_submissions
+  where center_id = '0de1b5a4-e6d8-4e34-a5e4-e3dde23e1c6c';
+  ```
 
 ## Awaiting your word
 

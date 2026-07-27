@@ -274,17 +274,33 @@ export default function PacketSetsPage() {
   // the kitchen pseudo-center has no parent storefront, so it is never a packet target.
   const allCenterTargets = centers.filter(c => centerSlug[c.id])
 
+  // What, if anything, stops a Create right now — ONE sentence from ONE place, used both as the
+  // button's tooltip and as the spoken refusal, so the two can never drift apart. Create used to
+  // be `disabled` whenever any of these held, so a director with no active center pressed a dead
+  // button and got nothing back — the refusals below existed and were unreachable. Same disease
+  // as the enrollment form's ✔ Submit (take 6): a disabled control eats the press and answers
+  // no one. The button now stays live and says why.
+  const createBlocker = (): string | null => {
+    if (!org?.id) return 'The organisation has not loaded yet — give it a moment, or reload the page.'
+    if (!newName.trim()) return 'Give the set a name first.'
+    const scope = (isOrgAdmin && newScope === 'all') ? 'all' : 'center'
+    if (scope === 'center' && !createTargetCenterId) {
+      return 'Pick which center this set belongs to — choose it in the list above, or switch the active center first. Nothing was created.'
+    }
+    if (scope === 'all' && allCenterTargets.length === 0) {
+      return 'No enrollment centers with a storefront slug were found — can’t build an all-centers set yet. Nothing was created.'
+    }
+    return null
+  }
+
   const createSet = async () => {
+    const stop = createBlocker()
+    if (stop) { setErr(stop); return }
+    if (!org?.id) return   // unreachable (createBlocker already spoke) — kept so `org` narrows
     const name = newName.trim()
-    if (!name) { setErr('Give the set a name first.'); return }
-    if (!org?.id) return
     // Scope is owner/GD-only; a director is always 'center'. Guard defensively even though
     // the 'all' option is never rendered for a director (RLS also blocks cross-center insert).
     const scope: 'center' | 'all' = (isOrgAdmin && newScope === 'all') ? 'all' : 'center'
-    if (scope === 'center' && !createTargetCenterId) { setErr('Pick which center this set belongs to.'); return }
-    if (scope === 'all' && allCenterTargets.length === 0) {
-      setErr('No enrollment centers with a storefront slug were found — can’t build an all-centers set yet.'); return
-    }
     setBusy(true); setErr(null); setNote(null)
     try {
       if (scope === 'all') {
@@ -398,6 +414,22 @@ export default function PacketSetsPage() {
       catch { setErr('Copy failed — the browser blocked clipboard access.') }
     }
   }
+  // "🔗 Copy link" used to be fire-and-forget: `navigator.clipboard?.writeText(url)` with an
+  // unconditional "Link copied." So when the clipboard was absent (`?.` → undefined) or the
+  // write was refused — every automation Chromium, any non-secure context, a denied permission
+  // — the panel said "copied" and the clipboard still held whatever was there before. That is
+  // worse than silence: it is a confident lie, and it is on the demo path (beat 1 shares this
+  // very link). Await it, and when it fails say so — the link is already on screen to copy by hand.
+  const copyLink = async (url: string) => {
+    setErr(null); setNote(null)
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('this browser gives the page no clipboard access')
+      await navigator.clipboard.writeText(url)
+      setNote('Link copied.')
+    } catch (e: any) {
+      setErr(`Copy failed — ${e?.message ?? e}. Nothing was copied; select the link shown above and copy it by hand.`)
+    }
+  }
   const downloadQrFrom = (t: QrTarget) => {
     const canvas = canvasOf(canvasIdFor(t))
     if (!canvas) return
@@ -465,10 +497,10 @@ export default function PacketSetsPage() {
                 </div>
               )}
               <ButtonRow>
-                <Button variant="primary" onClick={createSet}
-                  disabled={busy || !newName.trim()
-                    || ((!isOrgAdmin || newScope === 'center') && !createTargetCenterId)
-                    || (isOrgAdmin && newScope === 'all' && allCenterTargets.length === 0)}>
+                {/* `busy` is the only thing that may disable this: a real in-flight guard, and it
+                    already says "Creating…". Every other reason is a refusal with words. */}
+                <Button variant="primary" onClick={createSet} disabled={busy}
+                  title={createBlocker() ?? 'Create this set'}>
                   {busy ? 'Creating…' : (isOrgAdmin && newScope === 'all') ? 'Create for all centers' : 'Create'}
                 </Button>
                 <Button onClick={() => { setCreating(false); setNewName(''); setNewCenterId(null); setNewScope('center') }} disabled={busy}>Cancel</Button>
@@ -721,7 +753,7 @@ export default function PacketSetsPage() {
                                 <code style={{ fontSize: 11.5, color: GREEN, wordBreak: 'break-all', display: 'block', marginBottom: 10 }}>{url}</code>
                                 <ButtonRow>
                                   <Button variant="primary" onClick={() => copyBlockFor(t, url)}>📋 Copy block</Button>
-                                  <Button onClick={() => { navigator.clipboard?.writeText(url); setNote('Link copied.') }}>🔗 Copy link</Button>
+                                  <Button onClick={() => copyLink(url)}>🔗 Copy link</Button>
                                   <Button onClick={() => downloadQrFrom(t)}>⬇ Download QR</Button>
                                 </ButtonRow>
                               </div>

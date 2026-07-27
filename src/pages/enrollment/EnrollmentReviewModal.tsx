@@ -19,7 +19,7 @@ import {
   type RosterLite, type ApproveResult,
 } from '@/lib/enrollmentApprove'
 import { deriveMealFields } from '@/lib/ageGroups'
-import { countersignSlot, loadSample, adoptSample, type SignatureSample, type SampleOwner, type SigMethod } from '@/lib/signatureSamples'
+import { countersignSlot, loadSample, adoptSample, samplesEnabled, type SignatureSample, type SampleOwner, type SigMethod } from '@/lib/signatureSamples'
 import SignaturePad from '@/components/signing/SignaturePad'
 import { SIG_FACES, faceByKey, renderTypedSignature } from '@/lib/typedSignature'
 import OriginalFormViewer from './OriginalFormViewer'
@@ -1214,7 +1214,11 @@ function CountersignField({
       <div style={{ fontWeight: 600, color: '#374151', marginBottom: 6 }}>
         Your signature <span style={{ color: '#9ca3af', fontWeight: 400 }}>— {slotLabel}</span>
       </div>
-      {mySample && (
+      {/* «Apply my signature» — the saved-sample one-tap. CONSERVED 2026-07-27: while
+          samplesEnabled() is false the shelf is never loaded (loadSample returns null), so
+          this cannot render; the guard is explicit as well, so the intent survives a future
+          refactor that changes where mySample comes from. */}
+      {samplesEnabled() && mySample && (
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
           <input type="checkbox" checked={useSample} onChange={e => setUseSample(e.target.checked)} />
           <span>Apply my signature</span>
@@ -1258,10 +1262,15 @@ function CountersignField({
             </div>
           )}
 
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-            <input type="checkbox" checked={adopt} onChange={e => setAdopt(e.target.checked)} />
-            <span style={{ color: '#6b7280' }}>Remember this as my signature — apply it with one tap next time</span>
-          </label>
+          {/* «Remember this as my signature» — mints the shelf sample. CONSERVED 2026-07-27:
+              hidden, not deleted. While it is hidden `adopt` stays false, so the Approve path
+              never calls adoptSample (which also refuses while conserved). */}
+          {samplesEnabled() && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+              <input type="checkbox" checked={adopt} onChange={e => setAdopt(e.target.checked)} />
+              <span style={{ color: '#6b7280' }}>Remember this as my signature — apply it with one tap next time</span>
+            </label>
+          )}
         </>
       )}
     </div>

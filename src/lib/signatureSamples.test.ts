@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { countersignSlot, COUNTERSIGN_SLOT } from './signatureSamples'
+import { countersignSlot, COUNTERSIGN_SLOT, SAMPLE_SCOPE, samplesEnabled, loadSample, adoptSample } from './signatureSamples'
 import { isProspect } from './enrollmentApprove'
 
 // Slots are MEASURED from the live submissions, never invented.
@@ -59,5 +59,37 @@ describe('isProspect — signed packet #1, fee never recorded', () => {
   it('Izabella’s live consent reads as a prospect today', () => {
     // fcc8547d… — parent_consent, pending, child_id null, no fee.
     expect(isProspect({ submission_type: 'parent_consent', status: 'pending', fee_received_at: undefined })).toBe(true)
+  })
+})
+
+// ─── conservation (2026-07-27) ───────────────────────────────────────────────
+// The shelf mechanic is locked behind one flag, not deleted. These tests are the
+// read-back that the lock is actually engaged: a shelf that is never read cannot
+// render "Apply my signature" (the modal's affordance is bound to a loaded sample),
+// and a mint that throws cannot leave a sample behind.
+describe('signature samples are CONSERVED', () => {
+  it('the flag is off by default', () => {
+    expect(SAMPLE_SCOPE).toBe('none')
+    expect(samplesEnabled()).toBe(false)
+  })
+
+  it('the shelf is not read — loadSample returns null without touching the database', async () => {
+    // No supabase mock is installed: if this reached PostgREST the call would throw,
+    // so returning null IS the proof that the read is short-circuited.
+    await expect(loadSample({ scope: 'director', authId: '00000000-0000-0000-0000-000000000000' }))
+      .resolves.toBeNull()
+    await expect(loadSample({ scope: 'parent', guardianId: '00000000-0000-0000-0000-000000000000' }))
+      .resolves.toBeNull()
+  })
+
+  it('nothing can be minted while conserved', async () => {
+    await expect(adoptSample({
+      owner: { scope: 'director', authId: '00000000-0000-0000-0000-000000000000' },
+      orgId: '00000000-0000-0000-0000-000000000000',
+      ownerName: 'Someone',
+      image: 'data:image/png;base64,AAA',
+      method: 'drawn',
+      adoptedBy: '00000000-0000-0000-0000-000000000000',
+    })).rejects.toThrow(/conserved/i)
   })
 })

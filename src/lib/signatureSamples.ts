@@ -19,6 +19,23 @@ import { supabase } from './supabase'
 
 const S = () => supabase.schema('menumaker')
 
+// ── SAMPLE SCOPE — the shelves are CONSERVED (2026-07-27, Nikolay: «чтобы избежать споров») ──
+// While this is 'none' the shelf is neither read nor written anywhere in the app, and the
+// "Apply my signature" / "Remember this as my signature" affordances do not render. Every
+// signature is then a fresh live stroke made on THAT document, carrying its own date.
+//
+// The mechanic below is NOT deleted — it is locked behind this one flag. Turning it back on
+// is gated on counsel (question #1 in docs/compliance/lawyer-memo.md) AND Nikolay's word, and
+// on the conditions in docs/specs/2026-07-27-signature-sample-unconservation.md: drawn-only,
+// minted ONLY under the consent text, applied by a deliberate per-form tap, trailed as
+// method='adopted' with date + who + device, owner's authenticated session only. Flipping
+// this constant alone does NOT satisfy those conditions — read the spec first.
+//
+// The kit carries the same flag for the parent-facing forms (form-kit.js → SAMPLE_SCOPE);
+// both must move together, or one surface would offer a shelf the other refuses to fill.
+export const SAMPLE_SCOPE: 'none' | 'live' = 'none'
+export const samplesEnabled = (): boolean => SAMPLE_SCOPE !== 'none'
+
 // sponsor = the General Director / org owner (owner_auth_id), the IEA sponsor_sig
 // role. It is its OWN shelf, never the center `director` shelf — the shelves forbid
 // that collapse (20260722b_signature_samples_sponsor_scope.sql, DECISIONS §12 п.15).
@@ -58,6 +75,7 @@ const COLS = 'id,scope,owner_name,signature_image,signature_method,adopted_at'
 
 /** The owner's live sample on THIS shelf, or null. Never looks at another shelf. */
 export async function loadSample(owner: SampleOwner): Promise<SignatureSample | null> {
+  if (!samplesEnabled()) return null            // conserved: the shelf is not read
   const { data, error } = await S().from('signature_samples')
     .select(COLS)
     .eq('scope', owner.scope)
@@ -92,6 +110,7 @@ export interface AdoptResult { id: string; undo: () => Promise<void> }
  *  the partial unique index allows exactly one, and the old one is kept (never
  *  deleted) because it is evidence of what the owner signed with before. */
 export async function adoptSample(input: AdoptInput): Promise<AdoptResult> {
+  if (!samplesEnabled()) throw new Error('Signature samples are conserved — nothing is minted')
   const { owner, orgId, centerId, ownerName, image, method, sourceSubmissionId, adoptedBy } = input
   if (!ownerName.trim()) throw new Error('A sample needs the name it is signed with')
   if (!image.startsWith('data:image/')) throw new Error('A signature sample must be an image')

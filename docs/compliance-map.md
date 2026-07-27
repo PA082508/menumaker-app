@@ -8,6 +8,42 @@ Status legend: ✅ Built · 🟡 Partial · 🟣 Planned · ⚪ Gap · ⛔ Out o
 
 ---
 
+## Source: DCY — electronic signatures on child-care records (guidance received 2026-07-27)
+
+**Added 2026-07-27.** Verbal/written guidance from DCY to Nikolay, quoted verbatim:
+*"Electronic signatures are allowed … official electronic signature or physical signature
+on-line. It can't just be the parent typing their name in."*
+
+**Verdict, one line: an e-signature is acceptable only if it is a real signature made online —
+a typed name is not one.** Our platform offered BOTH (draw or type) on the parent slot of every
+signing kit from 2026-07-24; as of 2026-07-27 the typed option is removed from every government
+form and from the two internal forms whose signature can be re-applied to a government form.
+
+### provision → reflection → status
+
+| Provision | Reflection | Status |
+|-----------|-----------|--------|
+| Signature must be an official electronic signature, not a typed name | Parent slot on DCY 01234 (v8), CACFP Enrollment (v11), IEA FY2026-27 (v8), USDA Waiver (v5) = **draw only**; typed rail, script faces and renderer deleted from the edition | ✅ Built |
+| Same, at the source of a re-applied signature | Parent Consent (v4) and Parent Handbook Receipt (v2) — the two forms that MINT the saved sample adopted by the government forms — also draw-only | ✅ Built |
+| Centre-side signature (program administrator / sponsor) | Never typed-capable; drawn on the form or countersigned in-app | ✅ Built |
+| Documented consent to sign electronically | Parent Consent for Electronic Signatures, signed + sealed as its own record | ✅ Built |
+| Signature bound to an attestation | Signature block locked until required fields complete; attestation = the official form's own certification text, verbatim | ✅ Built |
+| Signature bound to a date | Date beside a signature is a STAMP set at the moment of signing, read-only, cleared with the signature, bound 1:1 | ✅ Built |
+| Trusted time + submitting device | Server `sealed_at`, `created_at`, `submit_ip`, `submit_user_agent` — taken by the RPC, never from the client | ✅ Built |
+| Tamper-evidence / non-repudiation | SHA-256 `content_hash` over form data ⨁ signature snapshot; seal trigger blocks edits and deletion for **all** roles incl. service_role; a correction is a new row (`supersedes_id` + reason) | ✅ Built |
+| Retrievable copy of what was signed | Snapshot at Approve: official pages to a private bucket + `content_sha` tied to the record's hash; view/print come from the snapshot | ✅ Built |
+| Same protection on records signed before 2026-07-23 | Sealing is forward-only — 74 of 90 records unsealed; backfill is a separate decision | 🟡 Partial |
+| Form edition stamped on each record | `form_version` written on the embedded path only; public storefront path does not send it yet (0 rows) — edition established by registry + deploy history | 🟡 Partial |
+| Consent flag on the record | `esign_consent_at` column + RPC parameter exist; forms do not emit the flag yet (0 rows) | 🟡 Partial |
+| Staff/public submission path sealed | `submit_public_form` not yet mirrored to the sealed pattern | ⚪ Gap |
+| Internal (non-agency) documents may still be typed | Child Release Authorization, Transition into the Program, Staff Consent — typed rail retained pending counsel's view | 🟡 Partial |
+
+**One-page answer for DCY and counsel:** [`docs/compliance/e-signature.md`](compliance/e-signature.md).
+**Live record as of 2026-07-27:** zero typed signatures on any government form; the five typed
+signatures on file are all on the internal e-signature consent form, all before 2026-07-24.
+
+---
+
 ## Source: OAC 5180:2-12 — licensing: nap-time ratio (read 2026-07-26)
 
 **Added 2026-07-26, read via browser path from codes.ohio.gov (primary source, not memory) —

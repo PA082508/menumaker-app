@@ -109,3 +109,21 @@ without the attributes still submits exactly as today.
 
 **Standing constraints:** self-contained enough that the embed iframe still works; paper-print parity
 preserved (all kit chrome is `print:hidden`); progressive enhancement (kit absent ⇒ today's behavior).
+
+## 9. Зарезервированная проводка: `data-fk-mint` / `data-fk-adopt` (27.07.2026)
+
+**Новые издания форм собираются С этими атрибутами.** Они не мусор и не забытый код: это
+розетки **спящей способности** «образец подписи» (Planned, коммерческий вариант).
+
+- консент-форма ставит `data-fk-mint` (+ `data-fk-mint-name="#<поле имени>"`) на своей канве;
+- любая подписная форма, которая применяла бы образец, ставит `data-fk-adopt` на своём слоте;
+- область (`data-fk-mint="staff"` и т.п.) — по роли подписанта, никогда не общая.
+
+Сегодня кит их **игнорирует**: `SAMPLE_SCOPE='none'`, ничего не чеканится и не предлагается,
+на экране их не видно. Канон Play Academy / Ohio — живая подпись (пальцем или крестиком) с
+собственной датой на каждом документе.
+
+**Не снимать.** Снятие превращает будущее включение из переключения флага в повторную
+разметку всех форм. Страж `src/lib/sampleScopeGuard.test.ts` валит сборку и за включённый
+флаг, и за пропавшую розетку. Полный контекст —
+`docs/specs/2026-07-27-signature-sample-unconservation.md`.

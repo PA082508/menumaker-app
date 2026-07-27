@@ -49,8 +49,16 @@ faster, error-checked family onboarding that still ends in a **human decision**.
 - **Guided, error-reducing entry.** Date pickers, phone/address validation, required-field
   checks, and meal-time selections drawn from the center's real schedule — fewer bad forms,
   less re-work.
-- **One-tap signatures & reuse.** Parents and directors sign by draw or type; a director's
-  saved signature is private and reusable in one tap.
+- **Signatures that hold up.** Parents and directors sign by drawing on the document — a real
+  signature, or a mark — with its own date stamped at the moment of signing, sealed against
+  later change. Typed names are not accepted on regulated forms: the licensing authority (Ohio
+  DCY) requires an official electronic signature, "not just the parent typing their name in."
+- **Reusable signature sample — Planned, jurisdiction-gated.** Adopting one signature and
+  re-applying it with a tap on later documents is **built but switched off**, and off is the
+  default everywhere. Whether it may ever be enabled is decided per **jurisdiction × document
+  type** — federal ESIGN/UETA are near-uniform, so the variation comes from licensing agencies
+  and the requirements of specific blanks, and a center's own fee agreement may differ from a
+  government form **in the same state**. Not available today; not enabled for any Ohio center.
 - **From home, pre-scoped.** Parents complete forms from home via a QR code or link
   pre-scoped to their child's center.
 - **AI-assisted, human-approved.** AI **assists** operators — for example, drafting and

@@ -164,6 +164,31 @@
       try { window.dispatchEvent(new CustomEvent(name, { detail: detail || {} })); } catch (e) {}
     }
 
+    // ── form_version: what the SIGNER had open, not what the registry points at ──
+    // Этап А (Николай, 28.07). Раньше сюда шёл `version` = pinnedVersion || form.current,
+    // то есть УКАЗАТЕЛЬ РЕЕСТРА. Реестр может флипнуть, пока форма открыта в руках
+    // родителя: тогда запись утверждала бы редакцию, которой человек не видел, и
+    // доказать по ней ничего нельзя. Бэкфилл невозможен — восстановить, что было на
+    // экране, неоткуда. Поэтому порядок предпочтений такой:
+    //
+    //   1. msg.formVersion         — форма объявила сама (кит начнёт слать; kit-bust)
+    //   2. form_data.*_version     — самообъявленная версия ВНУТРИ полезной нагрузки:
+    //                                dcy_version / consent_version / doc_version —
+    //                                они уже приходят сегодня, их пишет сам бланк
+    //   3. 'registry:' + version   — запасной путь, ПОМЕЧЕННЫЙ как запасной. Указатель
+    //                                реестра не выдаётся за подписанную редакцию:
+    //                                префикс говорит читателю, что это наша догадка.
+    function declaredVersion(msg) {
+      var self = msg && msg.formVersion;
+      if (self) return String(self);
+      var fd = (msg && msg.formData) || {};
+      for (var k in fd) {
+        if (!Object.prototype.hasOwnProperty.call(fd, k)) continue;
+        if (/(^|_)version$/.test(k) && fd[k]) return String(fd[k]);
+      }
+      return version ? 'registry:' + version : null;
+    }
+
     // save (embed mode): the form does NOT write; it hands us form_data and we
     // persist via the anon RPC submit_enrollment_form (p_source='embed').
     function handleSave(msg) {
@@ -178,7 +203,8 @@
         p_signatures: msg.signatures || {},
         p_signature_date: msg.signatureDate || null,
         p_source: 'online',                                    // flag#1: 'embed' отвергался RPC (v9 backlog) → 'online'
-        p_form_version: version,                               // §3: эдиция реестра — embed уже знает версию формы
+        p_form_version: declaredVersion(msg),                  // этап А: САМООБЪЯВЛЕННАЯ версия страницы — см. ниже
+        p_record_origin: 'live',                               // этап А: настоящая заявка (проба метится гардом на строке)
         p_esign_consent: !!msg.esignConsent,                   // §2: форма сообщает согласие (form-kit follow-up шлёт флаг)
         p_signature_sample_id: msg.signatureSampleId || null   // §2: след adopt-образца, когда форма его шлёт
       };

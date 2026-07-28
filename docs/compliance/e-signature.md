@@ -96,6 +96,20 @@ typed option; they are drawn.
 **Still typed-capable (internal documents only, not submitted to any agency):** Child Release
 Authorization, Transition into the Program, Staff Consent for Electronic Signatures. See §7.
 
+## 5a. What the seal proves — and what it does not
+
+**The seal proves that the DATA of a record has not changed since it was signed. It does not
+prove WHICH TEXT was on the signer's screen.** Those are two different claims, and only the
+first one is currently evidenced. Until 2026-07-27 the gap was theoretical, because every
+edition of a form said the same thing as the paper it replaced. That day the editions first
+diverged in content — one corrected typo and a section of authorized departures from the Word
+original — so the second gap became real: two records signed a week apart can now carry the
+same form type and different words, and nothing in the record says which words.
+
+What closes it is `form_version` on every signed record (§6) — the edition the signer actually
+had open, recorded at the moment of signing. It cannot be reconstructed afterwards, for the same
+reason a seal cannot: evidence is either captured when it happens or it is not evidence.
+
 ## 6. Honest state of the record (what a reviewer would find today)
 
 * **90 electronic submissions** on file. **16** carry the tamper-evident seal — sealing was

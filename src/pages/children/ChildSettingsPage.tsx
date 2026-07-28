@@ -15,6 +15,7 @@ import AvatarUpload from '@/components/AvatarUpload'
 import ScheduleEditor from '@/components/ScheduleEditor'
 import { useAuth } from '@/hooks/useAuth'
 import { parseIeaFiscalYear, frpExpiryDefault, recordDetermination } from '@/lib/enrollmentApprove'
+import { stripStoredKey } from '@/lib/rosterKey'
 import ChildExportPanel from './ChildExportPanel'
 import ChildDocumentsTab from './ChildDocumentsTab'
 import { fmtDateOnly } from '@/lib/dateOnly'
@@ -210,7 +211,11 @@ export default function ChildSettingsPage({
     const expires = (frp === 'F' || frp === 'R')
       ? (child.frp_expires || frpExpiryDefault(todayStr, null))
       : child.frp_expires
-    await supabase.schema('menumaker').from('roster').update({
+    // A stored key is never rebuilt (see rosterKey.ts). This save used to write
+    // child_name as "Last First" on every edit — implementing a DISPLAY rule as
+    // a WRITE rule on the claim-bridge identity key. Display order belongs to
+    // the render; first_name/last_name below are what the render reads.
+    await supabase.schema('menumaker').from('roster').update(stripStoredKey({
       first_name: child.first_name, last_name: child.last_name,
       birthday: child.birthday, classroom_id: child.classroom_id,
       date_in: child.date_in, date_out: child.date_out,
@@ -221,9 +226,7 @@ export default function ChildSettingsPage({
       emergency_transport_auth: child.emergency_transport_auth,
       enrollment_reviewed_at: child.enrollment_reviewed_at,
       photo_url: child.photo_url,
-      // child_name canonical = "Last First" (see docs/platform-standards.md)
-      child_name: `${child.last_name ?? ''} ${child.first_name ?? ''}`.trim()
-    }).eq('id', childId)
+    })).eq('id', childId)
 
     // Layer 2: if eligibility changed, record it as a determination (manual,
     // profile edit) on the current-cycle income_eligibility row + append-only

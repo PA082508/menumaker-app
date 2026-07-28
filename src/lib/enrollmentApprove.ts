@@ -16,6 +16,7 @@
 // ============================================================
 
 import { supabase } from './supabase'
+import { stripStoredKey } from './rosterKey'
 
 const S = () => supabase.schema('menumaker')
 const blank = (v: any) => v === null || v === undefined || (typeof v === 'string' && v.trim() === '')
@@ -398,7 +399,7 @@ export async function approveCacfpUpdate(
   // On an EXISTING child we must NEVER rewrite it, or its already-written meal rows
   // desync. Strip it here — birthday/classroom/frp/schedule still update. (The
   // INSERT path keeps First-Last child_name; a brand-new child has no meal rows.)
-  const { child_name: _cn, ...rest } = patch
+  const rest = stripStoredKey(patch)
   // Reactivating a departed match: flip is_active back on in the same write, and
   // capture it in `cols` so undo restores the prior (inactive) state.
   const effPatch: RosterPatch = reactivate ? { ...rest, is_active: true } : rest

@@ -12,6 +12,7 @@ import { useOrg } from '@/contexts/OrgContext'
 import { fetchEnrollmentActionCounts } from '@/lib/enrollmentActionCount'
 import { useAuth } from '@/hooks/useAuth'
 import { displayChildName } from '@/lib/childName'
+import { stripStoredKey } from '@/lib/rosterKey'
 import Avatar from '@/components/Avatar'
 import Button, { ButtonRow } from '@/components/ui/Button'
 import { HelpVideoBadge } from '@/components/HelpVideo'
@@ -912,16 +913,17 @@ function EditChildPanel({ child, classrooms, onDone }: {
   async function save() {
     setSaving(true); setError('')
     try {
-      const { error: err } = await supabase.schema('menumaker').from('roster').update({
+      // A stored key is never rebuilt (see rosterKey.ts) — this edit used to
+      // rewrite child_name, the claim-bridge identity key, as "Last First".
+      const { error: err } = await supabase.schema('menumaker').from('roster').update(stripStoredKey({
         first_name: form.first_name,
         last_name: form.last_name,
-        child_name: `${form.last_name} ${form.first_name}`,
         birthday: form.birthday || null,
         classroom_id: form.classroom_id || null,
         date_in: form.date_in || null,
         frp: form.frp || null,
         milk_kind: form.milk_kind || null,
-      }).eq('id', child.id)
+      })).eq('id', child.id)
       if (err) throw err
       onDone()
     } catch (e: any) {

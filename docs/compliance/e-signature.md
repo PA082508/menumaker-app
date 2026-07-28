@@ -110,6 +110,25 @@ What closes it is `form_version` on every signed record (§6) — the edition th
 had open, recorded at the moment of signing. It cannot be reconstructed afterwards, for the same
 reason a seal cannot: evidence is either captured when it happens or it is not evidence.
 
+## 5b. Prefill carries data — never a signature, and never its date
+
+At the annual review a family is not asked to retype what has not changed. The renewal form
+opens **prefilled** from the record they signed last year: names, address, dates of birth,
+contacts, the answers to the questions.
+
+**What prefill never carries is the signature or the date beside it.** A signature is evidence
+that a particular person made a particular mark on a particular day; carried forward, it would
+assert an act that did not happen. So the pad opens **empty** on every renewal, the parent draws
+again, and the date stamps itself at that moment (§1–2). The same holds for the administrator's
+side.
+
+This is **mandatory for renewal, not an option** — a renewal record whose signature was inherited
+rather than made is not a signed record at all.
+
+It is also why conserving the reusable signature sample (2026-07-27, §5) costs the renewal
+nothing and in fact serves it: with no stored sample to re-apply, there is no mechanism by which
+last year's stroke could reach this year's form even by mistake.
+
 ## 6. Honest state of the record (what a reviewer would find today)
 
 * **90 electronic submissions** on file. **16** carry the tamper-evident seal — sealing was

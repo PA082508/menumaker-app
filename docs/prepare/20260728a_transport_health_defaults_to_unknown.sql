@@ -1,5 +1,5 @@
 -- 20260728a_transport_health_defaults_to_unknown.sql
--- PREPARE — НЕ ПРИМЕНЕНО. Ждёт отдельного go Николая.
+-- ✅ ПРИМЕНЕНО 2026-07-28 по слову. Читка обратно — в конце файла.
 --
 -- ── ЗАЧЕМ
 -- menumaker.roster.emergency_transport_auth = true у ВСЕХ 623 строк (0 false, 0 null).
@@ -150,3 +150,14 @@ from menumaker.roster;
 -- та же фикция на новых детях:
 --   alter table menumaker.roster alter column emergency_transport_auth drop default;
 --   alter table menumaker.roster alter column has_health_condition     drop default;
+
+-- ============================================================================
+-- ПРИМЕНЕНО 2026-07-28. Читка обратно:
+--   roster 623 | eta: true 1 (Leilani) · false 1 (Izabella) · null 621
+--                hhc: true 2 · false 1 (Leilani) · null 620
+--   §2а-1 транспорт  → 621 строк в «неизвестно»
+--   §2а-2 здоровье   → 620 строк в «неизвестно»
+--   §2б  двое со следом выставлены по подписанной форме
+--   §2в  расхождение у Izabella НЕ тронуто — решение директора
+-- Новое красное среди активных: Highland 104 · Pearl 74 · Ridge 138 детей (631 единица).
+-- ============================================================================

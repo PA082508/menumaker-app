@@ -57,6 +57,33 @@ const PROBE_SUBMIT = !process.argv.includes('--no-probe-submit')
 // and the totals drift upward run after run. They are therefore counted as their own line, never
 // folded into the take's numbers: a clean arc is 9 snapshots / 84 submissions / 1 for ZZ Demo
 // EXCLUDING probes. Nikolay's word, 2026-07-27. The tag below is what a read-back subtracts by.
+// ZZ Demo is a MEAL SITE only while the camera is rolling. `is_meal_site` is what puts a centre
+// into the app's own centre list (menumaker.app_bootstrap), so with the flag down the demo centre
+// cannot be made active and the whole arc is unshootable — but with the flag UP the demo centre is
+// selectable on every claim screen, and a monthly claim could be generated for it. Nikolay's rule
+// (28.07): raise it for the take, lower it the moment the take ends, and never let it stand over a
+// month boundary. The script cannot flip it itself — the browser holds an anon session and centres
+// are not anon-writable — so it SAYS the two lines out loud at both ends instead of assuming.
+const ZZ_SQL_UP   = "update menumaker.centers set is_meal_site = true  where id = '0de1b5a4-e6d8-4e34-a5e4-e3dde23e1c6c';"
+const ZZ_SQL_DOWN = "update menumaker.centers set is_meal_site = false where id = '0de1b5a4-e6d8-4e34-a5e4-e3dde23e1c6c';"
+const MEAL_SITE_RAISE = [
+  '',
+  '⚑ PREFLIGHT — ZZ Demo must be a meal site for the duration of this take.',
+  '  If the centre switcher has no "ZZ Demo", the flag is DOWN. Raise it (Nikolay applies):',
+  '    ' + ZZ_SQL_UP,
+  '  Then reload the app. Read it back before shooting: the switcher must list ZZ Demo.',
+  '  ⚠ It goes back DOWN the moment the take ends — see the closing lines of this run.',
+].join('\n')
+const MEAL_SITE_LOWER = [
+  '',
+  '⚑ SWEEP — lower ZZ Demo back out of the centre list NOW, before anything else:',
+  '    ' + ZZ_SQL_DOWN,
+  '  Read back: select name, is_meal_site from menumaker.centers order by name;',
+  '  Why it cannot wait for the edit: while the flag is up, the demo centre is selectable on every',
+  '  claim screen, and a July/August claim could be generated against a centre that feeds no one.',
+  '  (Lowering it does NOT change the delivery source — "Play Academy Kitchen" still sorts first.)',
+].join('\n')
+
 const PROBE_TAG = 'ZZSMOKE'
 const PROBE_MARK = 'rehearsal-submit-channel'
 let probesFired = 0
@@ -190,6 +217,7 @@ async function main () {
   await gotoRetry(page, APP)
 
   log('\n=== PHASE 1 — LOGIN (not recorded) ===')
+  log(MEAL_SITE_RAISE)
   if (REHEARSE_ONLY) {
     log('(--rehearse-only: assuming the profile is already signed in; no prompts, no recording)')
   } else {
@@ -724,6 +752,7 @@ async function main () {
   log('centers\' real children, so cut every Inbox frame that is not ' + DEMO_CHILD + '.')
   log('\nProbe accounting (said out loud every run — these rows outlive the take):')
   log(probeAccounting())
+  log(MEAL_SITE_LOWER)
   log('\nNext: post (amy VO + burn-in captions) → Nikolay for acceptance. Then sweep the ZZSMOKE trail.')
 }
 

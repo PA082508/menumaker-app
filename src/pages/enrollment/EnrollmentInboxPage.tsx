@@ -169,6 +169,13 @@ export default function EnrollmentInboxPage() {
         // it was filed would read as a lost document, not as work saved. It is kept OUT
         // of the work list by the view toggle below, not by hiding it from the query.
         .in('status', ['pending', 'received'])
+        // A rehearsal probe is not a document. It is a real sealed row written by
+        // the recording rehearsal through the live anon channel to prove the
+        // submit path is open, and the seal forbids deleting it — so it is kept
+        // OUT of the director's list rather than rejected, which would make a
+        // machine artefact look like a family whose application was refused.
+        // The badge does the same at its own source (enrollment_action_counts).
+        .filter('form_data->>smoke_tag', 'is', null)
         .order('created_at', { ascending: false })
       // Scope: active center, or org-wide in Organization view.
       q = currentCenter?.id ? q.eq('center_id', currentCenter.id) : q.eq('org_id', org.id)

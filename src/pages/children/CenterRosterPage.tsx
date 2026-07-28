@@ -1046,6 +1046,10 @@ function AddChildModal({ centerId, orgId, classrooms, onDone, onClose }: {
         child_name, birthday: form.birthday,
         date_in: form.date_in, frp: form.frp,
         is_active: true,
+        // Unknown, not a column default — this panel asks neither question.
+        // (See rosterKey.ts / the 2026-07-28 survey: DEFAULT true had the system
+        // authorising emergency transport for every child ever added.)
+        emergency_transport_auth: null, has_health_condition: null,
       })
       .select('id,first_name,last_name,child_name,age_group_food,frp,date_in,date_out,birthday,milk_kind,classroom_id,photo_url')
       .single()

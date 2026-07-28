@@ -366,7 +366,17 @@ export async function insertRosterChild(
   patch: RosterPatch,
 ): Promise<string> {
   const { data, error } = await S().from('roster')
-    .insert({ org_id: sub.org_id, center_id: sub.center_id, is_active: true, ...patch })
+    .insert({
+      org_id: sub.org_id, center_id: sub.center_id, is_active: true,
+      // Answers nobody was asked start as UNKNOWN, never as a column default.
+      // emergency_transport_auth DEFAULT true made the system answer "yes" on
+      // behalf of 623 parents who were never asked (measured 2026-07-28); the
+      // default is being dropped, and these explicit nulls are what keeps a new
+      // child honest whether or not the DDL has landed yet. `patch` spreads
+      // AFTER them, so a form that actually carries an answer still wins.
+      emergency_transport_auth: null, has_health_condition: null,
+      ...patch,
+    })
     .select('id').single()
   if (error) throw error
   return (data as any).id as string

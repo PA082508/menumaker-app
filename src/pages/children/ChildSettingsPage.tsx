@@ -17,7 +17,8 @@ import { useAuth } from '@/hooks/useAuth'
 import { parseIeaFiscalYear, frpExpiryDefault, recordDetermination } from '@/lib/enrollmentApprove'
 import {
   changedFields, provenanceProblem, writeChildField, loadFieldHistory, loadFieldProvenance,
-  type Provenance, type WriteResult, type FieldEvent, type FieldProvenance,
+  loadFieldLocks, lockRefusal,
+  type Provenance, type WriteResult, type FieldEvent, type FieldProvenance, type FieldLock,
 } from '@/lib/childFieldWrite'
 import ChildExportPanel from './ChildExportPanel'
 import ChildDocumentsTab from './ChildDocumentsTab'
@@ -124,6 +125,8 @@ export default function ChildSettingsPage({
   const [confirmDeact, setConfirmDeact] = useState(false)   // deactivate confirm overlay
   const [deactReason, setDeactReason] = useState('')
   const [deactBusy, setDeactBusy] = useState(false)
+  const [deactDocDate, setDeactDocDate] = useState('')   // дата НА документе о выбытии
+  const [deactError, setDeactError] = useState<string | null>(null)
   const { user } = useAuth()
   // Layer 2 — F/R/P late corrections: capture the eligibility as loaded so a
   // change on save is recorded as a determination (income_eligibility + log),
@@ -140,6 +143,9 @@ export default function ChildSettingsPage({
   const [fieldProv, setFieldProv] = useState<Record<string, FieldProvenance>>({})
   const [history, setHistory] = useState<FieldEvent[]>([])
   const [showHistory, setShowHistory] = useState(false)
+  // Этап В: уровни замка приходят ИЗ БАЗЫ. Экран их только показывает — решает
+  // save-путь, поэтому гашение поля здесь есть вторая петля, а не правило.
+  const [fieldLocks, setFieldLocks] = useState<Record<string, FieldLock>>({})
   const [fiscalYear, setFiscalYear] = useState<string | null>(null)
   const [detSig, setDetSig] = useState<{ eligibility: string | null; by: string | null; at: string | null; source: string | null } | null>(null)
 
@@ -205,6 +211,7 @@ export default function ChildSettingsPage({
     // Снимок «как загружено» — от него считается, что именно правил человек.
     setBaseline({ roster: { ...(c ?? {}) }, medical: { ...((m as any) ?? {}) } })
     try { setFieldProv(await loadFieldProvenance(childId)) } catch { setFieldProv({}) }
+    try { setFieldLocks(await loadFieldLocks()) } catch { setFieldLocks({}) }
 
     // read-only age/milk profile for CACFP tab + registry export
     const { data: vw } = await supabase.schema('menumaker').from('v_child_age_profile').select('*').eq('id', childId).maybeSingle()
@@ -230,7 +237,7 @@ export default function ChildSettingsPage({
   }, [childId, fiscalYear])
 
   // doSaveRoster / doSaveMedical УДАЛЕНЫ 2026-07-28 (этап Б). Они писали в карточку
-  // мимо журнала и мимо документной даты, а doSaveMedical к тому же промахивался
+  // мимо журнала и мимо documentной даты, а doSaveMedical к тому же промахивался
   // мимо child_medical по неверному ключу и падал молча. Два пути записи в одну
   // карточку — это и есть способ, которым правило стирается: остаётся ОДИН,
   // saveCurrent → record_child_field_change.
@@ -246,33 +253,43 @@ export default function ChildSettingsPage({
   // is_active=true). Also stamps date_out (if unset) so date_out-honoring queries
   // agree, plus an audit trail. Reactivate reverses it and clears date_out so the
   // active-roster filter shows the child again.
+  // Этап В: деактивация идёт ЧЕРЕЗ ТОТ ЖЕ защищённый путь. Она пишет date_out —
+  // 🔒-поле, ведущее границу возмещения, — и раньше делала это голым update()
+  // мимо журнала и мимо замка. Замок с обходной калиткой не сдаётся.
   async function doDeactivate() {
     if (!child) return
-    setDeactBusy(true)
-    const patch: Record<string, any> = {
-      is_active: false,
-      deactivated_at: new Date().toISOString(),
-      deactivation_reason: deactReason.trim() || null,
-    }
-    if (!child.date_out) patch.date_out = todayStr
-    await supabase.schema('menumaker').from('roster').update(patch).eq('id', childId)
-    setChild(p => p ? { ...p, ...patch } as Child : p)
-    setDeactBusy(false); setConfirmDeact(false); setDeactReason('')
+    setDeactBusy(true); setDeactError(null)
+    const { error } = await (supabase.schema('menumaker').rpc as any)('set_child_active_state', {
+      p_roster_id: childId, p_active: false,
+      p_last_day: child.date_out || deactDocDate || todayStr,
+      p_reason: deactReason.trim() || null,
+      p_source: 'free_document',
+      p_document_date: deactDocDate || null,
+      p_entered_by_name: (user?.user_metadata?.full_name as string) || (user?.email?.split('@')[0]) || 'Staff',
+    })
+    if (error) { setDeactError(error.message); setDeactBusy(false); return }
+    setDeactBusy(false); setConfirmDeact(false); setDeactReason(''); setDeactDocDate('')
+    loadAll()
   }
 
   async function doReactivate() {
     if (!child) return
-    setDeactBusy(true)
-    const patch = { is_active: true, date_out: null, deactivated_at: null, deactivation_reason: null }
-    await supabase.schema('menumaker').from('roster').update(patch).eq('id', childId)
-    setChild(p => p ? { ...p, ...patch } as Child : p)
-    setDeactBusy(false)
+    setDeactBusy(true); setDeactError(null)
+    const { error } = await (supabase.schema('menumaker').rpc as any)('set_child_active_state', {
+      p_roster_id: childId, p_active: true,
+      p_reason: 'returned',
+      p_source: 'free_document',
+      p_document_date: todayStr,   // возвращение фиксируется днём записи о возврате
+      p_entered_by_name: (user?.user_metadata?.full_name as string) || (user?.email?.split('@')[0]) || 'Staff',
+    })
+    if (error) { setDeactError(error.message); setDeactBusy(false); return }
+    setDeactBusy(false); loadAll()
   }
 
 
   // ─── Этап Б: сохранение идёт ПОЛЕ ЗА ПОЛЕМ через защищённый путь ─────────
   // Раньше здесь стояли два «сохрани всю таблицу» вызова: они не оставляли
-  // следа, не знали о документной дате и молча промахивались мимо child_medical.
+  // следа, не знали о documentной дате и молча промахивались мимо child_medical.
   // Теперь каждое ИЗМЕНЁННОЕ поле уходит отдельным событием с провенансом,
   // и база сама решает, применять ли значение — по дате ДОКУМЕНТА, не ввода.
   async function saveCurrent() {
@@ -323,7 +340,7 @@ export default function ChildSettingsPage({
         setDetSig({ eligibility: frpNorm, by: (user?.user_metadata?.full_name as string) || (user?.email?.split('@')[0]) || 'Staff', at: todayStr, source: 'manual' })
       } catch (e: any) {
         results.push({ fieldKey: 'frp', applied: true, reason: null, oldValue: null, newValue: frpNorm,
-                       isVerbal: false, error: `F/R/P записан в карточку, но определение не зафиксировано: ${e?.message ?? e}` })
+                       isVerbal: false, error: `F/R/P saved to the card, but the determination record was not written: ${e?.message ?? e}` })
       }
     }
 
@@ -427,19 +444,33 @@ export default function ChildSettingsPage({
           {/* Откуда взялось ТЕКУЩЕЕ значение. «Со слов» — видимый маркер, а не
               примечание: значение записано без документа, и это должно быть
               видно тому, кто на него смотрит. */}
+          {fieldLocks[f.key]?.lock_level === 'document' && (
+            <span title="Document only — see the note under the field"
+              style={{ fontSize: 10, background:'#eef2ff', color:'#3730a3', border:'1px solid #c7d2fe', borderRadius:6, padding:'1px 6px', fontWeight:700 }}>
+              🔒 document only
+            </span>
+          )}
           {fieldProv[f.key] && (
             fieldProv[f.key].is_verbal
-              ? <span title={`Со слов · внёс(ла) ${fieldProv[f.key].entered_by_name ?? '—'} ${String(fieldProv[f.key].entered_at).slice(0,10)}`}
+              ? <span title={`Said, no document · entered by ${fieldProv[f.key].entered_by_name ?? '—'} ${String(fieldProv[f.key].entered_at).slice(0,10)}`}
                   style={{ fontSize: 10, background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', borderRadius: 6, padding: '1px 6px', fontWeight: 700 }}>
-                  СО СЛОВ · без документа
+                  SAID · no document
                 </span>
-              : <span title={`${fieldProv[f.key].source_form_key ?? 'документ'} · внёс(ла) ${fieldProv[f.key].entered_by_name ?? '—'} ${String(fieldProv[f.key].entered_at).slice(0,10)}`}
+              : <span title={`${fieldProv[f.key].source_form_key ?? 'document'} · entered by ${fieldProv[f.key].entered_by_name ?? '—'} ${String(fieldProv[f.key].entered_at).slice(0,10)}`}
                   style={{ fontSize: 10, background: '#f0f7f4', color: '#0f4c35', border: '1px solid #c0d8c0', borderRadius: 6, padding: '1px 6px', fontWeight: 600 }}>
                   📄 {fmtDateOnly(fieldProv[f.key].document_date)}
                 </span>
           )}
         </div>
         {renderEditor(f)}
+        {/* Вторая петля: тот же текст, что скажет save-путь, но до сети.
+            Решает база — здесь только слышно раньше. */}
+        {lockRefusal(fieldLocks[f.key], prov.source) && (
+          <div style={{ marginTop: 5, fontSize: 12, color: '#3730a3', background: '#eef2ff',
+            border: '1px solid #c7d2fe', borderRadius: 8, padding: '7px 10px', lineHeight: 1.45 }}>
+            {lockRefusal(fieldLocks[f.key], prov.source)}
+          </div>
+        )}
       </div>
     )
   }
@@ -451,36 +482,36 @@ export default function ChildSettingsPage({
     const provBar = (
       <div style={{ background:'#f8fbf9', border:'1.5px solid #c0d8c0', borderRadius:10, padding:'10px 12px', marginBottom:14 }}>
         <div style={{ fontSize:12, fontWeight:700, color:'#0f4c35', marginBottom:7 }}>
-          Откуда эта правка <span style={{ fontWeight:400, color:'#6b7280' }}>— применяется ко всему, что вы измените и сохраните</span>
+          Where this change comes from <span style={{ fontWeight:400, color:'#6b7280' }}>— applies to everything you change and save</span>
         </div>
         <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
           <select value={prov.source} onChange={e => setProv(p => ({ ...p, source: e.target.value as Provenance['source'],
                     documentDate: e.target.value === 'verbal' ? '' : p.documentDate }))}
             style={{ padding:'6px 9px', border:'1.5px solid #c0d8c0', borderRadius:8, fontSize:12.5, fontFamily:'inherit', background:'#fff' }}>
-            <option value="library_form">Форма из библиотеки</option>
-            <option value="free_document">Свободный документ</option>
-            <option value="verbal">Со слов, без документа</option>
+            <option value="library_form">Library form</option>
+            <option value="free_document">Free document</option>
+            <option value="verbal">Said, no document</option>
           </select>
           {prov.source === 'library_form' && (
             <input value={prov.formKey ?? ''} onChange={e => setProv(p => ({ ...p, formKey: e.target.value }))}
-              placeholder="ключ формы, напр. dcy_01234"
+              placeholder="form key, e.g. dcy_01234"
               style={{ padding:'6px 9px', border:'1.5px solid #c0d8c0', borderRadius:8, fontSize:12.5, fontFamily:'inherit', width:180 }} />
           )}
           {prov.source !== 'verbal' && (
             <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12.5, color:'#374151' }}>
-              Дата НА ДОКУМЕНТЕ
+              Date ON THE DOCUMENT
               <input type="date" value={prov.documentDate ?? ''} onChange={e => setProv(p => ({ ...p, documentDate: e.target.value }))}
                 style={{ padding:'5px 8px', border:'1.5px solid #c0d8c0', borderRadius:8, fontSize:12.5, fontFamily:'inherit' }} />
             </label>
           )}
           <button type="button" onClick={async () => { setShowHistory(v => !v); if (!showHistory) { try { setHistory(await loadFieldHistory(childId)) } catch { setHistory([]) } } }}
             style={{ marginLeft:'auto', padding:'6px 12px', borderRadius:8, border:'1.5px solid #c0d8c0', background:'#fff', fontSize:12.5, fontFamily:'inherit', cursor:'pointer', color:'#0f4c35', fontWeight:600 }}>
-            {showHistory ? 'Скрыть историю' : '🕘 История изменений'}
+            {showHistory ? 'Hide history' : '🕘 Change history'}
           </button>
         </div>
         <div style={{ fontSize:11, color:'#6b7280', marginTop:6 }}>
-          Дата документа — та, что стоит на бумаге, не сегодняшняя. Значение применяется по ней:
-          бумага постарше уже применённой будет записана в историю, но карточку не тронет.
+          The document date is the one printed on the paper, not today. Values apply by it: a document older
+          than the one already applied is written to the history and leaves the card untouched.
         </div>
       </div>
     )
@@ -492,7 +523,7 @@ export default function ChildSettingsPage({
             border: `1px solid ${r.error ? '#fecaca' : r.applied ? '#bbf7d0' : '#fed7aa'}`,
             color: r.error ? '#991b1b' : r.applied ? '#0f4c35' : '#9a3412' }}>
             {r.error ? <>⚠ {r.error}</>
-              : r.applied ? <>✓ <strong>{r.fieldKey}</strong> записано{r.isVerbal ? ' — со слов, без документа' : ''}</>
+              : r.applied ? <>✓ <strong>{r.fieldKey}</strong> saved{r.isVerbal ? ' — said, no document' : ''}</>
               : <>⏸ <strong>{r.fieldKey}</strong> — {r.reason}</>}
           </div>
         ))}
@@ -501,17 +532,17 @@ export default function ChildSettingsPage({
     const historyPanel = showHistory && (
       <div style={{ marginBottom:14, border:'1.5px solid #e8f0e8', borderRadius:10, overflow:'hidden' }}>
         {history.length === 0
-          ? <div style={{ padding:'10px 12px', fontSize:12.5, color:'#9ca3af' }}>Событий пока нет — журнал начал вести записи 28.07.2026, задним числом он не заполняется.</div>
+          ? <div style={{ padding:'10px 12px', fontSize:12.5, color:'#9ca3af' }}>No events yet — the journal started on 28 Jul 2026 and is never filled in retroactively.</div>
           : history.map(h => (
             <div key={h.id} style={{ padding:'8px 12px', borderBottom:'1px solid #f1f5f1', fontSize:12.5, display:'flex', gap:10, flexWrap:'wrap', alignItems:'baseline' }}>
               <span style={{ fontWeight:700, color:'#0f4c35', minWidth:150 }}>{h.field_key}</span>
               <span style={{ color:'#6b7280' }}>{h.old_value ?? '—'} → <strong style={{ color:'#111' }}>{h.new_value ?? '—'}</strong></span>
               <span style={{ marginLeft:'auto', color:'#6b7280' }}>
                 {h.source === 'verbal'
-                  ? <span style={{ color:'#92400e', fontWeight:600 }}>со слов</span>
+                  ? <span style={{ color:'#92400e', fontWeight:600 }}>said, no document</span>
                   : <>📄 {fmtDateOnly(h.document_date)}{h.source_form_key ? ` · ${h.source_form_key}` : ''}</>}
-                {' · '}внёс(ла) {h.entered_by_name ?? '—'} {String(h.entered_at).slice(0,10)}
-                {!h.applied && <span style={{ color:'#9a3412' }}> · не применено: {h.not_applied_reason}</span>}
+                {' · '}entered by {h.entered_by_name ?? '—'} {String(h.entered_at).slice(0,10)}
+                {!h.applied && <span style={{ color:'#9a3412' }}> · not applied: {h.not_applied_reason}</span>}
               </span>
             </div>
           ))}
@@ -728,9 +759,22 @@ export default function ChildSettingsPage({
           <div onClick={e=>e.stopPropagation()} style={{ background:'#fff', borderRadius:14, width:'100%', maxWidth:420, padding:22, boxShadow:'0 24px 80px rgba(0,0,0,0.3)' }}>
             <div style={{ fontSize:16, fontWeight:700, color:'#dc2626', marginBottom:8 }}>Deactivate {fullName}?</div>
             <div style={{ fontSize:13, color:'#4b5563', lineHeight:1.5, marginBottom:14 }}>
-              The child stops being countable in meal count and reports.
-              {!child.date_out && <> End date will be set to <strong>today</strong>.</>} You can Reactivate later.
+              The child stops being countable in meal count and reports. You can Reactivate later.
             </div>
+            {/* End date decides the claim boundary, so it is 🔒 document-only —
+                the same rule and the same refusal as on the card. The director
+                reads the last day off the withdrawal record; they do not recall it. */}
+            <label style={{ ...lbl }}>Date on the withdrawal record</label>
+            <input type="date" value={deactDocDate} onChange={e=>setDeactDocDate(e.target.value)}
+              style={{ ...inp, marginBottom:6 }} />
+            <div style={{ fontSize:11.5, color:'#6b7280', marginBottom:14, lineHeight:1.45 }}>
+              The end date can only be set from a document — enter the date printed on the withdrawal
+              notice or the record of the last day. It becomes the child’s end date.
+            </div>
+            {deactError && (
+              <div style={{ fontSize:12.5, color:'#991b1b', background:'#fef2f2', border:'1px solid #fecaca',
+                borderRadius:8, padding:'8px 11px', marginBottom:12, lineHeight:1.45 }}>{deactError}</div>
+            )}
             <label style={{ ...lbl }}>Reason (optional)</label>
             <textarea value={deactReason} onChange={e=>setDeactReason(e.target.value)} placeholder="e.g. withdrew, moved, aged out"
               style={{ ...inp, minHeight:56, resize:'vertical', marginBottom:16 }} />

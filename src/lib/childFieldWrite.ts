@@ -146,6 +146,31 @@ export async function loadFieldHistory(rosterId: string, limit = 100): Promise<F
   return (data ?? []) as FieldEvent[]
 }
 
+// ─── Этап В: замок ──────────────────────────────────────────────────────────
+// Уровни и тексты живут в БАЗЕ (menumaker.child_field_locks). Здесь их только
+// ЧИТАЮТ — чтобы показать состояние и отказать до сети. Это ВТОРАЯ петля:
+// решает save-путь, а гашение поля на экране обходится любым другим клиентом.
+export type LockLevel = 'document' | 'marked' | 'free'
+export type FieldLock = { field_key: string; lock_level: LockLevel; needs_document_text: string | null }
+
+export async function loadFieldLocks(): Promise<Record<string, FieldLock>> {
+  const { data, error } = await supabase.schema('menumaker').from('child_field_locks')
+    .select('field_key,lock_level,needs_document_text')
+  if (error) throw error
+  const out: Record<string, FieldLock> = {}
+  for (const row of (data ?? []) as FieldLock[]) out[row.field_key] = row
+  return out
+}
+
+/** The refusal the save path would give, computed on screen so the user hears it
+ *  before the network. Returns null when the write would be allowed. */
+export function lockRefusal(lock: FieldLock | undefined, source: FieldSource): string | null {
+  if (!lock || lock.lock_level !== 'document') return null
+  if (source !== 'verbal') return null
+  return lock.needs_document_text
+    ?? 'This field can only be changed from a signed document — attach it and enter the date printed on it.'
+}
+
 export type FieldProvenance = {
   field_key: string
   source: FieldSource

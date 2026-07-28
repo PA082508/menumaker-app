@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toText, changedFields, provenanceProblem, type Provenance } from './childFieldWrite'
+import { toText, changedFields, provenanceProblem, lockRefusal, type Provenance, type FieldLock } from './childFieldWrite'
 
 const F = [
   { key: 'birthday', table: 'roster' as const, column: 'birthday' },
@@ -84,5 +84,37 @@ describe('provenanceProblem — the two dates are not the same date', () => {
     expect(provenanceProblem(p({ source: 'verbal' }))).toBeNull()
     expect(provenanceProblem(p({ source: 'verbal', documentDate: '2026-07-15' })))
       .toMatch(/cannot carry a document date/)
+  })
+})
+
+describe('lockRefusal — the screen says what the save path would say', () => {
+  const locked: FieldLock = {
+    field_key: 'birthday', lock_level: 'document',
+    needs_document_text: 'Birthday can only be changed from a signed document — attach the birth certificate or the enrolment form (DCY 01234) and enter the date printed on it.',
+  }
+  const marked: FieldLock = { field_key: 'allergies', lock_level: 'marked', needs_document_text: null }
+
+  it('a locked field refuses a verbal note, in words that say what is NEEDED', () => {
+    const msg = lockRefusal(locked, 'verbal')
+    expect(msg).toContain('birth certificate')
+    expect(msg).not.toMatch(/cannot|not allowed|forbidden/i)   // what is needed, not what is banned
+  })
+
+  it('a locked field accepts a document', () => {
+    expect(lockRefusal(locked, 'library_form')).toBeNull()
+    expect(lockRefusal(locked, 'free_document')).toBeNull()
+  })
+
+  it('a MARKED field takes a verbal note — an allergy learned at 9am belongs in the card at 9am', () => {
+    expect(lockRefusal(marked, 'verbal')).toBeNull()
+  })
+
+  it('an unknown field is free — the lock list is an allow-list of restrictions, not of fields', () => {
+    expect(lockRefusal(undefined, 'verbal')).toBeNull()
+  })
+
+  it('falls back to a spoken refusal if the text is ever missing', () => {
+    expect(lockRefusal({ field_key: 'x', lock_level: 'document', needs_document_text: null }, 'verbal'))
+      .toMatch(/signed document/)
   })
 })

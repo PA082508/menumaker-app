@@ -175,6 +175,17 @@ export default function EnrollmentInboxPage() {
         // OUT of the director's list rather than rejected, which would make a
         // machine artefact look like a family whose application was refused.
         // The badge does the same at its own source (enrollment_action_counts).
+        //
+        // Этап Б: маркером служит record_origin, который ставит СИСТЕМА (гард
+        // на строке), а не form_data->>'smoke_tag', который ставила форма.
+        // NULL здесь означает «неизвестно» и должен ПРОХОДИТЬ: 94 записи старше
+        // колонки, и прятать их было бы хуже, чем показать.
+        //
+        // Вторая строка — единственная запись, помеченная до появления колонки.
+        // Проставить ей record_origin НЕЛЬЗЯ: она запечатана, а печать этапа А
+        // морозит провенанс. Клауза историческая и расти не может — новые пробы
+        // получают record_origin от гарда.
+        .or('record_origin.is.null,record_origin.neq.rehearsal')
         .filter('form_data->>smoke_tag', 'is', null)
         .order('created_at', { ascending: false })
       // Scope: active center, or org-wide in Organization view.

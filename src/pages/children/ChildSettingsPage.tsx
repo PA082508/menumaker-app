@@ -15,7 +15,10 @@ import AvatarUpload from '@/components/AvatarUpload'
 import ScheduleEditor from '@/components/ScheduleEditor'
 import { useAuth } from '@/hooks/useAuth'
 import { parseIeaFiscalYear, frpExpiryDefault, recordDetermination } from '@/lib/enrollmentApprove'
-import { stripStoredKey } from '@/lib/rosterKey'
+import {
+  changedFields, provenanceProblem, writeChildField, loadFieldHistory, loadFieldProvenance,
+  type Provenance, type WriteResult, type FieldEvent, type FieldProvenance,
+} from '@/lib/childFieldWrite'
 import ChildExportPanel from './ChildExportPanel'
 import ChildDocumentsTab from './ChildDocumentsTab'
 import { fmtDateOnly } from '@/lib/dateOnly'
@@ -126,6 +129,17 @@ export default function ChildSettingsPage({
   // change on save is recorded as a determination (income_eligibility + log),
   // and surface the current-cycle determination signature on the CACFP tab.
   const [orig, setOrig] = useState<{ frp: string | null; expires: string | null }>({ frp: null, expires: null })
+
+  // ─── Этап Б: провенанс ───────────────────────────────────────────────────
+  // baseline = карточка КАК ЗАГРУЖЕНА. Пишется только то, что от неё отличается:
+  // поле, которого никто не касался, — не изменение, и восстанавливать его как
+  // «только что решённое» нельзя.
+  const [baseline, setBaseline] = useState<{ roster: Record<string, any>; medical: Record<string, any> }>({ roster: {}, medical: {} })
+  const [prov, setProv] = useState<Provenance>({ source: 'library_form', documentDate: '', formKey: 'dcy_01234', note: '' })
+  const [writeResults, setWriteResults] = useState<WriteResult[] | null>(null)
+  const [fieldProv, setFieldProv] = useState<Record<string, FieldProvenance>>({})
+  const [history, setHistory] = useState<FieldEvent[]>([])
+  const [showHistory, setShowHistory] = useState(false)
   const [fiscalYear, setFiscalYear] = useState<string | null>(null)
   const [detSig, setDetSig] = useState<{ eligibility: string | null; by: string | null; at: string | null; source: string | null } | null>(null)
 
@@ -177,8 +191,20 @@ export default function ChildSettingsPage({
       is_emergency_contact: row.is_emergency_contact, emergency_contact_order: row.emergency_contact_order, ordinal: row.ordinal,
     })))
 
-    const { data: m } = await supabase.schema('menumaker').from('child_medical').select('*').eq('child_id', childId).maybeSingle()
+    // ЛОВУШКА КЛЮЧА (закрыта 2026-07-28). child_medical.child_id ссылается на
+    // menumaker.child(id), а НЕ на roster.id — сюда годами передавался roster.id,
+    // и запрос находил 0 строк ВСЕГДА (замерено: 0 из 70), а вставку отвергал
+    // внешний ключ. Директор не видел ни данных, ни ошибки. Правильный ключ —
+    // roster.child_id; у строк без него медкарты быть не может в принципе.
+    const medKey = (c as any)?.child_id ?? null
+    const { data: m } = medKey
+      ? await supabase.schema('menumaker').from('child_medical').select('*').eq('child_id', medKey).maybeSingle()
+      : { data: null }
     setMedical(m as ChildMedical ?? { allergies: null, medications: null, doctor_name: null, doctor_phone: null, health_condition_name: null, condition_symptoms: null, foods_to_avoid: null, activities_to_avoid: null, care_instructions: null, emergency_action: null, evacuation_notes: null, medication_details: null, parent_signed_at: null })
+
+    // Снимок «как загружено» — от него считается, что именно правил человек.
+    setBaseline({ roster: { ...(c ?? {}) }, medical: { ...((m as any) ?? {}) } })
+    try { setFieldProv(await loadFieldProvenance(childId)) } catch { setFieldProv({}) }
 
     // read-only age/milk profile for CACFP tab + registry export
     const { data: vw } = await supabase.schema('menumaker').from('v_child_age_profile').select('*').eq('id', childId).maybeSingle()
@@ -203,49 +229,19 @@ export default function ChildSettingsPage({
     return () => { cancelled = true }
   }, [childId, fiscalYear])
 
-  async function doSaveRoster() {
-    if (!child) return
-    const frp = (child.frp ?? '').trim().toUpperCase().slice(0, 1) || null
-    // A late F/R correction defaults frp_expires to determination + 12 months
-    // (CACFP validity) when left blank — mirrors the IEA approve flow.
-    const expires = (frp === 'F' || frp === 'R')
-      ? (child.frp_expires || frpExpiryDefault(todayStr, null))
-      : child.frp_expires
-    // A stored key is never rebuilt (see rosterKey.ts). This save used to write
-    // child_name as "Last First" on every edit — implementing a DISPLAY rule as
-    // a WRITE rule on the claim-bridge identity key. Display order belongs to
-    // the render; first_name/last_name below are what the render reads.
-    await supabase.schema('menumaker').from('roster').update(stripStoredKey({
-      first_name: child.first_name, last_name: child.last_name,
-      birthday: child.birthday, classroom_id: child.classroom_id,
-      date_in: child.date_in, date_out: child.date_out,
-      frp, frp_expires: expires, milk_kind: child.milk_kind,
-      child_address: child.child_address, has_health_condition: child.has_health_condition,
-      development_notes: child.development_notes, accommodations: child.accommodations,
-      specialized_services: child.specialized_services,
-      emergency_transport_auth: child.emergency_transport_auth,
-      enrollment_reviewed_at: child.enrollment_reviewed_at,
-      photo_url: child.photo_url,
-    })).eq('id', childId)
+  // doSaveRoster / doSaveMedical УДАЛЕНЫ 2026-07-28 (этап Б). Они писали в карточку
+  // мимо журнала и мимо документной даты, а doSaveMedical к тому же промахивался
+  // мимо child_medical по неверному ключу и падал молча. Два пути записи в одну
+  // карточку — это и есть способ, которым правило стирается: остаётся ОДИН,
+  // saveCurrent → record_child_field_change.
 
-    // Layer 2: if eligibility changed, record it as a determination (manual,
-    // profile edit) on the current-cycle income_eligibility row + append-only
-    // log, so late corrections carry the same audit trail as an IEA approval.
-    const changed = frp !== (orig.frp ?? null) || (expires ?? null) !== (orig.expires ?? null)
-    if (changed && frp && fiscalYear) {
-      await recordDetermination({
-        roster_id: childId, org_id: child.org_id, center_id: child.center_id,
-        frp, frp_expires: expires ?? null, fiscal_year: fiscalYear,
-        eligibility_source: 'manual', ieSource: 'profile_edit',
-        determined_by: user?.id ?? '',
-        determined_by_name: (user?.user_metadata?.full_name as string) || (user?.email?.split('@')[0]) || 'Staff',
-      })
-      setOrig({ frp, expires: expires ?? null })
-      setChild(p => p ? { ...p, frp, frp_expires: expires ?? null } as Child : p)
-      setDetSig({ eligibility: frp, by: (user?.user_metadata?.full_name as string) || (user?.email?.split('@')[0]) || 'Staff', at: todayStr, source: 'manual' })
-    }
-  }
-
+  // ⚠ ЗНАЕМ И НЕ ЗАКРЫЛИ (этап Б, для этапа В): Deactivate / Reactivate — ещё
+  // два ГОЛЫХ update(), и они пишут `date_out`, а это 🔒-поле замка, ведущее
+  // границу возмещения в клейме. Пока они идут мимо журнала, замок этапа В
+  // обходится через кнопку «Deactivate». Правильный ход — провести их тем же
+  // защищённым путём (или дать журналу событие жизненного цикла), но это
+  // отдельная работа со своим read-back, а не довесок к карточным полям.
+  //
   // Deactivate: stop the child being countable (meal count / reports filter
   // is_active=true). Also stamps date_out (if unset) so date_out-honoring queries
   // agree, plus an audit trail. Reactivate reverses it and clears date_out so the
@@ -273,27 +269,68 @@ export default function ChildSettingsPage({
     setDeactBusy(false)
   }
 
-  async function doSaveMedical() {
-    if (!medical || !child) return
-    const exists = !!(medical as any).id
-    if (exists) {
-      await supabase.schema('menumaker').from('child_medical').update(medical).eq('child_id', childId)
-    } else {
-      await supabase.schema('menumaker').from('child_medical').insert({ ...medical, child_id: childId, org_id: child.org_id })
-    }
-  }
 
-  // Save exactly the tables the current tab touches (Health mixes roster + child_medical).
+  // ─── Этап Б: сохранение идёт ПОЛЕ ЗА ПОЛЕМ через защищённый путь ─────────
+  // Раньше здесь стояли два «сохрани всю таблицу» вызова: они не оставляли
+  // следа, не знали о документной дате и молча промахивались мимо child_medical.
+  // Теперь каждое ИЗМЕНЁННОЕ поле уходит отдельным событием с провенансом,
+  // и база сама решает, применять ли значение — по дате ДОКУМЕНТА, не ввода.
   async function saveCurrent() {
-    const tables = new Set(fieldsForTab(TAB_KEYS[tab]).map(f => f.table))
-    if (tables.size === 0) return   // guardian/placeholder tabs — nothing to persist here
-    setSaving(true)
-    const tasks: Promise<any>[] = []
-    if (tables.has('roster')) tasks.push(doSaveRoster())
-    if (tables.has('child_medical')) tasks.push(doSaveMedical())
-    await Promise.all(tasks)
-    setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2000)
-    loadAll()  // refresh view (age/milk) + badges after write
+    const defs = fieldsForTab(TAB_KEYS[tab]).filter(f => !f.readOnly)
+    if (defs.length === 0) return
+
+    const problem = provenanceProblem(prov)
+    if (problem) { setWriteResults([{ fieldKey: '', applied: false, reason: null, oldValue: null, newValue: null, isVerbal: false, error: problem }]); return }
+
+    // F/R/P нормализуется ДО диффа (одна заглавная буква), и просроченная дата
+    // для F/R подставляется по правилу CACFP — ровно как это делал прежний путь.
+    const frpNorm = (child?.frp ?? '').trim().toUpperCase().slice(0, 1) || null
+    const expiresNorm = (frpNorm === 'F' || frpNorm === 'R')
+      ? (child?.frp_expires || frpExpiryDefault(todayStr, null))
+      : child?.frp_expires ?? null
+
+    const current: Record<string, any> = {
+      ...(child ?? {}), ...(medical ?? {}),
+      frp: frpNorm, frp_expires: expiresNorm,
+    }
+    const base: Record<string, any> = { ...baseline.roster, ...baseline.medical }
+    const writes = changedFields(defs.map(f => ({ key: f.key, table: f.table as 'roster' | 'child_medical', column: f.column })), base, current)
+    if (writes.length === 0) { setSaved(true); setTimeout(() => setSaved(false), 2000); return }
+
+    setSaving(true); setWriteResults(null)
+    const results: WriteResult[] = []
+    for (const w of writes) {
+      results.push(await writeChildField(childId, w, {
+        ...prov, documentDate: prov.source === 'verbal' ? null : (prov.documentDate || null),
+      }, (user?.user_metadata?.full_name as string) || (user?.email?.split('@')[0]) || 'Staff'))
+    }
+    // Побочный эффект прежнего пути, который нельзя потерять: изменение F/R/P
+    // записывается ОТДЕЛЬНОЙ определительной записью (income_eligibility +
+    // append-only log), чтобы поздняя правка несла тот же аудит-след, что и
+    // апрув IEA. Только если поле реально применилось — иначе мы записали бы
+    // определение, которого в карточке нет.
+    const frpApplied = results.some(r => (r.fieldKey === 'frp' || r.fieldKey === 'frp_expires') && r.applied)
+    if (frpApplied && frpNorm && fiscalYear && child) {
+      try {
+        await recordDetermination({
+          roster_id: childId, org_id: child.org_id, center_id: child.center_id,
+          frp: frpNorm, frp_expires: expiresNorm ?? null, fiscal_year: fiscalYear,
+          eligibility_source: 'manual', ieSource: 'profile_edit',
+          determined_by: user?.id ?? '',
+          determined_by_name: (user?.user_metadata?.full_name as string) || (user?.email?.split('@')[0]) || 'Staff',
+        })
+        setOrig({ frp: frpNorm, expires: expiresNorm ?? null })
+        setDetSig({ eligibility: frpNorm, by: (user?.user_metadata?.full_name as string) || (user?.email?.split('@')[0]) || 'Staff', at: todayStr, source: 'manual' })
+      } catch (e: any) {
+        results.push({ fieldKey: 'frp', applied: true, reason: null, oldValue: null, newValue: frpNorm,
+                       isVerbal: false, error: `F/R/P записан в карточку, но определение не зафиксировано: ${e?.message ?? e}` })
+      }
+    }
+
+    setWriteResults(results)
+    setSaving(false)
+    if (results.every(r => r.applied && !r.error)) { setSaved(true); setTimeout(() => setSaved(false), 2000) }
+    loadAll()  // refresh view (age/milk) + badges + provenance after write
   }
 
   // ─── Completeness counters — driven by childFieldRegistry (B.1) ───────────
@@ -387,6 +424,20 @@ export default function ChildSettingsPage({
           {showStar && <span style={{ color: '#ef4444', fontSize: 13, fontWeight: 700 }} title="Required">★</span>}
           {isOverdue && <span style={{ fontSize: 10, background: '#1a2e1a', color: '#fff', borderRadius: 6, padding: '1px 6px', fontWeight: 700 }}>OVERDUE</span>}
           {f.readOnly && <span style={{ fontSize: 10, color: '#9ca3af' }}>· auto</span>}
+          {/* Откуда взялось ТЕКУЩЕЕ значение. «Со слов» — видимый маркер, а не
+              примечание: значение записано без документа, и это должно быть
+              видно тому, кто на него смотрит. */}
+          {fieldProv[f.key] && (
+            fieldProv[f.key].is_verbal
+              ? <span title={`Со слов · внёс(ла) ${fieldProv[f.key].entered_by_name ?? '—'} ${String(fieldProv[f.key].entered_at).slice(0,10)}`}
+                  style={{ fontSize: 10, background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', borderRadius: 6, padding: '1px 6px', fontWeight: 700 }}>
+                  СО СЛОВ · без документа
+                </span>
+              : <span title={`${fieldProv[f.key].source_form_key ?? 'документ'} · внёс(ла) ${fieldProv[f.key].entered_by_name ?? '—'} ${String(fieldProv[f.key].entered_at).slice(0,10)}`}
+                  style={{ fontSize: 10, background: '#f0f7f4', color: '#0f4c35', border: '1px solid #c0d8c0', borderRadius: 6, padding: '1px 6px', fontWeight: 600 }}>
+                  📄 {fmtDateOnly(fieldProv[f.key].document_date)}
+                </span>
+          )}
         </div>
         {renderEditor(f)}
       </div>
@@ -397,10 +448,79 @@ export default function ChildSettingsPage({
   const renderFieldsTab = (tabKey: TabKey) => {
     const fields = fieldsForTab(tabKey).filter(f => isFieldActive(f, ctx))
     if (fields.length === 0) return <div style={{ color: '#aaa', fontSize: 13 }}>No fields on this tab yet.</div>
+    const provBar = (
+      <div style={{ background:'#f8fbf9', border:'1.5px solid #c0d8c0', borderRadius:10, padding:'10px 12px', marginBottom:14 }}>
+        <div style={{ fontSize:12, fontWeight:700, color:'#0f4c35', marginBottom:7 }}>
+          Откуда эта правка <span style={{ fontWeight:400, color:'#6b7280' }}>— применяется ко всему, что вы измените и сохраните</span>
+        </div>
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+          <select value={prov.source} onChange={e => setProv(p => ({ ...p, source: e.target.value as Provenance['source'],
+                    documentDate: e.target.value === 'verbal' ? '' : p.documentDate }))}
+            style={{ padding:'6px 9px', border:'1.5px solid #c0d8c0', borderRadius:8, fontSize:12.5, fontFamily:'inherit', background:'#fff' }}>
+            <option value="library_form">Форма из библиотеки</option>
+            <option value="free_document">Свободный документ</option>
+            <option value="verbal">Со слов, без документа</option>
+          </select>
+          {prov.source === 'library_form' && (
+            <input value={prov.formKey ?? ''} onChange={e => setProv(p => ({ ...p, formKey: e.target.value }))}
+              placeholder="ключ формы, напр. dcy_01234"
+              style={{ padding:'6px 9px', border:'1.5px solid #c0d8c0', borderRadius:8, fontSize:12.5, fontFamily:'inherit', width:180 }} />
+          )}
+          {prov.source !== 'verbal' && (
+            <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12.5, color:'#374151' }}>
+              Дата НА ДОКУМЕНТЕ
+              <input type="date" value={prov.documentDate ?? ''} onChange={e => setProv(p => ({ ...p, documentDate: e.target.value }))}
+                style={{ padding:'5px 8px', border:'1.5px solid #c0d8c0', borderRadius:8, fontSize:12.5, fontFamily:'inherit' }} />
+            </label>
+          )}
+          <button type="button" onClick={async () => { setShowHistory(v => !v); if (!showHistory) { try { setHistory(await loadFieldHistory(childId)) } catch { setHistory([]) } } }}
+            style={{ marginLeft:'auto', padding:'6px 12px', borderRadius:8, border:'1.5px solid #c0d8c0', background:'#fff', fontSize:12.5, fontFamily:'inherit', cursor:'pointer', color:'#0f4c35', fontWeight:600 }}>
+            {showHistory ? 'Скрыть историю' : '🕘 История изменений'}
+          </button>
+        </div>
+        <div style={{ fontSize:11, color:'#6b7280', marginTop:6 }}>
+          Дата документа — та, что стоит на бумаге, не сегодняшняя. Значение применяется по ней:
+          бумага постарше уже применённой будет записана в историю, но карточку не тронет.
+        </div>
+      </div>
+    )
+    const results = writeResults && writeResults.length > 0 && (
+      <div style={{ marginBottom:14 }}>
+        {writeResults.map((r, i) => (
+          <div key={i} style={{ fontSize:12.5, padding:'8px 11px', borderRadius:8, marginBottom:6,
+            background: r.error ? '#fef2f2' : r.applied ? '#f0fff4' : '#fff7ed',
+            border: `1px solid ${r.error ? '#fecaca' : r.applied ? '#bbf7d0' : '#fed7aa'}`,
+            color: r.error ? '#991b1b' : r.applied ? '#0f4c35' : '#9a3412' }}>
+            {r.error ? <>⚠ {r.error}</>
+              : r.applied ? <>✓ <strong>{r.fieldKey}</strong> записано{r.isVerbal ? ' — со слов, без документа' : ''}</>
+              : <>⏸ <strong>{r.fieldKey}</strong> — {r.reason}</>}
+          </div>
+        ))}
+      </div>
+    )
+    const historyPanel = showHistory && (
+      <div style={{ marginBottom:14, border:'1.5px solid #e8f0e8', borderRadius:10, overflow:'hidden' }}>
+        {history.length === 0
+          ? <div style={{ padding:'10px 12px', fontSize:12.5, color:'#9ca3af' }}>Событий пока нет — журнал начал вести записи 28.07.2026, задним числом он не заполняется.</div>
+          : history.map(h => (
+            <div key={h.id} style={{ padding:'8px 12px', borderBottom:'1px solid #f1f5f1', fontSize:12.5, display:'flex', gap:10, flexWrap:'wrap', alignItems:'baseline' }}>
+              <span style={{ fontWeight:700, color:'#0f4c35', minWidth:150 }}>{h.field_key}</span>
+              <span style={{ color:'#6b7280' }}>{h.old_value ?? '—'} → <strong style={{ color:'#111' }}>{h.new_value ?? '—'}</strong></span>
+              <span style={{ marginLeft:'auto', color:'#6b7280' }}>
+                {h.source === 'verbal'
+                  ? <span style={{ color:'#92400e', fontWeight:600 }}>со слов</span>
+                  : <>📄 {fmtDateOnly(h.document_date)}{h.source_form_key ? ` · ${h.source_form_key}` : ''}</>}
+                {' · '}внёс(ла) {h.entered_by_name ?? '—'} {String(h.entered_at).slice(0,10)}
+                {!h.applied && <span style={{ color:'#9a3412' }}> · не применено: {h.not_applied_reason}</span>}
+              </span>
+            </div>
+          ))}
+      </div>
+    )
     // Merge by section (first-seen order) so non-consecutive same-section fields share one header.
     const groups = new Map<string, FieldDef[]>()
     for (const f of fields) (groups.get(f.section) ?? groups.set(f.section, []).get(f.section)!).push(f)
-    return <div>{[...groups].map(([title, items]) => <div key={title}>{section(title)}{items.map(renderFieldRow)}</div>)}</div>
+    return <div>{provBar}{results}{historyPanel}{[...groups].map(([title, items]) => <div key={title}>{section(title)}{items.map(renderFieldRow)}</div>)}</div>
   }
 
   return (

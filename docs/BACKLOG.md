@@ -6,6 +6,34 @@ Tracked, not-yet-started work. Owner: Nikolay. Newest context at top of each ite
 > (v2, approved 2026-07-03 — includes the SafePass-channel decision). Imported into the
 > repo 2026-07-04 so the spec is version-controlled here, not only in `~/Downloads`.
 
+## Вкладка Documents у ребёнка пишет мимо базы — это файлы, а не документы (замер 2026-07-28)
+
+**До захода 2 всё, что загружено во вкладке Documents, — файлы, а не документы.** Пока это так,
+их нельзя предъявлять как «документ на файле»: у них нет типа, срока действия, автора, хэша и
+связи с ребёнком в базе.
+
+Измерено: `ChildDocumentsTab.tsx:35–65` делает `storage.from('org-files').upload()` россыпью
+файлов в папку и **не пишет ни одной строки в БД**. Ни `doc_type`, ни `valid_from/valid_until`,
+ни `uploaded_by`, ни хэша, ни `roster_id`.
+
+**Носитель уже существует и пуст:** `menumaker.documents` (19 колонок, ровно нужной формы —
+`org_id, center_id, roster_id, doc_type, title, period_start/end, source, storage_path,
+source_table, source_id, valid_from/until, status, notes, uploaded_by`) — **0 строк,
+0 упоминаний в коде приложения**.
+
+**И это не просто пустая таблица — это нерабочая комплаенс-поверхность.**
+`menumaker.claim_packet_manifest` **уже читает** `documents`, и его читает живая страница
+[`DocumentsPage.tsx:173`](../src/pages/documents/DocumentsPage.tsx). Замер по Ridge за июль 2026:
+**28 типов из 28 — `present = false`, из них 20 обязательных.** Манифест клеймового пакета
+сегодня показывает всё отсутствующим не потому, что документов нет, а потому что **писать
+в таблицу некому**.
+
+Смежное ограничение: словарь `document_types` (28 типов) сегодня **целиком центрового и
+спонсорского уровня** (`level ∈ center|sponsor`) — детских типов в нём нет. Заходы 2 и 4
+должны добавить детский уровень, иначе `documents.roster_id` останется незаполняемым.
+
+Закрывается заходом 2 ручного ввода (см. [`DECISIONS.md`](DECISIONS.md) — провенанс).
+
 ## Child Release Authorization — согласие на публикацию через несуществующий канал (в очередь 2026-07-27)
 
 **Форма ЖИВАЯ** (`child_release_authorization`, current v2, стоит в наборах) и просит родителей

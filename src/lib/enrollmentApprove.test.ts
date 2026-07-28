@@ -26,6 +26,7 @@ vi.mock('./supabase', () => {
 import {
   matchRoster, parseIeaFiscalYear, frpExpiryDefault, isoDate,
   parseFormTime, buildSchedulePort, buildCacfpPatch, decideSchedule, scheduleIsStale, formAsOf,
+  frpDeterminationPatch,
   ieaCountersignPatch, ieaApproveBlocked, approveCacfpInsert, approveCacfpUpdate,
   type RosterLite,
 } from './enrollmentApprove'
@@ -305,6 +306,42 @@ describe('buildCacfpPatch — name derivation (First Last, no swap)', () => {
     const p = buildCacfpPatch({ child_name: 'Yuri James', first_name: 'Yuri' })
     expect(p.first_name).toBe('Yuri')
     expect(p.last_name).toBe('James')
+  })
+})
+
+// ─── canon 2026-07-28: absence of a field is not an empty value ──────────────
+// A port writes ONLY the fields the form actually carries. A field the form does
+// not carry is left alone and is never overwritten with a blank.
+describe('absence of a field is not an empty value', () => {
+  it('buildCacfpPatch omits child_name entirely when the form carries no name', () => {
+    // Previously child_name was set unconditionally and would have blanked the
+    // name on file. It never landed only because approveCacfpUpdate strips
+    // child_name for an EXISTING child to protect the claim-bridge — an
+    // unrelated guard. The rule now holds where the patch is built.
+    const p = buildCacfpPatch({ birthdate: '2021-09-29' })
+    expect('child_name' in p).toBe(false)
+    expect('first_name' in p).toBe(false)
+    expect('last_name' in p).toBe(false)
+    expect(p.birthday).toBe('2021-09-29')       // what the form DOES carry still lands
+  })
+
+  it('frpDeterminationPatch keeps frp_expires out of the patch when there is none', () => {
+    // An erased frp_expires removes the overdue flag: the child reads as current
+    // while the eligibility has lapsed. Claim risk wearing a clean face.
+    const roster = frpDeterminationPatch('frp', 'F', null)
+    expect(roster).toEqual({ frp: 'F' })
+    expect('frp_expires' in roster).toBe(false)
+
+    const ie = frpDeterminationPatch('eligibility', 'R', '')
+    expect(ie).toEqual({ eligibility: 'R' })
+    expect('frp_expires' in ie).toBe(false)
+  })
+
+  it('frpDeterminationPatch writes frp_expires when the determination carries one', () => {
+    expect(frpDeterminationPatch('frp', 'F', '2027-07-31'))
+      .toEqual({ frp: 'F', frp_expires: '2027-07-31' })
+    expect(frpDeterminationPatch('eligibility', 'P', '2027-07-31'))
+      .toEqual({ eligibility: 'P', frp_expires: '2027-07-31' })
   })
 })
 

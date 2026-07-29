@@ -39,7 +39,7 @@ declare
   v_org uuid; v_center uuid; v_class uuid; v_roster uuid; v_res jsonb;
   v_dir uuid; v_monday date; v_locked text; v_lock_text text;
   v_n int; v_txt text; v_w int; v_tot int; v_rec record;
-  v_sealed uuid; v_unsealed uuid;
+  v_sealed uuid; v_unsealed uuid; v_health uuid; v_res2 jsonb;
   -- живые носители ролей: пробы обязаны ходить под НАСТОЯЩИМИ логинами
   c_dir  constant uuid := '5998a5de-ba02-4569-958c-53ab16dd1895';  -- директор Alpha
   c_gd   constant uuid := '1567bda4-93fb-44ca-9813-58b2502e588d';  -- офис-менеджер, org-уровень
@@ -405,6 +405,54 @@ begin
                  else format('  ❌ П-5 дверь видит %s из %s — область не держит', v_n, v_tot) end || E'\n';
   r := r || case when v_w = 0 then '  ✅ П-5b дверь не может ЗАВЕСТИ ребёнка'
                  else '  ❌ П-5b дверь завела строку ростера' end || E'\n';
+
+  -- ── П-7. ЭКРАН HEALTH: аллергия со слов ложится, запертое отказывает ─────
+  -- ПОВОД (владелец, 29.07): «вношу аллергии и лекарства, жму сохранить —
+  -- не сохраняется, тихо». Экран был объявлен починенным 28.07 (504fa19), и
+  -- объявление держалось на том, что путь ЕСТЬ, а не на том, что он ДОХОДИТ.
+  -- Замер: child_medical не менялась с 02.07, журнал полей пуст, а 369 строк
+  -- ростера из 623 не несут child_id — того самого ключа, к которому медкарта
+  -- и привязывается.
+  insert into menumaker.roster (org_id, center_id, classroom_id, child_name, first_name, last_name, birthday, is_active)
+  values (v_org, v_center, v_class, 'ZZHEALTH Probe', 'ZZHEALTH', 'Probe', date '2021-05-06', true)
+  returning id into v_health;
+
+  begin  -- строка БЕЗ ключа: отказ обязан быть СВОИМ и внятным
+    perform menumaker.record_child_field_change(
+      v_health, 'allergies', 'child_medical', 'allergies', 'peanuts', 'verbal',
+      null, null, null, 'postflight', 'postflight');
+    r := r || '  ❌ П-7 медкарта легла БЕЗ ключа ребёнка' || E'\n';
+  exception when others then
+    r := r || case when sqlerrm ~* 'нет ключа ребёнка'
+      then '  ✅ П-7 без ключа отказ СВОИМ текстом'
+      else format('  ❌ П-7 отказал НЕ ключ: «%s»', left(sqlerrm,50)) end || E'\n';
+  end;
+
+  -- экран выдаёт ключ на месте и привязывает — ровно как saveCurrent с 29.07
+  v_res := menumaker.resolve_or_create_child(v_org, 'ZZHEALTH', 'Probe', date '2021-05-06', null);
+  update menumaker.roster set child_id = (v_res->>'child_id')::uuid where id = v_health;
+
+  begin  -- ПЕРВАЯ ПОЛОВИНА: со слов ложится и ЧИТАЕТСЯ обратно
+    v_res2 := menumaker.record_child_field_change(
+      v_health, 'allergies', 'child_medical', 'allergies', 'ZZPROBE peanuts', 'verbal',
+      null, null, null, 'postflight', 'postflight');
+    select cm.allergies into v_txt from menumaker.child_medical cm
+     where cm.child_id = (select child_id from menumaker.roster where id = v_health);
+    r := r || case when v_res2->>'applied' = 'true' and v_txt = 'ZZPROBE peanuts'
+      then format('  ✅ П-7b аллергия со слов сохранена и читается (замок=%s)', v_res2->>'lock_level')
+      else format('  ❌ П-7b applied=%s, в карточке «%s» — ТИХИЙ ОТКАЗ ВЕРНУЛСЯ', v_res2->>'applied', coalesce(v_txt,'—')) end || E'\n';
+  exception when others then r := r || format('  ❌ П-7b запись аллергии СЛОМАНА: «%s»%s', left(sqlerrm,60), E'\n'); end;
+
+  begin  -- ВТОРАЯ ПОЛОВИНА: запертое поле обязано отказать СЛОВАМИ
+    perform menumaker.record_child_field_change(
+      v_health, 'birthday', 'roster', 'birthday', '2019-01-01', 'verbal',
+      null, null, null, 'postflight', 'postflight');
+    r := r || '  ❌ П-7c запертое поле ПРОПУЩЕНО со слов' || E'\n';
+  exception when others then
+    r := r || case when sqlerrm ~* 'signed document'
+      then '  ✅ П-7c запертое поле отказало СВОИМ текстом'
+      else format('  ❌ П-7c отказал НЕ замок: «%s»', left(sqlerrm,50)) end || E'\n';
+  end;
 
   raise exception E'%\n  ── всё написанное откачено, ничего не осталось ──', r;
 end $$;

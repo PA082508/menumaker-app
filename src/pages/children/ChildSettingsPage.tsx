@@ -293,8 +293,22 @@ export default function ChildSettingsPage({
   // Теперь каждое ИЗМЕНЁННОЕ поле уходит отдельным событием с провенансом,
   // и база сама решает, применять ли значение — по дате ДОКУМЕНТА, не ввода.
   async function saveCurrent() {
+    try { await saveCurrentInner() }
+    catch (e: any) {
+      // Ни один путь отсюда не уходит молча: исключение — тоже ответ экрана.
+      setSaving(false)
+      setWriteResults([{ fieldKey: '', applied: false, reason: null, oldValue: null, newValue: null, isVerbal: false,
+        error: `NOTHING WAS SAVED — the save failed before it reached the record: ${e?.message ?? String(e)}` }])
+    }
+  }
+
+  async function saveCurrentInner() {
     const defs = fieldsForTab(TAB_KEYS[tab]).filter(f => !f.readOnly)
-    if (defs.length === 0) return
+    if (defs.length === 0) {
+      setWriteResults([{ fieldKey: '', applied: false, reason: 'this tab has no editable fields',
+                         oldValue: null, newValue: null, isVerbal: false }])
+      return
+    }
 
     const problem = provenanceProblem(prov)
     if (problem) { setWriteResults([{ fieldKey: '', applied: false, reason: null, oldValue: null, newValue: null, isVerbal: false, error: problem }]); return }
@@ -312,14 +326,50 @@ export default function ChildSettingsPage({
     }
     const base: Record<string, any> = { ...baseline.roster, ...baseline.medical }
     const writes = changedFields(defs.map(f => ({ key: f.key, table: f.table as 'roster' | 'child_medical', column: f.column })), base, current)
-    if (writes.length === 0) { setSaved(true); setTimeout(() => setSaved(false), 2000); return }
+    // «Сохранено» без записи — тихий отказ в самой честной одежде. Если менять
+    // нечего, так и говорим: экран не имеет права намекать, что что-то легло.
+    if (writes.length === 0) {
+      setWriteResults([{ fieldKey: '', applied: false, reason: 'nothing changed — no field differs from what was loaded',
+                         oldValue: null, newValue: null, isVerbal: false }])
+      return
+    }
 
     setSaving(true); setWriteResults(null)
     const results: WriteResult[] = []
+    const who = (user?.user_metadata?.full_name as string) || (user?.email?.split('@')[0]) || 'Staff'
+
+    // КЛЮЧ ВЫДАЁТСЯ ЗДЕСЬ ЖЕ, ЕСЛИ ЕГО НЕТ. Замер 29.07: 369 строк ростера из 623
+    // не несут child_id, а медкарта привязывается ИМЕННО к нему — значит для
+    // 59 % детей сохранение аллергии отбивалось базой с длинным объяснением про
+    // key-backfill, которое директору нечего делать. Ключ у нас уже выдаётся при
+    // зачислении обоими путями; здесь он выдаётся той же функцией и для строки,
+    // заведённой до починки. Ничего массового: одна строка, по явному «сохранить».
+    if (child && !(child as any).child_id && writes.some(w => w.table === 'child_medical')) {
+      const { data: kid, error: kidErr } = await (supabase.schema('menumaker').rpc as any)(
+        'resolve_or_create_child',
+        { p_org: child.org_id, p_first: child.first_name, p_last: child.last_name,
+          p_birthdate: child.birthday ?? null },
+      )
+      const newKey = (kid as any)?.child_id ?? null
+      if (kidErr || !newKey) {
+        setWriteResults([{ fieldKey: '', applied: false, reason: null, oldValue: null, newValue: null, isVerbal: false,
+          error: `NOTHING WAS SAVED. This child has no identity key yet, and one could not be issued: ${kidErr?.message ?? 'the database returned no key'}. Medical details attach to that key, so they cannot be stored until it exists.` }])
+        setSaving(false); return
+      }
+      const { error: linkErr } = await supabase.schema('menumaker').from('roster')
+        .update({ child_id: newKey }).eq('id', childId)
+      if (linkErr) {
+        setWriteResults([{ fieldKey: '', applied: false, reason: null, oldValue: null, newValue: null, isVerbal: false,
+          error: `NOTHING WAS SAVED. The identity key could not be attached to this child's row: ${linkErr.message}` }])
+        setSaving(false); return
+      }
+      setChild(p => p ? ({ ...p, child_id: newKey } as any) : p)
+    }
+
     for (const w of writes) {
       results.push(await writeChildField(childId, w, {
         ...prov, documentDate: prov.source === 'verbal' ? null : (prov.documentDate || null),
-      }, (user?.user_metadata?.full_name as string) || (user?.email?.split('@')[0]) || 'Staff'))
+      }, who))
     }
     // Побочный эффект прежнего пути, который нельзя потерять: изменение F/R/P
     // записывается ОТДЕЛЬНОЙ определительной записью (income_eligibility +

@@ -270,3 +270,73 @@ export async function applyIeaDemographics(
   }
   return out
 }
+
+// ─── People ───────────────────────────────────────────────────────────────────
+// The identity fork lives here, and it refuses to guess:
+//   · exact key (e:<email>) matches → the path merges by itself;
+//   · a phone or a name match → NOT a merge. The person is recorded as a
+//     QUESTION for the director, with the candidates that were found;
+//   · nothing found → a new person.
+// A name is NEVER a merge, and there is no value in the vocabulary to record one.
+import { supabase as sb } from './supabase'
+
+export type PersonPortResult = {
+  slot: PortPerson['slot']
+  name: string
+  outcome: 'linked' | 'needs_director' | 'error'
+  matchMethod?: string
+  candidates?: any[]
+  error?: string
+}
+
+const ROLE_OF: Record<PortPerson['slot'], { role: string; ordinal: number }> = {
+  parent_1:    { role: 'parent',            ordinal: 1 },
+  parent_2:    { role: 'parent',            ordinal: 2 },
+  emergency_1: { role: 'emergency_contact', ordinal: 1 },
+  emergency_2: { role: 'emergency_contact', ordinal: 2 },
+}
+
+/** Port the people DCY 01234 names. Unambiguous ones are linked; anything that
+ *  would require a judgement about identity is handed to the director instead. */
+export async function applyDcyPeople(
+  rosterId: string, orgId: string,
+  submission: { id: string; form_data: any; signature_date: string | null },
+  enteredByName: string,
+): Promise<PersonPortResult[]> {
+  const fd = (submission?.form_data ?? {}) as Record<string, any>
+  const documentDate = documentDateOf(fd, submission?.signature_date)
+  if (!documentDate) return []
+
+  const out: PersonPortResult[] = []
+  for (const p of buildDcyPeople(fd)) {
+    const { role, ordinal } = ROLE_OF[p.slot]
+    try {
+      const { data: cands } = await (sb.schema('menumaker').rpc as any)('find_person_candidates', {
+        p_org: orgId, p_email: p.email, p_phone: p.phone,
+        p_first_name: p.firstName, p_last_name: p.lastName,
+      })
+      const list = (cands ?? []) as any[]
+      const exact = list.find(c => c.why === 'exact_key')
+
+      // A phone or name candidate WITHOUT an exact key is a question, not an answer.
+      if (!exact && list.length > 0) {
+        out.push({ slot: p.slot, name: p.fullName, outcome: 'needs_director', candidates: list })
+        continue
+      }
+
+      const { data, error } = await (sb.schema('menumaker').rpc as any)('record_child_person', {
+        p_roster_id: rosterId, p_relation_role: role, p_ordinal: ordinal, p_action: 'linked',
+        p_first_name: p.firstName, p_last_name: p.lastName, p_email: p.email,
+        p_phone: p.phone, p_address: p.address, p_relationship: p.relationship,
+        p_source: 'library_form', p_document_date: documentDate,
+        p_source_form_key: 'dcy_01234', p_source_submission_id: submission.id,
+        p_entered_by_name: enteredByName,
+      })
+      if (error) { out.push({ slot: p.slot, name: p.fullName, outcome: 'error', error: error.message }); continue }
+      out.push({ slot: p.slot, name: p.fullName, outcome: 'linked', matchMethod: (data as any)?.match_method })
+    } catch (e: any) {
+      out.push({ slot: p.slot, name: p.fullName, outcome: 'error', error: e?.message ?? String(e) })
+    }
+  }
+  return out
+}

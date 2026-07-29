@@ -22,7 +22,7 @@ import { deriveMealFields } from '@/lib/ageGroups'
 import { countersignSlot, loadSample, adoptSample, samplesEnabled, type SignatureSample, type SampleOwner, type SigMethod } from '@/lib/signatureSamples'
 import SignaturePad from '@/components/signing/SignaturePad'
 import { SIGNATURE_METHODS } from '@/lib/signatureMethods'
-import { applyDcyPort } from '@/lib/dcyPort'
+import { applyDcyPort, applyDcyPeople } from '@/lib/dcyPort'
 import OriginalFormViewer from './OriginalFormViewer'
 import { hasOriginalReplica } from '@/lib/originalFormReplicas'
 import { captureAndUploadSnapshot } from '@/lib/enrollmentSnapshot'
@@ -557,10 +557,20 @@ export default function EnrollmentReviewModal({
             const ported = await applyDcyPort(target, submission as any, reviewerName)
             const applied = ported.filter(r => r.applied).length
             const held = ported.filter(r => !r.applied && !r.error)
-            if (applied || held.length) {
+
+            // People too. The port links only what it can identify without
+            // guessing; anything that would need a judgement about WHO this is
+            // becomes a question for the director rather than a silent merge.
+            const people = await applyDcyPeople(target, submission.org_id, submission as any, reviewerName)
+            const linked = people.filter(p => p.outcome === 'linked').length
+            const asking = people.filter(p => p.outcome === 'needs_director').length
+
+            if (applied || held.length || linked || asking) {
               result = { ...result, message: result.message
                 + ` · ${applied} field${applied === 1 ? '' : 's'} carried to the record`
-                + (held.length ? `, ${held.length} left alone (a newer document is already on file)` : '') }
+                + (held.length ? `, ${held.length} left alone (a newer document is already on file)` : '')
+                + (linked ? ` · ${linked} ${linked === 1 ? 'person' : 'people'} added` : '')
+                + (asking ? ` · ${asking} need${asking === 1 ? 's' : ''} your confirmation on the Family tab — a name or phone matches someone already on file` : '') }
             }
           } catch (e: any) {
             // Порт — не условие подшивки: документ уже подшит и это верно.

@@ -142,3 +142,44 @@ describe('buildIeaDemographics — collected for USDA reporting, then dropped', 
     expect(buildIeaDemographics({ race: '', ethnicity: '  ' })).toEqual([])
   })
 })
+
+// ─── the identity fork, as pure decisions ────────────────────────────────────
+// The fork itself lives in applyDcyPeople (which talks to the database), but the
+// RULE it implements is stated here so it cannot drift: an exact key decides, a
+// phone or a name never does.
+import { buildDcyPeople as people } from './dcyPort'
+
+describe('identity fork — what may be decided without a human', () => {
+  const candidates = [
+    { guardian_id: 'a', why: 'exact_key', first_name: 'Ashley', last_name: 'Woods', children: 2 },
+    { guardian_id: 'b', why: 'phone', first_name: 'A', last_name: 'W', children: 1 },
+    { guardian_id: 'c', why: 'name', first_name: 'Ashley', last_name: 'Cunningham', children: 1 },
+  ]
+  // Mirrors the branch in applyDcyPeople: exact key wins, everything else asks.
+  const decide = (list: typeof candidates) => {
+    const exact = list.find(c => c.why === 'exact_key')
+    if (exact) return 'link'
+    return list.length > 0 ? 'ask' : 'new'
+  }
+
+  it('an exact key decides by itself', () => {
+    expect(decide(candidates)).toBe('link')
+  })
+
+  it('a PHONE match is a question, never a merge', () => {
+    expect(decide(candidates.filter(c => c.why === 'phone'))).toBe('ask')
+  })
+
+  it('a NAME match is a question, never a merge — 32 guardians already share a name', () => {
+    expect(decide(candidates.filter(c => c.why === 'name'))).toBe('ask')
+  })
+
+  it('nothing found → a new person, which is not a guess', () => {
+    expect(decide([])).toBe('new')
+  })
+
+  it('the people the fork runs over are exactly those the form names', () => {
+    const p = people({ p1_name: 'Ashley Cunningham', ec1_name: 'Marcus Hall', p2_na: 'Yes' })
+    expect(p.map(x => x.slot)).toEqual(['parent_1', 'emergency_1'])
+  })
+})

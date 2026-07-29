@@ -281,7 +281,7 @@ export default function PacketSetsPage() {
   // as the enrollment form's ✔ Submit (take 6): a disabled control eats the press and answers
   // no one. The button now stays live and says why.
   const createBlocker = (): string | null => {
-    if (!org?.id) return 'The organisation has not loaded yet — give it a moment, or reload the page.'
+    if (!org?.id) return 'The organization has not loaded yet — give it a moment, or reload the page.'
     if (!newName.trim()) return 'Give the set a name first.'
     const scope = (isOrgAdmin && newScope === 'all') ? 'all' : 'center'
     if (scope === 'center' && !createTargetCenterId) {

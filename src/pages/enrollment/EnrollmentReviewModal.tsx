@@ -21,7 +21,8 @@ import {
 import { deriveMealFields } from '@/lib/ageGroups'
 import { countersignSlot, loadSample, adoptSample, samplesEnabled, type SignatureSample, type SampleOwner, type SigMethod } from '@/lib/signatureSamples'
 import SignaturePad from '@/components/signing/SignaturePad'
-import { SIG_FACES, faceByKey, renderTypedSignature } from '@/lib/typedSignature'
+import { SIGNATURE_METHODS } from '@/lib/signatureMethods'
+import { applyDcyPort, applyDcyPeople } from '@/lib/dcyPort'
 import OriginalFormViewer from './OriginalFormViewer'
 import { hasOriginalReplica } from '@/lib/originalFormReplicas'
 import { captureAndUploadSnapshot } from '@/lib/enrollmentSnapshot'
@@ -545,6 +546,38 @@ export default function EnrollmentReviewModal({
               signerRole: signerRoleFor(slot), method: countersignMethod, signedAt: new Date().toISOString() }
           : null
         result = await approveDocument(submission, target, reviewerId, paperSigned, cs)
+
+        // Этап Г: DCY 01234 наконец ОТДАЁТ запись то, что собрала. Раньше Approve
+        // подшивал документ и не писал ничего — 81 ключ уходил в печать нетронутым,
+        // пока карточка стояла пустой. Порт идёт ЧЕРЕЗ ЗАЩИЩЁННЫЙ ПУТЬ, поэтому
+        // наследует журнал, документную дату и замок: форма, одобренная поздно,
+        // не отменит заметку, внесённую после неё.
+        if (submission.submission_type === 'dcy_01234' && target) {
+          try {
+            const ported = await applyDcyPort(target, submission as any, reviewerName)
+            const applied = ported.filter(r => r.applied).length
+            const held = ported.filter(r => !r.applied && !r.error)
+
+            // People too. The port links only what it can identify without
+            // guessing; anything that would need a judgement about WHO this is
+            // becomes a question for the director rather than a silent merge.
+            const people = await applyDcyPeople(target, submission.org_id, submission as any, reviewerName)
+            const linked = people.filter(p => p.outcome === 'linked').length
+            const asking = people.filter(p => p.outcome === 'needs_director').length
+
+            if (applied || held.length || linked || asking) {
+              result = { ...result, message: result.message
+                + ` · ${applied} field${applied === 1 ? '' : 's'} carried to the record`
+                + (held.length ? `, ${held.length} left alone (a newer document is already on file)` : '')
+                + (linked ? ` · ${linked} ${linked === 1 ? 'person' : 'people'} added` : '')
+                + (asking ? ` · ${asking} need${asking === 1 ? 's' : ''} your confirmation on the Family tab — a name or phone matches someone already on file` : '') }
+            }
+          } catch (e: any) {
+            // Порт — не условие подшивки: документ уже подшит и это верно.
+            // Но молчать нельзя, иначе это шестой тихий отказ.
+            setErr(`Filed, but the record was not updated from the form: ${e?.message ?? e}`)
+          }
+        }
 
         // Remember it as MY shelf, if asked. Adoption is deliberate: the sample
         // is what later forms will apply without redrawing, so it is never a
@@ -1185,29 +1218,18 @@ function CountersignField({
   disabled: boolean
   onResult: (r: CsResult) => void
 }) {
-  const [mode, setMode] = useState<'draw' | 'type'>('draw')
+  // DRAW ONLY (2026-07-28) — see src/lib/signatureMethods.ts. The ⌨ Type tab,
+  // its three script faces and the renderer behind them are gone from this
+  // surface: a typed name is not a signature, and the administrative side had
+  // simply been missed when the parent forms were cleared on 2026-07-27.
   const [draw, setDraw] = useState<string | null>(null)
-  const [typedName, setTypedName] = useState(reviewerName || '')
-  const [faceKey, setFaceKey] = useState(SIG_FACES[0].key)
-  const [typedImg, setTypedImg] = useState<string | null>(null)
   const [adopt, setAdopt] = useState(false)
 
-  // Re-raster the typed name whenever the text or face changes (typed mode only).
+  // Lift the consolidated result to the modal. `method` is a constant: there is
+  // one way to sign here, and the record says the same thing the screen does.
   useEffect(() => {
-    if (mode !== 'type') return
-    let cancelled = false
-    ;(async () => {
-      const img = await renderTypedSignature(typedName, faceByKey(faceKey))
-      if (!cancelled) setTypedImg(img || null)
-    })()
-    return () => { cancelled = true }
-  }, [mode, typedName, faceKey])
-
-  // Lift the consolidated result to the modal.
-  const image = mode === 'draw' ? draw : typedImg
-  useEffect(() => {
-    onResult({ image: image ?? null, method: mode === 'draw' ? 'drawn' : 'typed', adopt })
-  }, [image, mode, adopt])  // eslint-disable-line react-hooks/exhaustive-deps
+    onResult({ image: draw ?? null, method: SIGNATURE_METHODS[0], adopt })
+  }, [draw, adopt])  // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div style={{ fontSize: 12.5 }}>
@@ -1227,40 +1249,7 @@ function CountersignField({
       )}
       {!useSample && (
         <>
-          <div style={{ display: 'inline-flex', border: '1px solid #d1d5db', borderRadius: 8, overflow: 'hidden', marginBottom: 8 }}>
-            {(['draw', 'type'] as const).map(m => (
-              <button key={m} type="button" onClick={() => setMode(m)} disabled={disabled}
-                style={{ padding: '5px 14px', border: 'none', fontSize: 12.5, fontWeight: 700, cursor: disabled ? 'default' : 'pointer', fontFamily: 'inherit',
-                  background: mode === m ? '#0f4c35' : '#fff', color: mode === m ? '#fff' : '#374151' }}>
-                {m === 'draw' ? '✍︎ Draw' : '⌨ Type'}
-              </button>
-            ))}
-          </div>
-
-          {mode === 'draw' ? (
-            <SignaturePad onChange={setDraw} hint={`Sign as ${reviewerName}`} disabled={disabled} />
-          ) : (
-            <div>
-              <input value={typedName} onChange={e => setTypedName(e.target.value)} placeholder="Type your full name" disabled={disabled}
-                style={{ width: '100%', padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', marginBottom: 8 }} />
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-                {SIG_FACES.map(f => (
-                  <button key={f.key} type="button" onClick={() => setFaceKey(f.key)} disabled={disabled}
-                    title={f.label}
-                    style={{ padding: '2px 12px', borderRadius: 8, cursor: disabled ? 'default' : 'pointer',
-                      border: faceKey === f.key ? '2px solid #0f4c35' : '1px solid #d1d5db', background: '#fff',
-                      fontFamily: f.stack, fontSize: 22, color: '#0f4c35', lineHeight: 1.3 }}>
-                    {((typedName || 'Signature').split(/\s+/)[0]) || 'Abc'}
-                  </button>
-                ))}
-              </div>
-              <div style={{ height: 56, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fafff9', display: 'flex', alignItems: 'center', padding: '0 8px' }}>
-                {typedImg
-                  ? <img src={typedImg} alt="typed signature preview" style={{ maxHeight: 48, maxWidth: '100%', objectFit: 'contain' }} />
-                  : <span style={{ color: '#9ca3af' }}>Your typed signature appears here</span>}
-              </div>
-            </div>
-          )}
+          <SignaturePad onChange={setDraw} hint={`Sign as ${reviewerName}`} disabled={disabled} />
 
           {/* «Remember this as my signature» — mints the shelf sample. CONSERVED 2026-07-27:
               hidden, not deleted. While it is hidden `adopt` stays false, so the Approve path

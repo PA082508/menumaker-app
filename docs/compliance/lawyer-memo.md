@@ -8,6 +8,48 @@ alone.
 
 ---
 
+## 0. ⛔ BLOCKING — the fee agreement is a one-way contract *(added 2026-07-27)*
+
+**Status: this section BLOCKS the payment-rules wording.** Until counsel answers, the sentences
+about when payment is due, the late fee and non-proration are **frozen** — we do not rewrite,
+soften or re-order them, and we do not add an "on-time payment" accent. Work on that text is
+paused by the owner's word. Everything else in the fee agreement continues.
+
+**Why the pause.** Our Fee Agreement (four variants: standard, infant, school-age, and the
+caretaker/provider voucher version) is signed by the parent and countersigned by the center's
+administrator. Read as a contract, its obligations run **one way**: the parent promises to pay,
+on a schedule, with a late fee and no proration. What the center owes in return is **not written
+down anywhere in the document** — no hours of care, no notice before a rate change, no
+termination procedure, nothing about the registration fee if care never begins.
+
+**What we ask counsel:**
+
+1. **Does the one-way flow weaken enforceability?** The parent signs a payment obligation; the
+   center countersigns but promises nothing in the same instrument. Does that affect whether the
+   payment terms — the weekly due date, the $5.00/day late fee, the no-proration clause — are
+   enforceable in Ohio, and does the countersignature change the answer?
+2. **If it does, what should be written in?** Our candidates, for you to correct and complete:
+   provision of care and the hours it covers · notice before a change of rates · how either side
+   ends the arrangement · what happens to the registration fee (non-refundable today) if the
+   child never starts · what happens if the center closes, temporarily or for good.
+3. **Does Ohio licensing require specific disclosures in a parent contract?** We are looking for
+   anything that must appear in the agreement itself rather than in the handbook — and whether
+   any of it must be signed separately.
+4. **Do our two hardest clauses survive as written?** (a) a late fee of **$5.00 per day**, with
+   no cap and no grace period stated; (b) **"Tuition fees are not subject to pro-ration for
+   illness, holidays, or emergency closure of the center. Payment is due even if your child is
+   not here for the week."** Both are carried verbatim from the paper agreement families already
+   sign. Are they enforceable in Ohio for licensed child care, and does the answer differ for
+   families paying with a publicly funded voucher, where a county agency is also involved?
+
+**Scope note, so nothing is over-read from this pause.** The current release (edition v2) does
+**not** introduce any new obligation: it reproduces the text of the Word original that families
+sign today, plus one corrected typo ("by Wednesday **from** the following week" → "**of the
+preceding week**", the same prepayment either way). The legal position is not made worse by
+shipping it. The pause is about **future wording**, not about the release.
+
+---
+
 ## 1. Electronic signatures on child-care and CACFP records — *added 2026-07-27*
 
 **Trigger.** Ohio DCY: *"Electronic signatures are allowed … official electronic signature or

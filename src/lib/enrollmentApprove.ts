@@ -16,6 +16,7 @@
 // ============================================================
 
 import { supabase } from './supabase'
+import { stripStoredKey } from './rosterKey'
 
 const S = () => supabase.schema('menumaker')
 const blank = (v: any) => v === null || v === undefined || (typeof v === 'string' && v.trim() === '')
@@ -167,7 +168,14 @@ export function buildCacfpPatch(
   const last = hasExplicit ? String(fd.last_name).trim() : split.last
   const m = fd?.mailing ?? {}
   const addr = [m.street, [m.city, m.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ')
-  const patch: RosterPatch = { child_name: `${first} ${last}`.trim() }  // First Last (ratified)
+  // Absence of a field is not an empty value (canon, Nikolay 2026-07-28): a form
+  // that carries no name at all must not blank the one on file. This held until
+  // now only by accident — approveCacfpUpdate strips child_name for an EXISTING
+  // child to protect the claim-bridge, an unrelated reason. The rule belongs
+  // here, where the patch is built, not on somebody else's guard.
+  const patch: RosterPatch = {}
+  const displayName = `${first} ${last}`.trim()   // First Last (ratified)
+  if (displayName) patch.child_name = displayName
   if (first) patch.first_name = first
   if (last) patch.last_name = last
   if (!blank(fd?.birthdate)) patch.birthday = String(fd.birthdate).slice(0, 10)
@@ -212,6 +220,24 @@ export function buildIeaFrp(fd: any): { frp: string | null; source: 'sponsor' | 
   }
   const frp_expires = !blank(sp.expiration) ? String(sp.expiration).slice(0, 10) : null
   return { frp, source, frp_expires }
+}
+
+/** The status+expiry half of a determination write.
+ *
+ *  Canon (Nikolay, 2026-07-28): **absence of a field is not an empty value.** A
+ *  determination that carries no expiration leaves the one already on file
+ *  alone. Erasing it silently removes the overdue flag, and the child then reads
+ *  as current while the eligibility has in fact lapsed — a claim risk wearing
+ *  the face of a clean roster. `frpExpiryDefault` never returns blank, so this
+ *  arrives empty only when the reviewer hand-clears the date field.
+ *
+ *  `statusCol` is 'frp' on the roster and 'eligibility' on income_eligibility. */
+export function frpDeterminationPatch(
+  statusCol: 'frp' | 'eligibility', frp: string, frpExpires: string | null | undefined,
+): Record<string, any> {
+  const patch: Record<string, any> = { [statusCol]: frp }
+  if (!blank(frpExpires)) patch.frp_expires = frpExpires
+  return patch
 }
 
 // Normalize a date string to ISO 'YYYY-MM-DD'. Paper/OCR forms carry US
@@ -340,7 +366,17 @@ export async function insertRosterChild(
   patch: RosterPatch,
 ): Promise<string> {
   const { data, error } = await S().from('roster')
-    .insert({ org_id: sub.org_id, center_id: sub.center_id, is_active: true, ...patch })
+    .insert({
+      org_id: sub.org_id, center_id: sub.center_id, is_active: true,
+      // Answers nobody was asked start as UNKNOWN, never as a column default.
+      // emergency_transport_auth DEFAULT true made the system answer "yes" on
+      // behalf of 623 parents who were never asked (measured 2026-07-28); the
+      // default is being dropped, and these explicit nulls are what keeps a new
+      // child honest whether or not the DDL has landed yet. `patch` spreads
+      // AFTER them, so a form that actually carries an answer still wins.
+      emergency_transport_auth: null, has_health_condition: null,
+      ...patch,
+    })
     .select('id').single()
   if (error) throw error
   return (data as any).id as string
@@ -373,7 +409,7 @@ export async function approveCacfpUpdate(
   // On an EXISTING child we must NEVER rewrite it, or its already-written meal rows
   // desync. Strip it here — birthday/classroom/frp/schedule still update. (The
   // INSERT path keeps First-Last child_name; a brand-new child has no meal rows.)
-  const { child_name: _cn, ...rest } = patch
+  const rest = stripStoredKey(patch)
   // Reactivating a departed match: flip is_active back on in the same write, and
   // capture it in `cols` so undo restores the prior (inactive) state.
   const effPatch: RosterPatch = reactivate ? { ...rest, is_active: true } : rest
@@ -430,8 +466,10 @@ export async function recordDetermination(p: DeterminationInput): Promise<() => 
   if (existing?.id) {
     const prev: any = { ...existing }
     const log = Array.isArray(existing.determination_log) ? existing.determination_log : []
+    // Same rule as the roster write — see frpDeterminationPatch.
     const { error } = await S().from('income_eligibility').update({
-      eligibility: p.frp, frp_expires: p.frp_expires, eligibility_source: p.eligibility_source,
+      ...frpDeterminationPatch('eligibility', p.frp, p.frp_expires),
+      eligibility_source: p.eligibility_source,
       determined_by: p.determined_by, determined_by_name: p.determined_by_name, determined_at: at,
       determination_log: [...log, entry(existing.eligibility)], updated_at: at,
     }).eq('id', existing.id)
@@ -499,7 +537,9 @@ export async function approveIea(
   // 1) roster.frp / frp_expires — the current effective value the claim RPC reads.
   const { data: prevRows } = await S().from('roster').select('id,frp,frp_expires').in('id', matchedIds)
   const prevRoster = new Map((prevRows ?? []).map((r: any) => [r.id, { frp: r.frp, frp_expires: r.frp_expires }]))
-  const { error: rErr } = await S().from('roster').update({ frp: det.frp, frp_expires: det.frp_expires }).in('id', matchedIds)
+  // Absence of a field is not an empty value — see frpDeterminationPatch.
+  const { error: rErr } = await S().from('roster')
+    .update(frpDeterminationPatch('frp', det.frp, det.frp_expires)).in('id', matchedIds)
   if (rErr) throw rErr
 
   // 2) income_eligibility — the authoritative FY determination record, one per

@@ -195,7 +195,7 @@ export default function MessagesPage() {
           {!showIndividual && (recipient as any).value !== 'all' && (
             <div style={{ display:'flex', gap:8, marginTop:10, alignItems:'center', flexWrap:'wrap' }}>
               <span style={{ fontSize:11, color:C.muted }}>Where:</span>
-              {([['center', currentCenter?.name ? `📍 ${currentCenter.name.replace(/^Play Academy\s+/i,'')} only` : '📍 This centre only'],
+              {([['center', currentCenter?.name ? `📍 ${currentCenter.name.replace(/^Play Academy\s+/i,'')} only` : '📍 This center only'],
                  ['org',    '🏢 All centres']] as [Scope,string][]).map(([v,lbl]) => (
                 <button key={v} onClick={() => setScope(v)} disabled={v==='center' && !currentCenter}
                   style={{ padding:'5px 12px', borderRadius:20, fontSize:12.5, fontWeight:600, fontFamily:'inherit',

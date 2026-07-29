@@ -283,7 +283,12 @@ function ManualEntryModal({ centerId, orgId, classrooms, reviewerName, onDone }:
       const { error: err } = await (supabase.schema('menumaker').rpc as any)('submit_enrollment_form', {
         p_org: orgId, p_center: centerId, p_submission_type: 'cacfp_enrollment',
         p_form_data: form_data, p_signatures: {}, p_signature_date: null, p_source: 'manual_entry',
-        p_form_version: 'manual_entry',   // §3: НЕ эдиция реестра — директор ввёл вручную (честный маркер)
+        // form_version остаётся NULL: НИКАКОЙ редакции бланка здесь не подписывали —
+        // директор напечатал по памяти/бумаге. Раньше сюда клали строку 'manual_entry',
+        // потому что рассказать об этом было больше негде; этап А дал колонки, где
+        // это и должно жить: source='manual_entry' + record_origin='live'.
+        // Версия, которой не было, обязана быть пустой, а не подписанной словом.
+        p_record_origin: 'live',
         // p_esign_consent опущен → false: у ручного ввода нет родительского э-согласия (бумага/устно)
       })
       if (err) throw err

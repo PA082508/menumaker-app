@@ -382,20 +382,29 @@ describe('approveCacfpInsert / approveCacfpUpdate — claim-bridge protection', 
     expect(ins?.payload.child_id, 'строка ростера снова заводится без ключа').toBe('child-key-1')
   })
 
-  it('UPDATE never sends child_name (protects the meal_week_records key)', async () => {
-    await approveCacfpUpdate({ id: 's2', child_id: 'k1' }, 'roster-id', patch(), 'rev', false)
-    const upd = h.calls.find(c => c.table === 'roster' && c.op === 'update')
-    expect(upd).toBeTruthy()
-    expect('child_name' in upd!.payload).toBe(false)     // the bridge key is left as-is
-    expect(upd!.payload.first_name).toBe('Yuri')         // but other fields still update
-    expect(upd!.payload.birthday).toBe('2021-03-04')
+  // ── КОНТРАКТ ИЗМЕНЁН 29.07: doc ОБЯЗАТЕЛЕН ────────────────────────────────
+  // Прежде эти два теста проверяли ПРЯМОЙ путь (один UPDATE по roster). Ветка
+  // удалена вместе с необязательностью doc: пол на roster нельзя ставить, пока
+  // существует путь мимо журнала. Инвариант клейма проверяется здесь же, но уже
+  // на СПИСКЕ ПОЛЕЙ, уходящих защищённым путём.
+  const DOC0 = { documentDate: '2026-07-10', formKey: 'cacfp_enrollment', who: 'Director' }
+
+  it('UPDATE never writes child_name (protects the meal_week_records key)', async () => {
+    await approveCacfpUpdate({ id: 's2', child_id: 'k1' }, 'roster-id', patch(), 'rev', false, false, DOC0)
+    expect(h.calls.find(c => c.table === 'roster' && c.op === 'update'), 'прямой UPDATE вернулся').toBeFalsy()
+    const fields = h.calls.filter(c => c.table === 'rpc:record_child_field_change').map(c => c.payload.p_column)
+    expect(fields, 'бридж-ключ ушёл в запись').not.toContain('child_name')
+    expect(fields).toContain('first_name')
+    expect(fields).toContain('birthday')
   })
 
   it('UPDATE + reactivate still omits child_name and flips is_active back on', async () => {
-    await approveCacfpUpdate({ id: 's3', child_id: 'k1' }, 'roster-id', patch(), 'rev', false, true)
-    const upd = h.calls.find(c => c.table === 'roster' && c.op === 'update')
-    expect('child_name' in upd!.payload).toBe(false)
-    expect(upd!.payload.is_active).toBe(true)
+    await approveCacfpUpdate({ id: 's3', child_id: 'k1' }, 'roster-id', patch(), 'rev', false, true, DOC0)
+    const writes = h.calls.filter(c => c.table === 'rpc:record_child_field_change')
+    const fields = writes.map(c => c.payload.p_column)
+    expect(fields).not.toContain('child_name')
+    expect(fields).toContain('is_active')
+    expect(writes.find(w => w.payload.p_column === 'is_active')!.payload.p_new_value).toBe('true')
   })
 
   // ── ПРЕДПОСЫЛКА ТРИГГЕР-ПОЛА (2026-07-29) ────────────────────────────────

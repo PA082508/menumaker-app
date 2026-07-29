@@ -38,7 +38,12 @@ declare
   r text := E'\n';
   v_org uuid; v_center uuid; v_class uuid; v_roster uuid; v_res jsonb;
   v_dir uuid; v_monday date; v_locked text; v_lock_text text;
-  v_n int; v_txt text; v_w int;
+  v_n int; v_txt text; v_w int; v_tot int; v_rec record;
+  v_sealed uuid; v_unsealed uuid;
+  -- живые носители ролей: пробы обязаны ходить под НАСТОЯЩИМИ логинами
+  c_dir  constant uuid := '5998a5de-ba02-4569-958c-53ab16dd1895';  -- директор Alpha
+  c_gd   constant uuid := '1567bda4-93fb-44ca-9813-58b2502e588d';  -- офис-менеджер, org-уровень
+  c_cook constant uuid := 'bd8e98cd-240d-43a7-ba8a-2d19ef0c23a3';  -- alpha.cook, служебный (дверь)
   -- поле БЕЗ замка: его нет в child_field_locks, значит оно свободно
   c_free constant text := 'child_address';
 begin
@@ -248,6 +253,154 @@ begin
   execute 'reset role';
   r := r || case when v_n = 0 then '  ✅ S-7. аноним не видит расписание кормлений'
                  else format('  ❌ S-7. аноним видит %s строк расписания — публичная политика вернулась', v_n) end || E'\n';
+
+  -- ══════════════════════════════════════════════════════════════════════
+  -- П-1…П-5. ПРОБЫ ЗАЩИТ, КОТОРЫЕ ДО 29.07 МЫ ЗНАЛИ ТОЛЬКО ЗЕЛЁНЫМИ.
+  --
+  -- «Гард, никогда не красневший, — гипотеза, а не защита». Порядок задан
+  -- владельцем и обоснован не интуицией: печать держит всю неделю провенанса,
+  -- граница кухни УЖЕ отказала (pin_hash), журналы — слой доказательств.
+  -- У каждой пробы ОБЕ половины: отказ своим текстом И законный путь проходит.
+  -- ══════════════════════════════════════════════════════════════════════
+  r := r || E'  ── пробы защит ──\n';
+
+  -- ── П-1. ПЕЧАТЬ ПОДПИСАННОГО ────────────────────────────────────────────
+  -- На своей строке: настоящих подписанных не трогаем даже на миг отката.
+  insert into menumaker.enrollment_submissions
+    (org_id, center_id, submission_type, form_data, source, record_origin, content_hash)
+  values (v_org, v_center, 'dcy_01234', '{"zz":"probe"}'::jsonb, 'online', 'rehearsal', 'zzprobehash')
+  returning id into v_sealed;
+  insert into menumaker.enrollment_submissions
+    (org_id, center_id, submission_type, form_data, source, record_origin)
+  values (v_org, v_center, 'dcy_01234', '{"zz":"open"}'::jsonb, 'online', 'rehearsal')
+  returning id into v_unsealed;
+
+  foreach v_txt in array array['postgres','service_role'] loop
+    execute format('set local role %I', v_txt);
+    begin
+      update menumaker.enrollment_submissions set form_data = '{"hacked":1}'::jsonb where id = v_sealed;
+      r := r || format('  ❌ П-1 UPDATE прошёл под %s — печать НЕ держит%s', v_txt, E'\n');
+    exception when others then
+      r := r || case when sqlerrm ~* 'запечатана' then format('  ✅ П-1 UPDATE отказан ПЕЧАТЬЮ под %s%s', v_txt, E'\n')
+                     else format('  ❌ П-1 под %s отказала НЕ печать: «%s»%s', v_txt, left(sqlerrm,45), E'\n') end;
+    end;
+    begin
+      delete from menumaker.enrollment_submissions where id = v_sealed;
+      r := r || format('  ❌ П-1 DELETE прошёл под %s — печать НЕ держит%s', v_txt, E'\n');
+    exception when others then
+      r := r || case when sqlerrm ~* 'запечатана' then format('  ✅ П-1 DELETE отказан ПЕЧАТЬЮ под %s%s', v_txt, E'\n')
+                     else format('  ❌ П-1 DELETE под %s отказала НЕ печать%s', v_txt, E'\n') end;
+    end;
+    execute 'reset role';
+  end loop;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', c_dir, 'role','authenticated')::text, true);
+  execute 'set local role authenticated';
+  begin
+    update menumaker.enrollment_submissions set form_data = '{"hacked":1}'::jsonb where id = v_sealed;
+    get diagnostics v_w = row_count;
+    r := r || case when v_w = 0 then '  ⚠ П-1 под директором строка не видна — печать этой ролью НЕ ПРОВЕРЕНА'
+                   else '  ❌ П-1 UPDATE прошёл под директором — печать НЕ держит' end || E'\n';
+  exception when others then
+    r := r || case when sqlerrm ~* 'запечатана' then '  ✅ П-1 UPDATE отказан ПЕЧАТЬЮ под директором'
+                   else format('  ⚠ П-1 под директором отказала НЕ печать: «%s»', left(sqlerrm,45)) end || E'\n';
+  end;
+  execute 'reset role';
+
+  begin  -- вторая половина: незамороженное поле правится, незапечатанное удаляется
+    update menumaker.enrollment_submissions set status = 'approved' where id = v_sealed;
+    get diagnostics v_w = row_count;
+    r := r || case when v_w = 1 then '  ✅ П-1b незамороженное поле (status) правится — печать держит ровно нужное'
+                   else '  ❌ П-1b незамороженное поле НЕ правится' end || E'\n';
+  exception when others then r := r || format('  ❌ П-1b законный путь отказан: «%s»%s', left(sqlerrm,50), E'\n'); end;
+  begin
+    delete from menumaker.enrollment_submissions where id = v_unsealed;
+    r := r || '  ✅ П-1c НЕзапечатанная строка удаляется — печать не держит лишнего' || E'\n';
+  exception when others then r := r || format('  ❌ П-1c незапечатанную удалить нельзя: «%s»%s', left(sqlerrm,50), E'\n'); end;
+
+  -- ── П-2. ГРАНИЦА КУХНИ ──────────────────────────────────────────────────
+  -- Основание порядка (владелец): эта граница УЖЕ отказала на этой неделе —
+  -- pin_hash с общего кухонного планшета. Семейство с известным провалом
+  -- вероятнее имеет соседей.
+  select count(*) into v_n from core.memberships where role = 'teacher';
+  r := r || case when v_n = 0
+    then '  🔴 П-2 НОСИТЕЛЯ НЕТ: роли «teacher» нет ни у кого — deny_teacher не может покраснеть НИКОГДА'
+    else format('  ✅ П-2 носитель есть: %s логинов с ролью teacher', v_n) end || E'\n';
+  v_n := 0;
+  for v_rec in select distinct tablename as t from pg_policies
+                where schemaname='menumaker' and policyname='deny_teacher' order by 1
+  loop
+    perform set_config('request.jwt.claims', json_build_object('sub', c_cook, 'role','authenticated')::text, true);
+    execute 'set local role authenticated';
+    begin execute format('select count(*) from menumaker.%I', v_rec.t) into v_w;
+    exception when others then v_w := 0; end;
+    execute 'reset role';
+    if v_w > 0 then v_n := v_n + 1; end if;
+  end loop;
+  r := r || case when v_n = 0 then '  ✅ П-2b кухня не видит ни одной таблицы из-под deny_teacher'
+                 else format('  🔴 П-2b кухня ВИДИТ %s таблиц из-под deny_teacher (дети, медкарты, опекуны, чеки)', v_n) end || E'\n';
+
+  -- ── П-3. ЖУРНАЛЫ — СЛОЙ ДОКАЗАТЕЛЬСТВ ───────────────────────────────────
+  -- Строка заводится ЗАКОННЫМ путём (это и есть вторая половина), потом её
+  -- пробуют править. Раньше проба отступала на «журнал пуст» — отступление
+  -- в отчёте выглядит как зелёное.
+  select count(*) into v_n from menumaker.child_field_events where roster_id = v_roster;
+  r := r || case when v_n >= 1 then '  ✅ П-3b дозапись защищённым путём проходит'
+                 else '  ❌ П-3b дозапись не оставила события' end || E'\n';
+  begin
+    update menumaker.child_field_events set new_value = 'hacked' where roster_id = v_roster;
+    r := r || '  ❌ П-3 UPDATE по child_field_events ПРОШЁЛ — журнал не журнал' || E'\n';
+  exception when others then
+    r := r || case when sqlerrm ~* 'только на дозапись' then '  ✅ П-3 UPDATE по child_field_events отказан СВОИМ текстом'
+                   else format('  ❌ отказал НЕ журнал: «%s»', left(sqlerrm,40)) end || E'\n';
+  end;
+  begin
+    delete from menumaker.child_field_events where roster_id = v_roster;
+    r := r || '  ❌ П-3 DELETE по child_field_events ПРОШЁЛ' || E'\n';
+  exception when others then
+    r := r || case when sqlerrm ~* 'только на дозапись' then '  ✅ П-3 DELETE по child_field_events отказан СВОИМ текстом'
+                   else '  ❌ DELETE отказал НЕ журнал' end || E'\n';
+  end;
+  begin
+    update menumaker.meal_week_status_events set org_id = org_id;
+    r := r || '  ❌ П-3 UPDATE по meal_week_status_events ПРОШЁЛ' || E'\n';
+  exception when others then
+    r := r || case when sqlerrm ~* 'только на дозапись' then '  ✅ П-3 UPDATE по meal_week_status_events отказан СВОИМ текстом'
+                   else '  ❌ отказал НЕ журнал' end || E'\n';
+  end;
+
+  -- ── П-4. СВЕДЕНИЯ О ДОХОДЕ ИДУТ МИМО ДИРЕКТОРА ──────────────────────────
+  perform set_config('request.jwt.claims', json_build_object('sub', c_dir, 'role','authenticated')::text, true);
+  execute 'set local role authenticated';
+  select count(*) into v_n from menumaker.enrollment_submissions
+   where submission_type in ('iea','usda_waiver');
+  execute 'reset role';
+  r := r || case when v_n = 0 then '  ✅ П-4 директор не видит НИ ОДНОЙ строки о доходе'
+                 else format('  ❌ П-4 директор видит %s строк о доходе', v_n) end || E'\n';
+  perform set_config('request.jwt.claims', json_build_object('sub', c_gd, 'role','authenticated')::text, true);
+  execute 'set local role authenticated';
+  select count(*) into v_n from menumaker.enrollment_submissions
+   where submission_type in ('iea','usda_waiver');
+  execute 'reset role';
+  r := r || case when v_n > 0 then format('  ✅ П-4b org-роль видит все %s — ворота пропускают нужное', v_n)
+                 else '  ❌ П-4b org-роль не видит ни одной — ворота держат ЛИШНЕЕ' end || E'\n';
+
+  -- ── П-5. ОБЛАСТЬ ДВЕРИ ──────────────────────────────────────────────────
+  select count(*) into v_tot from menumaker.roster;
+  perform set_config('request.jwt.claims', json_build_object('sub', c_cook, 'role','authenticated')::text, true);
+  execute 'set local role authenticated';
+  select count(*) into v_n from menumaker.roster;
+  begin
+    insert into menumaker.roster (org_id, center_id, child_name, first_name, last_name, is_active)
+    select org_id, center_id, 'ZZDOOR Probe', 'ZZDOOR', 'Probe', true from menumaker.roster limit 1;
+    v_w := 1;
+  exception when others then v_w := 0; end;
+  execute 'reset role';
+  r := r || case when v_n < v_tot and v_n > 0
+                 then format('  ✅ П-5 дверь видит свой центр: %s из %s', v_n, v_tot)
+                 else format('  ❌ П-5 дверь видит %s из %s — область не держит', v_n, v_tot) end || E'\n';
+  r := r || case when v_w = 0 then '  ✅ П-5b дверь не может ЗАВЕСТИ ребёнка'
+                 else '  ❌ П-5b дверь завела строку ростера' end || E'\n';
 
   raise exception E'%\n  ── всё написанное откачено, ничего не осталось ──', r;
 end $$;

@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useOrg } from '@/contexts/OrgContext'
 import { detectAndCrop } from '@/lib/detectAndCrop'
+import { throwIf } from '../../lib/queryError'
 
 export default function PortalMessagesPanel({ centerCode, portalRole }: { centerCode: string; portalRole: string }) {
   const { user } = useAuth()
@@ -65,7 +66,8 @@ export default function PortalMessagesPanel({ centerCode, portalRole }: { center
       const urls: string[] = []
       for (const f of files) {
         const path = `messages/${org?.id}/${Date.now()}_${f.name}`
-        const { data } = await supabase.storage.from('org-files').upload(path, f, { upsert: true })
+        const { data, error } = await supabase.storage.from('org-files').upload(path, f, { upsert: true })
+        throwIf(error, `Attachment "${f.name}" was not uploaded`)
         if (data) urls.push(path)
       }
       await supabase.schema('menumaker').from('internal_messages').insert({

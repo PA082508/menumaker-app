@@ -7,6 +7,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
 import { format } from 'date-fns'
+import { throwIf } from '../../lib/queryError'
 
 interface Row {
   id: string
@@ -40,9 +41,11 @@ export default function ConsolidatedReport() {
     setLoading(true)
     ;(async () => {
       const out = await Promise.all(centers.map(async (c) => {
-        const { data: claim } = await (supabase.schema('menumaker').rpc as any)(
+        const { data: claim, error: claimErr } = await (supabase.schema('menumaker').rpc as any)(
           'compute_monthly_claim', { p_center_id: c.id, p_month: monthDate }
         )
+        // Сводный отчёт по центрам: ноль вместо отказа — неотличим от честного нуля.
+        throwIf(claimErr, `Claim figures for ${c.name ?? c.id} could not be computed`)
         const m = claim?.meals ?? {}
         return {
           id: c.id,

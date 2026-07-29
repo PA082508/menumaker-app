@@ -55,8 +55,12 @@ export default function ChildDocumentsTab({ childDbId, rosterId }: { childDbId: 
   }
 
   async function view(name: string) {
-    const { data } = await supabase.storage.from('org-files').createSignedUrl(`${dir}/${name}`, 3600)
-    if (data?.signedUrl) window.open(data.signedUrl, '_blank')
+    const { data, error } = await supabase.storage.from('org-files').createSignedUrl(`${dir}/${name}`, 3600)
+    if (error || !data?.signedUrl) {
+      alert(`This document could not be opened: ${error?.message ?? 'no link was returned'}`)
+      return
+    }
+    window.open(data.signedUrl, '_blank')
   }
 
   async function remove(name: string) {

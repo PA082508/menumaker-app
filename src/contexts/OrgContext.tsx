@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import type { NavModule } from '@/lib/modules'
+import { warnIf } from '../lib/queryError'
 
 export interface Center {
   id: string
@@ -81,9 +82,12 @@ export function OrgProvider({ children }: { children: ReactNode }) {
         // pinned to the wrong center (and pages could leak other centers' data).
         let accessible = allCenters
         if (orgId) {
-          const { data: ac } = await (supabase.schema('menumaker').rpc as any)(
+          const { data: ac, error: acErr } = await (supabase.schema('menumaker').rpc as any)(
             'accessible_centers', { p_org_id: orgId }
           )
+          // Отказ здесь = «центров нет» на всём приложении. Пустой список молча
+          // тут страшнее ошибки: человек решит, что у него отобрали доступ.
+          warnIf(acErr, 'OrgContext/accessible_centers')
           if (!cancelled && Array.isArray(ac)) {
             const ids = new Set((ac as { center_id: string }[]).map(r => r.center_id))
             accessible = allCenters.filter(c => ids.has(c.id))

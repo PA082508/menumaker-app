@@ -38,7 +38,24 @@ const BASELINE = JSON.parse(
 )
 
 describe('guard — a discarded error is a screen that lies', () => {
-  const { app, byFile } = scanErrorDiscards(SRC + '/')
+  const { app, byFile, byVerb } = scanErrorDiscards(SRC + '/')
+
+  // ── ПИСАТЕЛИ: не храповик, а НОЛЬ. ───────────────────────────────────────
+  // Читатель, потерявший error, рисует пустой экран — плохо, но ВИДНО.
+  // Писатель, потерявший error, даёт тихую потерю данных: экран говорит
+  // «сохранено», в базе нет ничего. Все 12 таких погашены 29.07 в один заход,
+  // поэтому здесь потолок не нужен — здесь ноль.
+  it('NOT ONE write discards its error — a saved screen with nothing saved', () => {
+    const writers = app.filter((h: any) => h.verb !== 'чтение')
+      .map((h: any) => `${h.rel}:${h.line} [${h.verb}]`)
+    expect(
+      writers,
+      'a write (insert/update/upsert/delete/rpc/upload) drops its error. Readers have a frozen ceiling; ' +
+      'writers have none — bind it and refuse in words (src/lib/queryError.ts: throwIf).',
+    ).toEqual([])
+    expect(byVerb['запись'] ?? 0).toBe(0)
+    expect(byVerb['rpc'] ?? 0).toBe(0)
+  })
 
   it('the tree is readable — the guard fails closed', () => {
     expect(Object.keys(byFile).length).toBeGreaterThan(0)

@@ -7,6 +7,7 @@ import Button from '@/components/ui/Button'
 import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useOrg, type Center } from '@/contexts/OrgContext'
+import { warnIf } from '../../lib/queryError'
 
 interface OrgUser {
   user_id: string
@@ -48,8 +49,11 @@ export default function UserManagementPage() {
     let cancelled = false
     setLoading(true)
     ;(async () => {
-      const { data } = await (supabase.schema('menumaker').rpc as any)('org_users', { p_org_id: org.id })
+      const { data, error } = await (supabase.schema('menumaker').rpc as any)('org_users', { p_org_id: org.id })
       if (cancelled) return
+      // «Пользователей нет» на экране прав — приглашение завести второго админа
+      // поверх существующего. Пустота обязана быть настоящей.
+      if (warnIf(error, 'UserManagement/org_users')) { setLoading(false); return }
       setUsers((data ?? []) as OrgUser[])
       setLoading(false)
     })()

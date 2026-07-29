@@ -212,10 +212,13 @@ export default function CustomExportPage() {
     const path = storagePath == null ? "" : String(storagePath);
     if (!path) return;
     setOpeningDoc(id);
-    const { data } = await supabase.storage.from("center-docs").createSignedUrl(path, 3600);
+    const { data, error } = await supabase.storage.from("center-docs").createSignedUrl(path, 3600);
     setOpeningDoc(null);
-    if (data?.signedUrl) window.open(data.signedUrl, "_blank");
-    else alert("Could not generate download link");
+    if (error || !data?.signedUrl) {
+      alert(`Could not generate download link: ${error?.message ?? "no link was returned"}`);
+      return;
+    }
+    window.open(data.signedUrl, "_blank");
   }
 
   // ─────────────────────────────────────────────────────────────────────────────

@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs'
 import { resolve, dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
+// Предикаты вынесены ради негативной пробы — см. guardNegativeProbes.test.ts.
+import { kitIncludesBelow, hasBareKitInclude } from './guardPredicates'
 
 // ============================================================================
 // KIT VERSION FLOOR — a standing invariant, not a one-off check.
@@ -58,10 +60,8 @@ describe(`form-kit version floor — nothing below v${FLOOR}`, () => {
     let includes = 0
     for (const file of htmlFiles(FORMS_REPO)) {
       const src = readFileSync(file, 'utf8')
-      for (const m of src.matchAll(/form-kit\.js\?v=(\d+)/g)) {
-        includes++
-        if (Number(m[1]) < FLOOR) offenders.push(`${relative(FORMS_REPO, file)} → v${m[1]}`)
-      }
+      includes += [...src.matchAll(/form-kit\.js\?v=(\d+)/g)].length
+      for (const v of kitIncludesBelow(src, FLOOR)) offenders.push(`${relative(FORMS_REPO, file)} → v${v}`)
     }
     expect(includes, 'no form-kit includes found at all — the scan is looking in the wrong place').toBeGreaterThan(0)
     expect(offenders, `editions below the kit floor v${FLOOR}:\n  ${offenders.join('\n  ')}`).toEqual([])
@@ -74,7 +74,7 @@ describe(`form-kit version floor — nothing below v${FLOOR}`, () => {
     for (const file of htmlFiles(FORMS_REPO)) {
       const src = readFileSync(file, 'utf8')
       // an include whose src is form-kit.js with no query at all
-      if (/src=["'][^"']*form-kit\.js["']/.test(src)) bare.push(relative(FORMS_REPO, file))
+      if (hasBareKitInclude(src)) bare.push(relative(FORMS_REPO, file))
     }
     expect(bare, `includes without ?v= (uncacheable-bust):\n  ${bare.join('\n  ')}`).toEqual([])
   })

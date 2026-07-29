@@ -40,6 +40,35 @@ function sourceFiles(dir, out = []) {
 const bindsError = (pattern) => /\berror\b/.test(pattern)
 
 /**
+ * Глагол вызова. Читатель, потерявший error, даёт ПУСТОЙ ЭКРАН — плохо, но
+ * видно. Писатель, потерявший error, даёт ТИХУЮ ПОТЕРЮ ДАННЫХ — не видно вовсе:
+ * экран говорит «сохранено», в базе нет ничего. Обе аварии 29.07 — по одной
+ * каждого вида. Писательские гасятся первыми, независимо от файла.
+ * `rpc` считается писателем: имени функции недостаточно, чтобы поручиться, что
+ * она ничего не пишет, — а ошибаться здесь надо в сторону строгости.
+ */
+const verbOf = (expr) =>
+  /\.(insert|update|upsert|delete)\s*\(/.test(expr) ? 'запись'
+  : /\.rpc\s*(as any\s*)?\)?\s*\(|\.rpc\b/.test(expr) ? 'rpc'
+  : /functions\.invoke/.test(expr) ? 'rpc'
+  : /\.(upload|remove|createSignedUrl)\s*\(/.test(expr) ? 'запись'
+  : 'чтение'
+
+/**
+ * Совпадение внутри КОММЕНТАРИЯ — не код. Поймано на собственном гарде: его
+ * пояснение цитирует дурной идиом дословно, и детектор посчитал цитату
+ * нарушением. Проверка, считающая разговор о проблеме самой проблемой, завышает
+ * цифру — а цифра тут и есть весь смысл.
+ */
+const inComment = (text, idx) => {
+  const lineStart = text.lastIndexOf('\n', idx - 1) + 1
+  const head = text.slice(lineStart, idx).trimStart()
+  if (head.startsWith('//') || head.startsWith('*')) return true
+  const before = text.slice(0, idx)
+  return before.lastIndexOf('/*') > before.lastIndexOf('*/')
+}
+
+/**
  * Явный отказ с НАЗВАННОЙ причиной — единственный законный способ не брать
  * error: `// error-ignored: <почему>` на строке выше или на две выше.
  * Пустая причина не считается: молчание с виду законным — то же молчание.
@@ -62,15 +91,18 @@ export function scanErrorDiscards(srcDir) {
     let m
     while ((m = re.exec(text))) {
       const pattern = m[1]
-      if (!SUPA.test(expressionAt(text, m.index + m[0].length))) continue
+      const expr = expressionAt(text, m.index + m[0].length)
+      if (!SUPA.test(expr)) continue
+      if (inComment(text, m.index)) continue
       if (excusedNear(text, m.index)) continue
       const line = text.slice(0, m.index).split('\n').length
+      const verb = verbOf(expr)
       if (pattern.startsWith('{')) {
-        if (!bindsError(pattern)) hits.push({ rel, line, isTest, kind: 'объект', pattern: pattern.replace(/\s+/g, ' ') })
+        if (!bindsError(pattern)) hits.push({ rel, line, isTest, verb, kind: 'объект', pattern: pattern.replace(/\s+/g, ' ') })
       } else {
         const parts = pattern.slice(1, -1).split(/,(?![^{]*\})/).map(s => s.trim()).filter(Boolean)
         const bad = parts.filter(p => p.startsWith('{') && !bindsError(p))
-        if (bad.length) hits.push({ rel, line, isTest, kind: `массив ×${bad.length}`, pattern: pattern.replace(/\s+/g, ' ').slice(0, 90) })
+        if (bad.length) hits.push({ rel, line, isTest, verb, kind: `массив ×${bad.length}`, pattern: pattern.replace(/\s+/g, ' ').slice(0, 90) })
       }
     }
 
@@ -79,13 +111,17 @@ export function scanErrorDiscards(srcDir) {
     while ((m = re2.exec(text))) {
       if (bindsError(m[1])) continue
       if (!SUPA.test(text.slice(Math.max(0, m.index - 400), m.index))) continue
+      if (inComment(text, m.index)) continue
       if (excusedNear(text, m.index)) continue
-      hits.push({ rel, line: text.slice(0, m.index).split('\n').length, isTest, kind: '.then', pattern: m[1].replace(/\s+/g, ' ') })
+      hits.push({ rel, line: text.slice(0, m.index).split('\n').length, isTest, kind: '.then',
+                  verb: verbOf(text.slice(Math.max(0, m.index - 400), m.index)), pattern: m[1].replace(/\s+/g, ' ') })
     }
   }
 
   const app = hits.filter(h => !h.isTest)
   const byFile = {}
   for (const h of app) byFile[h.rel] = (byFile[h.rel] || 0) + 1
-  return { app, tests: hits.filter(h => h.isTest), byFile }
+  const byVerb = {}
+  for (const h of app) byVerb[h.verb] = (byVerb[h.verb] || 0) + 1
+  return { app, tests: hits.filter(h => h.isTest), byFile, byVerb }
 }

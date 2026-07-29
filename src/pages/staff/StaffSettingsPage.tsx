@@ -717,7 +717,7 @@ export default function StaffSettingsPage() {
                 onClick={async () => {
                   if (!staffId || !data) return
                   setAddingTraining(true)
-                  const { data: rec } = await supabase.schema('menumaker').from('staff_training_records').insert({
+                  const { data: rec, error: recErr } = await supabase.schema('menumaker').from('staff_training_records').insert({
                     staff_id: staffId, org_id: org?.id, center_id: data.center_id,
                     training_type: tForm.training_type, training_name: tForm.training_name,
                     provider: tForm.provider || null, completed_date: tForm.completed_date,
@@ -725,6 +725,14 @@ export default function StaffSettingsPage() {
                     expires_date: tForm.expires_date || null, notes: tForm.notes || null,
                     self_reported: true,
                   }).select().single()
+                  // Форма закрывалась и очищалась независимо от исхода: отказ базы
+                  // выглядел ровно как удачное сохранение, а запись о повышении
+                  // квалификации — то, что предъявляют инспектору.
+                  if (recErr) {
+                    setAddingTraining(false)
+                    alert(`This training record was NOT saved: ${recErr.message}`)
+                    return
+                  }
                   if (rec) setTraining(prev => [rec as TrainingRecord, ...prev])
                   setTForm({ training_type: '', training_name: '', provider: '', completed_date: '', hours_earned: '', expires_date: '', notes: '' })
                   setShowTrainingForm(false)

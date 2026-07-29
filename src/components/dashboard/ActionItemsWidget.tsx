@@ -15,6 +15,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
 import { format, parseISO } from 'date-fns'
+import { warnIf } from '../../lib/queryError'
 
 type Severity = 'urgent' | 'high' | 'normal'
 
@@ -57,10 +58,11 @@ export default function ActionItemsWidget() {
 
   const loadList = useCallback(async () => {
     if (!orgId) return
-    const { data } = await (supabase.schema('menumaker').rpc as any)(
+    const { data, error } = await (supabase.schema('menumaker').rpc as any)(
       'open_action_items',
       { p_org_id: orgId },
     )
+    if (warnIf(error, 'ActionItems')) return
     // Already sorted urgent → high → normal — do not re-sort.
     setItems((data as ActionItem[]) || [])
   }, [orgId])

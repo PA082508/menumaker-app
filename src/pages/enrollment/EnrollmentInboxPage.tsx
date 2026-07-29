@@ -18,6 +18,7 @@ import EnrollmentReviewModal from './EnrollmentReviewModal'
 import BackBar from '@/components/BackBar'
 import { ocrFailed as isOcrFailed, reRunOcr } from '@/lib/enrollmentScan'
 import { scoreMatch, nameForms } from '@/lib/childSearch'
+import { warnIf } from '../../lib/queryError'
 
 // Backup approvers: when the director is absent, office managers, admins and the
 // owner can also review/approve enrollment submissions.
@@ -150,7 +151,11 @@ export default function EnrollmentInboxPage() {
   useEffect(() => {
     let cancelled = false
     supabase.schema('menumaker').rpc('renewal_countersign_types')
-      .then(({ data }) => { if (!cancelled && Array.isArray(data)) setCountersignTypes(data as string[]) })
+      .then(({ data, error }) => {
+        if (cancelled) return
+        if (warnIf(error, 'EnrollmentInbox/renewal_countersign_types')) return
+        if (Array.isArray(data)) setCountersignTypes(data as string[])
+      })
     return () => { cancelled = true }
   }, [])
 

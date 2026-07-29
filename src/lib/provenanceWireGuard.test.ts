@@ -2,6 +2,11 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+// Предикаты вынесены ради негативной пробы — см. guardNegativeProbes.test.ts.
+import {
+  sendsBareRegistryVersion, usesDeclaredVersion, marksRegistryFallback,
+  declaresLiveOrigin, putsManualEntryInFormVersion,
+} from './guardPredicates'
 
 // ============================================================================
 // PROVENANCE-WIRE GUARD (этап А) — the build fails if the wire is unplugged or
@@ -29,24 +34,23 @@ describe('provenance wire — form_version is what the signer had open', () => {
   it('embed.js does not send the bare registry pointer as form_version', () => {
     const src = readFileSync(EMBED, 'utf8')
     expect(
-      /p_form_version:\s*version\b/.test(src),
+      sendsBareRegistryVersion(src),
       'embed.js sends the registry pointer as form_version again — that asserts an edition the signer may never have seen',
     ).toBe(false)
   })
 
   it('embed.js resolves the self-declared version, and marks the fallback', () => {
     const src = readFileSync(EMBED, 'utf8')
-    expect(/function\s+declaredVersion\s*\(/.test(src), 'declaredVersion() is gone').toBe(true)
-    expect(/p_form_version:\s*declaredVersion\(/.test(src), 'form_version no longer goes through declaredVersion()').toBe(true)
+    expect(usesDeclaredVersion(src), 'form_version no longer goes through declaredVersion()').toBe(true)
     // preference order must still be: form's own → payload *_version → marked fallback
     expect(/msg\.formVersion/.test(src), 'the form-declared version is no longer preferred').toBe(true)
     expect(/\(\^\|_\)version\$/.test(src), 'the payload *_version lookup is gone').toBe(true)
-    expect(/'registry:'/.test(src), 'the registry fallback is no longer MARKED as a fallback').toBe(true)
+    expect(marksRegistryFallback(src), 'the registry fallback is no longer MARKED as a fallback').toBe(true)
   })
 
   it('embed.js declares the record as live', () => {
     const src = readFileSync(EMBED, 'utf8')
-    expect(/p_record_origin:\s*'live'/.test(src)).toBe(true)
+    expect(declaresLiveOrigin(src)).toBe(true)
   })
 
   it('manual entry claims no form edition', () => {
@@ -54,9 +58,9 @@ describe('provenance wire — form_version is what the signer had open', () => {
     // word 'manual_entry' into form_version made a version out of a source.
     const src = readFileSync(ADD_CHILD, 'utf8')
     expect(
-      /p_form_version:\s*'manual_entry'/.test(src),
+      putsManualEntryInFormVersion(src),
       "AddChildRouter puts 'manual_entry' in form_version again — that is a source, not an edition",
     ).toBe(false)
-    expect(/p_record_origin:\s*'live'/.test(src), 'manual entry no longer declares its origin').toBe(true)
+    expect(declaresLiveOrigin(src), 'manual entry no longer declares its origin').toBe(true)
   })
 })

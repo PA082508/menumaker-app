@@ -7,6 +7,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useOrg, type Center } from '@/contexts/OrgContext'
 import { startOfMonth, endOfMonth, format } from 'date-fns'
+import { throwIf } from '../../lib/queryError'
 
 interface CenterMetrics {
   ada: number | null
@@ -63,9 +64,12 @@ export default function OrganizationDashboard() {
       }
 
       const entries = await Promise.all(centers.map(async (c) => {
-        const { data: claim } = await (supabase.schema('menumaker').rpc as any)(
+        const { data: claim, error: claimErr } = await (supabase.schema('menumaker').rpc as any)(
           'compute_monthly_claim', { p_center_id: c.id, p_month: monthStart }
         )
+        // Числа клейма: нули, показанные вместо отказа, читаются как «центр
+        // ничего не кормил». Это цифра, по которой принимают решения.
+        throwIf(claimErr, `Claim figures for ${c.name ?? c.id} could not be computed`)
         const weeks = weekApproved[c.id] ?? {}
         const m: CenterMetrics = {
           ada:           claim?.attendance?.ada ?? null,

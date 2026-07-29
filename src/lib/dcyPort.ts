@@ -1,3 +1,4 @@
+import { throwIf } from './queryError'
 // ============================================================
 // dcyPort.ts — DCY 01234 → the child's record. Stage Г.
 //
@@ -311,10 +312,13 @@ export async function applyDcyPeople(
   for (const p of buildDcyPeople(fd)) {
     const { role, ordinal } = ROLE_OF[p.slot]
     try {
-      const { data: cands } = await (sb.schema('menumaker').rpc as any)('find_person_candidates', {
+      const { data: cands, error: candErr } = await (sb.schema('menumaker').rpc as any)('find_person_candidates', {
         p_org: orgId, p_email: p.email, p_phone: p.phone,
         p_first_name: p.firstName, p_last_name: p.lastName,
       })
+      // Пустой список кандидатов означает «двойников нет» и ведёт к созданию
+      // новой личности. Отказ, прочитанный как пустой список, плодит дубли.
+      throwIf(candErr, 'Поиск двойников не выполнен')
       const list = (cands ?? []) as any[]
       const exact = list.find(c => c.why === 'exact_key')
 

@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useOrg } from '@/contexts/OrgContext'
 import { detectAndCrop } from '@/lib/detectAndCrop'
+import { throwIf } from '../../lib/queryError'
 
 type Recipient = { type: 'role' | 'user'; value: string; label: string }
 type StaffUser = { id: string; email: string; display_name: string; role: string }
@@ -117,7 +118,10 @@ export default function MessagesPage() {
       const urls: string[] = []
       for (const f of files) {
         const path = `messages/${org?.id}/${Date.now()}_${f.name}`
-        const { data } = await supabase.storage.from('org-files').upload(path, f, { upsert: true })
+        const { data, error } = await supabase.storage.from('org-files').upload(path, f, { upsert: true })
+        // Молча пропустить не загрузившийся файл значит отправить письмо
+        // без вложения, которое отправитель считает приложенным.
+        throwIf(error, `Attachment "${f.name}" was not uploaded`)
         if (data) urls.push(path)
       }
 

@@ -3,6 +3,8 @@ import { readFileSync, existsSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { SAMPLE_SCOPE } from './signatureSamples'
+// Предикат вынесен ради негативной пробы — см. guardNegativeProbes.test.ts.
+import { declaredSampleScope } from './guardPredicates'
 
 // ============================================================================
 // SAMPLE-SCOPE GUARD — the build fails if the signature-sample shelf is live on
@@ -47,14 +49,14 @@ describe('SAMPLE_SCOPE guard — both signing surfaces are conserved', () => {
 
     const src = readFileSync(KIT, 'utf8')
     // The declaration, not a mention: comments in that file discuss the flag by name.
-    const decl = src.match(/var\s+SAMPLE_SCOPE\s*=\s*'([a-z]+)'/)
+    const decl = declaredSampleScope(src)
     expect(decl, 'form-kit.js no longer declares SAMPLE_SCOPE — the conservation flag was renamed or removed').not.toBeNull()
-    expect(decl![1]).toBe('none')
+    expect(decl).toBe('none')
   })
 
   it('the two surfaces agree', () => {
     const src = readFileSync(KIT, 'utf8')
-    const kitScope = src.match(/var\s+SAMPLE_SCOPE\s*=\s*'([a-z]+)'/)![1]
+    const kitScope = declaredSampleScope(src)
     expect(kitScope).toBe(SAMPLE_SCOPE)
   })
 

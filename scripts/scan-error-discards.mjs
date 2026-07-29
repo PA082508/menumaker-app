@@ -14,18 +14,28 @@ import { scanErrorDiscards } from './errorDiscardScan.mjs'
 
 const SRC = new URL('../src/', import.meta.url).pathname
 const ARG = process.argv[2] || ''
-const { app, tests, byFile } = scanErrorDiscards(SRC)
+const { app, tests, byFile, byVerb } = scanErrorDiscards(SRC)
 const top = Object.entries(byFile).sort((a, b) => b[1] - a[1])
+const writers = app.filter(h => h.verb !== 'чтение')
 
-if (ARG === '--list') for (const h of app) console.log(`${h.rel}:${h.line}  [${h.kind}]  ${h.pattern}`)
+if (ARG === '--list') for (const h of app) console.log(`${h.rel}:${h.line}  [${h.verb}/${h.kind}]  ${h.pattern}`)
+if (ARG === '--writers') for (const h of writers) console.log(`${h.rel}:${h.line}  [${h.verb}]  ${h.pattern}`)
 
 console.log(`\n  ВЫБРОШЕННЫЙ error`)
 console.log(`  ─────────────────────────────────────────────────────`)
 console.log(`  в коде приложения : ${app.length}`)
 console.log(`  в тестах          : ${tests.length}  (отдельно: тест врёт себе, не директору)`)
 console.log(`  файлов затронуто  : ${top.length}`)
-console.log(`\n  Худшие десять файлов:`)
-for (const [f, n] of top.slice(0, 10)) console.log(`    ${String(n).padStart(3)}  ${f}`)
+console.log(`\n  По глаголу — гасим по этому порядку, не по файлам:`)
+console.log(`    запись : ${byVerb['запись'] || 0}  ← ТИХАЯ ПОТЕРЯ ДАННЫХ, не видно вовсе`)
+console.log(`    rpc    : ${byVerb['rpc'] || 0}  ← считаем писателем: имя функции не порука`)
+console.log(`    чтение : ${byVerb['чтение'] || 0}  ← пустой экран: плохо, но видно`)
+console.log(`\n  Писательские по файлам (первая очередь):`)
+const wByFile = {}
+for (const h of writers) wByFile[h.rel] = (wByFile[h.rel] || 0) + 1
+for (const [f, n] of Object.entries(wByFile).sort((a, b) => b[1] - a[1]).slice(0, 12)) {
+  console.log(`    ${String(n).padStart(3)}  ${f}`)
+}
 console.log()
 
 if (ARG === '--baseline') {

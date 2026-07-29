@@ -9,6 +9,10 @@ import { fmtDateOnly } from '@/lib/dateOnly'
 import EmergencyPopup from './EmergencyPopup'
 import AddChildRouterModal from './AddChildRouter'
 import { useOrg } from '@/contexts/OrgContext'
+import {
+  writeChildField, changedFields, provenanceProblem,
+  type Provenance, type WriteResult,
+} from '@/lib/childFieldWrite'
 import { fetchEnrollmentActionCounts } from '@/lib/enrollmentActionCount'
 import { useAuth } from '@/hooks/useAuth'
 import { displayChildName } from '@/lib/childName'
@@ -908,14 +912,29 @@ function EditChildPanel({ child, classrooms, onDone }: {
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [prov, setProv] = useState<Provenance>({ source: 'verbal', documentDate: '', formKey: null, note: '' })
+  const [results, setResults] = useState<WriteResult[] | null>(null)
+  const { user } = useAuth()
   const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }))
 
+  // ── ПЕРЕВОД НА ЗАЩИЩЁННЫЙ ПУТЬ (предпосылка триггер-пола, 29.07) ──────────
+  // Правка карточки прямо в списке была ОДНИМ UPDATE по roster: без следа, без
+  // происхождения, без документной даты. Пол на roster отбил бы её — а это
+  // живой ежедневный путь директора, значит переводим ДО пола, а не после.
+  //
+  // Источник по умолчанию — «со слов» (асимметрия цен, канон 29.07): занижение
+  // основания поправимо, блокировка пути — нет. Поля, запертые на документ
+  // (birthday, classroom_id, date_in, frp), откажут СВОИМИ СЛОВАМИ, и директор
+  // переключит источник — потери записи здесь нет.
   async function save() {
-    setSaving(true); setError('')
+    setSaving(true); setError(''); setResults(null)
     try {
-      // A stored key is never rebuilt (see rosterKey.ts) — this edit used to
-      // rewrite child_name, the claim-bridge identity key, as "Last First".
-      const { error: err } = await supabase.schema('menumaker').from('roster').update(stripStoredKey({
+      const problem = provenanceProblem(prov)
+      if (problem) { setError(problem); return }
+
+      // Ключ-бридж не переписываем: stripStoredKey — тот же инвариант клейма,
+      // только теперь он режет СПИСОК ПОЛЕЙ, а не тело одного UPDATE.
+      const patch = stripStoredKey({
         first_name: form.first_name,
         last_name: form.last_name,
         birthday: form.birthday || null,
@@ -923,11 +942,37 @@ function EditChildPanel({ child, classrooms, onDone }: {
         date_in: form.date_in || null,
         frp: form.frp || null,
         milk_kind: form.milk_kind || null,
-      })).eq('id', child.id)
-      if (err) throw err
-      onDone()
+      }) as Record<string, any>
+
+      const base: Record<string, any> = {
+        first_name: (child as any).first_name ?? '', last_name: (child as any).last_name ?? '',
+        birthday: (child as any).birthday ?? '', classroom_id: (child as any).classroom_id ?? '',
+        date_in: (child as any).date_in ?? '', frp: (child as any).frp ?? '',
+        milk_kind: child.milk_kind ?? '',
+      }
+      const writes = changedFields(
+        Object.keys(patch).map(k => ({ key: k, table: 'roster' as const, column: k })),
+        base, patch,
+      )
+      if (writes.length === 0) {
+        setResults([{ fieldKey: '', applied: false, reason: 'nothing changed — no field differs from what was loaded',
+                      oldValue: null, newValue: null, isVerbal: false }])
+        return
+      }
+
+      const who = (user?.user_metadata?.full_name as string) || (user?.email?.split('@')[0]) || 'Staff'
+      const out: WriteResult[] = []
+      for (const w of writes) {
+        out.push(await writeChildField(child.id, w, {
+          ...prov, documentDate: prov.source === 'verbal' ? null : (prov.documentDate || null),
+        }, who))
+      }
+      setResults(out)
+      // Экран закрывается только когда ВСЁ легло: иначе «сохранено» накрыло бы
+      // поле, которое замок отбил.
+      if (out.every(r => r.applied && !r.error)) onDone()
     } catch (e: any) {
-      setError(e.message)
+      setError(`NOTHING WAS SAVED — ${e?.message ?? String(e)}`)
     } finally { setSaving(false) }
   }
 
@@ -1004,6 +1049,50 @@ function EditChildPanel({ child, classrooms, onDone }: {
           </select>
         </div>
       </div>
+      {/* ИСТОЧНИК ЗАПИСИ — здесь же, у кнопки: сведения в недостижимом месте равны
+          их отсутствию (канон 29.07). Умолчание «со слов»: занижение основания
+          поправимо, блокировка пути — нет. */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8,
+                    padding: '8px 10px', background: '#fff', border: '1.5px solid #e8f0e8', borderRadius: 8 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          Source
+        </span>
+        <select value={prov.source} disabled={saving}
+          onChange={e => setProv(p => ({ ...p, source: e.target.value as Provenance['source'],
+                                         documentDate: e.target.value === 'verbal' ? '' : p.documentDate }))}
+          style={{ padding: '5px 8px', border: '1.5px solid #c0d8c0', borderRadius: 8, fontSize: 12.5, fontFamily: 'inherit', background: '#fff' }}>
+          <option value="verbal">Said, no document</option>
+          <option value="free_document">Document</option>
+          <option value="library_form">Library form</option>
+        </select>
+        {prov.source !== 'verbal' && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#374151' }}>
+            Date ON THE DOCUMENT
+            <input type="date" value={prov.documentDate ?? ''} disabled={saving}
+              onChange={e => setProv(p => ({ ...p, documentDate: e.target.value }))}
+              style={{ padding: '4px 7px', border: '1.5px solid #c0d8c0', borderRadius: 8, fontSize: 12.5, fontFamily: 'inherit' }} />
+          </label>
+        )}
+        <span style={{ flexBasis: '100%', fontSize: 11, color: '#9ca3af' }}>
+          Birthday, classroom, start date and F/R/P are locked to documents — they will refuse a verbal note, in words.
+        </span>
+      </div>
+
+      {results && results.length > 0 && (
+        <div style={{ marginBottom: 8 }}>
+          {results.map((r, i) => (
+            <div key={i} style={{ fontSize: 12, padding: '6px 9px', borderRadius: 8, marginBottom: 4,
+              background: r.error ? '#fef2f2' : r.applied ? '#f0fff4' : '#fff7ed',
+              border: `1px solid ${r.error ? '#fecaca' : r.applied ? '#bbf7d0' : '#fed7aa'}`,
+              color: r.error ? '#991b1b' : r.applied ? '#0f4c35' : '#9a3412' }}>
+              {r.error ? <>⚠ {r.error}</>
+                : r.applied ? <>✓ <strong>{r.fieldKey}</strong> saved{r.isVerbal ? ' — said, no document' : ''}</>
+                : <>⏸ <strong>{r.fieldKey}</strong> — {r.reason}</>}
+            </div>
+          ))}
+        </div>
+      )}
+
       {error && <div style={{ color: '#dc2626', fontSize: 12, marginBottom: 8 }}>{error}</div>}
       <div style={{ display: 'flex', gap: 8 }}>
         <button onClick={() => setOpen(false)}

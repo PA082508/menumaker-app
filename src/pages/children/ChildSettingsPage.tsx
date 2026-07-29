@@ -2,7 +2,7 @@
 // Full child record — 7 tabs with completeness badges
 // Profile | Family | Enrollment | Health | CACFP | SafePass | Billing
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
   completeness as regCompleteness, tabCounts as regTabCounts,
@@ -140,6 +140,11 @@ export default function ChildSettingsPage({
   const [baseline, setBaseline] = useState<{ roster: Record<string, any>; medical: Record<string, any> }>({ roster: {}, medical: {} })
   const [prov, setProv] = useState<Provenance>({ source: 'library_form', documentDate: '', formKey: 'dcy_01234', note: '' })
   const [writeResults, setWriteResults] = useState<WriteResult[] | null>(null)
+  // Баннер результата стоит НАВЕРХУ вкладки, а кнопка «Save» — в подвале. На
+  // Health полей полтора десятка, поэтому ответ экрана оказывался ЗА ПРЕДЕЛАМИ
+  // ЭКРАНА: с места директора это неотличимо от «ничего не произошло». Замер
+  // 29.07 — это и был механизм «тихого» отказа, отдельный от отсутствия ключа.
+  const resultsRef = useRef<HTMLDivElement | null>(null)
   const [fieldProv, setFieldProv] = useState<Record<string, FieldProvenance>>({})
   const [history, setHistory] = useState<FieldEvent[]>([])
   const [showHistory, setShowHistory] = useState(false)
@@ -292,6 +297,11 @@ export default function ChildSettingsPage({
   // следа, не знали о documentной дате и молча промахивались мимо child_medical.
   // Теперь каждое ИЗМЕНЁННОЕ поле уходит отдельным событием с провенансом,
   // и база сама решает, применять ли значение — по дате ДОКУМЕНТА, не ввода.
+  /** Ответ экрана обязан попасть в поле зрения — иначе он равен молчанию. */
+  function showResults() {
+    setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 0)
+  }
+
   async function saveCurrent() {
     try { await saveCurrentInner() }
     catch (e: any) {
@@ -299,6 +309,7 @@ export default function ChildSettingsPage({
       setSaving(false)
       setWriteResults([{ fieldKey: '', applied: false, reason: null, oldValue: null, newValue: null, isVerbal: false,
         error: `NOTHING WAS SAVED — the save failed before it reached the record: ${e?.message ?? String(e)}` }])
+      showResults()
     }
   }
 
@@ -307,11 +318,14 @@ export default function ChildSettingsPage({
     if (defs.length === 0) {
       setWriteResults([{ fieldKey: '', applied: false, reason: 'this tab has no editable fields',
                          oldValue: null, newValue: null, isVerbal: false }])
-      return
+      showResults(); return
     }
 
     const problem = provenanceProblem(prov)
-    if (problem) { setWriteResults([{ fieldKey: '', applied: false, reason: null, oldValue: null, newValue: null, isVerbal: false, error: problem }]); return }
+    if (problem) {
+      setWriteResults([{ fieldKey: '', applied: false, reason: null, oldValue: null, newValue: null, isVerbal: false, error: problem }])
+      showResults(); return
+    }
 
     // F/R/P нормализуется ДО диффа (одна заглавная буква), и просроченная дата
     // для F/R подставляется по правилу CACFP — ровно как это делал прежний путь.
@@ -331,7 +345,7 @@ export default function ChildSettingsPage({
     if (writes.length === 0) {
       setWriteResults([{ fieldKey: '', applied: false, reason: 'nothing changed — no field differs from what was loaded',
                          oldValue: null, newValue: null, isVerbal: false }])
-      return
+      showResults(); return
     }
 
     setSaving(true); setWriteResults(null)
@@ -354,14 +368,14 @@ export default function ChildSettingsPage({
       if (kidErr || !newKey) {
         setWriteResults([{ fieldKey: '', applied: false, reason: null, oldValue: null, newValue: null, isVerbal: false,
           error: `NOTHING WAS SAVED. This child has no identity key yet, and one could not be issued: ${kidErr?.message ?? 'the database returned no key'}. Medical details attach to that key, so they cannot be stored until it exists.` }])
-        setSaving(false); return
+        setSaving(false); showResults(); return
       }
       const { error: linkErr } = await supabase.schema('menumaker').from('roster')
         .update({ child_id: newKey }).eq('id', childId)
       if (linkErr) {
         setWriteResults([{ fieldKey: '', applied: false, reason: null, oldValue: null, newValue: null, isVerbal: false,
           error: `NOTHING WAS SAVED. The identity key could not be attached to this child's row: ${linkErr.message}` }])
-        setSaving(false); return
+        setSaving(false); showResults(); return
       }
       setChild(p => p ? ({ ...p, child_id: newKey } as any) : p)
     }
@@ -396,6 +410,7 @@ export default function ChildSettingsPage({
 
     setWriteResults(results)
     setSaving(false)
+    showResults()
     if (results.every(r => r.applied && !r.error)) { setSaved(true); setTimeout(() => setSaved(false), 2000) }
     loadAll()  // refresh view (age/milk) + badges + provenance after write
   }
@@ -566,7 +581,7 @@ export default function ChildSettingsPage({
       </div>
     )
     const results = writeResults && writeResults.length > 0 && (
-      <div style={{ marginBottom:14 }}>
+      <div ref={resultsRef} style={{ marginBottom:14 }}>
         {writeResults.map((r, i) => (
           <div key={i} style={{ fontSize:12.5, padding:'8px 11px', borderRadius:8, marginBottom:6,
             background: r.error ? '#fef2f2' : r.applied ? '#f0fff4' : '#fff7ed',

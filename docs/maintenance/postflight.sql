@@ -38,7 +38,7 @@ declare
   r text := E'\n';
   v_org uuid; v_center uuid; v_class uuid; v_roster uuid; v_res jsonb;
   v_dir uuid; v_monday date; v_locked text; v_lock_text text;
-  v_n int; v_txt text;
+  v_n int; v_txt text; v_w int;
   -- поле БЕЗ замка: его нет в child_field_locks, значит оно свободно
   c_free constant text := 'child_address';
 begin
@@ -167,6 +167,58 @@ begin
   select count(*) into v_n from menumaker.centers where is_demo and is_meal_site;
   r := r || case when v_n = 0 then '  ✅ S-3. демо-центр не является meal site'
                  else '  ⚠ S-3. демо-центр всё ещё meal site — на время съёмки так и надо, но это таймер' end || E'\n';
+
+  -- ── S-4/S-5. сужение строк staff: ВИДИТ и ПРАВИТ, под живыми ролями ────
+  -- Две колонки, а не одна, и это правило навсегда (канон 29.07): ворота,
+  -- закрытые ВСЕГДА, в отчёте выглядят точно так же хорошо, как исправные.
+  -- Считается ОТВЕТ («сколько строк вернёт запрос»), а не вход формулы
+  -- («сколько центров у логина») — вход был правильным и показал бы зелёное
+  -- там, где бухгалтер видел ноль.
+  --
+  -- Роль переключается по-настоящему: суперпользователь проходит СКВОЗЬ RLS,
+  -- и прогон от его имени доказал бы лишь то, что защиты нет.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub','5998a5de-ba02-4569-958c-53ab16dd1895','role','authenticated')::text, true);
+  execute 'set local role authenticated';
+  select count(*) into v_n from menumaker.staff;
+  begin
+    update menumaker.staff set updated_at = updated_at where true;
+    get diagnostics v_w = row_count;
+  exception when others then v_w := -1; end;
+  execute 'reset role';
+  r := r || case when v_n = 24 and v_w = 24
+                 then '  ✅ S-4. директор Alpha: видит 24 своих и правит те же 24 (не 105)'
+                 else format('  ❌ S-4. директор Alpha: видит %s, правит %s — ожидалось 24/24', v_n, v_w) end || E'\n';
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub','1567bda4-93fb-44ca-9813-58b2502e588d','role','authenticated')::text, true);
+  execute 'set local role authenticated';
+  select count(*) into v_n from menumaker.staff;
+  begin
+    update menumaker.staff set updated_at = updated_at where true;
+    get diagnostics v_w = row_count;
+  exception when others then v_w := -1; end;
+  execute 'reset role';
+  r := r || case when v_n = 105 and v_w = 105
+                 then '  ✅ S-5. офис-менеджер: видит все 105 и правит все 105'
+                 else format('  ❌ S-5. офис-менеджер: видит %s, правит %s — ПУСТО ЗДЕСЬ ЗНАЧИТ ПРОВАЛ И ОТКАТ', v_n, v_w) end || E'\n';
+
+  -- Бухгалтер: тот самый, кого вечерняя формула ослепила бы молча.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub','096f730d-3df2-4f30-92b9-f3ed8c6ecba0','role','authenticated')::text, true);
+  execute 'set local role authenticated';
+  select count(*) into v_n from menumaker.staff;
+  execute 'reset role';
+  r := r || case when v_n = 105 then '  ✅ S-6. бухгалтер видит все 105 (его роли нет в core.memberships)'
+                 else format('  ❌ S-6. бухгалтер видит %s — org-половина снова спрашивает один источник', v_n) end || E'\n';
+
+  -- Аноним: расписание кормлений было публичным до 20260729b.
+  perform set_config('request.jwt.claims', '', true);
+  execute 'set local role anon';
+  select count(*) into v_n from menumaker.meal_schedule;
+  execute 'reset role';
+  r := r || case when v_n = 0 then '  ✅ S-7. аноним не видит расписание кормлений'
+                 else format('  ❌ S-7. аноним видит %s строк расписания — публичная политика вернулась', v_n) end || E'\n';
 
   raise exception E'%\n  ── всё написанное откачено, ничего не осталось ──', r;
 end $$;

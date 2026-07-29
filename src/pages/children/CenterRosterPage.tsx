@@ -1253,6 +1253,7 @@ function ReactivateModal({ child, onClose, onDone }: {
   const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const { user } = useAuth()
   const name = displayChildName(child)
   const tooEarly = !!endDate && startDate <= endDate
 
@@ -1262,9 +1263,21 @@ function ReactivateModal({ child, onClose, onDone }: {
     if (tooEarly) { setError(`Start date must be after the end date (${fmtDate(endDate)}).`); return }
     setSaving(true)
     try {
-      const { error: err } = await supabase.schema('menumaker').from('roster')
-        .update({ is_active: true, date_out: null, date_in: startDate, deactivated_at: null, deactivation_reason: null })
-        .eq('id', child.id)
+      // ── №11 НА ЗАЩИЩЁННЫЙ ПУТЬ (предпосылка триггер-пола, 29.07) ─────────
+      // Возврат ребёнка писал пять колонок одним UPDATE, среди них date_in —
+      // граница возмещения, запертая на документ. Теперь тем же путём, каким
+      // идёт снятие: set_child_active_state, с документной датой и следом.
+      const who = (user?.user_metadata?.full_name as string) || (user?.email?.split('@')[0]) || 'Staff'
+      const { error: err } = await (supabase.schema('menumaker').rpc as any)('set_child_active_state', {
+        p_roster_id: child.id,
+        p_active: true,
+        p_last_day: null,
+        p_reason: 'returned',
+        p_source: 'free_document',
+        p_document_date: startDate,
+        p_source_form_key: null,
+        p_entered_by_name: who,
+      })
       if (err) throw err
       onDone()
     } catch (e: any) { setError(e.message); setSaving(false) }

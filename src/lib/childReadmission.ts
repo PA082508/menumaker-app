@@ -226,9 +226,38 @@ export async function admitChild(p: AdmitInput): Promise<void> {
     checklist_snapshot: snapshot(p.checklist),
   }
 
+  // ── №2 НА ЗАЩИЩЁННЫЙ ПУТЬ (предпосылка триггер-пола, 29.07) ────────────────
+  // Реадмиссия писала пять колонок одним UPDATE. Они РАЗНОЙ природы, и после
+  // сужения пола до карточных колонок это стало видно:
+  //   is_active / date_out — состояние присутствия → set_child_active_state;
+  //   date_in — КАРТОЧНОЕ поле, запертое на документ (граница возмещения) →
+  //             record_child_field_change с документной датой;
+  //   admission_log — СЛУЖЕБНАЯ колонка (журнал приёма), пол её не трогает.
+  // Три канала вместо одного — потому что и правил здесь три, а не одно.
+  const { error: flipErr } = await (S().rpc as any)('set_child_active_state', {
+    p_roster_id: p.rosterId,
+    p_active: true,
+    p_last_day: null,
+    p_reason: 'readmitted',
+    p_source: 'free_document',
+    p_document_date: p.dateIn,     // дата приёма — с бумаги в папке
+    p_source_form_key: null,
+    p_entered_by_name: p.byName,
+  })
+  if (flipErr) throw flipErr
+
+  const { error: dateErr } = await (S().rpc as any)('record_child_field_change', {
+    p_roster_id: p.rosterId,
+    p_field_key: 'date_in', p_table: 'roster', p_column: 'date_in',
+    p_new_value: p.dateIn,
+    p_source: 'free_document', p_document_date: p.dateIn,
+    p_source_form_key: null, p_source_submission_id: null,
+    p_note: 'readmission', p_entered_by_name: p.byName,
+  })
+  if (dateErr) throw dateErr
+
+  // Журнал приёма — служебная колонка, своим путём и с явной проверкой отказа.
   const { error } = await S().from('roster').update({
-    is_active: true, date_out: null, date_in: p.dateIn,
-    deactivated_at: null, deactivation_reason: null,
     admission_log: [...log, entry],
   }).eq('id', p.rosterId)
   if (error) throw error

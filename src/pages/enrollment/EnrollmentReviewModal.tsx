@@ -12,7 +12,7 @@ import { validateSubmission, submissionTypeLabel, type ValStatus } from '@/lib/e
 import { resolveScanUrl, lowConfidenceSet, ocrMeta, hasScan } from '@/lib/enrollmentScan'
 import ReturnWindow from '@/pages/children/ReturnWindow'
 import {
-  buildCacfpPatch, decideSchedule, formAsOf, buildIeaFrp, loadCenterRoster, matchRoster,
+  buildCacfpPatch, decideSchedule, formAsOf, documentDateOf, buildIeaFrp, loadCenterRoster, matchRoster,
   approveCacfpInsert, approveCacfpUpdate, approveIea, approveDocument, rejectSubmission,
   setFeeReceived, isProspect, insertRosterChild, splitChildName,
   parseIeaFiscalYear, frpExpiryDefault, ieaApproveBlocked,
@@ -83,6 +83,13 @@ export default function EnrollmentReviewModal({
   const isIea = submission.submission_type === 'iea'
   const [dateIn, setDateIn] = useState('')
   const [paperSigned, setPaperSigned] = useState(false)
+  // ДОКУМЕНТНАЯ ДАТА ДЛЯ APPROVE. Порядок замерен 29.07: колонка → form_data →
+  // окно директора. Онлайн-подачи несут дату всегда (подпись и отправка — один
+  // момент), у бумажных колонка пуста у всех 66, но у 50 дата лежит в form_data:
+  // OCR её прочитал, в колонку не перенесли. Окно нужно только для остатка.
+  const resolvedDocDate = documentDateOf(submission)
+  const [typedDocDate, setTypedDocDate] = useState('')
+  const effectiveDocDate = resolvedDocDate ?? (typedDocDate || '')
   const [busy, setBusy] = useState(false)
   // Step 3 snapshot capture status — awaited + visible, never a silent miss.
   const [snapBusy, setSnapBusy] = useState(false)
@@ -497,7 +504,8 @@ export default function EnrollmentReviewModal({
         // Reactivate when the chosen match is a departed (inactive) child.
         const reactivate = !!target && candidates.find(c => c.id === target)?.is_active === false
         result = target
-          ? await approveCacfpUpdate(submission, target, patch, reviewerId, paperSigned, reactivate)
+          ? await approveCacfpUpdate(submission, target, patch, reviewerId, paperSigned, reactivate,
+              { documentDate: effectiveDocDate, formKey: submission.submission_type, who: reviewerName })
           : await approveCacfpInsert(submission, patch, reviewerId, paperSigned)
       } else if (isIea) {
         if (!frpChoice) throw new Error('Choose an F/R/P determination')
@@ -519,6 +527,7 @@ export default function EnrollmentReviewModal({
             eligibility_source: eligibilitySource, determined_by: reviewerId, determined_by_name: reviewerName,
           },
           ieaMatchedIds, reviewerId, paperSigned, ieaCs,
+          { documentDate: effectiveDocDate, formKey: submission.submission_type, who: reviewerName },
         )
 
         // Remember it as MY sponsor sample, if asked — onto the `sponsor` shelf, never
@@ -1061,6 +1070,28 @@ export default function EnrollmentReviewModal({
               mySample={mySample} useSample={useSample} setUseSample={setUseSample}
               reviewerName={reviewerName} disabled={busy} onResult={setCsResult}
             />
+          )}
+
+          {/* ДОКУМЕНТНАЯ ДАТА — окно появляется ТОЛЬКО когда её негде взять.
+              Замер 29.07: онлайн-подачи несут дату всегда, у бумажных 50 из 66
+              несут её внутри form_data. Спрашивать приходится про остаток —
+              восемнадцать строк, а не про пятьдесят шесть. */}
+          {!resolvedDocDate && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#374151', flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 600 }}>Date printed on the form</span>
+              <input type="date" value={typedDocDate} onChange={e => setTypedDocDate(e.target.value)} disabled={busy}
+                style={{ padding: '5px 8px', border: '1.5px solid #c0d8c0', borderRadius: 8, fontSize: 12.5, fontFamily: 'inherit' }} />
+              <span style={{ fontSize: 11.5, color: '#6b7280', flexBasis: '100%' }}>
+                The date the parent wrote on the paper — not today. This form carries none, and the card
+                cannot be changed without it: birthday, classroom, start date and F/R/P are locked to documents.
+              </span>
+            </label>
+          )}
+          {resolvedDocDate && (
+            <div style={{ fontSize: 11.5, color: '#6b7280' }}>
+              Document date: <strong>{resolvedDocDate}</strong>
+              {submission.signature_date ? '' : ' — read from the scanned form'}
+            </div>
           )}
 
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#374151' }}>

@@ -81,6 +81,27 @@ export function formAsOf(sub: { signature_date?: string | null; created_at?: str
   return blank(d) ? null : String(d).slice(0, 10)
 }
 
+/** ДОКУМЕНТНАЯ дата для Approve: колонка → form_data → пусто.
+ *
+ *  ЗАМЕР 29.07, из-за которого этот порядок и появился: у 66 бумажных подач
+ *  колонка `signature_date` пуста У ВСЕХ, но **50 из них несут дату внутри
+ *  `form_data`** — OCR её прочитал с бумаги и положил, а в колонку никто не
+ *  перенёс. Дыра была не в сборе, а в ПРОВОДКЕ.
+ *
+ *  ⚠️ `created_at` сюда НЕ ВХОДИТ — в отличие от formAsOf, у которого своя
+ *  задача (свежесть расписания). Дата поступления не есть дата документа: для
+ *  бумаги из папки они расходятся на годы (в замере встречались подписи
+ *  2020–2024 годов). Подставить её значило бы ровно ту подмену, которую мы
+ *  неделю разделяли.
+ */
+export function documentDateOf(sub: { signature_date?: string | null; form_data?: any }): string | null {
+  const col = sub?.signature_date
+  if (!blank(col)) return String(col).slice(0, 10)
+  const inForm = sub?.form_data?.signature_date
+  if (!blank(inForm) && /^\d{4}-\d{2}-\d{2}/.test(String(inForm))) return String(inForm).slice(0, 10)
+  return null
+}
+
 /** Recency rule (Nikolay, 2026-07-16): on disagreement the LATER date wins.
  *  The roster's schedule carries its own `sched_updated_at`; a form older than
  *  it is a statement that has already been superseded — by the owner's CSV, or

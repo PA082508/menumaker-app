@@ -1042,13 +1042,30 @@ function AddChildModal({ centerId, orgId, classrooms, onDone, onClose }: {
       // Течь ключа ребёнка закрыта и здесь: без child_id у ребёнка не может быть
       // ни опекунов, ни медкарты. Вернувшийся ребёнок переиспользует свою
       // личность, новый — получает её; по одному имени не склеиваем.
-      const { data: kid } = await (supabase.schema('menumaker').rpc as any)('resolve_or_create_child', {
-        p_org: orgId, p_first: form.first_name, p_last: form.last_name,
-        p_birthdate: form.birthday || null,
-      })
+      //
+      // Ошибка здесь НЕ ГЛОТАЕТСЯ — как и в Approve. Вчера этот вызов стоял без
+      // проверки error, и `?? null` дописывал строку БЕЗ КЛЮЧА молча: путь,
+      // объявленный закрытым, оставался открыт ровно в том случае, ради которого
+      // ставился. Поймано послеполётом 29.07, не глазами.
+      const { data: kid, error: kidErr } = await (supabase.schema('menumaker').rpc as any)(
+        'resolve_or_create_child',
+        {
+          p_org: orgId, p_first: form.first_name, p_last: form.last_name,
+          p_birthdate: form.birthday || null,
+        },
+      )
+      if (kidErr) throw kidErr
+      const childId = (kid as any)?.child_id ?? null
+      if (!childId) {
+        throw new Error(
+          'This child could not be given an identity key, so the enrollment was not completed. ' +
+          'Nothing was written. Please try again, and if it repeats, report it — a roster row ' +
+          'without a key can hold neither guardians nor a medical record.',
+        )
+      }
       const { data, error: err } = await supabase.schema('menumaker').from('roster').insert({
         org_id: orgId, center_id: centerId,
-        child_id: (kid as any)?.child_id ?? null,
+        child_id: childId,
         classroom_id: form.classroom_id,
         first_name: form.first_name, last_name: form.last_name,
         child_name, birthday: form.birthday,

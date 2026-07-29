@@ -70,7 +70,8 @@
       "Bash(OUT=/private/tmp/claude-501/-Users-nikolaykutsenko-Downloads-menumaker-app-src-pages/4df99a6b-df01-47e3-a71d-18d31ccfd592/scratchpad python3 -)",
       "Bash(echo \"--- tsc exit: $? ---\")",
       "Bash(grep -nE \"^#{2,3} \" docs/compliance/e-signature.md)",
-      "Bash(grep -nE \"^#{1,3} \" docs/instructions/children.md)"
+      "Bash(grep -nE \"^#{1,3} \" docs/instructions/children.md)",
+      "Bash(python3 -c \"import sys,json; print\\(json.dumps\\(sys.stdin.read\\(\\)\\)\\)\")"
     ],
     "additionalDirectories": [
       "/Users/nikolaykutsenko/Downloads",

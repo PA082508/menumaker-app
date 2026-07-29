@@ -108,6 +108,49 @@ search-result card. A dialog asks for a **new start date**:
 
 Because it is the **same row**, all their history, documents and settings are intact.
 
+## When a child leaves one center for another
+
+**Play Academy does not transfer children between centers.** A child **leaves** one center and
+**enrolls** at the other, exactly as any child starting somewhere new. There is no "move" button
+and there will not be one — a placement is not a row that gets dragged across, it is an
+enrollment at a licensed site.
+
+### The center they are leaving
+
+**Deactivate the child and enter their last day** — the same dialog that asks for the date on
+the withdrawal record. This is the center's own record of when they stopped attending; it does
+**not** need a parent's signature.
+
+### The center they are joining
+
+**Enroll the child in the system on their first day.** Until you do, they do not appear on that
+center's meal count sheet, and the meals they eat that day are not recorded. The parent signs
+the enrollment forms in the morning, so there is nothing to wait for — enroll them straight away.
+
+The parent signs the **enrollment forms on the first day**, the same as for any new child, and
+the paper goes into **this center's** folder.
+
+This is not paperwork for its own sake. **DCY 01234 must be held at the center it would be picked
+up from in an evacuation**, so the receiving center needs its own signed copy — a copy sitting in
+the other center's filing cabinet is not available when it is needed.
+
+### Changing a classroom asks for a document
+
+If you change a child's classroom, the system will refuse and ask for a signed document.
+**This is the software working as intended, not a fault.** A child's placement decides claim
+boundaries and room ratios, so it changes only from a signed form — and the record is then dated
+with **the date printed on that form**, not the day you typed it.
+
+### Meal counts stay where the meals were served
+
+Meals already recorded stay with the center that served them. They are **not** moved with the
+child, and nothing needs to be done about them.
+
+### While the forms are still being signed
+
+The first day may run on paper. That is normal — the electronic record catches up afterwards,
+from the signed form and its own date. Nothing is lost by the delay.
+
 ## Emergency
 
 The **Emergency** tab holds the information needed in an incident — emergency

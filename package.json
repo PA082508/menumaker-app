@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vitest run --silent && vite build",
+    "build": "tsc && vitest run --exclude '**/sampleScopeGuard.test.ts' --exclude '**/kitVersionFloor.test.ts' && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "verify": "tsc && vitest run"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",

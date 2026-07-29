@@ -138,13 +138,25 @@ export default function ChildSettingsPage({
   // поле, которого никто не касался, — не изменение, и восстанавливать его как
   // «только что решённое» нельзя.
   const [baseline, setBaseline] = useState<{ roster: Record<string, any>; medical: Record<string, any> }>({ roster: {}, medical: {} })
-  const [prov, setProv] = useState<Provenance>({ source: 'library_form', documentDate: '', formKey: 'dcy_01234', note: '' })
+  // УМОЛЧАНИЕ «СО СЛОВ» — по асимметрии цен, а не по удобству (владелец, 29.07).
+  // Умолчание не может быть верным для обоих путей; какое ни поставь, один
+  // будет помечен неверно молча. Но ошибки разной цены:
+  //   «со слов» + документ на руках → запись ЗАНИЖАЕТ основание, документная
+  //     дата потеряна. ПОПРАВИМО: внесённое позже из документа перекрывает —
+  //     замер 29.07 подтвердил, что перекрывает, и по ДОКУМЕНТНОЙ дате;
+  //   «документ» + документа нет → путь БЛОКИРУЕТСЯ. Это стоило владельцу дня:
+  //     аллергии не вносились вовсе.
+  // Первая теряет ТОЧНОСТЬ и чинится, вторая теряет САМУ ЗАПИСЬ.
+  // 🔒-полей это не касается: они отказывают «со слов» своим текстом, видимо,
+  // и директор переключает источник — потери записи здесь нет.
+  const [prov, setProv] = useState<Provenance>({ source: 'verbal', documentDate: '', formKey: 'dcy_01234', note: '' })
   const [writeResults, setWriteResults] = useState<WriteResult[] | null>(null)
   // Баннер результата стоит НАВЕРХУ вкладки, а кнопка «Save» — в подвале. На
   // Health полей полтора десятка, поэтому ответ экрана оказывался ЗА ПРЕДЕЛАМИ
   // ЭКРАНА: с места директора это неотличимо от «ничего не произошло». Замер
   // 29.07 — это и был механизм «тихого» отказа, отдельный от отсутствия ключа.
   const resultsRef = useRef<HTMLDivElement | null>(null)
+  const provRef = useRef<HTMLDivElement | null>(null)
   const [fieldProv, setFieldProv] = useState<Record<string, FieldProvenance>>({})
   const [history, setHistory] = useState<FieldEvent[]>([])
   const [showHistory, setShowHistory] = useState(false)
@@ -545,7 +557,7 @@ export default function ChildSettingsPage({
     const fields = fieldsForTab(tabKey).filter(f => isFieldActive(f, ctx))
     if (fields.length === 0) return <div style={{ color: '#aaa', fontSize: 13 }}>No fields on this tab yet.</div>
     const provBar = (
-      <div style={{ background:'#f8fbf9', border:'1.5px solid #c0d8c0', borderRadius:10, padding:'10px 12px', marginBottom:14 }}>
+      <div ref={provRef} style={{ background:'#f8fbf9', border:'1.5px solid #c0d8c0', borderRadius:10, padding:'10px 12px', marginBottom:14 }}>
         <div style={{ fontSize:12, fontWeight:700, color:'#0f4c35', marginBottom:7 }}>
           Where this change comes from <span style={{ fontWeight:400, color:'#6b7280' }}>— applies to everything you change and save</span>
         </div>
@@ -808,6 +820,21 @@ export default function ChildSettingsPage({
             <button onClick={onClose} style={{ padding:'9px 18px', borderRadius:8, border:'1.5px solid #c0d8c0', background:'#fff', cursor:'pointer', fontFamily:'inherit', fontSize:13 }}>
               Close
             </button>
+            {/* ИСТОЧНИК ВИДЕН ТАМ, ГДЕ НАЖИМАЮТ (владелец, 29.07). Переключатель
+                живёт наверху вкладки, а подписывают внизу — тот же изъян, что у
+                баннера: сведения в недостижимом месте равны их отсутствию.
+                Директор с бумагой в руках обязан видеть, ЧЕМ подпишется запись,
+                ДО нажатия, и попасть к переключателю одним касанием. */}
+            {fieldsForTab(TAB_KEYS[tab]).length > 0 && (
+              <button type="button" onClick={() => provRef.current?.scrollIntoView({ behavior:'smooth', block:'center' })}
+                title="Change how this entry is sourced"
+                style={{ padding:'8px 12px', borderRadius:8, border:'1.5px dashed #c0d8c0', background:'#fff',
+                         fontSize:12.5, fontFamily:'inherit', cursor:'pointer', color:'#374151' }}>
+                {prov.source === 'verbal'
+                  ? '🗣 Saving as: said, no document ✎'
+                  : `📄 Saving as: ${prov.source === 'library_form' ? 'library form' : 'document'}${prov.documentDate ? ' · ' + prov.documentDate : ' · DATE MISSING'} ✎`}
+              </button>
+            )}
             {fieldsForTab(TAB_KEYS[tab]).length > 0 && (
               <button onClick={saveCurrent} disabled={saving}
                 style={{ padding:'9px 20px', borderRadius:8, background:'#0f4c35', color:'#fff', border:'none', cursor:'pointer', fontWeight:700, fontSize:13, fontFamily:'inherit', opacity:saving?0.6:1 }}>

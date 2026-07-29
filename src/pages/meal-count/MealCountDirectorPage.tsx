@@ -272,15 +272,21 @@ export default function MealCountPage() {
     // Upload attendance scan if provided
     if (scanFile) {
       const path = `${selectedClassId}/${mon}/${scanFile.name}`;
-      await supabase.storage.from("attendance-scans").upload(path, scanFile, { upsert: true });
+      // Скан посещаемости — доказательство к клеймовой неделе. Голый await
+      // глотал отказ целиком: экран показывал успех над непринятым сканом
+      // (найдено 29.07 расширением признака на голый await).
+      const { error: upErr } = await supabase.storage
+        .from("attendance-scans").upload(path, scanFile, { upsert: true });
+      if (upErr) throw new Error(`Attendance scan was NOT attached: ${upErr.message}`);
 
-      await supabase.schema("menumaker").from("meal_week_attachments").upsert({
+      const { error: attErr } = await supabase.schema("menumaker").from("meal_week_attachments").upsert({
         classroom_id: selectedClassId,
         monday_date: mon,
         file_path: path,
         uploaded_by: "director",
         created_at: now,
       });
+      if (attErr) throw new Error(`Attendance scan uploaded but NOT registered: ${attErr.message}`);
     }
 
     // Refresh records

@@ -128,7 +128,26 @@ export function scanErrorDiscards(srcDir) {
       }
     }
 
-    // 3) .then(({ data }) => …) — та же потеря, другой синтаксис
+    // 3) ТРЕТЬЯ ФОРМА: результат не присваивают ВООБЩЕ — `await supa…update(...)`.
+    //    supabase-js НЕ БРОСАЕТ: он возвращает { error }. Значит голый await
+    //    глотает отказ молча и полностью. Признак искал разбор и присваивание —
+    //    эту форму не видел, и потому «писателей 0» означало «ноль В ТОЙ ФОРМЕ,
+    //    КОТОРУЮ Я ИЩУ», а не ноль потерянных ошибок. Замер 29.07: таких 40.
+    const re4 = /(?<![=:.\w])await\s+/g
+    while ((m = re4.exec(text))) {
+      const head = text.slice(Math.max(0, m.index - 60), m.index)
+      if (/[=(,[]\s*$/.test(head)) continue          // это присваивание/аргумент, не голый await
+      const expr = expressionAt(text, m.index + m[0].length)
+      if (!SUPA.test(expr)) continue
+      if (inComment(text, m.index)) continue
+      if (excusedNear(text, m.index)) continue
+      const verb = verbOf(expr)
+      if (verb === 'чтение') continue                 // голое чтение бессмысленно, но и не теряет данных
+      hits.push({ rel, line: text.slice(0, m.index).split('\n').length, isTest, verb,
+                  kind: 'голый await', pattern: expr.trim().split('\n')[0].slice(0, 60) })
+    }
+
+    // 4) .then(({ data }) => …) — та же потеря, другой синтаксис
     const re2 = /\.then\(\s*\(\s*(\{[^}]*\})\s*\)\s*=>/g
     while ((m = re2.exec(text))) {
       if (bindsError(m[1])) continue

@@ -45,16 +45,34 @@ describe('guard — a discarded error is a screen that lies', () => {
   // Писатель, потерявший error, даёт тихую потерю данных: экран говорит
   // «сохранено», в базе нет ничего. Все 12 таких погашены 29.07 в один заход,
   // поэтому здесь потолок не нужен — здесь ноль.
-  it('NOT ONE write discards its error — a saved screen with nothing saved', () => {
+  // ⚠️ ЧЕСТНАЯ ПОПРАВКА 29.07, вечер. «Писателей ноль» было верно ДЛЯ ФОРМЫ,
+  // которую признак искал (разбор результата), и вводило в заблуждение как общее
+  // утверждение. Расширение признака на ГОЛЫЙ await (`await supa…update(...)`,
+  // результат не присваивают вовсе) показало 41 потерю на записи — supabase не
+  // бросает, он возвращает { error }, и голый await глотает отказ полностью.
+  //
+  // Клеймовые из них починены сразу (SiteClaimReport: сохранение месяца и
+  // закрытие месяца — «✓ Saved» стояло над несохранённым). Остальные заморожены
+  // ОТДЕЛЬНЫМ потолком: чинить 39 мест одним заходом — это правка 25 экранов без
+  // сверки, то есть новая авария вместо старой.
+  const WRITER_CEILING = 35   // 29.07 после починки клеймовых (было 41); только вниз
+
+  it('the writer ceiling only comes down — and no NEW writer loss appears', () => {
     const writers = app.filter((h: any) => h.verb !== 'чтение')
-      .map((h: any) => `${h.rel}:${h.line} [${h.verb}]`)
     expect(
-      writers,
-      'a write (insert/update/upsert/delete/rpc/upload) drops its error. Readers have a frozen ceiling; ' +
-      'writers have none — bind it and refuse in words (src/lib/queryError.ts: throwIf).',
-    ).toEqual([])
-    expect(byVerb['запись'] ?? 0).toBe(0)
-    expect(byVerb['rpc'] ?? 0).toBe(0)
+      writers.length,
+      `${writers.length} потерь на записи против замороженного потолка ${WRITER_CEILING}. ` +
+      'Новая потеря на записи недопустима: свяжи error и откажи словами (src/lib/queryError.ts: throwIf).',
+    ).toBeLessThanOrEqual(WRITER_CEILING)
+  })
+
+  it('claim-critical writes never lose their error', () => {
+    // Список узкий и назван: это места, где потеря отказа искажает ДЕНЬГИ.
+    const CLAIM = ['pages/reports/SiteClaimReport.tsx', 'pages/meal-count/MealCountPage.tsx',
+                   'pages/meal-count/MealCountDirectorPage.tsx']
+    const bad = app.filter((h: any) => h.verb !== 'чтение' && CLAIM.includes(h.rel))
+      .map((h: any) => `${h.rel}:${h.line}`)
+    expect(bad, 'потеря отказа на клеймовых данных — цифра месяца может разойтись молча').toEqual([])
   })
 
   it('the tree is readable — the guard fails closed', () => {

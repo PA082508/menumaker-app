@@ -411,11 +411,15 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
     if (approveErr) throw new Error(approveErr.message);
     if (scanFile) {
       const path = `${selectedClassId}/${mon}/${scanFile.name}`;
-      await supabase.storage.from("attendance-scans").upload(path, scanFile, { upsert: true });
-      await supabase.schema("menumaker").from("meal_week_attachments").upsert({
+      // Скан посещаемости — доказательство к клеймовой неделе; голый await глотал
+      // отказ целиком (найдено 29.07 расширением признака).
+      const { error: upErr } = await supabase.storage.from("attendance-scans").upload(path, scanFile, { upsert: true });
+      if (upErr) throw new Error(`Attendance scan was NOT attached: ${upErr.message}`);
+      const { error: attErr } = await supabase.schema("menumaker").from("meal_week_attachments").upsert({
         classroom_id: selectedClassId, monday_date: mon, file_path: path,
         uploaded_by: "director", created_at: now,
       });
+      if (attErr) throw new Error(`Attendance scan uploaded but NOT registered: ${attErr.message}`);
     }
     const { data: recs } = await supabase
       .schema("menumaker").from("meal_week_records")

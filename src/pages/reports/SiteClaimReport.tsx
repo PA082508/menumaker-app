@@ -197,7 +197,7 @@ export default function SiteClaimReport() {
     if(!data) return; setSaving(true);
     const r = calcRecap();
     const reimbursement = r ? {meal_reimbursement:r.mealTotal, cil_reimbursement:r.cilAmt, total:r.grandTotal} : undefined;
-    await supabase.schema("menumaker").from("monthly_claims").upsert({
+    const { error: saveErr } = await supabase.schema("menumaker").from("monthly_claims").upsert({
       center_id:centerId, claim_month:month, claim_year:year, status:"open",
       days_of_operation:data.days_of_operation, total_attendance:data.total_attendance, ada:data.ada,
       breakfast:data.breakfast, am_snack:data.am_snack, lunch:data.lunch,
@@ -209,14 +209,19 @@ export default function SiteClaimReport() {
       reimbursement,
       updated_at:new Date().toISOString(),
     },{onConflict:"center_id,claim_month,claim_year"});
-    setSaving(false); setMsg("✓ Saved"); setTimeout(()=>setMsg(null),2000);
+    // Отказ здесь означал бы, что клеймовые числа месяца НЕ СОХРАНЕНЫ, а экран
+    // показал «✓ Saved». supabase не бросает — он возвращает { error }, и голый
+    // await глотал его молча (найдено 29.07 расширением признака).
+    setSaving(false);
+    if (saveErr) { setMsg(`NOT SAVED — ${saveErr.message}`); return; }
+    setMsg("✓ Saved"); setTimeout(()=>setMsg(null),2000);
   }
 
   async function closeMonth(){
     if(!data) return; setClosing(true);
     const r = calcRecap();
     const reimbursement = r ? {meal_reimbursement:r.mealTotal, cil_reimbursement:r.cilAmt, total:r.grandTotal} : undefined;
-    await supabase.schema("menumaker").from("monthly_claims").upsert({
+    const { error: closeErr } = await supabase.schema("menumaker").from("monthly_claims").upsert({
       center_id:centerId, claim_month:month, claim_year:year, status:"closed",
       days_of_operation:data.days_of_operation, total_attendance:data.total_attendance, ada:data.ada,
       breakfast:data.breakfast, am_snack:data.am_snack, lunch:data.lunch,
@@ -228,7 +233,11 @@ export default function SiteClaimReport() {
       reimbursement,
       closed_at:new Date().toISOString(), updated_at:new Date().toISOString(),
     },{onConflict:"center_id,claim_month,claim_year"});
-    setClosing(false); setMsg("✅ Month closed"); await loadData();
+    // Закрытие месяца — клеймовое действие: «✅ Month closed» над незакрытым
+    // месяцем хуже отсутствия сообщения.
+    setClosing(false);
+    if (closeErr) { setMsg(`MONTH NOT CLOSED — ${closeErr.message}`); return; }
+    setMsg("✅ Month closed"); await loadData();
   }
 
   async function reopen(){

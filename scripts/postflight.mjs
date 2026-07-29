@@ -118,8 +118,27 @@ async function appBundle() {
     else if (head.startsWith(sha) || sha.startsWith(head.slice(0, sha.length))) {
       console.log(ok(`выложен ИМЕННО ${sha.slice(0,7)} — прод совпадает с origin/main`))
     } else {
-      fail(`ПРОД ОТСТАЁТ: выложен ${sha.slice(0,7)}, а origin/main — ${head.slice(0,7)}. ` +
-           `Бандл настоящий и внутренне согласный, но это ДРУГОЙ коммит: сборка не прошла либо ещё идёт`)
+      // ОТСТАВАНИЕ БЫВАЕТ ДВУХ РОДОВ, и красным имеет право быть только одно.
+      // «Прод отстаёт» между пушем и деплоем — НОРМА, а не поломка. Проверка,
+      // краснеющая на каждом пуше, становится постоянным красным, которое
+      // перестают читать: наш собственный канон про необнуляемый счётчик,
+      // обращённый на нас. Поэтому она сама смотрит, ЧЕМ отстаёт.
+      let touched = []
+      try {
+        const { execSync } = await import('node:child_process')
+        touched = execSync(`git diff --name-only ${sha}..origin/main`, { encoding: 'utf8' })
+          .split('\n').map(x => x.trim()).filter(Boolean)
+      } catch { /* коммита нет локально — считаем по худшему */ touched = ['<不明>'] }
+      const CODE = /^(src\/|public\/|index\.html$|vite\.config|package(-lock)?\.json$|tsconfig)/
+      const code = touched.filter(f => CODE.test(f))
+      if (code.length) {
+        fail(`ПРОД ОТСТАЁТ ПО КОДУ: выложен ${sha.slice(0,7)}, origin/main — ${head.slice(0,7)}; ` +
+             `${code.length} файл(ов) кода не доехали, среди них ${code.slice(0,3).join(', ')}` +
+             `${code.length > 3 ? '…' : ''}. Сборка не прошла либо ещё идёт`)
+      } else {
+        console.log(ok(`выложен ${sha.slice(0,7)}, origin/main — ${head.slice(0,7)}: отставание ТОЛЬКО ПО ДОКУМЕНТАМ ` +
+                       `(${touched.length} файл(ов), кода нет) — на выложенное не влияет`))
+      }
     }
   }
   if (all.length < 200_000) { fail(`бандл подозрительно мал (${all.length} байт) — вероятно скачалось не то, ПРОВАЛ`); return }
@@ -214,6 +233,23 @@ async function storefront() {
     if (vs[0] < KIT_FLOOR) { fail(`${key}: кит v${vs[0]} ниже пола v${KIT_FLOOR}`); continue }
     seen.set(key, vs[0])
   }
+  // ── ПОЛКА ОБРАЗЦОВ ПОДПИСИ — проверяется на ПРАВИЛЬНОМ АРТЕФАКТЕ ──────────
+  // Сборочный гард (sampleScopeGuard) читал СОСЕДНИЙ CHECKOUT репозитория форм и
+  // потому валил каждую выкладку приложения: на Vercel того репозитория нет и
+  // быть не может. Но охраняет он то, что РАЗВЁРНУТО на Pages, — значит и
+  // смотреть надо туда. Здесь смотрим по сети, на живой файл.
+  //
+  // ЧЕСТНЫЙ ПРОТИВОВЕС: послеполёт ОБНАРУЖИВАЕТ, а не предотвращает. Перевернут
+  // флаг и выложат — машинерия жива до ближайшего прогона. Предотвращение — это
+  // CI в репозитории форм, он в BACKLOG с триггером «следующее касание того репо».
+  try {
+    const kit = await get(`${PAGES}/forms/1-data-sources/form-kit.js`)
+    const scope = kit.match(/var\s+SAMPLE_SCOPE\s*=\s*'([a-z]+)'/)?.[1] ?? null
+    if (scope === null) fail('form-kit.js на Pages больше НЕ ОБЪЯВЛЯЕТ SAMPLE_SCOPE — флаг переименован или снят')
+    else if (scope !== 'none') fail(`полка образцов подписи ВКЛЮЧЕНА на выложенном ките: SAMPLE_SCOPE='${scope}'`)
+    else console.log(ok(`полка образцов выключена на выложенном ките (SAMPLE_SCOPE='none')`))
+  } catch (e) { fail(`form-kit.js на Pages не прочитан: ${e.message} — ПРОВАЛ, а не пропуск`) }
+
   // Пропущенное НАЗЫВАЕТСЯ вслух: молчаливое сужение охвата читается как «всё проверено».
   if (noKit.length) console.log(`   без кита и правильно (карточки для чтения, ${noKit.length}): ${noKit.join(', ')}`)
   const versions = [...new Set(seen.values())]

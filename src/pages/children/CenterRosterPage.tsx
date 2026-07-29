@@ -1325,25 +1325,46 @@ function TransferChildPanel({ child, classrooms, onDone }: {
   const [transferDate, setTransferDate] = useState(new Date().toISOString().slice(0, 10))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const { user } = useAuth()
 
   const otherClassrooms = classrooms.filter(c => c.id !== child.classroom_id)
 
+  // ── ПЕРЕВОД НА ЗАЩИЩЁННЫЙ ПУТЬ (предпосылка триггер-пола, 29.07) ──────────
+  // Перевод в другой класс писал classroom_id и date_in одним UPDATE. ОБА поля
+  // заперты на документ: класс решает ратио и лицензионную ёмкость, дата прихода —
+  // границу возмещения. Значит источник тут НЕ «со слов» по умолчанию, а документ,
+  // и дата берётся С БУМАГИ — та же, что стоит в форме перевода.
+  //
+  // Дата перевода на экране И ЕСТЬ документная дата: она уже спрашивается, просто
+  // раньше уходила как значение поля, а не как основание записи.
   async function doTransfer() {
     if (!targetClassId) { setError('Select a classroom'); return }
+    if (!transferDate) { setError('Enter the date printed on the transfer form — not today.'); return }
     setSaving(true)
     setError('')
     try {
-      const { error: err } = await supabase.schema('menumaker')
-        .from('roster')
-        .update({ classroom_id: targetClassId, date_in: transferDate })
-        .eq('id', child.id)
-      if (err) throw err
+      const who = (user?.user_metadata?.full_name as string) || (user?.email?.split('@')[0]) || 'Staff'
+      const prov: Provenance = {
+        source: 'free_document', documentDate: transferDate, formKey: null,
+        note: 'transfer to another classroom',
+      }
+      const out: WriteResult[] = []
+      for (const w of [
+        { fieldKey: 'classroom_id', table: 'roster' as const, column: 'classroom_id', value: targetClassId },
+        { fieldKey: 'date_in', table: 'roster' as const, column: 'date_in', value: transferDate },
+      ]) {
+        out.push(await writeChildField(child.id, w, prov, who))
+      }
+      const bad = out.filter(r => r.error || !r.applied)
+      if (bad.length) {
+        setError(bad.map(r => r.error ?? `${r.fieldKey}: ${r.reason}`).join(' · '))
+        return
+      }
       onDone()
     } catch (e: any) {
-      setError(e.message)
-    } finally {
-      setSaving(false)
-    }
+      setError(`NOTHING WAS SAVED — ${e?.message ?? String(e)}`)
+    } finally { setSaving(false) }
+
   }
 
   if (!open) return (
@@ -1371,9 +1392,13 @@ function TransferChildPanel({ child, classrooms, onDone }: {
         </select>
       </div>
       <div style={{ marginBottom: 12 }}>
-        <label style={{ fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>Transfer Date</label>
+        <label style={{ fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>Date on the transfer form</label>
         <input type="date" value={transferDate} onChange={e => setTransferDate(e.target.value)}
           style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #c0d8c0', fontSize: 14, fontFamily: 'inherit', background: '#fff' }}/>
+        <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>
+          The date printed on the paper, not today. Classroom and start date are locked to documents:
+          the class decides ratio and licensed capacity, the start date decides the claim boundary.
+        </div>
       </div>
       {error && <div style={{ color: '#dc2626', fontSize: 12, marginBottom: 8 }}>{error}</div>}
       <div style={{ display: 'flex', gap: 8 }}>

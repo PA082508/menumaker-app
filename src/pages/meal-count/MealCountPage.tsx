@@ -50,6 +50,7 @@ interface Classroom {
   sort_order: number;
   center_id?: string;
   is_roster?: boolean;
+  org_id?: string;
 }
 
 interface MealCountSettings {
@@ -240,7 +241,7 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
     (async () => {
       const { data: cls } = await supabase
         .schema("menumaker").from("classrooms")
-        .select("id,class_key,name,sort_order,center_id,is_roster")
+        .select("id,class_key,name,sort_order,center_id,org_id,is_roster")
         .eq("is_active", true)
         .eq("center_id", centerId)
         .order("sort_order");
@@ -415,9 +416,22 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
       // отказ целиком (найдено 29.07 расширением признака).
       const { error: upErr } = await supabase.storage.from("attendance-scans").upload(path, scanFile, { upsert: true });
       if (upErr) throw new Error(`Attendance scan was NOT attached: ${upErr.message}`);
+      const cls = classrooms.find(c => c.id === selectedClassId);
       const { error: attErr } = await supabase.schema("menumaker").from("meal_week_attachments").upsert({
-        classroom_id: selectedClassId, monday_date: mon, file_path: path,
-        uploaded_by: "director", created_at: now,
+        // ⚠️ КОЛОНКИ ЗАМЕРЕНЫ 29.07, а не взяты по памяти. Прежняя полезная
+        // нагрузка слала `created_at`, которого В ТАБЛИЦЕ НЕТ, и не слала
+        // обязательные center_id и classroom. PostgREST отбивал запись ЦЕЛИКОМ,
+        // а голый await глотал отказ: 68 сканов легли в хранилище, и НИ ОДНОЙ
+        // строки о них не появилось. Экран каждый раз показывал успех.
+        center_id: cls?.center_id ?? null,
+        org_id: cls?.org_id ?? null,
+        classroom: cls?.name ?? "",
+        classroom_id: selectedClassId,
+        monday_date: mon,
+        file_path: path,
+        file_name: scanFile.name,
+        uploaded_by: "cook",
+        uploaded_at: now,
       });
       if (attErr) throw new Error(`Attendance scan uploaded but NOT registered: ${attErr.message}`);
     }

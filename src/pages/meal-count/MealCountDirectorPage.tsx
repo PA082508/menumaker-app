@@ -59,6 +59,8 @@ interface Classroom {
   class_key: string;
   name: string;
   sort_order: number;
+  center_id?: string;
+  org_id?: string;
 }
 
 interface MealCountSettings {
@@ -157,7 +159,7 @@ export default function MealCountPage() {
     (async () => {
       const { data: cls, error: clsErr } = await supabase
         .schema("menumaker").from("classrooms")
-        .select("id,class_key,name,sort_order,is_roster")
+        .select("id,class_key,name,sort_order,is_roster,center_id,org_id")
         .eq("is_active", true).order("sort_order");
       console.log("classrooms:", cls, "error:", clsErr);
       // Exclude staff pseudo-classes (is_roster=false) — see MealCountPage.
@@ -279,12 +281,22 @@ export default function MealCountPage() {
         .from("attendance-scans").upload(path, scanFile, { upsert: true });
       if (upErr) throw new Error(`Attendance scan was NOT attached: ${upErr.message}`);
 
+      const cls = classrooms.find(c => c.id === selectedClassId);
       const { error: attErr } = await supabase.schema("menumaker").from("meal_week_attachments").upsert({
+        // ⚠️ КОЛОНКИ ЗАМЕРЕНЫ 29.07, а не взяты по памяти. Прежняя полезная
+        // нагрузка слала `created_at`, которого В ТАБЛИЦЕ НЕТ, и не слала
+        // обязательные center_id и classroom. PostgREST отбивал запись ЦЕЛИКОМ,
+        // а голый await глотал отказ: 68 сканов легли в хранилище, и НИ ОДНОЙ
+        // строки о них не появилось. Экран каждый раз показывал успех.
+        center_id: cls?.center_id ?? null,
+        org_id: cls?.org_id ?? null,
+        classroom: cls?.name ?? "",
         classroom_id: selectedClassId,
         monday_date: mon,
         file_path: path,
+        file_name: scanFile.name,
         uploaded_by: "director",
-        created_at: now,
+        uploaded_at: now,
       });
       if (attErr) throw new Error(`Attendance scan uploaded but NOT registered: ${attErr.message}`);
     }

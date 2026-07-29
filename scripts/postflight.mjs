@@ -98,6 +98,30 @@ async function appBundle() {
     try { all += await get(`${APP.replace(/\/$/, '')}/${c}`) } catch { /* необязательный кусок */ }
   }
   console.log(`   собрано ${srcs.length} корневых + ${new Set(chunks).size} ленивых кусков, ${(all.length / 1024 | 0)} КБ`)
+
+  // ── ФАКТ ВЫКЛАДКИ, а не только содержимое ────────────────────────────────
+  // 29.07 потерян день ровно на этом: сборка на Vercel падала, main уходил
+  // вперёд, прод стоял на утреннем бандле — и КАЖДАЯ проверка смотрела на
+  // СОДЕРЖИМОЕ отданного файла, ни одна на то, ЧЕЙ ЭТО КОММИТ. Файл был
+  // настоящий, наш, непустой и внутренне согласный: просто вчерашний.
+  const sha = (all.match(/window\.__build\s*=\s*["']([0-9a-f]{7,40})["']/) ||
+               all.match(/__build\s*=\s*["']([0-9a-f]{7,40})["']/) || [])[1] ?? null
+  if (!sha) {
+    console.log(warn('   бандл не объявляет коммит — факт выкладки не проверен (маркер __build не найден)'))
+  } else {
+    let head = null
+    try {
+      const { execSync } = await import('node:child_process')
+      head = execSync('git rev-parse origin/main', { encoding: 'utf8' }).trim()
+    } catch { /* вне репозитория — сверять не с чем */ }
+    if (!head) console.log(warn(`   выложен коммит ${sha.slice(0,7)} — не с чем сверить (нет git)`))
+    else if (head.startsWith(sha) || sha.startsWith(head.slice(0, sha.length))) {
+      console.log(ok(`выложен ИМЕННО ${sha.slice(0,7)} — прод совпадает с origin/main`))
+    } else {
+      fail(`ПРОД ОТСТАЁТ: выложен ${sha.slice(0,7)}, а origin/main — ${head.slice(0,7)}. ` +
+           `Бандл настоящий и внутренне согласный, но это ДРУГОЙ коммит: сборка не прошла либо ещё идёт`)
+    }
+  }
   if (all.length < 200_000) { fail(`бандл подозрительно мал (${all.length} байт) — вероятно скачалось не то, ПРОВАЛ`); return }
 
   for (const { lit, why } of EXPECT) {

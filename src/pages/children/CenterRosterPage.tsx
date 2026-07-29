@@ -1039,8 +1039,16 @@ function AddChildModal({ centerId, orgId, classrooms, onDone, onClose }: {
     setSaving(true); setError('')
     try {
       const child_name = `${form.first_name} ${form.last_name}`  // First Last (ratified 2026-07-23)
+      // Течь ключа ребёнка закрыта и здесь: без child_id у ребёнка не может быть
+      // ни опекунов, ни медкарты. Вернувшийся ребёнок переиспользует свою
+      // личность, новый — получает её; по одному имени не склеиваем.
+      const { data: kid } = await (supabase.schema('menumaker').rpc as any)('resolve_or_create_child', {
+        p_org: orgId, p_first: form.first_name, p_last: form.last_name,
+        p_birthdate: form.birthday || null,
+      })
       const { data, error: err } = await supabase.schema('menumaker').from('roster').insert({
         org_id: orgId, center_id: centerId,
+        child_id: (kid as any)?.child_id ?? null,
         classroom_id: form.classroom_id,
         first_name: form.first_name, last_name: form.last_name,
         child_name, birthday: form.birthday,

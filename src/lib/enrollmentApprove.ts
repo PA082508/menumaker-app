@@ -365,9 +365,25 @@ export async function insertRosterChild(
   sub: { org_id: string; center_id: string },
   patch: RosterPatch,
 ): Promise<string> {
+  // ТЕЧЬ КЛЮЧА РЕБЁНКА, закрытая здесь (2026-07-28). Измерено: с 1 июля создано
+  // 300 строк ростера и у НУЛЯ был child_id — приложение вообще не создавало
+  // сущность ребёнка. Строка без ключа не может иметь ни опекунов, ни медкарты:
+  // именно поэтому 369 строк из 623 сиротские, а вкладка Family показывает
+  // 313 нарушений из 318.
+  //
+  // Семантика сопоставления — та же, что у matchRoster: точное имя, конфликт
+  // даты рождения = другой ребёнок. По одному имени НЕ склеиваем.
+  const { data: kid } = await (supabase.schema('menumaker').rpc as any)('resolve_or_create_child', {
+    p_org: sub.org_id,
+    p_first: patch.first_name ?? null,
+    p_last: patch.last_name ?? null,
+    p_birthdate: patch.birthday ?? null,
+  })
+
   const { data, error } = await S().from('roster')
     .insert({
       org_id: sub.org_id, center_id: sub.center_id, is_active: true,
+      child_id: (kid as any)?.child_id ?? null,
       // Answers nobody was asked start as UNKNOWN, never as a column default.
       // emergency_transport_auth DEFAULT true made the system answer "yes" on
       // behalf of 623 parents who were never asked (measured 2026-07-28); the

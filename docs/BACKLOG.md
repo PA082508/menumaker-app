@@ -82,6 +82,24 @@ select name, is_demo, is_meal_site from menumaker.centers where is_demo;
 `is_demo = true AND is_meal_site = true` **держится дольше суток** → поднять в отчёт красным.
 Это не запрет: на время съёмки так и должно быть. Это таймер, которого сейчас нет.
 
+**Чек 4 — правка отметки в уже одобренной ЗАВЕРШЁННОЙ неделе.** Детектор вместо правила:
+замораживание недели сознательно не построено (см. [DECISIONS](DECISIONS.md), основание — ноль
+случаев из 41). Поднимать в отчёт первый же реальный случай:
+
+```sql
+select c.name as center, w.classroom, w.monday_date, w.director_initials,
+       w.director_signed_at, w.updated_at
+from menumaker.meal_week_records w
+join menumaker.centers c on c.id = w.center_id
+where w.status = 'director_approved'
+  and w.director_signed_at is not null
+  and w.director_signed_at::date > (w.monday_date + 4)   -- одобрена ПОСЛЕ окончания недели
+  and w.updated_at > w.director_signed_at;               -- и всё-таки изменена после подписи
+```
+
+Пусто = правило не нужно. Непусто — решаем по факту: замораживать неделю или требовать
+повторной подписи.
+
 **Чек 3 — RLS смотрит `polpermissive`, а не наличие политик.** Проверка разграничения обязана
 читать `pg_policy.polpermissive` и докладывать **удерживающие (restrictive)** политики отдельно
 от permissive-шума. Таблица с RLS и одной permissive `USING(true)` — незащищённая таблица,

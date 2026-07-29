@@ -430,11 +430,79 @@ export async function approveCacfpInsert(
   }
 }
 
+
+// ── ПРЕДПОСЫЛКА ТРИГГЕР-ПОЛА: Approve пишет ЧЕРЕЗ ДОКУМЕНТОНОСНЫЙ ПУТЬ ────────
+// Пол на roster («в карточку — только через record_child_field_change») нельзя
+// поставить, пока Approve правит строку напрямую: он отбил бы законный путь, по
+// которому в карточку попадает почти всё. Поэтому сперва предпосылка — Approve
+// перестаёт быть исключением.
+//
+// ЧТО ЭТО ДАЁТ СВЕРХ ПОЛА, и ради этого стоило: каждое поле, пришедшее с формы,
+// получает СВОЮ строку в журнале — что изменилось, из какой формы, с какой
+// ДОКУМЕНТНОЙ датой. Раньше Approve записывал всё одним UPDATE и не оставлял
+// следа ни о происхождении, ни о дате бумаги.
+//
+// ДОКУМЕНТНАЯ ДАТА ОБЯЗАТЕЛЬНА и берётся С БУМАГИ, не с сегодняшнего числа:
+// поля frp, frp_expires, birthday, classroom_id, date_in заперты на документ, и
+// база откажет без даты — правильно откажет.
+export interface ApproveDoc {
+  /** Дата, напечатанная на форме (YYYY-MM-DD). */
+  documentDate: string
+  /** Ключ формы в реестре — 'cacfp_enrollment', 'iea', 'dcy_01234'. */
+  formKey: string
+  /** Имя того, кто утверждает — попадёт в журнал как есть. */
+  who: string
+}
+
+/** Одно поле карточки — через защищённый путь. Ошибка НЕ глотается. */
+async function writeApprovedField(
+  rosterId: string, column: string, value: unknown, submissionId: string, doc: ApproveDoc, note?: string,
+): Promise<void> {
+  const { error } = await (S().rpc as any)('record_child_field_change', {
+    p_roster_id: rosterId,
+    p_field_key: column, p_table: 'roster', p_column: column,
+    p_new_value: value === null || value === undefined ? null : String(value),
+    p_source: 'library_form',
+    p_document_date: doc.documentDate,
+    p_source_form_key: doc.formKey,
+    p_source_submission_id: submissionId,
+    p_note: note ?? null,
+    p_entered_by_name: doc.who,
+  })
+  if (error) throw error
+}
+
+/** Откат F/R/P: тем же путём, каким писали. Форвард — новым событием. */
+async function revertFrp(
+  ids: string[], prev: Map<string, { frp: any; frp_expires: any }>, submissionId: string, doc?: ApproveDoc,
+): Promise<void> {
+  for (const id of ids) {
+    const p = prev.get(id) ?? { frp: null, frp_expires: null }
+    if (doc) {
+      await writeApprovedField(id, 'frp', p.frp, submissionId, doc, 'undo of IEA approve')
+      await writeApprovedField(id, 'frp_expires', p.frp_expires, submissionId, doc, 'undo of IEA approve')
+    } else {
+      await S().from('roster').update(p).eq('id', id)
+    }
+  }
+}
+
+/** Дата документа обязана прийти с бумаги. Пусто — отказ СЛОВАМИ, а не молча. */
+function requireDocDate(doc: ApproveDoc): void {
+  if (!doc?.documentDate) {
+    throw new Error(
+      'NOTHING WAS SAVED. This form carries no document date, and the card cannot be changed without one: ' +
+      'birthday, classroom, start date and F/R/P are locked to documents. Enter the date printed on the paper and approve again.',
+    )
+  }
+}
+
 // ─── CACFP / matched: update an existing roster child ────────────────────────
 export async function approveCacfpUpdate(
   sub: { id: string; child_id: string | null }, rosterId: string,
   patch: RosterPatch, reviewerId: string, paperSigned: boolean,
   reactivate = false,
+  doc?: ApproveDoc,
 ): Promise<ApproveResult> {
   // Claim-bridge protection (invariant until Oct 1): child_name is the identity
   // key into meal_week_records (cellKey = classroom_id|child_name|monday_date|col).
@@ -446,16 +514,36 @@ export async function approveCacfpUpdate(
   // capture it in `cols` so undo restores the prior (inactive) state.
   const effPatch: RosterPatch = reactivate ? { ...rest, is_active: true } : rest
   const cols = Object.keys(effPatch)
-  const { data: prev } = await S().from('roster').select(['id', ...cols].join(',')).eq('id', rosterId).single()
-  const { error } = await S().from('roster').update(effPatch).eq('id', rosterId)
-  if (error) throw error
+  const { data: prev, error: prevErr } = await S().from('roster')
+    .select(['id', ...cols].join(',')).eq('id', rosterId).single()
+  if (prevErr) throw prevErr
+
+  if (doc) {
+    // Документоносный путь: поле за полем, каждое со своим следом в журнале.
+    requireDocDate(doc)
+    for (const c of cols) await writeApprovedField(rosterId, c, (effPatch as any)[c], sub.id, doc)
+  } else {
+    // Прежний прямой путь — остаётся только там, где вызывающий ещё не передаёт
+    // документную дату. Пол на roster нельзя ставить, пока хоть один такой есть.
+    const { error } = await S().from('roster').update(effPatch).eq('id', rosterId)
+    if (error) throw error
+  }
   await markApproved(sub.id, rosterId, reviewerId, paperSigned)
   return {
     message: `Approved — ${reactivate ? 'reactivated' : 'updated'} ${patch.child_name ?? 'child'}`,
     undo: async () => {
       const revert: RosterPatch = {}
       for (const c of cols) revert[c] = (prev as any)?.[c] ?? null
-      await S().from('roster').update(revert).eq('id', rosterId)
+      if (doc) {
+        // Откат тоже ФОРВАРД: не удаление события, а новое событие с прежним
+        // значением и ТОЙ ЖЕ документной датой (равная дата применяется — база
+        // отбивает только БОЛЕЕ СТАРЫЙ документ).
+        for (const c of cols) {
+          await writeApprovedField(rosterId, c, revert[c], sub.id, doc, 'undo of approve')
+        }
+      } else {
+        await S().from('roster').update(revert).eq('id', rosterId)
+      }
       await restorePending(sub.id, sub.child_id)
     },
   }
@@ -561,18 +649,33 @@ export async function approveIea(
   // so the existing shape (and tests) keep working; when present it is written into
   // enrollment_submissions.signatures[slot], merge-not-replace, and undone exactly.
   countersign?: Countersign | null,
+  // Документоносный путь (предпосылка триггер-пола). Без него — прежний прямой
+  // UPDATE, и пол на roster ставить нельзя.
+  doc?: ApproveDoc,
 ): Promise<ApproveResult> {
   if (matchedIds.length === 0) throw new Error('No matched roster children to apply eligibility to')
   if (!det.fiscal_year) throw new Error('Could not resolve the IEA form edition / fiscal year')
   const at = nowIso()
 
   // 1) roster.frp / frp_expires — the current effective value the claim RPC reads.
-  const { data: prevRows } = await S().from('roster').select('id,frp,frp_expires').in('id', matchedIds)
+  const { data: prevRows, error: prevErr } = await S().from('roster').select('id,frp,frp_expires').in('id', matchedIds)
+  if (prevErr) throw prevErr
   const prevRoster = new Map((prevRows ?? []).map((r: any) => [r.id, { frp: r.frp, frp_expires: r.frp_expires }]))
   // Absence of a field is not an empty value — see frpDeterminationPatch.
-  const { error: rErr } = await S().from('roster')
-    .update(frpDeterminationPatch('frp', det.frp, det.frp_expires)).in('id', matchedIds)
-  if (rErr) throw rErr
+  const frpPatch = frpDeterminationPatch('frp', det.frp, det.frp_expires)
+  if (doc) {
+    // F/R/P и срок заперты на документ: без даты бумаги база откажет, и это
+    // правильный отказ — денежная категория ребёнка меняется только документом.
+    requireDocDate(doc)
+    for (const rid of matchedIds) {
+      for (const c of Object.keys(frpPatch)) {
+        await writeApprovedField(rid, c, (frpPatch as any)[c], sub.id, doc)
+      }
+    }
+  } else {
+    const { error: rErr } = await S().from('roster').update(frpPatch).in('id', matchedIds)
+    if (rErr) throw rErr
+  }
 
   // 2) income_eligibility — the authoritative FY determination record, one per
   // child for det.fiscal_year (NEW row; prior-cycle FYs are left untouched as
@@ -591,7 +694,7 @@ export async function approveIea(
     // Roll the income_eligibility writes back on partial failure, then restore
     // roster, so a mid-loop error doesn't leave a half-applied determination.
     for (const u of ieUndo) await u().catch(() => {})
-    for (const id of matchedIds) await S().from('roster').update(prevRoster.get(id) ?? { frp: null, frp_expires: null }).eq('id', id)
+    await revertFrp(matchedIds, prevRoster, sub.id, doc)
     throw e
   }
 
@@ -612,7 +715,7 @@ export async function approveIea(
         .update({ signatures: patch }).eq('id', sub.id)
       if (sErr) {
         for (const u of ieUndo) await u().catch(() => {})
-        for (const id of matchedIds) await S().from('roster').update(prevRoster.get(id) ?? { frp: null, frp_expires: null }).eq('id', id)
+        await revertFrp(matchedIds, prevRoster, sub.id, doc)
         throw sErr
       }
     }
@@ -624,7 +727,7 @@ export async function approveIea(
       + (countersign ? `, countersigned by ${countersign.signedName}` : ''),
     undo: async () => {
       for (const u of ieUndo) await u()
-      for (const id of matchedIds) await S().from('roster').update(prevRoster.get(id) ?? { frp: null, frp_expires: null }).eq('id', id)
+      await revertFrp(matchedIds, prevRoster, sub.id, doc)
       if (prevSignatures !== null) await S().from('enrollment_submissions').update({ signatures: prevSignatures }).eq('id', sub.id)
       await restorePending(sub.id, sub.child_id)
     },

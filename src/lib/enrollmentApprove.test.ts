@@ -397,6 +397,39 @@ describe('approveCacfpInsert / approveCacfpUpdate — claim-bridge protection', 
     expect('child_name' in upd!.payload).toBe(false)
     expect(upd!.payload.is_active).toBe(true)
   })
+
+  // ── ПРЕДПОСЫЛКА ТРИГГЕР-ПОЛА (2026-07-29) ────────────────────────────────
+  // Пол на roster нельзя ставить, пока Approve правит строку напрямую: он отбил
+  // бы законный путь. Здесь проверяется, что с документной датой Approve идёт
+  // ЧЕРЕЗ защищённый путь, поле за полем, и что бридж-ключ туда не попадает.
+  const DOC = { documentDate: '2026-07-10', formKey: 'cacfp_enrollment', who: 'Director' }
+
+  it('с документной датой UPDATE идёт через record_child_field_change, не прямым UPDATE', async () => {
+    await approveCacfpUpdate({ id: 's4', child_id: 'k1' }, 'roster-id', patch(), 'rev', false, false, DOC)
+
+    const direct = h.calls.find(c => c.table === 'roster' && c.op === 'update')
+    expect(direct, 'Approve всё ещё правит roster напрямую — пол ставить нельзя').toBeFalsy()
+
+    const writes = h.calls.filter(c => c.table === 'rpc:record_child_field_change')
+    expect(writes.length, 'ни одно поле не ушло защищённым путём').toBeGreaterThan(0)
+    for (const w of writes) {
+      expect(w.payload.p_source).toBe('library_form')
+      expect(w.payload.p_document_date).toBe('2026-07-10')   // дата С БУМАГИ, не сегодняшняя
+      expect(w.payload.p_source_submission_id).toBe('s4')
+    }
+    const fields = writes.map(w => w.payload.p_column)
+    expect(fields).toContain('birthday')
+    expect(fields, 'бридж-ключ child_name ушёл в запись — инвариант клейма нарушен').not.toContain('child_name')
+  })
+
+  it('без документной даты отказывает СЛОВАМИ и ничего не пишет', async () => {
+    await expect(
+      approveCacfpUpdate({ id: 's5', child_id: 'k1' }, 'roster-id', patch(), 'rev', false, false,
+        { documentDate: '', formKey: 'cacfp_enrollment', who: 'Director' }),
+    ).rejects.toThrow(/NOTHING WAS SAVED/)
+    expect(h.calls.filter(c => c.table === 'rpc:record_child_field_change')).toHaveLength(0)
+    expect(h.calls.find(c => c.table === 'roster' && c.op === 'update')).toBeFalsy()
+  })
 })
 
 // ─── recency rule: on disagreement the LATER date wins (Nikolay, 2026-07-16) ──

@@ -1,6 +1,6 @@
 {
   "frozen": "2026-07-29",
-  "total": 157,
+  "total": 155,
   "byFile": {
     "components/meal-count/FiveDayReconciliation.tsx": 3,
     "components/settings/MealCountSettings.tsx": 2,
@@ -8,7 +8,7 @@
     "hooks/useAuth.tsx": 1,
     "hooks/useProgramConfig.ts": 1,
     "lib/childReadmission.ts": 1,
-    "lib/enrollmentApprove.ts": 5,
+    "lib/enrollmentApprove.ts": 3,
     "lib/enrollmentSnapshot.ts": 2,
     "pages/KitchenViewPage.tsx": 6,
     "pages/PurchaserApp.tsx": 2,

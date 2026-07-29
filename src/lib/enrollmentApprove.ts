@@ -373,17 +373,33 @@ export async function insertRosterChild(
   //
   // Семантика сопоставления — та же, что у matchRoster: точное имя, конфликт
   // даты рождения = другой ребёнок. По одному имени НЕ склеиваем.
-  const { data: kid } = await (supabase.schema('menumaker').rpc as any)('resolve_or_create_child', {
-    p_org: sub.org_id,
-    p_first: patch.first_name ?? null,
-    p_last: patch.last_name ?? null,
-    p_birthdate: patch.birthday ?? null,
-  })
+  //
+  // Ошибка здесь НЕ ГЛОТАЕТСЯ. Молча продолжить — значит снова завести строку
+  // без ключа, то есть воспроизвести ровно ту течь, ради закрытия которой этот
+  // вызов и стоит. Пусть Approve скажет словами и не состоится.
+  const { data: kid, error: kidErr } = await (supabase.schema('menumaker').rpc as any)(
+    'resolve_or_create_child',
+    {
+      p_org: sub.org_id,
+      p_first: patch.first_name ?? null,
+      p_last: patch.last_name ?? null,
+      p_birthdate: patch.birthday ?? null,
+    },
+  )
+  if (kidErr) throw kidErr
+  const childId = (kid as any)?.child_id ?? null
+  if (!childId) {
+    throw new Error(
+      'This child could not be given an identity key, so the enrollment was not completed. ' +
+      'Nothing was written. Please try again, and if it repeats, report it — a roster row ' +
+      'without a key can hold neither guardians nor a medical record.',
+    )
+  }
 
   const { data, error } = await S().from('roster')
     .insert({
       org_id: sub.org_id, center_id: sub.center_id, is_active: true,
-      child_id: (kid as any)?.child_id ?? null,
+      child_id: childId,
       // Answers nobody was asked start as UNKNOWN, never as a column default.
       // emergency_transport_auth DEFAULT true made the system answer "yes" on
       // behalf of 623 parents who were never asked (measured 2026-07-28); the

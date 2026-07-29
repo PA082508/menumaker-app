@@ -20,7 +20,13 @@ vi.mock('./supabase', () => {
     return b
   }
   const from = (table: string) => makeBuilder(table)
-  return { supabase: { schema: () => ({ from }), from } }
+  // Каждое зачисление обязано пройти через выдачу ключа ребёнка — двойник
+  // отвечает так же, как база: сущность найдена/создана и ключ возвращён.
+  const rpc = (fn: string, args: any) => {
+    h.calls.push({ table: `rpc:${fn}`, op: 'rpc', payload: args })
+    return Promise.resolve({ data: { child_id: 'child-key-1', match: 'created', candidates: [] }, error: null })
+  }
+  return { supabase: { schema: () => ({ from, rpc }), from, rpc } }
 })
 
 import {
@@ -357,6 +363,23 @@ describe('approveCacfpInsert / approveCacfpUpdate — claim-bridge protection', 
     const ins = h.calls.find(c => c.table === 'roster' && c.op === 'insert')
     expect(ins?.payload.child_name).toBe('Yuri James')   // First Last
     expect(ins?.payload.is_active).toBe(true)
+  })
+
+  // ── ТЕЧЬ КЛЮЧА РЕБЁНКА (закрыта 2026-07-28) ──────────────────────────────
+  // Измерено: с 1 июля создано 300 строк ростера и у НУЛЯ был child_id. Строка
+  // без ключа не может держать ни опекунов, ни медкарту. Гард стоит здесь, а не
+  // только в базе: приложение обязано СПРОСИТЬ ключ, а не понадеяться на него.
+  it('INSERT asks for an identity key and writes it on the roster row', async () => {
+    await approveCacfpInsert({ id: 's1', org_id: 'o1', center_id: 'c1', child_id: null }, patch(), 'rev', false)
+
+    const ask = h.calls.find(c => c.table === 'rpc:resolve_or_create_child')
+    expect(ask, 'зачисление больше не спрашивает ключ ребёнка — течь открыта снова').toBeTruthy()
+    expect(ask?.payload.p_first).toBe('Yuri')
+    expect(ask?.payload.p_last).toBe('James')
+    expect(ask?.payload.p_birthdate).toBe('2021-03-04')   // дата рождения решает, тот же это ребёнок или другой
+
+    const ins = h.calls.find(c => c.table === 'roster' && c.op === 'insert')
+    expect(ins?.payload.child_id, 'строка ростера снова заводится без ключа').toBe('child-key-1')
   })
 
   it('UPDATE never sends child_name (protects the meal_week_records key)', async () => {

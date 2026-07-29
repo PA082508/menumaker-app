@@ -21,6 +21,26 @@ const sel: React.CSSProperties = { ...inp, appearance: 'none', cursor: 'pointer'
 const btnPri: React.CSSProperties = { padding: '10px 20px', borderRadius: 9, border: 'none', background: '#0f4c35', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
 const btnSec: React.CSSProperties = { padding: '10px 18px', borderRadius: 9, border: '1.5px solid #0f4c35', background: '#fff', color: '#0f4c35', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
 
+// The employee card asks for its columns BY NAME. It used to ask for `*`, which
+// stopped working the moment pin_hash was closed to every logged-in account
+// (migration 20260728aa): `*` demands privilege on every column, so one closed
+// column would have emptied the whole card. pin_hash is not on this list and
+// must never be — it is read only by the SECURITY DEFINER PIN path, and a PIN
+// authorizes releasing a child.
+const STAFF_CARD_COLS = [
+  'id','org_id','center_id','first_name','last_name','dob','position','class_primary',
+  'class_secondary','hire_date','contract_hours','hourly_rate','is_active','created_at',
+  'updated_at','classroom_id','phone','email','birthday','address','phone2',
+  'brightwheel_role','brightwheel_activated','brightwheel_rooms','emergency_contact_name',
+  'emergency_contact_relationship','emergency_contact_phone','allergies','medications',
+  'doctor_name','doctor_phone','degree','certification','ece_credits',
+  'infant_toddler_credits','certification_notes','photo_url',
+  'brightwheel_profile_created_at','overtime_eligible','overtime_rate','max_weekly_hours',
+  'ot_trigger_hours','bonus_eligible','bonus_type','bonus_amount','bonus_frequency',
+  'bonus_notes','onboarding_completed','onboarding_completed_at','auth_user_id',
+  'pay_type','salary_amount',
+].join(',')
+
 const POSITIONS = ['Lead Teacher','Assistant Teacher','Teacher','Cook','Floater','Director','Assistant Director','Office Manager','Administrator','Other']
 const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 
@@ -106,6 +126,7 @@ export default function StaffSettingsPage() {
   const [saving, setSaving]     = useState(false)
   const [saved, setSaved]       = useState(false)
   const [saveErr, setSaveErr]   = useState<string | null>(null)
+  const [loadErr, setLoadErr]   = useState<string | null>(null)
   const [tab, setTab]           = useState<'profile'|'work'|'docs'>('profile')
 
   // Training form
@@ -116,13 +137,17 @@ export default function StaffSettingsPage() {
   useEffect(() => {
     if (!staffId) return
     ;(async () => {
-      const [{ data: s }, { data: sc }, { data: tr }, { data: dc }] = await Promise.all([
-        supabase.schema('menumaker').from('staff').select('*').eq('id', staffId).single(),
+      const [{ data: s, error: sErr }, { data: sc }, { data: tr }, { data: dc }] = await Promise.all([
+        supabase.schema('menumaker').from('staff').select(STAFF_CARD_COLS).eq('id', staffId).single(),
         supabase.schema('menumaker').from('staff_schedules').select('*').eq('staff_id', staffId),
         supabase.schema('menumaker').from('staff_training_records').select('*').eq('staff_id', staffId).order('completed_date', { ascending: false }),
         supabase.schema('menumaker').from('staff_documents').select('*').eq('staff_id', staffId).eq('is_active', true).order('uploaded_at', { ascending: false }),
       ])
-      setData(s as StaffData)
+      // A refused read must SAY so. Destructuring `data` alone once turned a
+      // permission error into a confident empty card — see the standing rule in
+      // docs/platform-standards.md ("silence is not 'no'").
+      if (sErr) setLoadErr(`This employee card could not be opened: ${sErr.message}`)
+      setData(s as unknown as StaffData)
       const days = DAYS.map((_, i) => {
         const existing = (sc ?? []).find((r: any) => r.day_of_week === i)
         return existing
@@ -212,7 +237,11 @@ export default function StaffSettingsPage() {
   }
 
   if (loading) return <div style={{ padding: 40, fontFamily: "'DM Sans', sans-serif", color: '#aaa' }}>Loading…</div>
-  if (!data)   return <div style={{ padding: 40, fontFamily: "'DM Sans', sans-serif", color: '#aaa' }}>Staff member not found.</div>
+  if (!data)   return (
+    <div style={{ padding: 40, fontFamily: "'DM Sans', sans-serif", color: loadErr ? '#8a1c1c' : '#aaa' }}>
+      {loadErr ?? 'Staff member not found.'}
+    </div>
+  )
 
   const name = [data.first_name, data.last_name].filter(Boolean).join(' ') || 'Staff'
   const months = monthsWorked(data.hire_date)

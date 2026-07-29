@@ -247,3 +247,10 @@ No exceptions. Weekly digest (maintainer skill) rolls the last 7 days into a
 - 2026-07-14 · 🔧 · Parent Consent & USDA Waiver: fixed a stale-cache issue where some devices/browsers kept showing an older copy of these two forms as plain text (no Submit/signature). The storefront now points at fresh filenames so families always get the current, fully-working form. (Old links still resolve.)
 
 - 2026-07-14 · 🚀 · Parent forms polish: the enrollment form now has a printed parent/guardian name line under the signature; a stray tap no longer counts as a signature; signature/expiry dates use your local date (no more next-day rollover on evening submits); a form that can't load inside the app now offers "Open in browser" instead of a dead end; and every parent form now shows a "didn't load fully — tap to reload" banner if its scripts are blocked, so it never silently shows as plain text. (No form versions changed.)
+
+## 28 июля 2026 — вечер
+
+- **PIN-хэш сотрудника закрыт от всех логинов.** Замер показал, что общий кухонный планшет мог не только видеть, но и **переписывать** `pin_hash` любого из 105 сотрудников трёх центров, а PIN открывает приём и выдачу ребёнка. Колонка закрыта на чтение и на запись; законные пути (SafePass, водительский модуль) работают как прежде — они проходят через серверные функции.
+- **Карточка сотрудника перестала запрашивать «все колонки».** Иначе одна закрытая колонка обнулила бы всю карточку молча; теперь отказ чтения ещё и **говорит словами**, а не показывает пустоту.
+- **Появился послеполёт** — проверка, которая после каждой выкладки сама проходит рабочий день директора и сверяет живой сайт с тем, что решено. Первым же прогоном нашёл: ловушка репетиционного зонда сторожила **старый адрес метки** и пропускала зонд в боевой центр; исправлено.
+- **Окно дублей стало прослеживаемым.** Если при зачислении система показала похожего ребёнка, а директор всё равно создал нового, этот факт теперь **сохраняется**: список ждущих разбора находится одним запросом, и у очереди есть два выхода — «слить» и «это разные дети».

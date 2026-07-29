@@ -133,6 +133,16 @@ async function embedWire() {
 }
 
 // ── 3. витрина родителя жива и версия кита не откатилась ───────────────────
+//
+// БЫЛО ОТСТУПЛЕНИЕ. Прежняя редакция читала parent-forms.html и, не найдя там
+// включений кита, писала «проверять нечего» — жёлтым, то есть в отчёте зелёным.
+// А витрина — СПИСОК ссылок: включений в ней нет и не будет, значит проверка не
+// проверяла НИЧЕГО и не могла покраснеть никогда.
+//
+// Канон 29.07: проверка не отступает — она идёт туда, где ответ есть. Реестр
+// говорит, какая редакция каждой формы сейчас боевая; по ней и смотрим.
+const KIT_FLOOR = 13   // держать в согласии с src/lib/kitVersionFloor.test.ts
+
 async function storefront() {
   console.log(`\n── витрина родителя — ${PAGES}`)
   let html
@@ -140,10 +150,54 @@ async function storefront() {
   catch (e) { fail(`витрина не отдалась: ${e.message} — ПРОВАЛ`); return }
   console.log(ok(`витрина отвечает (${(html.length / 1024 | 0)} КБ)`))
 
-  const vs = [...html.matchAll(/form-kit\.js\?v=(\d+)/g)].map(m => +m[1])
-  if (!vs.length) console.log(warn('на этой странице нет включений form-kit.js — проверять нечего'))
-  else if (new Set(vs).size > 1) fail(`включения form-kit.js разъехались по версиям: ${[...new Set(vs)].join(', ')} — правило бюста кита нарушено`)
-  else console.log(ok(`form-kit.js?v=${vs[0]} — все ${vs.length} включений на одной версии`))
+  let reg
+  try { reg = JSON.parse(await get(`${PAGES}/enroll-registry.json`)) }
+  catch (e) { fail(`реестр форм не прочитан: ${e.message} — ПРОВАЛ`); return }
+
+  // ПРИЗНАК УТОЧНЁН ЗАМЕРОМ (29.07), а не ослаблен: первая редакция покраснела на
+  // wic_information и what_to_bring_infant. Замер реестра: у обоих `signer: null` —
+  // это КАРТОЧКИ ДЛЯ ЧТЕНИЯ, их никто не подписывает, и кит им не нужен. Кит
+  // запускается там, где ставят подпись, значит и спрашиваем его там.
+  const forms = reg.forms ?? reg
+  const html2 = Object.entries(forms)
+    .filter(([, v]) => v && typeof v === 'object' && v.current && v.versions)
+    .map(([k, v]) => [k, v, v.versions[v.current]])
+    .filter(([, , u]) => typeof u === 'string' && u.endsWith('.html'))
+  // …и ПРИЗНАК УТОЧНЁН ВТОРОЙ РАЗ, снова замером. Первое уточнение («проверяем
+  // только там, где есть signer») вывело из проверки ПЯТЬ форм, а замер показал:
+  // у трёх из них — dcy_01218, child_release_authorization, transition_into_program —
+  // кит на месте (v13), и signer в реестре просто НЕ ЗАПОЛНЕН. Пустое поле реестра
+  // стало бы правом не проверять живую подписную форму.
+  //
+  // Поэтому смотрим ВСЕ html-редакции, а прощаем отсутствие кита только там, где
+  // его и не должно быть: карточка для чтения, которую никто не подписывает.
+  const live = html2.map(([k, , u]) => [k, u])
+  const mayLackKit = new Set(html2.filter(([, v]) => !v.signer).map(([k]) => k))
+  if (!live.length) { fail('в реестре НЕТ ни одной боевой html-редакции — проверять нечего, и это провал, а не пропуск'); return }
+
+  const seen = new Map()
+  const noKit = []
+  for (const [key, url] of live) {
+    let page
+    try { page = await get(url) }
+    catch (e) { fail(`${key}: боевая редакция не отдалась (${e.message})`); continue }
+    const vs = [...new Set([...page.matchAll(/form-kit\.js\?v=(\d+)/g)].map(m => +m[1]))]
+    if (!vs.length) {
+      if (mayLackKit.has(key)) { noKit.push(key); continue }
+      fail(`${key}: в боевой редакции НЕТ включения form-kit.js — форма без кита`); continue
+    }
+    if (vs.length > 1) { fail(`${key}: включения разъехались по версиям ${vs.join(', ')}`); continue }
+    if (vs[0] < KIT_FLOOR) { fail(`${key}: кит v${vs[0]} ниже пола v${KIT_FLOOR}`); continue }
+    seen.set(key, vs[0])
+  }
+  // Пропущенное НАЗЫВАЕТСЯ вслух: молчаливое сужение охвата читается как «всё проверено».
+  if (noKit.length) console.log(`   без кита и правильно (карточки для чтения, ${noKit.length}): ${noKit.join(', ')}`)
+  const versions = [...new Set(seen.values())]
+  if (seen.size + noKit.length === live.length && versions.length === 1) {
+    console.log(ok(`все ${seen.size} боевых редакций на form-kit.js?v=${versions[0]} (пол v${KIT_FLOOR})`))
+  } else if (versions.length > 1) {
+    fail(`боевые редакции на разных версиях кита: ${versions.join(', ')}`)
+  }
 }
 
 const t0 = Date.now()

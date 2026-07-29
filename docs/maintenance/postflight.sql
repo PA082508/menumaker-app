@@ -192,7 +192,7 @@ begin
   -- И звёздочка, которой карточка просила до 29.07: она обязана быть красной.
   begin
     execute 'select 1 from (select * from menumaker.staff limit 1) z';
-    r := r || '  ⚠ S-2b. `select *` по staff ПРОХОДИТ — значит закрытой колонки нет' || E'\n';
+    r := r || '  ❌ S-2b. `select *` по staff ПРОХОДИТ — значит закрытой колонки нет' || E'\n';
   exception when others then
     r := r || '  ✅ S-2b. `select *` по staff отказан — экран обязан просить явный список' || E'\n'; end;
   execute 'reset role';
@@ -299,11 +299,15 @@ begin
   begin
     update menumaker.enrollment_submissions set form_data = '{"hacked":1}'::jsonb where id = v_sealed;
     get diagnostics v_w = row_count;
-    r := r || case when v_w = 0 then '  ⚠ П-1 под директором строка не видна — печать этой ролью НЕ ПРОВЕРЕНА'
+    -- Отступления здесь больше нет (канон 29.07): «строка не видна» значит
+    -- «печать этой ролью НЕ ПРОВЕРЕНА», то есть ❌, а не жёлтое. Проверка,
+    -- которой не на чем сработать, обязана краснеть, иначе она в отчёте
+    -- неотличима от сработавшей.
+    r := r || case when v_w = 0 then '  ❌ П-1 под директором строка не видна — печать ЭТОЙ РОЛЬЮ НЕ ПРОВЕРЕНА'
                    else '  ❌ П-1 UPDATE прошёл под директором — печать НЕ держит' end || E'\n';
   exception when others then
     r := r || case when sqlerrm ~* 'запечатана' then '  ✅ П-1 UPDATE отказан ПЕЧАТЬЮ под директором'
-                   else format('  ⚠ П-1 под директором отказала НЕ печать: «%s»', left(sqlerrm,45)) end || E'\n';
+                   else format('  ❌ П-1 под директором отказала НЕ печать — НЕ ПРОВЕРЕНА: «%s»', left(sqlerrm,45)) end || E'\n';
   end;
   execute 'reset role';
 

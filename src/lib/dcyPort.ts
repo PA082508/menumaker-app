@@ -62,7 +62,11 @@ export function documentDateOf(
     .map(k => toIsoDate(fd?.[k]))
     .filter((d): d is string => !!d)
   if (reviewDates.length) { const sorted = reviewDates.sort(); return sorted[sorted.length - 1] }
-  return toIsoDate(signatureDate)
+  // Остаток — общему резолверу, а не своей копии: он знает про дыру в проводке
+  // (у бумажных форм колонка пуста, а дата лежит в form_data) и закрывает её
+  // для DCY тем же порядком. Две функции с одним именем и разным поведением —
+  // ровно тот случай, из-за которого вчера ошиблись с таблицей.
+  return submissionDocumentDate({ signature_date: signatureDate ?? null, form_data: fd })
 }
 
 /** DCY's Yes/No pairs: two keys, one answer. Returns null when NEITHER is marked
@@ -280,6 +284,7 @@ export async function applyIeaDemographics(
 //   · nothing found → a new person.
 // A name is NEVER a merge, and there is no value in the vocabulary to record one.
 import { supabase as sb } from './supabase'
+import { documentDateOf as submissionDocumentDate } from './enrollmentApprove'
 
 export type PersonPortResult = {
   slot: PortPerson['slot']

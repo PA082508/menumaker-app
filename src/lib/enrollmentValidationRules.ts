@@ -1,3 +1,4 @@
+import { documentDateOf } from './enrollmentApprove'
 // ============================================================
 // enrollmentValidationRules.ts — validation engine for the Director's Inbox.
 //
@@ -167,7 +168,10 @@ function validateCacfp(
   }
 
   // Signature date (drawn signature intentionally not required — paper flow).
-  const sigDate = !blank(signatureDate) ? signatureDate : fd?.signature_date
+  // Порядок «колонка → form_data» здесь стоял СВОЕЙ копией. Теперь общий
+  // резолвер: две реализации одного правила расходятся молча, и мы это уже
+  // прошли на dcyPort (две функции с одним именем и разным поведением).
+  const sigDate = documentDateOf({ signature_date: signatureDate ?? null, form_data: fd })
   if (blank(sigDate)) softMiss('Signature date')
   else if (!isISODate(sigDate)) warnings.push('Signature date format looks invalid')
 

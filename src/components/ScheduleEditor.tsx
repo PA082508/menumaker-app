@@ -116,7 +116,7 @@ export default function ScheduleEditor({ childId, value, onSaved }: {
     setTimeout(() => setSaved(false), 2500)
   }
 
-  const srcLabel = value.sched_source === 'import' ? 'imported from the centre’s books'
+  const srcLabel = value.sched_source === 'import' ? 'imported from the center’s books'
     : value.sched_source === 'start_form' ? 'from the Start form'
     : value.sched_source === 'manual' ? 'edited here' : null
 

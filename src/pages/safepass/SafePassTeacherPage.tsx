@@ -681,7 +681,7 @@ export default function SafePassTeacherPage() {
           </button>
         ))}
         {dutyChildren.length>0 && <span style={{ marginLeft:'auto', fontSize:12, color:C.amber, fontWeight:700, display:'flex', alignItems:'center' }}>⚠️ {dutyChildren.length} in duty care</span>}
-        <label title="Morning intake for the whole centre in one room. Off = this class only."
+        <label title="Morning intake for the whole center in one room. Off = this class only."
           style={{ marginLeft: dutyChildren.length>0 ? 12 : 'auto', display:'flex', alignItems:'center', gap:6, fontSize:12, fontWeight:600, color: gathering ? C.green : C.muted, cursor: deviceCtx ? 'pointer' : 'not-allowed', opacity: deviceCtx ? 1 : 0.5 }}>
           <input type="checkbox" checked={gathering} disabled={!deviceCtx}
             onChange={e => setGathering(e.target.checked)} style={{ accentColor: C.green }} />

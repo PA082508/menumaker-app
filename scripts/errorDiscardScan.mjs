@@ -106,7 +106,29 @@ export function scanErrorDiscards(srcDir) {
       }
     }
 
-    // 2) .then(({ data }) => …) — та же потеря, другой синтаксис
+    // 2) ВТОРАЯ ФОРМА: результат вообще НЕ РАЗБИРАЮТ — `const r = await …`,
+    //    потом `r.data`. Признак искал разбор, значит такую форму не видел
+    //    ВОВСЕ: потолок можно было бы опустить, переписав место сюда и ничего
+    //    не починив. Замер 29.07: таких мест в дереве НОЛЬ — но признак закрыт
+    //    заранее, чтобы храповик нельзя было обмануть переписыванием.
+    const re3 = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*await\s/g
+    while ((m = re3.exec(text))) {
+      const name = m[1]
+      const expr = expressionAt(text, m.index + m[0].length)
+      if (!SUPA.test(expr)) continue
+      if (/^\s*Promise\.(all|allSettled|race)/.test(expr)) continue   // обёртка, разбор внутри
+      if (inComment(text, m.index)) continue
+      if (excusedNear(text, m.index)) continue
+      const after = text.slice(m.index, m.index + 2000)
+      const usesData = new RegExp('\\b' + name + '\\.data\\b').test(after)
+      const usesErr = new RegExp('\\b' + name + '\\.error\\b').test(after)
+      if (usesData && !usesErr) {
+        hits.push({ rel, line: text.slice(0, m.index).split('\n').length, isTest,
+                    verb: verbOf(expr), kind: 'без разбора', pattern: `${name}.data без ${name}.error` })
+      }
+    }
+
+    // 3) .then(({ data }) => …) — та же потеря, другой синтаксис
     const re2 = /\.then\(\s*\(\s*(\{[^}]*\})\s*\)\s*=>/g
     while ((m = re2.exec(text))) {
       if (bindsError(m[1])) continue

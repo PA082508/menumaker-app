@@ -111,6 +111,21 @@ describe('негативная проба — гард выброшенного 
     expect(byVerb['rpc']).toBe(1)
   })
 
+  it('ловит ВТОРУЮ форму — результат вообще не разбирают', () => {
+    // Признак искал РАЗБОР, значит эту форму не видел вовсе: потолок можно было
+    // бы опустить, переписав место сюда и ничего не починив. Замер 29.07 — таких
+    // мест в дереве ноль, но проба стоит, чтобы храповик нельзя было обмануть.
+    const dir2 = mkdtempSync(join(tmpdir(), 'zzguard2-'))
+    writeFileSync(join(dir2, 'plain.ts'),
+      `const r = await supabase.schema('menumaker').from('roster').select('id')\nreturn r.data\n`)
+    writeFileSync(join(dir2, 'ok.ts'),
+      `const r = await supabase.schema('menumaker').from('roster').select('id')\n` +
+      `if (r.error) throw r.error\nreturn r.data\n`)
+    const res = scanErrorDiscards(dir2 + '/')
+    rmSync(dir2, { recursive: true, force: true })
+    expect(res.app.map((h: any) => h.rel)).toEqual(['plain.ts'])
+  })
+
   it('не краснеет на связанном error и на названной причине', () => {
     expect(app.some((h: any) => h.rel === 'clean.ts')).toBe(false)
   })

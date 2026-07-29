@@ -399,11 +399,16 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
   const approveWeek = useCallback(async (initials: string, scanFile: File | null) => {
     const mon = format(weekStart, "yyyy-MM-dd");
     const now = new Date().toISOString();
-    // Approve the whole week by (classroom, monday) rather than by collected
-    // ids: rows created from offline-queued marks don't carry a local id yet.
-    await supabase.schema("menumaker").from("meal_week_records")
-      .update({ status: "director_approved", director_initials: initials, director_signed_at: now })
-      .eq("classroom_id", selectedClassId).eq("monday_date", mon);
+    // Approve goes through the SERVER, which owns the rule: only a COMPLETED
+    // week may be approved (week_end < the centre's local today). The client does
+    // not decide it — a rule that lives only in the UI is not a rule. On 27.07 a
+    // director approved the week on its Monday; the refusal below is what stops
+    // a signature from certifying a week that is still running.
+    const { error: approveErr } = await (supabase.schema("menumaker").rpc as any)("approve_meal_week", {
+      p_center: currentCenter?.id, p_classroom_id: selectedClassId, p_monday: mon,
+      p_initials: initials, p_actor_name: initials,
+    });
+    if (approveErr) throw new Error(approveErr.message);
     if (scanFile) {
       const path = `${selectedClassId}/${mon}/${scanFile.name}`;
       await supabase.storage.from("attendance-scans").upload(path, scanFile, { upsert: true });
@@ -939,12 +944,22 @@ function DirectorMode({ isApproved, onApprove, showApprove, ...gridProps }: Grid
   const [done, setDone] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const [approveErr, setApproveErr] = useState<string | null>(null);
+
+  // The refusal must SPEAK. A greyed-out button eats the press and answers no one —
+  // that is the lesson of Submit, Create and Save. The button stays live; the
+  // server decides; whatever it says is shown here in full.
   const handleApprove = async () => {
     if (!initials.trim()) return;
-    setApproving(true);
-    await onApprove(initials.trim().toUpperCase(), scanFile);
-    setApproving(false);
-    setDone(true);
+    setApproving(true); setApproveErr(null);
+    try {
+      await onApprove(initials.trim().toUpperCase(), scanFile);
+      setDone(true);
+    } catch (e: any) {
+      setApproveErr(e?.message ?? String(e));
+    } finally {
+      setApproving(false);
+    }
   };
 
   return (
@@ -981,6 +996,12 @@ function DirectorMode({ isApproved, onApprove, showApprove, ...gridProps }: Grid
               <button className="mc-approve-btn" disabled={!initials.trim() || approving} onClick={handleApprove}>
                 {approving ? "Approving…" : "✓ Approve Week"}
               </button>
+              {approveErr && (
+                <div role="alert" style={{
+                  marginTop: 10, padding: "10px 13px", borderRadius: 10, fontSize: 13, lineHeight: 1.45,
+                  background: "#eef2ff", border: "1px solid #c7d2fe", color: "#3730a3",
+                }}>{approveErr}</div>
+              )}
               {done && <div className="mc-approved-msg">✅ Approved!</div>}
             </>
           )}

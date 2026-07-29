@@ -79,6 +79,19 @@ describe('guard — a discarded error is a screen that lies', () => {
     expect(grown, 'a discarded error was added to a file that already had some — the ceiling only comes down').toEqual([])
   })
 
+  // ПРИЁМ ИЗ ГАРДА signature_date, применённый ко всем спискам исключений
+  // (владелец, 29.07): файл, переставший нарушать, обязан УЙТИ из списка.
+  // Мёртвое исключение завтра прикроет живое нарушение — это единственное
+  // место, где списки исключений гниют.
+  it('в базовой линии нет мёртвых строк — файл без нарушений уходит из списка', () => {
+    const dead = Object.keys(BASELINE.byFile).filter(f => !(f in byFile))
+    expect(
+      dead,
+      'эти файлы больше не выбрасывают error — убрать из базовой линии: ' +
+      '`node scripts/scan-error-discards.mjs --baseline`. Мёртвое исключение прикроет живое нарушение.',
+    ).toEqual([])
+  })
+
   it('the ceiling only comes down — lower it in the same commit that clears places', () => {
     expect(
       app.length,

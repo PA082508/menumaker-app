@@ -319,7 +319,18 @@ export async function applyDcyPeople(
       const exact = list.find(c => c.why === 'exact_key')
 
       // A phone or name candidate WITHOUT an exact key is a question, not an answer.
+      // And a question must be STORED, or it lives only in this message and dies
+      // with it — a queue without storage is worse than a queue with one exit.
       if (!exact && list.length > 0) {
+        await (sb.schema('menumaker').rpc as any)('defer_child_person', {
+          p_roster_id: rosterId, p_relation_role: role, p_ordinal: ordinal,
+          p_first_name: p.firstName, p_last_name: p.lastName,
+          p_email: p.email, p_phone: p.phone, p_relationship: p.relationship,
+          p_match_candidates: list,
+          p_source: 'library_form', p_document_date: documentDate,
+          p_source_form_key: 'dcy_01234', p_source_submission_id: submission.id,
+          p_entered_by_name: enteredByName,
+        })
         out.push({ slot: p.slot, name: p.fullName, outcome: 'needs_director', candidates: list })
         continue
       }

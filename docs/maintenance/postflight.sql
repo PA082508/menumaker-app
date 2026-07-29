@@ -106,9 +106,15 @@ begin
   exception when others then r := r || '  ❌ 5. выдача ключа СЛОМАНА: '||left(sqlerrm,70)||E'\n'; end;
 
   -- ── 6. кандидаты показываются ДО создания сущности ─────────────────────
+  -- Считаем ОТВЕТ, а не «вызов не упал» (канон 29.07). Предыдущая редакция
+  -- зеленела при ЛЮБОМ числе, включая ноль: функция, честно возвращающая пустоту
+  -- на заведомого двойника, выглядела бы исправной. Двойник только что заведён
+  -- ходом 5 — не найти его нельзя.
   begin
     select count(*) into v_n from menumaker.find_child_candidates(v_org,'ZZPOSTFLIGHT','Probe',date '2022-03-04');
-    r := r || format('  ✅ 6. вопрос о кандидатах работает (нашёл %s)', v_n) || E'\n';
+    r := r || case when v_n >= 1
+      then format('  ✅ 6. вопрос о кандидатах НАШЁЛ заведомого двойника (%s)', v_n)
+      else '  ❌ 6. кандидатов НОЛЬ на заведомом двойнике — вопрос до человека не дойдёт' end || E'\n';
   exception when others then r := r || '  ❌ 6. вопрос о кандидатах СЛОМАН: '||left(sqlerrm,70)||E'\n'; end;
 
   -- ── 7. ворота недели: не пускают текущую… ──────────────────────────────
@@ -149,19 +155,42 @@ begin
     r := r || '  ✅ 8b. в демо-центре зонд садится — ловушка держит ровно нужное' || E'\n';
   exception when others then r := r || '  ❌ 8b. ловушка держит ЛИШНЕЕ: '||left(sqlerrm,60)||E'\n'; end;
 
-  -- ── S-1/S-2. staff: pin_hash закрыт, остальное открыто ─────────────────
+  -- ── S-1/S-2. staff: карточка открывается, pin_hash — нет ───────────────
   -- Колонковые права НЕ распространяются на колонки, добавленные позже: новая
-  -- колонка окажется нечитаемой, и экран сотрудника опустеет молча. Здесь это
-  -- перестаёт быть молчаливым.
-  select count(*) into v_n from information_schema.columns c
-   where c.table_schema='menumaker' and c.table_name='staff' and c.column_name <> 'pin_hash'
-     and not has_column_privilege('authenticated','menumaker.staff', c.column_name, 'select');
-  r := r || case when v_n = 0 then '  ✅ S-1. все колонки staff, кроме pin_hash, доступны экранам'
-                 else format('  ❌ S-1. %s колонок staff НЕ выданы — экран сотрудника будет пуст', v_n) end || E'\n';
-  r := r || case when has_column_privilege('authenticated','menumaker.staff','pin_hash','select')
-                   or has_column_privilege('authenticated','menumaker.staff','pin_hash','update')
-                 then '  ❌ S-2. pin_hash СНОВА достижим — PIN открывает выдачу ребёнка'
-                 else '  ✅ S-2. pin_hash закрыт и на чтение, и на запись' end || E'\n';
+  -- колонка окажется нечитаемой, и экран сотрудника опустеет молча.
+  --
+  -- Обе проверки спрашивали СПРАВОЧНИК ПРАВ (has_column_privilege) — это ВХОД.
+  -- 29.07 права были в точности такими, как задумано, и ровно в этот момент
+  -- карточка сотрудника на боевом была мертва десять часов: экран просил
+  -- `select *`, а звёздочка задевает и закрытую колонку. Справочник прав об
+  -- этом сказать не мог. Поэтому теперь — ПОПЫТКА, от имени authenticated:
+  -- что ответит база на тот же запрос, что шлёт экран.
+  execute 'set local role authenticated';
+  begin
+    execute 'select 1 from menumaker.staff limit 1' into v_n;
+    -- полный список колонок, кроме закрытой, — так просит починенная карточка
+    execute (select 'select 1 from (select '||string_agg(quote_ident(column_name), ', ')||
+                    ' from menumaker.staff limit 1) z'
+               from information_schema.columns
+              where table_schema='menumaker' and table_name='staff' and column_name <> 'pin_hash');
+    r := r || '  ✅ S-1. карточка сотрудника читается: явный список колонок проходит' || E'\n';
+  exception when others then
+    r := r || format('  ❌ S-1. КАРТОЧКА СОТРУДНИКА МЕРТВА: «%s»', left(sqlerrm,60)) || E'\n'; end;
+  begin
+    execute 'select 1 from (select pin_hash from menumaker.staff limit 1) z';
+    r := r || '  ❌ S-2. pin_hash ЧИТАЕТСЯ — PIN открывает выдачу ребёнка' || E'\n';
+  exception when others then v_txt := sqlerrm;
+    r := r || case when v_txt ~* 'permission denied'
+      then '  ✅ S-2. pin_hash отказан СВОИМ механизмом (permission denied)'
+      else format('  ❌ S-2. отказало НЕ право, а что-то другое: «%s»', left(v_txt,55)) end || E'\n';
+  end;
+  -- И звёздочка, которой карточка просила до 29.07: она обязана быть красной.
+  begin
+    execute 'select 1 from (select * from menumaker.staff limit 1) z';
+    r := r || '  ⚠ S-2b. `select *` по staff ПРОХОДИТ — значит закрытой колонки нет' || E'\n';
+  exception when others then
+    r := r || '  ✅ S-2b. `select *` по staff отказан — экран обязан просить явный список' || E'\n'; end;
+  execute 'reset role';
 
   -- ── S-3. демо-центр не остался meal site ───────────────────────────────
   select count(*) into v_n from menumaker.centers where is_demo and is_meal_site;

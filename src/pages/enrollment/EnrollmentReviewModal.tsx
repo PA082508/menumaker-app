@@ -22,6 +22,7 @@ import { deriveMealFields } from '@/lib/ageGroups'
 import { countersignSlot, loadSample, adoptSample, samplesEnabled, type SignatureSample, type SampleOwner, type SigMethod } from '@/lib/signatureSamples'
 import SignaturePad from '@/components/signing/SignaturePad'
 import { SIGNATURE_METHODS } from '@/lib/signatureMethods'
+import { applyDcyPort } from '@/lib/dcyPort'
 import OriginalFormViewer from './OriginalFormViewer'
 import { hasOriginalReplica } from '@/lib/originalFormReplicas'
 import { captureAndUploadSnapshot } from '@/lib/enrollmentSnapshot'
@@ -545,6 +546,28 @@ export default function EnrollmentReviewModal({
               signerRole: signerRoleFor(slot), method: countersignMethod, signedAt: new Date().toISOString() }
           : null
         result = await approveDocument(submission, target, reviewerId, paperSigned, cs)
+
+        // Этап Г: DCY 01234 наконец ОТДАЁТ запись то, что собрала. Раньше Approve
+        // подшивал документ и не писал ничего — 81 ключ уходил в печать нетронутым,
+        // пока карточка стояла пустой. Порт идёт ЧЕРЕЗ ЗАЩИЩЁННЫЙ ПУТЬ, поэтому
+        // наследует журнал, документную дату и замок: форма, одобренная поздно,
+        // не отменит заметку, внесённую после неё.
+        if (submission.submission_type === 'dcy_01234' && target) {
+          try {
+            const ported = await applyDcyPort(target, submission as any, reviewerName)
+            const applied = ported.filter(r => r.applied).length
+            const held = ported.filter(r => !r.applied && !r.error)
+            if (applied || held.length) {
+              result = { ...result, message: result.message
+                + ` · ${applied} field${applied === 1 ? '' : 's'} carried to the record`
+                + (held.length ? `, ${held.length} left alone (a newer document is already on file)` : '') }
+            }
+          } catch (e: any) {
+            // Порт — не условие подшивки: документ уже подшит и это верно.
+            // Но молчать нельзя, иначе это шестой тихий отказ.
+            setErr(`Filed, but the record was not updated from the form: ${e?.message ?? e}`)
+          }
+        }
 
         // Remember it as MY shelf, if asked. Adoption is deliberate: the sample
         // is what later forms will apply without redrawing, so it is never a

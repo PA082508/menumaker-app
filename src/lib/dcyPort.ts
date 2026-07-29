@@ -214,3 +214,59 @@ export function buildIeaDemographics(fd: Record<string, any>): PortWrite[] {
   if (has(fd, 'ethnicity')) out.push({ fieldKey: 'ethnicity', table: 'child', column: 'ethnicity', value: String(fd.ethnicity).trim() })
   return out
 }
+
+// ─── Applying the port ────────────────────────────────────────────────────────
+// Every write goes through the protected path (record_child_field_change), so the
+// port inherits the journal, the document-date rule and the lock. It cannot write
+// a locked field verbally, and it cannot overwrite a newer document — a form
+// approved late does not undo a note entered since.
+import { writeChildField, type Provenance, type WriteResult } from './childFieldWrite'
+
+/** Port an approved DCY 01234 into the child's record. Returns one result per
+ *  field actually written; an empty array means the form carried nothing new. */
+export async function applyDcyPort(
+  rosterId: string,
+  submission: { id: string; form_data: any; signature_date: string | null },
+  enteredByName: string,
+): Promise<WriteResult[]> {
+  const fd = (submission?.form_data ?? {}) as Record<string, any>
+  const documentDate = documentDateOf(fd, submission?.signature_date)
+  // No date on the document → nothing to apply BY. The form is filed either way;
+  // the card simply is not told, which is honest: we cannot order what we cannot date.
+  if (!documentDate) return []
+
+  const prov: Provenance = {
+    source: 'library_form',
+    documentDate,
+    formKey: 'dcy_01234',
+    submissionId: submission.id,
+    note: 'ported from the approved form',
+  }
+
+  const out: WriteResult[] = []
+  for (const w of buildDcyCardWrites(fd)) {
+    if (w.table === 'child') continue          // demographics come from IEA, not this form
+    out.push(await writeChildField(rosterId, { fieldKey: w.fieldKey, table: w.table, column: w.column, value: w.value }, prov, enteredByName))
+  }
+  return out
+}
+
+/** Port race/ethnicity from an approved IEA onto the child record. */
+export async function applyIeaDemographics(
+  rosterId: string,
+  submission: { id: string; form_data: any; signature_date: string | null },
+  enteredByName: string,
+): Promise<WriteResult[]> {
+  const fd = (submission?.form_data ?? {}) as Record<string, any>
+  const documentDate = toIsoDate(submission?.signature_date)
+  if (!documentDate) return []
+  const prov: Provenance = {
+    source: 'library_form', documentDate, formKey: 'iea',
+    submissionId: submission.id, note: 'ported from the approved application',
+  }
+  const out: WriteResult[] = []
+  for (const w of buildIeaDemographics(fd)) {
+    out.push(await writeChildField(rosterId, { fieldKey: w.fieldKey, table: w.table as any, column: w.column, value: w.value }, prov, enteredByName))
+  }
+  return out
+}

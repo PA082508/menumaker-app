@@ -36,7 +36,7 @@ export type Provenance = {
 
 export type FieldWrite = {
   fieldKey: string
-  table: 'roster' | 'child_medical'
+  table: 'roster' | 'child_medical' | 'child'
   column: string
   value: string | null
 }

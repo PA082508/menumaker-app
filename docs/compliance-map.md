@@ -315,3 +315,32 @@ Pearl**. Для Ridge и Highland Heights заявка получает `license
 **Цена вопроса замерена:** июль 2026, Highland Heights — **221 возмещаемый приём десяти
 взрослых, $779.14**, все по ставкам **Free**. Разбор — в
 [плане 31.07c](plans/2026-07-31c-frp-carrier-and-claim-surfaces.md), раздел 20.
+
+---
+
+## Source: 7 CFR 226 — счёт приёмов ВО ВРЕМЯ ПОДАЧИ (сверено 2026-07-31)
+
+**Способ проверки:** дословные цитаты с Cornell LII (`law.cornell.edu/cfr/text/7/226.15`,
+`.../226.17`), сняты 31.07.2026. eCFR отдавал редирект и не цитировался.
+
+| Норма | Дословно | Как отражено у нас | Статус |
+|---|---|---|---|
+| **§226.15(e)(4)** | *«Daily records indicating the number of participants in attendance and the daily meal counts … served to family day care home participants, or **the time of service meal counts**, by type (breakfast, lunch, supper, and snacks), **served to center participants**.»* | поварской экран пишет через `sync_meal_marks` с `marked_at` = время тапа на устройстве → журнал `meal_count_marks` | 🟡 **Partial** |
+| **§226.17(b)(9)** | *«Each child care center must maintain **daily records of time of service meal counts** by type … served to enrolled children, and to adults performing labor necessary to the food service.»* | тот же журнал; отдельный учёт взрослых — псевдоклассы `is_roster=false` | 🟡 Partial |
+
+### Почему Partial, а не Built — два измеренных разрыва
+
+1. 🔴 **Директорский экран пишет клетки МИМО журнала** (`MealCountDirectorPage.tsx:236-247`
+   — прямой `update`/`upsert` в `meal_week_records`). Отметка, сделанная там, **не несёт
+   времени подачи вовсе**. За недели 20.07 и 27.07 у Ridge в журнале **ноль строк** при живой
+   сетке — то есть по этому центру требование «time of service» **сегодня не исполняется и не
+   измеряется**.
+2. **Своевременность замерена и низка:** неделя 20–24.07, Highland + Pearl, 1 795 отметок —
+   **38 % во время подачи**, 10 % наперёд, 34 % позже в тот же день, **17 % на другой день**
+   (макс. опоздание 31 день). Разбор: [план 31.07d](plans/2026-07-31d-pos-timeliness-measure.md).
+
+⚠️ **Границы цитат.** Норма требует счёта во время подачи и ежедневной записи. Она **не**
+называет допустимого опоздания в минутах и **не** содержит слов «отметка задним числом
+запрещена» или «неотмеченный вовремя приём не возмещается». Наш порог «конец окна + 30 минут» —
+**рабочее правило центра**, а не требование регулятора, и в документах для персонала подаётся
+именно так.

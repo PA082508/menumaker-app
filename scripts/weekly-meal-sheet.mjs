@@ -1,46 +1,59 @@
 // scripts/weekly-meal-sheet.mjs
 // CHILDREN'S MEAL COUNT BY INDIVIDUAL NAME — печатный недельный лист.
 //
-// НАЗНАЧЕНИЕ (владелец, 30.07): лист кладётся РЯДОМ с бумажным сканом той же
-// комнато-недели, и расхождение видно глазом. Проследить ребёнка по скану иначе
-// невозможно — это и есть инструмент, разблокирующий решение по задвоению.
+// ⚠️ ПЕРЕПИСАН 31.07 ПО ПРАВИЛАМ ВЛАДЕЛЬЦА. Прежняя версия была собрана БЕЗ
+// прохода по канонам и нарушила четыре правила, лежавшие в репозитории (часть —
+// нашими же коммитами): показ имени, ось сортировки, кружок исключённого приёма,
+// свои тексты на официальном бланке. Правила листа — spec §15
+// (docs/specs/2026-07-29-weekly-meal-count-sheet.md), процессное правило —
+// platform-standards «ПЕРЕД ГЕНЕРАЦИЕЙ ЛЮБОЙ ФОРМЫ — ПРОХОД ПО КАНОНАМ».
 //
-// ⚠️ УСЛОВИЕ 1 — ИСТОЧНИК СТРОК. Лист строится ИСКЛЮЧИТЕЛЬНО из строк недели
-// (meal_week_records по своему classroom_id + monday_date). Экранный список по
-// текущему roster.classroom_id НЕ используется НИКОГДА: переведённый ребёнок
-// исчез бы из старого класса, а именно он и есть предмет спора.
-// Существующий src/utils/PrintMealCountForm.ts для этого НЕ ГОДИТСЯ — он читает
-// roster по classroom_id + is_active, то есть ровно запрещённый путь.
+// ПРИМЕНЁННЫЕ ПРАВИЛА (печатаются и в отчёт запуска):
+//   §1  показ «Фамилия Имя», собран из first/last ростера по roster_id
+//   §2a возрастные полосы, старшие первыми; внутри полосы — по фамилии
+//   spec §8 п.7  правило кружка: показано ВСЁ поданное, исключённое обведено
+//   spec §8 п.9  счёт по правилу возмещения — одна логика с клеймом
+//   «рабочие данные из окон»  на бланке нет ни одного нашего текста
 //
-// Вход:  JSON [{room, week, kids:[{n, a, m}]}], m = 30 символов 0/1,
-//        порядок day-major: пн..пт × (B, AM, L, PM, S, ES).
-//        Необязательно на строке: hot=true — подсветить; mk='▲' — знак в колонке
-//        номера. Необязательно на странице: legend — своя строка легенды в подвале.
-//        Подсветка данными нужна там, где спорна не фамилия, а КОНКРЕТНАЯ СТРОКА:
-//        при расщеплении по имени один ребёнок стоит в листе дважды под разными
-//        написаниями, и по списку фамилий их не различить.
-// Выход: один HTML, по странице на комнато-неделю, готов к печати (альбом).
+// ЧТО ЛЕЖИТ ГДЕ:
+//   официальный лист  — только бланк. Ни подвала, ни пояснений, ни пометок.
+//   служебный лист    — --service <out.html>: сироты имени, спорные строки,
+//                       строка применённых правил. Помечен как НЕ официальный.
 //
-//   node scripts/weekly-meal-sheet.mjs <data.json> <out.html> [--order lastname|asis]
+// ⚠️ УСЛОВИЕ ИСТОЧНИКА. Лист несёт ЭКРАННУЮ ПРАВДУ — то, что видит и подписывает
+// директор. После перевода экрана на союз (ростер ∪ строки недели по roster_id)
+// это и есть строки недели (spec §A5); до перевода два множества расходятся —
+// поэтому лист выпускается ПОСЛЕ починки ключа, а не раньше.
 //
-// Порядок строк: см. ORDER ниже — на бумаге он НАМИ НЕ ЗАФИКСИРОВАН, и это
-// сказано прямо в подвале каждого листа, чтобы сверка не приняла наш порядок
-// за утверждение о бумаге.
+// Вход:  JSON [{ room, week, holidays?, kids: [
+//          { rid, first, last, name?, band, m } ] }]
+//        rid  — roster_id (идентичность строки)
+//        first/last — части имени ИЗ РОСТЕРА; name — хранимый child_name,
+//                     только подпись: в лист идёт лишь когда частей нет вовсе,
+//                     и такая строка попадает в служебный лист
+//        band — возрастная полоса (age_group_food): birth_5m | 6_11m | 1y | 2y |
+//               3_5y | 6_12y (принимаются и экранные написания infant_0_5m и т.п.)
+//        m    — 30 символов 0/1, day-major: пн..пт × (B, AM, L, PM, S, ES)
+//        hot  — необязательно: строка под вопросом → ТОЛЬКО в служебный лист
+//
+//   node scripts/weekly-meal-sheet.mjs <data.json> <out.html> [--service <svc.html>]
 
 import fs from 'node:fs'
 
 const [, , dataPath, outPath, ...rest] = process.argv
 if (!dataPath || !outPath) {
-  console.error('usage: node scripts/weekly-meal-sheet.mjs <data.json> <out.html> [--order lastname|asis]')
+  console.error('usage: node scripts/weekly-meal-sheet.mjs <data.json> <out.html> [--service <svc.html>]')
   process.exit(1)
 }
-const ORDER = (rest.includes('--order') ? rest[rest.indexOf('--order') + 1] : 'lastname')
+const svcPath = rest.includes('--service') ? rest[rest.indexOf('--service') + 1] : null
 
-// Пять фамилий из замера 30.07(b) B3 — подсвечиваются ТОЛЬКО на нашей копии.
-// На скане, разумеется, не трогается ничего.
-const DISPUTED = new Set([
-  'Mason Skyla', 'Morgan Kairio', 'Resendez Josean', 'Sekongo Messie', 'Williams Bailey',
-])
+const APPLIED_RULES = [
+  'platform-standards §1 — показ «Фамилия Имя» из частей ростера по roster_id',
+  'platform-standards §2a — возрастные полосы, старшие первыми; внутри полосы по фамилии',
+  'spec meal count §8 п.7 — правило кружка: показано всё поданное, исключённое обведено',
+  'spec meal count §8 п.9 — счёт по правилу возмещения, одна логика с клеймом',
+  'platform-standards «рабочие данные из окон» — на бланке нет наших текстов',
+]
 
 const SLOTS = [
   { k: 'B',  t: 'Breakfast' },
@@ -54,11 +67,58 @@ const DAYS = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY']
 const MONTHS = ['January','February','March','April','May','June',
                 'July','August','September','October','November','December']
 
+// ─── Возрастные полосы (§2a: старшие первыми) ────────────────────────────────
+// Два словаря живут одновременно: age_group_food в базе (birth_5m…) и экранные
+// ключи MealCountPage (infant_0_5m…). Принимаем оба, порядок один.
+const BAND_ORDER = ['6_12y', '3_5y', '2y', '1y', '6_11m', 'birth_5m']
+const BAND_ALIAS = {
+  infant_0_5m: 'birth_5m', birth_5m: 'birth_5m', '0_5m': 'birth_5m',
+  infant_6_11m: '6_11m', '6_11m': '6_11m',
+  '1y': '1y', '2y': '2y',
+  '3_5': '3_5y', '3_5y': '3_5y',
+  '6_12': '6_12y', '6_12y': '6_12y',
+}
+const BAND_LABEL = {
+  birth_5m: '0-5m', '6_11m': '6-11m', '1y': '1yr', '2y': '2yr', '3_5y': '3-5y', '6_12y': '6-12y',
+}
+const bandKey = b => BAND_ALIAS[String(b ?? '').trim()] ?? null
+const bandRank = b => { const i = BAND_ORDER.indexOf(bandKey(b)); return i < 0 ? BAND_ORDER.length : i }
+
+// ─── Показ имени (§1) ────────────────────────────────────────────────────────
+// «Фамилия Имя», собранное из частей ростера. Хранимый child_name — подпись, а
+// не источник: он и есть носитель смеси порядков (519 «Фамилия Имя» против 96
+// «Имя Фамилия»), из-за которой лист и экран разошлись у 12 детей из 14.
+const displayName = k => {
+  const last = String(k.last ?? '').trim(), first = String(k.first ?? '').trim()
+  if (last || first) return [last, first].filter(Boolean).join(' ')
+  return String(k.name ?? '').trim()          // сирота имени — уйдёт в служебный лист
+}
+const nameFromRoster = k => Boolean(String(k.last ?? '').trim() || String(k.first ?? '').trim())
+const sortLast = k => (String(k.last ?? '').trim() || displayName(k)).toLowerCase()
+
+// ─── Правило возмещения (spec §8 п.9) ────────────────────────────────────────
+// Одна логика с клеймом. Экран: reimbursableSlots (MealCountPage.tsx:141) —
+// максимум 2 приёма + 1 снек, приоритет supper > lunch > am > breakfast.
+// Клейм: compute_monthly_claim (20260730b) — bre*(1−b*l*s), pm*(1−am),
+// es*(1−am)*(1−pm). Для приёмов бланка это ОДНО И ТО ЖЕ правило:
+//   завтрак исключается, когда в тот же день есть И ланч, И ужин;
+//   PM-снек — когда есть AM; вечерний — когда есть AM или PM.
+// Кружок ничего не удаляет: он показывает решение о возмещении. Выбор
+// исключаемого приёма по тексту бланка принадлежит администрации центра
+// (§8 п.8) — расхождение правится человеком на бумаге.
+const IDX = { B: 0, AM: 1, L: 2, PM: 3, S: 4, ES: 5 }
+function excludedOn(m, day) {
+  const on = s => m[day * 6 + IDX[s]] === '1'
+  const ex = new Set()
+  if (on('B') && on('L') && on('S')) ex.add(IDX.B)
+  if (on('PM') && on('AM')) ex.add(IDX.PM)
+  if (on('ES') && (on('AM') || on('PM'))) ex.add(IDX.ES)
+  return ex
+}
+
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]))
 const addDays = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d }
 const md = d => `${d.getMonth() + 1}/${d.getDate()}`
-
-/** Ячейка недели: 1 если отмечено. day 0..4, slot 0..5. */
 const mark = (m, day, slot) => m[day * 6 + slot] === '1'
 
 function sheet(page) {
@@ -67,28 +127,34 @@ function sheet(page) {
   const dates  = [0, 1, 2, 3, 4].map(i => md(addDays(page.week, i)))
 
   // Неделя может лежать на стыке месяцев — в шапке MO/YR стоит месяц ПОНЕДЕЛЬНИКА,
-  // а полный диапазон печатается в WEEK OF, чтобы лист сам нёс свои даты.
+  // а полный диапазон печатается в WEEK OF, чтобы лист сам нёс свои даты (§11).
   const moLabel = MONTHS[monday.getMonth()]
   const yrLabel = monday.getFullYear()
   const weekOf  = `${md(monday)}/${String(monday.getFullYear()).slice(2)} – ${md(friday)}/${String(friday.getFullYear()).slice(2)}`
 
-  const kids = page.kids.slice()
-  if (ORDER === 'lastname') {
-    // Стабильная сортировка по строке имени как она записана в строке недели.
-    kids.sort((a, b) => a.n.localeCompare(b.n, 'en'))
-  } // 'asis' — порядок как пришёл из запроса
-
-  // Итоги: [день][слот]
-  const daily = DAYS.map((_, d) => SLOTS.map((_, s) => kids.filter(k => mark(k.m, d, s)).length))
-  const weekBySlot = SLOTS.map((_, s) => daily.reduce((n, day) => n + day[s], 0))
-  const weekTotal  = weekBySlot.reduce((a, b) => a + b, 0)
+  // §2a: возрастные полосы, старшие первыми; внутри полосы — по фамилии.
+  // Полоса неизвестна → в конец (то же правило, что «нет birthday» на экране).
+  const kids = page.kids.slice().sort((a, b) =>
+    bandRank(a.band) - bandRank(b.band) ||
+    sortLast(a).localeCompare(sortLast(b), 'en') ||
+    displayName(a).localeCompare(displayName(b), 'en'))
 
   // Праздники приходят из menumaker.holidays по центру — НЕ зашиты в код.
-  // Канон A7: праздничный день сохраняет свою колонку и ПОДПИСЫВАЕТСЯ, а не исчезает.
-  // Без подписи пустая колонка на нашей копии прочиталась бы как расхождение с бумагой.
-  const hol = page.holidays ?? {}   // { 'YYYY-MM-DD': 'Independence Day' }
+  // Канон A7: праздничный день сохраняет свою колонку и ПОДПИСЫВАЕТСЯ.
+  const hol = page.holidays ?? {}
   const isoOf = i => { const d = addDays(page.week, i); return d.toISOString().slice(0, 10) }
   const holOn = i => hol[isoOf(i)] ?? null
+
+  // Итоги: всё поданное и к клейму — как на экране (claimable/total).
+  const daily = DAYS.map((_, d) => SLOTS.map((_, s) => kids.filter(k => mark(k.m, d, s)).length))
+  const dayAll = DAYS.map((_, d) => daily[d].reduce((a, b) => a + b, 0))
+  const dayClaim = DAYS.map((_, d) => kids.reduce((n, k) => {
+    const ex = excludedOn(k.m, d)
+    return n + SLOTS.reduce((c, _, s) => c + (mark(k.m, d, s) && !ex.has(s) ? 1 : 0), 0)
+  }, 0))
+  const weekBySlot = SLOTS.map((_, s) => daily.reduce((n, day) => n + day[s], 0))
+  const weekAll   = dayAll.reduce((a, b) => a + b, 0)
+  const weekClaim = dayClaim.reduce((a, b) => a + b, 0)
 
   const dayHeads = DAYS.map((d, i) => {
     const h = holOn(i)
@@ -99,21 +165,26 @@ function sheet(page) {
     SLOTS.map((s, j) => `<th class="sh${!j && i ? ' sep' : ''}${holOn(i) ? ' hol' : ''}">${s.k}</th>`).join('')).join('')
 
   const bodyRows = kids.map((k, i) => {
-    const hot = k.hot ?? DISPUTED.has(k.n)
-    const mk  = k.mk ?? '▲'
-    const cells = DAYS.map((_, d) =>
-      SLOTS.map((_, s) =>
-        `<td class="c${!s && d ? ' sep' : ''}${holOn(d) ? ' hol' : ''}">${mark(k.m, d, s) ? '×' : ''}</td>`).join('')).join('')
-    // Метка спорной строки — БЕЗ СЛОВ (треугольник в колонке номера). Официальный бланк
-    // остаётся англоязычным, а пояснение живёт в подвале, вне поля формы.
-    return `<tr class="${hot ? 'hot' : ''}">
-      <td class="num">${hot ? `<span class="mk">${esc(mk)}</span>` : ''}${i + 1}</td>
-      <td class="nm">${esc(k.n)}</td>
-      <td class="ag">${esc(k.a ?? '')}</td>${cells}</tr>`
+    const cells = DAYS.map((_, d) => {
+      const ex = excludedOn(k.m, d)
+      return SLOTS.map((_, s) => {
+        const on = mark(k.m, d, s)
+        const glyph = on ? (ex.has(s) ? '<span class="ex">×</span>' : '×') : ''
+        return `<td class="c${!s && d ? ' sep' : ''}${holOn(d) ? ' hol' : ''}">${glyph}</td>`
+      }).join('')
+    }).join('')
+    return `<tr>
+      <td class="num">${i + 1}</td>
+      <td class="nm">${esc(displayName(k))}</td>
+      <td class="ag">${esc(BAND_LABEL[bandKey(k.band)] ?? '')}</td>${cells}</tr>`
   }).join('\n')
 
   const totalRow = DAYS.map((_, d) =>
     SLOTS.map((_, s) => `<td class="tc${!s && d ? ' sep' : ''}${holOn(d) ? ' hol' : ''}">${daily[d][s] || ''}</td>`).join('')).join('')
+  // Вторая строка итогов — ровно то, что показывает экран директору: к клейму / всего.
+  const claimRow = DAYS.map((_, d) =>
+    `<td colspan="6" class="cc${d ? ' sep' : ''}${holOn(d) ? ' hol' : ''}">${
+      dayAll[d] ? `<b>${dayClaim[d]}</b>/${dayAll[d]}` : ''}</td>`).join('')
 
   const pageBox = SLOTS.map((s, i) =>
     `<div class="bx"><span class="bxk">${s.t}</span><span class="bxv">${weekBySlot[i]}</span></div>`).join('')
@@ -139,27 +210,68 @@ ${bodyRows}
     </tbody>
     <tfoot>
       <tr class="tot"><td colspan="3" class="tl">DAILY MEAL COUNT TOTALS</td>${totalRow}</tr>
+      <tr class="clm"><td colspan="3" class="tl">REIMBURSABLE / TOTAL</td>${claimRow}</tr>
     </tfoot>
   </table>
 
   <div class="foot">
     <div class="box">
       <div class="boxt">MEAL COUNT TOTALS FOR PAGE (WEEK)</div>
-      <div class="boxr">${pageBox}<div class="bx all"><span class="bxk">TOTAL</span><span class="bxv">${weekTotal}</span></div></div>
+      <div class="boxr">${pageBox}<div class="bx all"><span class="bxk">TOTAL</span><span class="bxv">${weekAll}</span></div><div class="bx all"><span class="bxk">REIMBURSABLE</span><span class="bxv">${weekClaim}</span></div></div>
     </div>
     <div class="sig">
       <div><span class="sl"></span>COOK</div>
       <div><span class="sl"></span>DIRECTOR</div>
     </div>
   </div>
-
-  <div class="note">Наша копия · строки взяты из <b>строк недели</b> (<code>meal_week_records</code>,
-    ${esc(page.room)} / ${page.week}), НЕ из текущего списка класса · детей в листе: ${kids.length} ·
-    порядок строк: ${ORDER === 'lastname' ? 'по фамилии, А–Я' : 'как в базе'} —
-    <b>порядок бумажного бланка нами не зафиксирован</b>, сверять глазом ·
-    ${page.legend ?? '<span class="mk">▲</span> — спорная строка замера 30.07 (задвоение), на скане не помечено ничем'}${
-      Object.keys(hol).length ? ' · праздничные дни подписаны в шапке колонки' : ''}</div>
 </section>`
+}
+
+// ─── Служебный лист — ОТДЕЛЬНЫЙ ФАЙЛ, явно не официальный ────────────────────
+// Всё, что раньше стояло подвалом на бланке, живёт здесь: тексты формы вместе с
+// её названием имеют юридическую силу, и наш комментарий внутри рамки превращает
+// реплику в самодельный документ.
+function serviceSheet(pages) {
+  const rows = []
+  for (const p of pages) {
+    for (const k of p.kids) {
+      const orphan = !nameFromRoster(k)
+      if (!orphan && !k.hot) continue
+      rows.push(`<tr><td>${esc(p.room)}</td><td>${esc(p.week)}</td><td>${esc(displayName(k))}</td>
+        <td>${esc(k.rid ?? '')}</td><td>${orphan ? 'имя не собрано из ростера — напечатан хранимый child_name' : ''}${
+          orphan && k.hot ? ' · ' : ''}${k.hot ? 'строка под вопросом (задвоение)' : ''}</td></tr>`)
+    }
+  }
+  const pageList = pages.map(p => `<li>${esc(p.room)} · ${esc(p.week)} · строк: ${p.kids.length}</li>`).join('')
+  return `<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<title>Служебный лист — не официальный документ</title>
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; margin: 24px; color: #111; }
+  .warn { border: 2px solid #b91c1c; color: #b91c1c; font-weight: 700; padding: 8px 12px;
+          margin-bottom: 14px; letter-spacing: .02em; }
+  h2 { font-size: 13pt; margin: 18px 0 6px; }
+  table { border-collapse: collapse; font-size: 9pt; }
+  td, th { border: 1px solid #999; padding: 3px 7px; text-align: left; }
+  ul, ol { font-size: 9pt; } li { margin-bottom: 2px; }
+  code { font-size: 9pt; }
+</style></head><body>
+  <div class="warn">СЛУЖЕБНЫЙ ЛИСТ — НЕ ОФИЦИАЛЬНЫЙ ДОКУМЕНТ. Не подшивается, не подписывается,
+  в пакет клейма не идёт.</div>
+
+  <h2>ПРИМЕНЁННЫЕ ПРАВИЛА</h2>
+  <ol>${APPLIED_RULES.map(r => `<li>${esc(r)}</li>`).join('')}</ol>
+
+  <h2>Источник шаблона</h2>
+  <p><code>template source: CHILDREN'S MEAL COUNT BY INDIVIDUAL NAME — реплика бланка центра,
+  spec docs/specs/2026-07-29-weekly-meal-count-sheet.md §8–§9, §15</code></p>
+
+  <h2>Листы в выпуске</h2>
+  <ul>${pageList}</ul>
+
+  <h2>Строки, требующие взгляда${rows.length ? '' : ' — нет'}</h2>
+  ${rows.length ? `<table><tr><th>Комната</th><th>Неделя</th><th>Имя в листе</th><th>roster_id</th><th>Что с ней</th></tr>
+  ${rows.join('\n')}</table>` : '<p>Все имена собраны из ростера, спорных строк нет.</p>'}
+</body></html>`
 }
 
 const pages = JSON.parse(fs.readFileSync(dataPath, 'utf8'))
@@ -187,7 +299,6 @@ const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
   table.grid th.dh .dt { display: block; font-weight: 400; font-size: 6.5pt; }
   table.grid th.sh { background: #f4f4f4; font-size: 6.5pt; font-weight: 700; }
   table.grid .num { width: 30px; }
-  table.grid .mk  { color: #b8860b; font-size: 6.5pt; margin-right: 2px; vertical-align: 1px; }
   table.grid .nm  { width: 132px; text-align: left; padding-left: 4px; font-size: 8pt; white-space: nowrap;
                     overflow: hidden; text-overflow: ellipsis; }
   /* Праздник: колонка сохраняется и подписывается — никогда не исчезает (канон A7). */
@@ -198,14 +309,14 @@ const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
   table.grid .sep { border-left: 2px solid #000; }
   table.grid tbody tr:nth-child(even) td { background: #fbfbfb; }
 
-  /* Подсветка спорных — ТОЛЬКО на нашей копии. */
-  table.grid tr.hot td { background: #fff3c4 !important; }
-  table.grid tr.hot .nm { font-weight: 700; }
-  .flag { font-size: 6pt; font-weight: 400; color: #8a5a12; margin-left: 5px;
-          border: 1px solid #d8b357; border-radius: 3px; padding: 0 3px; }
+  /* ПРАВИЛО КРУЖКА (§8 п.7): отметка остаётся, исключённое ОБВОДИТСЯ. */
+  table.grid td.c .ex { display: inline-block; width: 11px; height: 11px; line-height: 10px;
+                        border: 1.2px solid #000; border-radius: 50%; font-size: 7.5pt; }
 
   table.grid tfoot .tot td { background: #e8e8e8; font-weight: 700; font-size: 7.5pt; height: 15px; }
-  table.grid tfoot .tl { text-align: right; padding-right: 6px; letter-spacing: .03em; }
+  table.grid tfoot .clm td { background: #f4f4f4; font-weight: 400; font-size: 7.5pt; height: 15px; }
+  table.grid tfoot .clm b { font-size: 8.5pt; }
+  table.grid tfoot .tl { text-align: right; padding-right: 6px; letter-spacing: .03em; font-weight: 700; }
 
   .foot { display: flex; gap: 8px; margin-top: 5px; align-items: stretch; }
   .box { border: 1.5px solid #000; padding: 3px 6px; flex: 1; }
@@ -218,13 +329,22 @@ const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
   .sig { display: flex; gap: 12px; align-items: flex-end; padding-bottom: 3px; }
   .sig div { font-size: 6.5pt; letter-spacing: .05em; }
   .sig .sl { display: block; width: 110px; border-bottom: 1px solid #000; height: 16px; }
-  .note { margin-top: 4px; font-size: 6.5pt; color: #666; }
-  .note code { font-size: 6.5pt; }
-  @media print { body { background: #fff; } .note { color: #888; } }
+  @media print { body { background: #fff; } }
 </style></head><body>
 ${pages.map(sheet).join('\n')}
 </body></html>`
 
 fs.writeFileSync(outPath, html)
+if (svcPath) fs.writeFileSync(svcPath, serviceSheet(pages))
+
+// Отчёт запуска несёт строку применённых правил — без неё форма не принимается
+// (platform-standards, рядом с «Ready-made forms first»).
 console.log(`${pages.length} листов → ${outPath}`)
-for (const p of pages) console.log(`  ${p.room} · ${p.week} · детей ${p.kids.length}`)
+for (const p of pages) {
+  const orphans = p.kids.filter(k => !nameFromRoster(k)).length
+  console.log(`  ${p.room} · ${p.week} · детей ${p.kids.length}${orphans ? ` · имя не из ростера: ${orphans}` : ''}`)
+}
+console.log(`template source: CHILDREN'S MEAL COUNT BY INDIVIDUAL NAME — реплика бланка центра (spec §8–§9)`)
+console.log('ПРИМЕНЁННЫЕ ПРАВИЛА:')
+for (const r of APPLIED_RULES) console.log(`  · ${r}`)
+console.log(svcPath ? `служебный лист → ${svcPath}` : 'служебный лист не запрошен (--service <файл>)')

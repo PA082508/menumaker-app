@@ -72,6 +72,10 @@ export default function SiteClaimReport() {
   // F/R children lacking a current-cycle IEA determination — surfaced as a 🟡
   // banner so undocumented eligibility is visible before the claim is assembled.
   const [undocFR, setUndocFR] = useState<number|null>(null);
+  // ОТМЕТКА ВРЕМЕНИ РАСЧЁТА. Владелец сравнивает две поверхности глазами, и без
+  // времени дрейф месяца (повар отметил между двумя загрузками) неотличим от
+  // расхождения кода. Ставится в момент, когда цифры получены, а не при рендере.
+  const [computedAt, setComputedAt] = useState<Date|null>(null);
 
   useEffect(()=>{
     if(!centerId){ setUndocFR(null); return; }
@@ -160,7 +164,7 @@ export default function SiteClaimReport() {
         license_capacity:ec.license_capacity||center?.license_capacity||158, notes:ec.notes||"",
         reimbursement:ec.reimbursement as Reimbursement|undefined,
       });
-      setLoading(false); return;
+      setComputedAt(new Date()); setLoading(false); return;
     }
     const monthEnd=new Date(year,month,0);
     const mondays:string[]=[];
@@ -230,6 +234,7 @@ export default function SiteClaimReport() {
       reduced_category:manual.reduced_category||0, paid_category:manual.paid_category||0,
       license_capacity:manual.license_capacity||center?.license_capacity||158, notes:manual.notes||"",
     });
+    setComputedAt(new Date());
     setLoading(false);
   },[year,month,centerId]);
 
@@ -367,6 +372,13 @@ export default function SiteClaimReport() {
           </span>
         )}
         {loading&&<span style={{fontSize:".82rem",color:"#888"}}>Calculating…</span>}
+        {!loading&&ready&&computedAt&&(
+          <span style={{fontSize:".78rem",color:"#666"}}>
+            data as of {computedAt.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}
+            {" · "}<button onClick={()=>loadData()} style={{background:"none",border:"none",padding:0,
+              color:"#0f4c35",fontWeight:600,cursor:"pointer",fontSize:".78rem",textDecoration:"underline"}}>refresh</button>
+          </span>
+        )}
         {msg&&<span style={{fontSize:".82rem",color:"#0f4c35",fontWeight:600}}>{msg}</span>}
         <div style={{marginLeft:"auto",display:"flex",gap:".5rem"}}>
           {!isClosed&&data&&(<>

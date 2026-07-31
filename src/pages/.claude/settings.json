@@ -71,7 +71,8 @@
       "Bash(echo \"--- tsc exit: $? ---\")",
       "Bash(grep -nE \"^#{2,3} \" docs/compliance/e-signature.md)",
       "Bash(grep -nE \"^#{1,3} \" docs/instructions/children.md)",
-      "Bash(python3 -c \"import sys,json; print\\(json.dumps\\(sys.stdin.read\\(\\)\\)\\)\")"
+      "Bash(python3 -c \"import sys,json; print\\(json.dumps\\(sys.stdin.read\\(\\)\\)\\)\")",
+      "WebFetch(domain:www.ecfr.gov)"
     ],
     "additionalDirectories": [
       "/Users/nikolaykutsenko/Downloads",

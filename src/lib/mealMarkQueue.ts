@@ -42,6 +42,9 @@ export interface QueuedMark {
   marked_at: string        // DEVICE point-of-service ISO time
   queued_at: string
   device_id: string
+  /** Сборка клиента в момент тапа. Отметка БЕЗ версии = клиент старее 31.07:
+   *  косвенный признак «нет строки журнала» становится прямым (план 31.07d §14). */
+  app_version?: string
   attempts: number
   last_error?: string
 }
@@ -171,6 +174,7 @@ export async function enqueueMark(input: EnqueueInput): Promise<void> {
     marked_at: input.marked_at ?? now,
     queued_at: now,
     device_id: DEVICE_ID,
+    app_version: typeof __BUILD_ID__ === 'string' ? __BUILD_ID__ : 'unknown',
     attempts: 0,
   }
   try {
@@ -234,6 +238,7 @@ export async function drain(): Promise<void> {
         value: item.value,
         marked_at: item.marked_at,
         device_id: item.device_id,
+        app_version: item.app_version ?? null,
         source: 'app_offline',
       }))
 

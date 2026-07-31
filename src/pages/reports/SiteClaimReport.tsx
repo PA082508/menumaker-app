@@ -27,6 +27,11 @@ interface Reimbursement {
   meal_reimbursement:number; cil_reimbursement:number; total:number;
 }
 interface ClaimData {
+  // ЧЕЙ ЭТО СЧЁТ. Без этого поля страница показывала цифры одного центра под
+  // шапкой другого: loadData был замкнут на пустой centerId и не пересоздавался
+  // при смене центра. Число обязано нести свой охват — а охват здесь центр.
+  center_id:string;
+  center_name:string; center_address:string; site_number:string|null;
   days_of_operation:number; total_attendance:number; ada:number;
   breakfast:number; am_snack:number; lunch:number;
   pm_snack:number; supper:number; evening_snack:number;
@@ -123,14 +128,27 @@ export default function SiteClaimReport() {
   },[year,month]);
 
   const loadData = useCallback(async()=>{
+    // 🔴 ГАРД ЦЕНТРА. Пока центр не поднят, страница НЕ считает и НЕ показывает
+    // нули: ноль под чужой шапкой — артефакт, который врёт о своём источнике.
+    // Прежде loadData был замкнут на пустой centerId (deps [year,month]) и после
+    // подъёма/смены центра не пересоздавался — отчёт оставался с данными того
+    // центра, что был открыт раньше, а шапка рисовалась текущим.
+    if(!centerId){ setData(null); setLoading(true); return; }
     setLoading(true); setMsg(null);
     const {data:center} = await supabase.schema("menumaker").from("centers")
-      .select("license_capacity").eq("id",centerId).single();
+      .select("name,address,site_number,license_capacity").eq("id",centerId).single();
+    const stamp = {
+      center_id: centerId,
+      center_name: center?.name ?? '',
+      center_address: center?.address ?? '',
+      site_number: center?.site_number ?? null,
+    };
     const {data:ec} = await supabase.schema("menumaker").from("monthly_claims")
       .select("*").eq("center_id",centerId)
       .eq("claim_month",month).eq("claim_year",year).single();
     if(ec && ec.status!=="open"){
       setData({
+        ...stamp,
         claim_id:ec.id, status:ec.status,
         days_of_operation:ec.days_of_operation||0, total_attendance:ec.total_attendance||0, ada:ec.ada||0,
         breakfast:ec.breakfast||0, am_snack:ec.am_snack||0, lunch:ec.lunch||0,
@@ -202,6 +220,7 @@ export default function SiteClaimReport() {
     }
     const manual=(ec||{}) as any;
     setData({
+      ...stamp,
       claim_id:ec?.id, status:"open",
       days_of_operation:totDays, total_attendance:totAtt, ada:totADA,
       breakfast:totSlots.b||0, am_snack:totSlots.as||0, lunch:totSlots.l||0,
@@ -212,7 +231,7 @@ export default function SiteClaimReport() {
       license_capacity:manual.license_capacity||center?.license_capacity||158, notes:manual.notes||"",
     });
     setLoading(false);
-  },[year,month]);
+  },[year,month,centerId]);
 
   useEffect(()=>{loadData();},[loadData]);
 
@@ -271,6 +290,9 @@ export default function SiteClaimReport() {
   }
 
   const isClosed = data?.status==="closed"||data?.status==="submitted";
+  // Цифры принадлежат ТОМУ ЖЕ центру, что открыт сейчас. Пока это не так —
+  // страница говорит «загрузка», а не показывает чужие числа под своей шапкой.
+  const ready = !!data && data.center_id === centerId;
   const totalEnrolled = (data?.free_category||0)+(data?.reduced_category||0)+(data?.paid_category||0);
   const progressPct = data&&data.weeks_total>0?Math.round(data.weeks_approved/data.weeks_total*100):0;
 
@@ -372,7 +394,7 @@ export default function SiteClaimReport() {
       </div>
 
       {/* Progress bar */}
-      {data&&!isClosed&&data.weeks_total>0&&tab==="claim"&&(
+      {ready&&data&&!isClosed&&data.weeks_total>0&&tab==="claim"&&(
         <div style={{marginBottom:"1rem",background:"#f4f7f4",borderRadius:10,padding:".75rem 1rem",border:"1px solid #c0d8c0"}}>
           <div style={{display:"flex",justifyContent:"space-between",fontSize:".8rem",marginBottom:4}}>
             <span style={{fontWeight:600,color:"#0f4c35"}}>📊 Approval Progress</span>
@@ -391,15 +413,29 @@ export default function SiteClaimReport() {
       )}
 
       {/* ── TAB: SITE CLAIM ── */}
-      {tab==="claim"&&data&&(
+      {tab==="claim"&&!ready&&(
+        <div style={{background:"#fff",border:"1px solid #ccc",padding:"1.25rem",textAlign:"center",color:"#666",fontSize:".9rem"}}>
+          {centerId
+            ? "Loading this center's claim…"
+            : "Waiting for the center to load — pick a center in the header. No figures are shown until then."}
+        </div>
+      )}
+
+      {tab==="claim"&&ready&&data&&(
         <div id="claim-report" style={{background:"#fff",border:"1px solid #ccc",padding:"1rem"}}>
           <div style={{background:"#1a5276",color:"#fff",textAlign:"center",fontWeight:"bold",fontSize:"13pt",padding:"6px 0",marginBottom:4}}>
             Child & Adult Care Food Program — Site Claim Report
           </div>
           <div style={{fontSize:"9pt",color:"#555",marginBottom:2}}>011269 | Play Academy | 201 Alpha Park, Highland Heights, OH 44143-2225 | FEIN: 26-2255862</div>
-          <div style={{fontSize:"9pt",color:"#555",marginBottom:8}}>50020338 | PLAY ACADEMY WEST | 6285 Pearl Rd #30, Parma Hts, OH 44130-3069</div>
+          {/* 🔴 Строка ПЛОЩАДКИ — из центра, чьи цифры показаны, а не зашитая.
+              До 31.07 здесь стоял текст Pearl НА ЛЮБОМ центре: отчёт Highland
+              выходил под именем и номером площадки Pearl. Номер площадки есть
+              не у всех — отсутствие говорится словами, а не чужим номером. */}
+          <div style={{fontSize:"9pt",color:"#555",marginBottom:8}}>
+            {data.site_number ?? "site number not on file"} | {(data.center_name||"—").toUpperCase()} | {data.center_address||"address not on file"}
+          </div>
           <Row2 label="Month/Year Claimed" value={`${MONTHS[month-1]} ${year}`} yellow/>
-          <Sec title="Child Care Center"/><Row2 label="Child Care Center" value="Play Academy (West)" yellow/>
+          <Sec title="Child Care Center"/><Row2 label="Child Care Center" value={data.center_name||"—"} yellow/>
           <Sec title="Attendance Reporting"/><H2 label="Quantity"/>
           <DR2 code="C1" label="Total Days of Operation"  value={data.days_of_operation} auto/>
           <DR2 code="C2" label="Total Attendance"         value={data.total_attendance} auto/>

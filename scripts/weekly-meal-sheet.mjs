@@ -14,6 +14,11 @@
 //
 // Вход:  JSON [{room, week, kids:[{n, a, m}]}], m = 30 символов 0/1,
 //        порядок day-major: пн..пт × (B, AM, L, PM, S, ES).
+//        Необязательно на строке: hot=true — подсветить; mk='▲' — знак в колонке
+//        номера. Необязательно на странице: legend — своя строка легенды в подвале.
+//        Подсветка данными нужна там, где спорна не фамилия, а КОНКРЕТНАЯ СТРОКА:
+//        при расщеплении по имени один ребёнок стоит в листе дважды под разными
+//        написаниями, и по списку фамилий их не различить.
 // Выход: один HTML, по странице на комнато-неделю, готов к печати (альбом).
 //
 //   node scripts/weekly-meal-sheet.mjs <data.json> <out.html> [--order lastname|asis]
@@ -94,14 +99,15 @@ function sheet(page) {
     SLOTS.map((s, j) => `<th class="sh${!j && i ? ' sep' : ''}${holOn(i) ? ' hol' : ''}">${s.k}</th>`).join('')).join('')
 
   const bodyRows = kids.map((k, i) => {
-    const hot = DISPUTED.has(k.n)
+    const hot = k.hot ?? DISPUTED.has(k.n)
+    const mk  = k.mk ?? '▲'
     const cells = DAYS.map((_, d) =>
       SLOTS.map((_, s) =>
         `<td class="c${!s && d ? ' sep' : ''}${holOn(d) ? ' hol' : ''}">${mark(k.m, d, s) ? '×' : ''}</td>`).join('')).join('')
     // Метка спорной строки — БЕЗ СЛОВ (треугольник в колонке номера). Официальный бланк
     // остаётся англоязычным, а пояснение живёт в подвале, вне поля формы.
     return `<tr class="${hot ? 'hot' : ''}">
-      <td class="num">${hot ? '<span class="mk">▲</span>' : ''}${i + 1}</td>
+      <td class="num">${hot ? `<span class="mk">${esc(mk)}</span>` : ''}${i + 1}</td>
       <td class="nm">${esc(k.n)}</td>
       <td class="ag">${esc(k.a ?? '')}</td>${cells}</tr>`
   }).join('\n')
@@ -151,14 +157,15 @@ ${bodyRows}
     ${esc(page.room)} / ${page.week}), НЕ из текущего списка класса · детей в листе: ${kids.length} ·
     порядок строк: ${ORDER === 'lastname' ? 'по фамилии, А–Я' : 'как в базе'} —
     <b>порядок бумажного бланка нами не зафиксирован</b>, сверять глазом ·
-    <span class="mk">▲</span> — спорная строка замера 30.07 (задвоение), на скане не помечено ничем${
+    ${page.legend ?? '<span class="mk">▲</span> — спорная строка замера 30.07 (задвоение), на скане не помечено ничем'}${
       Object.keys(hol).length ? ' · праздничные дни подписаны в шапке колонки' : ''}</div>
 </section>`
 }
 
 const pages = JSON.parse(fs.readFileSync(dataPath, 'utf8'))
 const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
-<title>Children's Meal Count — Pearl, 29.06 & 06.07</title>
+<title>Children's Meal Count — ${esc([...new Set(pages.map(p => p.room))].join(', '))} · ${
+  esc(pages.map(p => p.week).join(' & '))}</title>
 <style>
   @page { size: letter landscape; margin: 8mm; }
   * { box-sizing: border-box; }

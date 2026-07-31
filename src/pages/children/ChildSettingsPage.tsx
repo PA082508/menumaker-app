@@ -2,7 +2,7 @@
 // Full child record — 7 tabs with completeness badges
 // Profile | Family | Enrollment | Health | CACFP | SafePass | Billing
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
   completeness as regCompleteness, tabCounts as regTabCounts,
@@ -119,6 +119,7 @@ export default function ChildSettingsPage({
   const [guardians, setGuardians] = useState<Guardian[]>([])
   const [medical, setMedical] = useState<ChildMedical | null>(null)
   const [view, setView] = useState<Record<string, any> | null>(null)   // v_child_age_profile (read-only)
+  const [viewError, setViewError] = useState<string | null>(null)      // почему профиль не пришёл
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [showExport, setShowExport] = useState(false)
@@ -156,6 +157,26 @@ export default function ChildSettingsPage({
   // ЭКРАНА: с места директора это неотличимо от «ничего не произошло». Замер
   // 29.07 — это и был механизм «тихого» отказа, отдельный от отсутствия ключа.
   const resultsRef = useRef<HTMLDivElement | null>(null)
+  // ТРИ ИСХОДА SAVE РАЗЛИЧАЮТСЯ СЛОВАМИ, И СТРОКА СТОИТ У КНОПКИ (владелец, 31.07).
+  // Баннер наверху вкладки остаётся подробным, но человек смотрит туда, куда нажал:
+  // «выглядит так же, ошибки нет» — это и есть тихий отказ, даже когда ответ где-то
+  // отрисован. Исходы: применено · записано в историю, карточка не изменена · отказ.
+  const saveOutcome = useMemo(() => {
+    if (!writeResults || writeResults.length === 0) return null
+    const err = writeResults.find(r => r.error)
+    if (err) return { kind: 'error' as const, icon: '⚠', text: err.error! }
+    const applied = writeResults.filter(r => r.applied)
+    const held = writeResults.filter(r => !r.applied)
+    if (applied.length && !held.length)
+      return { kind: 'applied' as const, icon: '✓', text: `Saved: ${applied.map(r => r.fieldKey).join(', ')}` }
+    if (applied.length && held.length)
+      return { kind: 'held' as const, icon: '◑',
+               text: `Saved ${applied.length}; ${held.length} not applied — ${held[0].reason ?? 'see the banner above'}` }
+    return { kind: 'held' as const, icon: '⏸',
+             text: held[0].fieldKey
+               ? `Nothing changed on the card — ${held[0].fieldKey}: ${held[0].reason ?? 'not applied'}`
+               : `Nothing was written — ${held[0].reason ?? 'no field differs from what was loaded'}` }
+  }, [writeResults])
   const provRef = useRef<HTMLDivElement | null>(null)
   const [fieldProv, setFieldProv] = useState<Record<string, FieldProvenance>>({})
   const [history, setHistory] = useState<FieldEvent[]>([])
@@ -231,8 +252,15 @@ export default function ChildSettingsPage({
     try { setFieldLocks(await loadFieldLocks()) } catch { setFieldLocks({}) }
 
     // read-only age/milk profile for CACFP tab + registry export
-    const { data: vw } = await supabase.schema('menumaker').from('v_child_age_profile').select('*').eq('id', childId).maybeSingle()
+    // 🔴 31.07: ошибка тут ГЛОТАЛАСЬ, и «Age group / Milk (oz) = —» выглядело как
+    // «у ребёнка нет возраста», хотя причина другая: у представления
+    // v_child_age_profile НЕТ ГРАНТА роли authenticated (замер 31.07 — права
+    // только у postgres и service_role). Отказ прав неотличим от пустоты, пока
+    // его не связали. Теперь он виден словами.
+    const { data: vw, error: vwErr } = await supabase.schema('menumaker')
+      .from('v_child_age_profile').select('*').eq('id', childId).maybeSingle()
     setView(vw ?? null)
+    setViewError(vwErr ? vwErr.message : null)
   }
 
   // Load the current-cycle determination signature for the CACFP tab.
@@ -753,7 +781,7 @@ export default function ChildSettingsPage({
                   : <>⚠️ No current-cycle IEA determination on file{fiscalYear ? ` (${fiscalYear})` : ''}. Changing FRP here records a manual determination; prefer approving the IEA form when available.</>}
               </div>
               <div style={{ background:'#f0f7f4', borderRadius:10, padding:14, fontSize:13, color:'#0f4c35', marginTop:8 }}>
-                <strong>Note:</strong> Age group and milk (oz) are auto-calculated from birthday via v_child_age_profile (read-only). Edit birthday on the Profile tab to change them.
+                <strong>Note:</strong> Age group and milk (oz) are auto-calculated from birthday via v_child_age_profile (read-only). Edit birthday on the Profile tab to change them.{viewError && <div style={{ marginTop:6, color:'#991b1b', fontWeight:600 }}>⚠ The age profile could not be read, so age group and milk show “—” even when the birthday is on file: {viewError}</div>}
               </div>
             </div>
           )}
@@ -834,6 +862,12 @@ export default function ChildSettingsPage({
                   ? '🗣 Saving as: said, no document ✎'
                   : `📄 Saving as: ${prov.source === 'library_form' ? 'library form' : 'document'}${prov.documentDate ? ' · ' + prov.documentDate : ' · DATE MISSING'} ✎`}
               </button>
+            )}
+            {saveOutcome && (
+              <span style={{ fontSize:12, fontWeight:600, maxWidth:330, lineHeight:1.35,
+                color: saveOutcome.kind==='error' ? '#991b1b' : saveOutcome.kind==='applied' ? '#0f4c35' : '#9a3412' }}>
+                {saveOutcome.icon} {saveOutcome.text}
+              </span>
             )}
             {fieldsForTab(TAB_KEYS[tab]).length > 0 && (
               <button onClick={saveCurrent} disabled={saving}

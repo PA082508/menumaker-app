@@ -157,3 +157,45 @@ Nutrition-approval gate** (unlike CACFP enrollment/IEA).
 - [OAC 5101:2-17-03 rating process (LII)](https://www.law.cornell.edu/regulations/ohio/Ohio-Admin-Code-5101-2-17-03)
 - [DCY — Step Up To Quality](https://childrenandyouth.ohio.gov/for-providers/step-up-to-quality/step-up-to-quality)
 - [DCY — Publicly Funded Child Care (PFCC)](https://childrenandyouth.ohio.gov/for-providers/resources/pfcc)
+
+---
+
+## Срок хранения записей CACFP — из нормы (внесено 2026-07-31)
+
+**Норма:** 7 CFR 226.10(d), «Program payment procedures».
+**Источник:** [eCFR, 7 CFR 226.10](https://www.ecfr.gov/current/title-7/subtitle-B/chapter-II/subchapter-A/part-226/subpart-C/section-226.10) — прочитано 31.07.2026.
+
+**Дословно:**
+
+> All records to support the claim shall be retained for a period of three years after the date
+> of submission of the final claim for the fiscal year to which they pertain, except that if audit
+> findings have not been resolved, the records shall be retained beyond the end of the three year
+> period as long as may be required for the resolution of the issues raised by the audit. All
+> accounts and records pertaining to the Program shall be made available, upon request, to
+> representatives of the State agency, of the Department, and of the U.S. Government Accountability
+> Office for audit or review, at a reasonable time and place.
+
+**Дата вступления и история правок** (примечание к разделу):
+47 FR 36527, **20.08.1982** — исходная редакция; далее правки 49 FR 18988 (04.05.1984) · 50 FR 26975
+(01.07.1985) · 53 FR 52590 (28.12.1988) · 55 FR 1378 (14.01.1990) · 62 FR 23618 (01.05.1997) ·
+69 FR 53543 (01.09.2004) · 70 FR 43261 (27.07.2005) · 71 FR 39519 (13.07.2006) · 72 FR 41607
+(31.07.2007) · 75 FR 16327 (01.04.2010) · 76 FR 22798 (25.04.2011) · 76 FR 34571 (13.06.2011) ·
+81 FR 66492 (28.09.2016) · **88 FR 57855, 23.08.2023 — последняя**.
+
+### Что из этого следует для нас — три вещи, и ни одна не «три года от даты листа»
+
+1. **Отсчёт идёт НЕ от даты документа, а от даты подачи ПОСЛЕДНЕГО клейма за фискальный год.**
+   Лист недели 29.06.2026 хранится не до июня 2029, а три года от подачи финального клейма за
+   FY2026 — то есть срок у всех документов года **общий и сдвигается вместе с подачей**.
+2. **Аудит продлевает срок без верхней границы.** «Три года» — минимум, а не правило: при
+   неразрешённых замечаниях хранение длится столько, сколько нужно для их разрешения. Значит
+   автоматическое удаление по таймеру строить **нельзя** — оно уничтожит документ, который обязаны
+   предъявить.
+3. **Обязанность не только хранить, но и ПРЕДЪЯВИТЬ** «upon request… at a reasonable time and
+   place». Это прямое основание требования владельца «отчёт и его бумага достаются одним
+   движением»: хранение без быстрой выдачи нормы не исполняет.
+
+⚠️ **Мы сегодня не можем назвать дату начала отсчёта:** `monthly_claims` пуста, факт подачи ни
+одного месяца не записан. Срок хранения **вычислить не из чего** — ровно тот же пробел, что у
+нижней границы период-эффективного правила и у заморозки поданного месяца. Все три закрываются
+одной записью: **подача месяца сохраняет снимок**.

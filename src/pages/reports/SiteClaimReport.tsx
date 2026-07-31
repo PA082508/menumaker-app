@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { format } from "date-fns";
 import { useOrg } from "@/contexts/OrgContext";
+import { useAuth } from "@/hooks/useAuth";
 import { parseIeaFiscalYear } from "@/lib/enrollmentApprove";
 import { claimFromRpc, classroomsMatchTotals } from "@/lib/claimFromRpc";
 import { loadWeekApprovalProgress } from "@/lib/weekApprovalProgress";
@@ -49,7 +50,8 @@ interface Rate { slot:string; category:string; rate:number; }
 type Tab = "claim"|"recap"|"costs";
 
 export default function SiteClaimReport() {
-  const { currentCenter } = useOrg();
+  const { currentCenter, org } = useOrg();
+  const { user } = useAuth();
   const centerId = currentCenter?.id ?? '';
   const now = new Date();
   const [tab,     setTab]     = useState<Tab>("claim");
@@ -215,6 +217,27 @@ export default function SiteClaimReport() {
 
   useEffect(()=>{loadData();},[loadData]);
 
+  // ЖУРНАЛ ПЕЧАТИ (владелец, 31.07). Клеймовый документ уходит наружу бумагой, и до
+  // сегодня печать не оставляла следа НИГДЕ — поэтому на вопрос «печатался ли отчёт с
+  // чужой шапкой с 17.06 по 31.07» изнутри ответить нечем. Пишем: кто · что · когда ·
+  // по какому центру, и ЧТО СТОЯЛО В ШАПКЕ в момент печати.
+  // Журнал — свидетельство, не гейт: печать не блокируется никогда. Но и молча не
+  // теряется: если запись не легла, человек видит это словами.
+  async function printClaim(){
+    if(data && org?.id){
+      const { error } = await supabase.schema("menumaker").from("claim_print_log").insert({
+        org_id: org.id, center_id: data.center_id,
+        document: tab==="claim" ? "site_claim_report" : tab==="recap" ? "claim_recap" : "cost_details",
+        claim_year: year, claim_month: month,
+        center_name_shown: data.center_name, site_number_shown: data.site_number,
+        printed_by: user?.id ?? null,
+        printed_by_name: (user?.user_metadata?.full_name as string) || user?.email?.split("@")[0] || null,
+      });
+      if(error) setMsg(`Printed, but the print was NOT recorded in the log — ${error.message}`);
+    }
+    window.print();
+  }
+
   async function saveManual(){
     if(!data) return; setSaving(true);
     const r = calcRecap();
@@ -363,7 +386,7 @@ export default function SiteClaimReport() {
             </button>
           </>)}
           {isClosed&&<button onClick={reopen} style={{...BTN_SEC,borderColor:"#dc3545",color:"#dc3545"}}>🔓 Reopen</button>}
-          <button onClick={()=>window.print()} style={BTN_PRI}>🖨️ Print</button>
+          <button onClick={printClaim} style={BTN_PRI}>🖨️ Print</button>
         </div>
       </div>
 

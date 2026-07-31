@@ -22,6 +22,8 @@
 //   §1  показ «Фамилия Имя», собран из first/last ростера по roster_id
 //   §2a возрастные полосы, старшие первыми; внутри полосы — по фамилии
 //   spec §8 п.7  правило кружка: показано ВСЁ поданное, исключённое обведено
+//   spec §16       кружок = ФАКТ замыкания недели; на рабочем экране его нет.
+//                  Инвариант: кружков за день = «всего − к заявке», иначе лист не выпускается
 //   spec §8 п.9  счёт по правилу возмещения — одна логика с клеймом
 //   «рабочие данные из окон»  на бланке нет ни одного нашего текста
 //
@@ -174,9 +176,16 @@ function sheet(page) {
   const slotHeads = DAYS.map((_, i) =>
     SLOTS.map((s, j) => `<th class="sh${!j && i ? ' sep' : ''}${holOn(i) ? ' hol' : ''}">${s.k}</th>`).join('')).join('')
 
+  // ⭐ ИНВАРИАНТ КРУЖКА (канон владельца, 31.07): число кружков за день ОБЯЗАНО
+  // равняться «дневной итог − дневное к заявке». 29 − 27 = два кружка. Не сходится —
+  // лист НЕ ВЫПУСКАЕТСЯ: расхождение означает, что бумага показывает одно исключение,
+  // а счёт делает другое, и это худший вид расхождения (§8 п.9).
+  const circles = DAYS.map(() => 0)
+
   const bodyRows = kids.map((k, i) => {
     const cells = DAYS.map((_, d) => {
       const ex = excludedOn(k.m, d)
+      for (const s of ex) if (mark(k.m, d, s)) circles[d] += 1
       return SLOTS.map((_, s) => {
         const on = mark(k.m, d, s)
         const glyph = on ? (ex.has(s) ? '<span class="ex">×</span>' : '×') : ''
@@ -198,6 +207,16 @@ function sheet(page) {
 
   const pageBox = SLOTS.map((s, i) =>
     `<div class="bx"><span class="bxk">${s.t}</span><span class="bxv">${weekBySlot[i]}</span></div>`).join('')
+
+  for (let d = 0; d < DAYS.length; d++) {
+    const expected = dayAll[d] - dayClaim[d]
+    if (circles[d] !== expected) {
+      throw new Error(
+        `ЛИСТ НЕ ВЫПУЩЕН — инвариант кружка нарушен. ${page.room} · ${page.week} · ${DAYS[d]}: ` +
+        `кружков ${circles[d]}, а «всего − к заявке» = ${dayAll[d]} − ${dayClaim[d]} = ${expected}. ` +
+        `Бумага показала бы не то исключение, которое считает заявка.`)
+    }
+  }
 
   return `<section class="sheet">
   <div class="ttl">CHILDREN'S MEAL COUNT BY INDIVIDUAL NAME</div>

@@ -283,3 +283,35 @@ Pearl**. Для Ridge и Highland Heights заявка получает `license
 раздел «Замер комплекта к 15 октября». Коротко: **три текущих лицензии с файлами из девяти
 ожидаемых**, у Highland Heights **нет ни одной строки**, актов инспекций в системе **нет
 ни одного**, `menumaker.documents` **пуста**.
+
+---
+
+## Source: 7 CFR 226 — кому положен возмещаемый приём в детском компоненте (сверено 2026-07-31)
+
+**Способ проверки:** дословные цитаты, снятые 31.07.2026 с Cornell LII (`law.cornell.edu/cfr/text/7/226.2`,
+`.../226.17`). eCFR в этот день отдавал редирект на страницу разблокировки и процитирован не был.
+
+### provision → reflection → status
+
+| Норма | Дословно | Как отражено у нас | Статус |
+|---|---|---|---|
+| **§226.2 «Children»** | *«Persons age 12 and under; Persons age 15 and under who are children of migrant workers; Persons with disabilities as defined in this section; For emergency shelters, persons age 18 and under; and For at-risk afterschool care centers, persons age 18 and under at the start of the school year.»* | возраст выводится из `birthday`; **порога «12 и младше» в счёте НЕТ** | ⚪ **Gap** |
+| **§226.2 «Enrolled child»** | *«A child whose parent or guardian has submitted to an institution a signed document which indicates that the child is enrolled for child care.»* | зачисление = строка ростера + подписанная форма; проверки «есть ли подпись» счёт не делает | 🟡 Partial |
+| **§226.17(b)(3)** | *«Reimbursement must not be claimed for more than two meals and one snack or one meal and two snacks provided daily to each child.»* | **это и есть правило кружка**: `compute_monthly_claim` снимает завтрак при ланче и ужине, PM при AM, вечерний при AM/PM | ✅ Built (31.07) |
+| **§226.17(b)(9)** | *«Each child care center must maintain daily records of time of service meal counts by type (breakfast, lunch, supper, and snacks) served to enrolled children, **and to adults performing labor necessary to the food service**.»* | псевдоклассы «Staff Room»/«Staff» (`is_roster=false`) — раздельный учёт есть; но **10 взрослых имеют отметки в ДЕТСКИХ комнатах**, и счёт их не отделяет | 🔴 **Gap, claim-facing** |
+
+### Что следует ПРЯМО, и где граница доказанного
+
+**Доказано текстом:** возмещение считается «to each **child**», а «child» — 12 лет и младше
+(до 18 в at-risk/emergency); приёмы взрослых, работающих на пищевом сервисе, ведутся
+**ОТДЕЛЬНОЙ записью** по (b)(9). Отсюда: **взрослый приём в детском компоненте не является
+заявляемым**, иначе раздельный учёт (b)(9) не имел бы смысла.
+
+⚠️ **НЕ доказано цитатой и потому не утверждается как норма:** формулировка «питание
+взрослого персонала — допустимый ОПЕРАЦИОННЫЙ расход». В тексте §226.17 её нет; она живёт в
+инструкциях FNS и в стоимостных правилах (§226.15 / 2 CFR 200), которые на 31.07 **не
+сверены**. Понадобится опереться на неё в деньгах — сверять отдельно и датировать.
+
+**Цена вопроса замерена:** июль 2026, Highland Heights — **221 возмещаемый приём десяти
+взрослых, $779.14**, все по ставкам **Free**. Разбор — в
+[плане 31.07c](plans/2026-07-31c-frp-carrier-and-claim-surfaces.md), раздел 20.

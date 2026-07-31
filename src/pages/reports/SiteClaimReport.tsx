@@ -155,6 +155,12 @@ export default function SiteClaimReport() {
       .select("id,name,sort_order,is_roster").eq("is_active",true).eq("center_id",centerId).order("sort_order");
     const {data:allRecs}=await supabase.schema("menumaker").from("meal_week_records")
       .select("*").eq("center_id",centerId).in("monday_date",mondays);
+    // ПОДПИСЬ ДИРЕКТОРА — НЕ УСЛОВИЕ СЧЁТА (решение владельца, 31.07). Отчёт
+    // считает ПО ДАННЫМ, как дашборд; `approved` остаётся ТОЛЬКО для плитки
+    // прогресса, которая информационная, а не гейт. Прежний фильтр по
+    // director_approved и есть источник нулей Highland: центр, где директор не
+    // подписывал, давал пустое множество и честный ноль в клеймовом отчёте,
+    // тогда как дашборд той же фильтрации не делал. Спека §14 решение 2.
     const approved=(allRecs||[]).filter(r=>r.status==="director_approved");
     // Non-roster pseudo-classes (e.g. Staff, is_roster=false) are excluded from the
     // approval-progress denominator and the per-class claim breakdown.
@@ -167,7 +173,7 @@ export default function SiteClaimReport() {
       clsMap[cls.id]={id:cls.id,name:cls.name,days_of_op:0,slots:{b:0,as:0,l:0,ps:0,su:0,es:0},ada:0,total:0};
     }
     const clsDays:Record<string,Set<string>>={};
-    for(const rec of approved){
+    for(const rec of allRecs||[]){
       const cls=clsMap[rec.classroom_id]; if(!cls) continue;
       if(!clsDays[rec.classroom_id]) clsDays[rec.classroom_id]=new Set();
       const monday=new Date(rec.monday_date+"T12:00:00");
@@ -375,7 +381,12 @@ export default function SiteClaimReport() {
           <div style={{background:"#e0e0e0",borderRadius:4,height:8}}>
             <div style={{background:progressPct===100?"#0f4c35":"#e6a817",width:`${progressPct}%`,height:8,borderRadius:4,transition:"width .3s"}}/>
           </div>
-          {progressPct<100&&<div style={{fontSize:".75rem",color:"#856404",marginTop:4}}>⚠️ Some weeks not yet approved — figures may be incomplete</div>}
+          {/* Плитка ИНФОРМАЦИОННАЯ, не гейт (владелец, 31.07). Прежний текст
+              «figures may be incomplete» стал ложным в тот же момент, когда
+              отчёт перестал фильтровать по подписи: цифры считаются по данным
+              независимо от подписи, а неподписанная неделя означает ровно одно —
+              её ещё не заморозили. */}
+          {progressPct<100&&<div style={{fontSize:".75rem",color:"#856404",marginTop:4}}>ℹ️ Some week-classes are not signed yet — the figures below are counted from the data either way; signing freezes the week and files its PDF</div>}
         </div>
       )}
 

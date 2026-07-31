@@ -454,7 +454,10 @@ function AddClassroomInline({ centerId, orgId, sortOrder, onAdded }: {
 
 // ─── PART 2: holidays & short days ────────────────────────────────────────────
 interface HolRow { id: string; center_id: string; year: number; month: number; day: number; name: string; type: string; close_time: string | null }
-interface HolGroup { key: string; name: string; year: number; month: number; day: number; type: string; close_time: string | null; centerIds: string[] }
+// ids — идентичность группы. Название праздника человек правит («Independence Day»
+// → «Independence Day (Observed)»), поэтому по названию НЕ ищут и НЕ удаляют:
+// канон «идентичность не на человекочитаемом поле», platform-standards 31.07.
+interface HolGroup { key: string; ids: string[]; name: string; year: number; month: number; day: number; type: string; close_time: string | null; centerIds: string[] }
 
 const pad = (n: number) => String(n).padStart(2, '0')
 
@@ -478,15 +481,21 @@ function HolidaysSection() {
   const byKey: Record<string, HolGroup> = {}
   for (const r of rows) {
     const key = `${r.year}-${r.month}-${r.day}-${r.name}-${r.type}`
-    if (!byKey[key]) { byKey[key] = { key, name: r.name, year: r.year, month: r.month, day: r.day, type: r.type, close_time: r.close_time, centerIds: [] }; groups.push(byKey[key]) }
+    if (!byKey[key]) { byKey[key] = { key, ids: [], name: r.name, year: r.year, month: r.month, day: r.day, type: r.type, close_time: r.close_time, centerIds: [] }; groups.push(byKey[key]) }
+    byKey[key].ids.push(r.id)
     byKey[key].centerIds.push(r.center_id)
   }
 
   const remove = async (g: HolGroup) => {
     if (!org?.id || !confirm(`Delete "${g.name}" (${g.month}/${g.day}/${g.year}) for all centers?`)) return
     setBusy(true)
+    // По id, не по названию. Прежний вариант удалял по (org + дата + название) и
+    // сносил ЗАОДНО соседнюю группу: список группирует по названию И ТИПУ, а
+    // удаление тип не спрашивало. Один центр закрыт на 4 июля целиком, другой
+    // работает до обеда — в списке это две строки, а удаление одной уносило обе.
+    // Сегодня таких дат в базе нет (проверено 31.07) — закрываем до случая.
     await supabase.schema('menumaker').from('holidays').delete()
-      .eq('org_id', org.id).eq('year', g.year).eq('month', g.month).eq('day', g.day).eq('name', g.name)
+      .eq('org_id', org.id).in('id', g.ids)
     setBusy(false); load()
   }
 
@@ -549,9 +558,11 @@ function HolidayForm({ group, centers, orgId, busy, setBusy, onDone, onCancel }:
     setBusy(true)
     try {
       // Replace strategy: delete the old holiday (if editing) then insert per selected center.
+      // Удаляем по id строк группы. По названию нельзя: его правят именно здесь —
+      // переименование через эту же форму искало бы строки по новому написанию.
       if (group) {
         await supabase.schema('menumaker').from('holidays').delete()
-          .eq('org_id', orgId).eq('year', group.year).eq('month', group.month).eq('day', group.day).eq('name', group.name)
+          .eq('org_id', orgId).in('id', group.ids)
       }
       const rows = centerIds.map(cid => ({
         org_id: orgId, center_id: cid, year: y, month: m, day: d, name: name.trim(),

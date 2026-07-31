@@ -98,12 +98,29 @@ export default function SiteClaimReport() {
     return ()=>{cancelled=true;};
   },[centerId]);
 
-  // Load rates once
+  // Rates are PERIOD-EFFECTIVE: the newest effective_date on or before the first day of
+  // the claim month, exactly as compute_monthly_claim resolves them. Reloaded whenever the
+  // month changes — a claim for June must not be priced with July's rates.
+  //
+  // 🔴 2026-07-30: this used to load the whole table with no effective_date filter and no
+  // tiebreak. It happened to work only because cacfp_rates held a single year; the moment
+  // FY2026-27 was added, `rates.find(slot,category)` had two candidates and would have
+  // priced some months at the wrong year's rate, silently.
   useEffect(()=>{
-    supabase.schema("menumaker").from("cacfp_rates")
-      .select("slot,category,rate").order("slot").order("category")
-      .then(({data:r})=>{ if(r) setRates(r as Rate[]); });
-  },[]);
+    const monthStart = `${year}-${String(month).padStart(2,"0")}-01`;
+    let cancelled = false;
+    (async()=>{
+      const {data,error} = await supabase.schema("menumaker").from("cacfp_rates")
+        .select("effective_date,slot,category,rate").lte("effective_date", monthStart);
+      if(cancelled) return;
+      if(error){ setRates([]); setMsg(`CACFP rates could not be read — ${error.message}`); return; }
+      const all = (data??[]) as (Rate&{effective_date:string})[];
+      if(all.length===0){ setRates([]); setMsg(`No CACFP rates are on file effective on or before ${monthStart}.`); return; }
+      const eff = all.reduce((mx,r)=>r.effective_date>mx?r.effective_date:mx, all[0].effective_date);
+      setRates(all.filter(r=>r.effective_date===eff));
+    })();
+    return ()=>{ cancelled = true; };
+  },[year,month]);
 
   const loadData = useCallback(async()=>{
     setLoading(true); setMsg(null);

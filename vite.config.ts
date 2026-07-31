@@ -30,6 +30,18 @@ export default defineConfig({
       workbox: {
         // Precache the built shell so the app opens with zero network.
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+        // 🔴 2026-07-30: the build had been FAILING on this. Workbox refuses to precache
+        // a file over 2 MiB by default and then throws, so `npm run build` exited 1 and
+        // no deploy could succeed. The main bundle had simply grown past the line
+        // (2.1 MB) through ordinary feature work — no single commit caused it.
+        //
+        // Raising the limit RESTORES the previous behaviour rather than changing intent:
+        // that bundle IS the app shell this whole block exists to precache. Excluding it
+        // instead would have kept the build green while quietly breaking the promise in
+        // the comment above — a center loses WiFi and the meal-count screen no longer
+        // opens. Headroom to 4 MiB so ordinary growth does not break the build again;
+        // when it approaches that, the answer is code-splitting, not a bigger number.
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         // Deep links (e.g. /meal-count) resolve to the SPA shell when offline…
         navigateFallback: '/index.html',
         // …but never hijack Supabase / API calls as navigations.

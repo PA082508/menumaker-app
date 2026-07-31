@@ -5,8 +5,16 @@
 // For each accessible center we call the existing RPC
 //   menumaker.compute_monthly_claim(p_center_id, p_month)
 // and read meals_by_category[slot] = { free, reduced, paid, total }.
-// Subtotals use the hardcoded FY2025-2026 rates below (NOT the RPC's own
-// reimbursement total) — this is an estimate/preview.
+//
+// RATES COME FROM menumaker.cacfp_rates AND ARE NEVER HARDCODED HERE. Resolution is
+// the same period-effective rule the RPC itself uses:
+//   effective_date = max(effective_date <= first day of the claim month)
+// so June keeps computing on last year's rates while July computes on this year's.
+//
+// 2026-07-30: this page used to carry its own constants 1.70 / 3.22 / 0.96. Those are
+// the DAY CARE HOME Tier I rates for the CURRENT year — the wrong PROGRAM TYPE, not a
+// stale year. A center claim page must never carry day-care-home money. The one source
+// of truth is the table; that is the whole point of the table.
 //
 // Tabs: "All Centers" (consolidated = summed meals) + one tab per center.
 // Print / Export PDF via window.print() (print CSS isolates the report card).
@@ -16,24 +24,26 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
 
-// ─── Hardcoded rates (FY2025-2026) ─────────────────────────────────────────────
+// ─── Rates: read per claim month from menumaker.cacfp_rates ───────────────────
 type RateSet = { f: number; r: number; p: number }
-const RATES: Record<string, RateSet> = {
-  breakfast: { f: 1.70, r: 1.40, p: 0.30 },
-  lunch:     { f: 3.22, r: 2.82, p: 0.56 },
-  snack:     { f: 0.96, r: 0.48, p: 0.07 },
-  supper:    { f: 3.22, r: 2.82, p: 0.56 },
-}
+type RateBook = { rates: Record<string, RateSet>; cil: number; effectiveDate: string | null }
+const NO_RATE: RateSet = { f: 0, r: 0, p: 0 }
+const EMPTY_BOOK: RateBook = { rates: {}, cil: 0, effectiveDate: null }
 
-// slot key (from RPC) → display label + which rate set applies
-const SLOTS: { key: string; label: string; rate: keyof typeof RATES }[] = [
-  { key: 'breakfast',     label: 'Breakfast',     rate: 'breakfast' },
-  { key: 'am_snack',      label: 'AM Snack',      rate: 'snack' },
-  { key: 'lunch',         label: 'Lunch',         rate: 'lunch' },
-  { key: 'pm_snack',      label: 'PM Snack',      rate: 'snack' },
-  { key: 'supper',        label: 'Supper',        rate: 'supper' },
-  { key: 'evening_snack', label: 'Evening Snack', rate: 'snack' },
+// slot keys exactly as they arrive from the RPC and as they are stored in cacfp_rates
+const SLOTS: { key: string; label: string }[] = [
+  { key: 'breakfast',     label: 'Breakfast' },
+  { key: 'am_snack',      label: 'AM Snack' },
+  { key: 'lunch',         label: 'Lunch' },
+  { key: 'pm_snack',      label: 'PM Snack' },
+  { key: 'supper',        label: 'Supper' },
+  { key: 'evening_snack', label: 'Evening Snack' },
 ]
+
+// Cash-in-lieu of USDA Foods is paid per LUNCH and per SUPPER only. cil_calc in the RPC
+// reads the single row (slot='lunch', category='cil') and multiplies lunch+supper by it —
+// mirrored here so the two totals below are comparable.
+const CIL_SLOTS = new Set(['lunch', 'supper'])
 
 // ─── Types for the slice of the RPC payload we read ────────────────────────────
 type MealCat = { free: number; reduced: number; paid: number; total: number }
@@ -74,13 +84,42 @@ function mergeMeals(results: ClaimResult[]): Record<string, MealCat> {
   return out
 }
 
-function buildRows(mbc: Record<string, MealCat> | undefined): SlotRow[] {
+function buildRows(mbc: Record<string, MealCat> | undefined, book: RateBook): SlotRow[] {
   return SLOTS.map(s => {
     const m = mbc?.[s.key] ?? emptyCat()
-    const rate = RATES[s.rate]
+    const rate = book.rates[s.key] ?? NO_RATE
     const subtotal = (m.free || 0) * rate.f + (m.reduced || 0) * rate.r + (m.paid || 0) * rate.p
     return { key: s.key, label: s.label, rate, served: m.total || 0, free: m.free || 0, reduced: m.reduced || 0, paid: m.paid || 0, subtotal }
   })
+}
+
+/** Period-effective rate book for a claim month: the newest effective_date on or before
+ *  it, exactly as compute_monthly_claim resolves it. Throws with words if nothing is on
+ *  file — a preview showing $0 because the rates were never entered would read as "no
+ *  money earned", which is the class of silent lie we keep paying for. */
+async function loadRateBook(p_month: string): Promise<RateBook> {
+  const { data, error } = await supabase.schema('menumaker')
+    .from('cacfp_rates').select('effective_date,slot,category,rate')
+    .lte('effective_date', p_month)
+  if (error) throw new Error(`CACFP rates could not be read — ${error.message}`)
+  const rows = (data ?? []) as { effective_date: string; slot: string; category: string; rate: number | string }[]
+  if (rows.length === 0)
+    throw new Error(`No CACFP rates are on file effective on or before ${p_month}. Enter the year's rates before previewing.`)
+
+  const eff = rows.reduce((mx, r) => (r.effective_date > mx ? r.effective_date : mx), rows[0].effective_date)
+  const current = rows.filter(r => r.effective_date === eff)
+
+  const rates: Record<string, RateSet> = {}
+  for (const r of current) {
+    if (r.category === 'cil') continue
+    const s = rates[r.slot] ?? { ...NO_RATE }
+    if (r.category === 'free') s.f = Number(r.rate)
+    else if (r.category === 'reduced') s.r = Number(r.rate)
+    else if (r.category === 'paid') s.p = Number(r.rate)
+    rates[r.slot] = s
+  }
+  const cil = Number(current.find(r => r.slot === 'lunch' && r.category === 'cil')?.rate ?? 0)
+  return { rates, cil, effectiveDate: eff }
 }
 
 // ─── Styles ─────────────────────────────────────────────────────────────────────
@@ -108,6 +147,7 @@ export default function ReimbursementPreview() {
   const [month, setMonth]     = useState<string>(monthValue(new Date()))
   const [tab, setTab]         = useState<string>('all')  // 'all' or a center id
   const [results, setResults] = useState<Record<string, ClaimResult | null>>({})
+  const [book, setBook]       = useState<RateBook>(EMPTY_BOOK)
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
 
@@ -117,15 +157,18 @@ export default function ReimbursementPreview() {
     setError('')
     const p_month = `${month}-01`
     try {
+      const rateBook = await loadRateBook(p_month)
       const entries = await Promise.all(list.map(async c => {
         const { data, error: e } = await supabase.schema('menumaker')
           .rpc('compute_monthly_claim', { p_center_id: c.id, p_month }) as any
         if (e) throw new Error(`${c.name}: ${e.message}`)
         return [c.id, (data as ClaimResult) ?? null] as const
       }))
+      setBook(rateBook)
       setResults(Object.fromEntries(entries))
     } catch (e: any) {
       setError(e?.message ?? String(e))
+      setBook(EMPTY_BOOK)
       setResults({})
     } finally {
       setLoading(false)
@@ -138,17 +181,24 @@ export default function ReimbursementPreview() {
   const mbc = tab === 'all'
     ? mergeMeals(list.map(c => results[c.id]).filter(Boolean) as ClaimResult[])
     : results[tab]?.meals_by_category
-  const rows = buildRows(mbc).filter(r => r.served > 0)
+  const rows = buildRows(mbc, book).filter(r => r.served > 0)
 
   const totals = rows.reduce(
     (a, r) => ({ served: a.served + r.served, free: a.free + r.free, reduced: a.reduced + r.reduced, paid: a.paid + r.paid, subtotal: a.subtotal + r.subtotal }),
     { served: 0, free: 0, reduced: 0, paid: 0, subtotal: 0 },
   )
 
-  // RPC's own reimbursement.total (includes CIL + stored rates) for the active tab
+  // Cash-in-lieu of USDA Foods — per lunch and per supper, at the same period-effective rate.
+  const cilMeals  = rows.filter(r => CIL_SLOTS.has(r.key)).reduce((n, r) => n + r.served, 0)
+  const cilAmount = cilMeals * book.cil
+  const estimated = totals.subtotal + cilAmount
+
+  // RPC's own reimbursement.total for the active tab. Now that both sides read the SAME
+  // table, the two must agree; a gap is a finding, not a footnote.
   const rpcTotal = tab === 'all'
     ? list.reduce((sum, c) => sum + (results[c.id]?.reimbursement?.total ?? 0), 0)
     : (results[tab]?.reimbursement?.total ?? 0)
+  const gap = Math.abs(estimated - rpcTotal)
 
   const activeName = tab === 'all' ? 'All Centers (Consolidated)' : (list.find(c => c.id === tab)?.name ?? 'Center')
   const monthLabel = new Date(month + '-01T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
@@ -268,8 +318,8 @@ export default function ReimbursementPreview() {
           <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end', gap: 14, flexWrap: 'wrap' }}>
             <div style={{ minWidth: 220, padding: '14px 18px', borderRadius: 12, background: '#f4fdf7', border: '1px solid #bbf7d0' }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#0f4c35', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Estimated</div>
-              <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>rate × meal counts</div>
-              <div style={{ fontSize: 26, fontWeight: 700, color: '#0f4c35', fontFamily: "'DM Serif Display', serif" }}>{usd(totals.subtotal)}</div>
+              <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>meals {usd(totals.subtotal)} + cash-in-lieu {usd(cilAmount)}</div>
+              <div style={{ fontSize: 26, fontWeight: 700, color: '#0f4c35', fontFamily: "'DM Serif Display', serif" }}>{usd(estimated)}</div>
             </div>
             <div style={{ minWidth: 220, padding: '14px 18px', borderRadius: 12, background: '#eff6ff', border: '1px solid #bfdbfe' }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#1e40af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>RPC Total</div>
@@ -279,15 +329,24 @@ export default function ReimbursementPreview() {
           </div>
         )}
 
+        {rows.length > 0 && gap > 0.01 && (
+          <div style={{ marginTop: 12, background: '#fdf6ec', border: '1px solid #f0d9b5', color: '#8a5a12',
+                        padding: '10px 14px', borderRadius: 10, fontSize: 12.5, maxWidth: 720 }}>
+            ⚠️ Estimated and RPC Total differ by {usd(gap)}. Both now read the same rate table, so they
+            are expected to match — investigate before submitting.
+          </div>
+        )}
+
         <div style={{ marginTop: 16, fontSize: 11, color: '#aab4ad', maxWidth: 720, lineHeight: 1.5 }}>
-          <strong style={{ color: '#0f4c35' }}>Estimated</strong> uses recorded meal counts × hardcoded
-          FY2025-2026 federal rates (Breakfast {usd(RATES.breakfast.f)}/{usd(RATES.breakfast.r)}/{usd(RATES.breakfast.p)},
-          Lunch &amp; Supper {usd(RATES.lunch.f)}/{usd(RATES.lunch.r)}/{usd(RATES.lunch.p)},
-          Snack {usd(RATES.snack.f)}/{usd(RATES.snack.r)}/{usd(RATES.snack.p)}).
-          {' '}<strong style={{ color: '#1e40af' }}>RPC Total</strong> is the
-          <code> reimbursement.total</code> returned by <code>compute_monthly_claim</code>, which can
-          differ because it also adds cash-in-lieu (CIL) and may use the rates stored in the database
-          rather than these hardcoded ones. Both are estimates — the state portal determines the final figure.
+          <strong style={{ color: '#0f4c35' }}>Estimated</strong> = recorded meal counts × the federal
+          rates on file in <code>menumaker.cacfp_rates</code>
+          {book.effectiveDate ? <> effective <strong>{book.effectiveDate}</strong></> : null}, plus
+          cash-in-lieu of USDA Foods at {usd(book.cil)} per lunch and supper ({cilMeals.toLocaleString('en-US')} meals).
+          Rates are resolved for the claim month, not for today, so an earlier month keeps computing on
+          the rates that were in force then.
+          {' '}<strong style={{ color: '#1e40af' }}>RPC Total</strong> is
+          <code> reimbursement.total</code> from <code>compute_monthly_claim</code>, which reads the same
+          table. Both are estimates — the state portal determines the final figure.
         </div>
       </div>
     </div>

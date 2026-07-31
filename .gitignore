@@ -3,6 +3,15 @@
 # Local Netlify folder
 .netlify
 
+# Environment values — secrets, never in git. See .env.example for the shape.
+# ⚠️ .env and .env.local are ALREADY TRACKED (committed in 3cd4a1d). This rule stops
+# NEW ones; it does not untrack the existing two — that needs `git rm --cached`, and
+# that step is held until the values are confirmed to live in Vercel project settings,
+# because the production build currently reads them from these very files.
+.env
+.env.*
+!.env.example
+
 # Dependencies & build output (should not be tracked)
 node_modules/
 dist/

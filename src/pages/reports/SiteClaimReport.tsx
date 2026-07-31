@@ -6,12 +6,9 @@ import { supabase } from "@/lib/supabase";
 import { format } from "date-fns";
 import { useOrg } from "@/contexts/OrgContext";
 import { parseIeaFiscalYear } from "@/lib/enrollmentApprove";
-const SLOT_KEYS   = ["b","as","l","ps","su","es"];
+import { claimFromRpc, classroomsMatchTotals } from "@/lib/claimFromRpc";
+import { loadWeekApprovalProgress } from "@/lib/weekApprovalProgress";
 const SLOT_NAMES  = ["breakfast","am_snack","lunch","pm_snack","supper","evening_snack"];
-const DAY_KEYS    = ["mon","tue","wed","thu","fri"];
-const MEAL_SLOTS  = ["b","l","su"];
-const SNACK_SLOTS = ["as","ps","es"];
-const PRIORITY: Record<string,number> = {b:1,as:2,l:3,ps:5,su:4,es:6};
 const MONTHS = ["January","February","March","April","May","June",
                 "July","August","September","October","November","December"];
 const SLOT_LABEL: Record<string,string> = {
@@ -45,14 +42,9 @@ interface ClaimData {
 }
 interface Rate { slot:string; category:string; rate:number; }
 
-function getExcludedSlot(dayVals:Record<string,number>):string|null {
-  const cm=MEAL_SLOTS.filter(s=>dayVals[s]>0);
-  const cs=SNACK_SLOTS.filter(s=>dayVals[s]>0);
-  if(cm.length+cs.length<=3) return null;
-  if(cm.length>2) return cm.sort((a,b)=>PRIORITY[a]-PRIORITY[b])[0];
-  if(cs.length>1) return cs.sort((a,b)=>PRIORITY[a]-PRIORITY[b])[0];
-  return null;
-}
+// ⛔ getExcludedSlot УДАЛЁН 31.07 вместе с клиентским счётчиком. Правило исключения
+// приёмов живёт ТОЛЬКО в menumaker.compute_monthly_claim. Возврат любой арифметики
+// над отметками в этот файл валит гард-тест claimSingleCounter.test.ts.
 
 type Tab = "claim"|"recap"|"costs";
 
@@ -173,66 +165,49 @@ export default function SiteClaimReport() {
     while(d<=new Date(monthEnd.getTime()+7*86400000)){
       mondays.push(format(d,"yyyy-MM-dd")); d=new Date(d.getTime()+7*86400000);
     }
-    const {data:clsRaw}=await supabase.schema("menumaker").from("classrooms")
-      .select("id,name,sort_order,is_roster").eq("is_active",true).eq("center_id",centerId).order("sort_order");
-    const {data:allRecs}=await supabase.schema("menumaker").from("meal_week_records")
-      .select("*").eq("center_id",centerId).in("monday_date",mondays);
-    // ПОДПИСЬ ДИРЕКТОРА — НЕ УСЛОВИЕ СЧЁТА (решение владельца, 31.07). Отчёт
-    // считает ПО ДАННЫМ, как дашборд; `approved` остаётся ТОЛЬКО для плитки
-    // прогресса, которая информационная, а не гейт. Прежний фильтр по
-    // director_approved и есть источник нулей Highland: центр, где директор не
-    // подписывал, давал пустое множество и честный ноль в клеймовом отчёте,
-    // тогда как дашборд той же фильтрации не делал. Спека §14 решение 2.
-    const approved=(allRecs||[]).filter(r=>r.status==="director_approved");
-    // Non-roster pseudo-classes (e.g. Staff, is_roster=false) are excluded from the
-    // approval-progress denominator and the per-class claim breakdown.
-    const rosterClassIds=new Set((clsRaw||[]).filter(c=>c.is_roster!==false).map(c=>c.id));
-    const wTotal=new Set((allRecs||[]).filter(r=>rosterClassIds.has(r.classroom_id)).map(r=>`${r.classroom_id}_${r.monday_date}`)).size;
-    const wApproved=new Set(approved.filter(r=>rosterClassIds.has(r.classroom_id)).map(r=>`${r.classroom_id}_${r.monday_date}`)).size;
-    const clsMap:Record<string,ClassBreakdown>={};
-    for(const cls of clsRaw||[]){
-      if(cls.is_roster===false) continue;
-      clsMap[cls.id]={id:cls.id,name:cls.name,days_of_op:0,slots:{b:0,as:0,l:0,ps:0,su:0,es:0},ada:0,total:0};
+    // ═══ ОДИН СЧЁТЧИК НА ОБА ВЫХОДА ═══
+    // Все цифры заявки приходят из menumaker.compute_monthly_claim — той же
+    // функции, что кормит дашборд и подписанный PDF. Клиентский счётчик по сетке
+    // УДАЛЁН вместе с его правилом исключения: он завышал заявку на днях вида
+    // «Завтрак + Ланч + Ужин, снека нет» (замер 31.07 — Highland 3893 против
+    // 3889 у RPC, четыре дня поимённо). Расхождение теперь не «маловероятно»,
+    // а НЕВОЗМОЖНО: второго правила в коде нет.
+    const monthStart = `${year}-${String(month).padStart(2,"0")}-01`;
+    const [{data:rpc,error:rpcErr}, progress] = await Promise.all([
+      (supabase.schema("menumaker").rpc as any)("compute_monthly_claim",
+        { p_center_id: centerId, p_month: monthStart }),
+      loadWeekApprovalProgress(centerId, mondays),
+    ]);
+    if(rpcErr){
+      // Отказ звучит там, где произошло действие. Пустая форма молча — запрещена.
+      setData(null); setMsg(`Claim figures could not be computed — ${rpcErr.message}`);
+      setComputedAt(null); setLoading(false); return;
     }
-    const clsDays:Record<string,Set<string>>={};
-    for(const rec of allRecs||[]){
-      const cls=clsMap[rec.classroom_id]; if(!cls) continue;
-      if(!clsDays[rec.classroom_id]) clsDays[rec.classroom_id]=new Set();
-      const monday=new Date(rec.monday_date+"T12:00:00");
-      for(const dk of DAY_KEYS){
-        const di=DAY_KEYS.indexOf(dk);
-        const date=new Date(monday.getTime()+di*86400000);
-        if(date.getMonth()+1!==month||date.getFullYear()!==year) continue;
-        const dv:Record<string,number>={};
-        for(const s of SLOT_KEYS) dv[s]=rec[`${dk}_${s}`]??0;
-        const excl=getExcludedSlot(dv);
-        let has=false;
-        for(const s of SLOT_KEYS){ if(dv[s]>0&&s!==excl){cls.slots[s]=(cls.slots[s]||0)+dv[s];has=true;} }
-        if(has) clsDays[rec.classroom_id].add(format(date,"yyyy-MM-dd"));
-      }
-    }
-    let totDays=0,totADA=0,totAtt=0;
-    const totSlots:Record<string,number>={b:0,as:0,l:0,ps:0,su:0,es:0};
-    for(const cls of Object.values(clsMap)){
-      const days=clsDays[cls.id]?.size||0; cls.days_of_op=days;
-      if(days>totDays) totDays=days;
-      const mx=Math.max(...SLOT_KEYS.map(s=>cls.slots[s]||0));
-      cls.ada=days>0?Math.ceil(mx/days):0;
-      cls.total=SLOT_KEYS.reduce((s,k)=>s+(cls.slots[k]||0),0);
-      totADA+=cls.ada; totAtt+=cls.total;
-      for(const s of SLOT_KEYS) totSlots[s]=(totSlots[s]||0)+(cls.slots[s]||0);
+    const n = claimFromRpc(rpc);
+    // Встроенная самопроверка: сумма по комнатам обязана сойтись с итогом приёмов.
+    const check = classroomsMatchTotals(n);
+    if(!check.ok){
+      setMsg(`Per-classroom figures (${check.byClass}) disagree with the month total (${check.total}). ` +
+             `Reported as-is — do not file until this is explained.`);
     }
     const manual=(ec||{}) as any;
     setData({
       ...stamp,
       claim_id:ec?.id, status:"open",
-      days_of_operation:totDays, total_attendance:totAtt, ada:totADA,
-      breakfast:totSlots.b||0, am_snack:totSlots.as||0, lunch:totSlots.l||0,
-      pm_snack:totSlots.ps||0, supper:totSlots.su||0, evening_snack:totSlots.es||0,
-      classrooms:Object.values(clsMap), weeks_approved:wApproved, weeks_total:wTotal,
-      number_of_shifts:manual.number_of_shifts||1, free_category:manual.free_category||0,
-      reduced_category:manual.reduced_category||0, paid_category:manual.paid_category||0,
-      license_capacity:manual.license_capacity||center?.license_capacity||158, notes:manual.notes||"",
+      days_of_operation:n.days_of_operation, total_attendance:n.total_attendance, ada:n.ada,
+      breakfast:n.breakfast, am_snack:n.am_snack, lunch:n.lunch,
+      pm_snack:n.pm_snack, supper:n.supper, evening_snack:n.evening_snack,
+      classrooms:n.classrooms, weeks_approved:progress.approved, weeks_total:progress.total,
+      number_of_shifts:manual.number_of_shifts||1,
+      // Категории F/R/P — тоже из RPC: они считаются по roster_id и period-effective
+      // сроку, чего клиент не умел никогда. Ручная правка сохраняется в monthly_claims
+      // и перекрывает расчёт только там, где человек её сделал.
+      free_category:manual.free_category??n.free_category,
+      reduced_category:manual.reduced_category??n.reduced_category,
+      paid_category:manual.paid_category??n.paid_category,
+      license_capacity:manual.license_capacity||n.license_capacity||center?.license_capacity||0,
+      notes:manual.notes||"",
+      reimbursement:n.reimbursement,
     });
     setComputedAt(new Date());
     setLoading(false);

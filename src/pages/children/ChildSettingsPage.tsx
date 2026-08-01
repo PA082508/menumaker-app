@@ -370,8 +370,18 @@ export default function ChildSettingsPage({
     // F/R/P нормализуется ДО диффа (одна заглавная буква), и просроченная дата
     // для F/R подставляется по правилу CACFP — ровно как это делал прежний путь.
     const frpNorm = (child?.frp ?? '').trim().toUpperCase().slice(0, 1) || null
+    // 🔴 БАЗА СРОКА — ДАТА ДОКУМЕНТА, А НЕ СЕГОДНЯ (правка 01.08).
+    // Канон 22.07: 12 месяцев от подписи домохозяйства, до конца месяца. Дверь IEA
+    // Review это исполняет (`frpExpiryDefault(formAsOf(submission) ?? today, …)`), а
+    // здесь стояло `todayStr` — то есть срок отсчитывался от дня ВВОДА.
+    // Пока бумагу вносят в том же месяце, разницы в деньгах нет: клейм сравнивает
+    // `frp_expires >= m_start`, и любой день внутри месяца даёт месяц целиком.
+    // Но бумагу, подписанную в ИЮНЕ и внесённую в АВГУСТЕ, это растягивало на два
+    // лишних месяца — переклайм в тех месяцах, и ровно тот, что аудит уже находил.
+    // `prov.documentDate` — то самое поле «дата документа», которое директор здесь
+    // и заполняет; для устного источника его нет, и тогда честно остаётся день ввода.
     const expiresNorm = (frpNorm === 'F' || frpNorm === 'R')
-      ? (child?.frp_expires || frpExpiryDefault(todayStr, null))
+      ? (child?.frp_expires || frpExpiryDefault(prov.documentDate || todayStr, null))
       : child?.frp_expires ?? null
 
     const current: Record<string, any> = {

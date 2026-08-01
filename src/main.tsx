@@ -1,15 +1,19 @@
 import '@tabler/icons-webfont/dist/tabler-icons.css'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { registerSW } from 'virtual:pwa-register'
 import App from './App'
 import './index.css'
 import { startMealMarkAutoSync } from '@/lib/mealMarkQueue'
+import { startAppUpdateWatch } from '@/lib/appUpdate'
 
-// Register the service worker (precached shell + Web Push). autoUpdate: a new
-// build activates on next load without a prompt. `immediate` registers even
-// before React hydrates so an offline reload always has the shell available.
-registerSW({ immediate: true })
+// Register the service worker (precached shell + Web Push) AND start watching for a
+// newer build. autoUpdate activates a new build on next load without a prompt —
+// but the browser only looks for one when the page registers, and a tablet left open
+// in a classroom never re-registers. That is how Ridge stayed on a pre-10.07 bundle
+// for weeks. startAppUpdateWatch owns the registration now so it can poll
+// registration.update(), and cross-checks the served build against the running one.
+// See src/lib/appUpdate.ts.
+startAppUpdateWatch()
 
 // Build marker for deploy checks: read `window.__build` (commit sha) in the console to
 // confirm which build is live and rule out a stale cache.

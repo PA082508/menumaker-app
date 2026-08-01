@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
 import { OrgProvider } from '@/contexts/OrgContext'
 import AppLayout from '@/components/layout/AppLayout'
+import AppUpdateBanner from '@/components/AppUpdateBanner'
 import LoginPage from '@/pages/LoginPage'
 import DashboardPage from '@/pages/dashboard/DashboardPage'
 import RecipesPage from '@/pages/recipes/RecipesPage'
@@ -126,6 +127,10 @@ const queryClient = new QueryClient({
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      {/* Выше маршрутов нарочно: поварской экран, родительская дверь и планшет у входа
+          должны увидеть «приложение устарело» одинаково — устаревает клиент целиком,
+          а не отдельная страница. Ничего не рисует, пока версии совпадают. */}
+      <AppUpdateBanner />
       <AuthProvider>
         <OrgProvider>
         <BrowserRouter>

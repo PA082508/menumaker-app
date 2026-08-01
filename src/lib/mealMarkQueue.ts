@@ -64,17 +64,75 @@ const store = localforage.createInstance({
   description: 'Offline meal-count marks awaiting sync',
 })
 
-// Stable per-device id (for the audit log), persisted best-effort.
+// ─── Личность устройства ─────────────────────────────────────────────────────
+// Журнал точки обслуживания не знает ни пользователя, ни роли — в строке есть ТОЛЬКО
+// `device_id`. На нём держится весь разбор «кто отмечает задним числом»: сверочная станция
+// отличается от классного планшета исключительно по нему. Значит id обязан быть живучим
+// ровно настолько, насколько живуча сама очередь, — иначе одно и то же устройство однажды
+// вернётся новым, и месяц наблюдений разъедется на два.
+//
+// Раньше id жил в `localStorage` и при заблокированном хранилище (WebView, приватный режим)
+// молча становился `'unknown'` — то есть ВСЕ такие устройства сливались в одну «личность».
+// Теперь он лежит в том же IndexedDB, что очередь, а `localStorage` остаётся зеркалом.
+//
+// ⚠️ УТОЧНЕНИЕ К ФОРМУЛИРОВКЕ ПЛАНА 31.07d §19.3. Там сказано «iOS чистит localStorage
+// установленного PWA» — как будто IndexedDB чистится иначе. Это неточно: WebKit удаляет
+// всё скриптовое хранилище ОДНИМ пакетом (localStorage, IndexedDB, Cache Storage,
+// регистрации SW), а исключение даёт не выбор хранилища, а установка приложения на
+// домашний экран. Переносом id в IndexedDB мы НЕ покупаем защиту от вытеснения. Мы
+// покупаем две вещи, обе настоящие:
+//   1. id переживает недоступный localStorage вместо схлопывания в 'unknown';
+//   2. id вытесняется ВМЕСТЕ с очередью, а не отдельно от неё — исчезает состояние
+//      «отметки на месте, а устройство уже другое», в котором данные врут связно.
+// Проверка на живом iPad — часть человеческой пробы, машиной это не подтверждается.
+
+const deviceStore = localforage.createInstance({
+  name: 'menumaker',
+  storeName: 'device',
+  description: 'Stable device identity for the point-of-service log',
+})
+
+const DEVICE_KEY = 'menumaker_device_id'
+
 let DEVICE_ID = 'unknown'
-try {
-  const k = 'menumaker_device_id'
-  let v = localStorage.getItem(k)
-  if (!v) {
-    v = genUuid()
-    localStorage.setItem(k, v)
-  }
-  DEVICE_ID = v
-} catch { /* localStorage may be blocked (iOS WebView) — audit device_id stays 'unknown' */ }
+let deviceIdReady: Promise<string> | null = null
+
+function readMirror(): string | null {
+  try { return localStorage.getItem(DEVICE_KEY) } catch { return null }
+}
+function writeMirror(v: string): void {
+  try { localStorage.setItem(DEVICE_KEY, v) } catch { /* заблокировано — зеркала просто нет */ }
+}
+
+/**
+ * Разрешить личность устройства: IndexedDB → зеркало в localStorage → выдать новую.
+ *
+ * Порядок нарочный. IndexedDB старше по праву: зеркало заполняется ИЗ него, поэтому
+ * расхождение двух значений означает, что переписали зеркало, а не хранилище. Для
+ * устройств, работавших до этой правки, первый же запуск переносит id из localStorage в
+ * IndexedDB — старая личность НЕ теряется, история отметок не разрывается.
+ */
+export function ensureDeviceId(): Promise<string> {
+  if (deviceIdReady) return deviceIdReady
+  deviceIdReady = (async () => {
+    let id: string | null = null
+    try { id = await deviceStore.getItem<string>(DEVICE_KEY) } catch { /* IDB закрыт */ }
+
+    const mirrored = readMirror()
+    if (!id && mirrored) id = mirrored      // перенос с устройств, работавших до правки
+    if (!id) id = genUuid()
+
+    try { await deviceStore.setItem(DEVICE_KEY, id) } catch { /* останется хотя бы зеркало */ }
+    if (mirrored !== id) writeMirror(id)
+
+    DEVICE_ID = id
+    return id
+  })()
+  return deviceIdReady
+}
+
+/** Разрешённый id для диагностики. До первого `ensureDeviceId()` — 'unknown'. */
+export function getDeviceId(): string { return DEVICE_ID }
 
 function genUuid(): string {
   try {
@@ -157,6 +215,10 @@ export interface EnqueueInput {
  */
 export async function enqueueMark(input: EnqueueInput): Promise<void> {
   await hydrate()
+  // Личность устройства читается из IndexedDB, поэтому она асинхронна. Ждём ЗДЕСЬ, до
+  // сборки записи: отметка без device_id обесценивает журнал точки обслуживания ровно так
+  // же, как отметка без времени тапа.
+  const device_id = await ensureDeviceId()
   const now = new Date().toISOString()
   const key = cellKey(input.classroom_id, input.child_name, input.monday_date, input.col)
   const item: QueuedMark = {
@@ -173,7 +235,7 @@ export async function enqueueMark(input: EnqueueInput): Promise<void> {
     value: input.value,
     marked_at: input.marked_at ?? now,
     queued_at: now,
-    device_id: DEVICE_ID,
+    device_id,
     app_version: typeof __BUILD_ID__ === 'string' ? __BUILD_ID__ : 'unknown',
     attempts: 0,
   }
@@ -287,6 +349,9 @@ export function startMealMarkAutoSync(): void {
   if (autoSyncStarted) return
   autoSyncStarted = true
   void hydrate()
+  // Разрешить личность заранее, а не в момент первого тапа: перенос из localStorage в
+  // IndexedDB должен произойти на спокойном старте, а не под пальцем у повара.
+  void ensureDeviceId()
   if (typeof window !== 'undefined') {
     window.addEventListener('online', () => {
       backoffMs = 0

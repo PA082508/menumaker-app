@@ -1110,12 +1110,35 @@ function EditChildPanel({ child, classrooms, onDone }: {
 
 // ─── Add Child Modal ──────────────────────────────────────────────────────────
 
+// ⚠️ ДВЕРЬ B — БЫСТРОЕ ДОБАВЛЕНИЕ. ЗДЕСЬ КАТЕГОРИЯ ВСЕГДА `P` (вариант «б», слово 01.08).
+//
+// ПОЧЕМУ. Эта модалка пишет `roster.frp` ПРЯМОЙ вставкой в ростер и НЕ пишет носитель
+// `income_eligibility` — в отличие от двери A (IEA Review / Approve), которая зовёт
+// `recordDetermination`. Заявку считает НОСИТЕЛЬ. Значит выбранная здесь `F` попадала на
+// экран и в карточку, но в деньги — нет: замер 31.07 нашёл 21 ребёнка, который числится
+// Free, а июль считает его Paid. Хуже того, полем стояло умолчание `frp: 'F'` — то есть
+// директор, ничего не трогавший, получал Free по одному нажатию «Add Child».
+//
+// ЧТО СДЕЛАНО. Выбор F/R с этой двери убран совсем, а не «оставлен с предупреждением»:
+// предупреждение не мешает нажать, а цена нажатия — расхождение витрины с заявкой, то есть
+// ровно то, что мы весь этот заход и вычищаем. Категория здесь одна — `P`, и это НЕ
+// суждение о ребёнке, а честное «определения ещё не было».
+//
+// ЧЕГО ЭТО СТОИТ, СКАЗАНО ВСЛУХ. Директору с бумагой на руках придётся зайти вторым
+// заходом — в карточку ребёнка / IEA Review, где определение пишется вместе с носителем.
+// Это осознанная цена варианта «б»: вариант «а» (Quick Add пишет носитель сам, ≈1.5 дня)
+// поставлен следующим заходом со своим read-back.
+//
+// ⛔ НЕ возвращать сюда `<option value="F">` без носителя. Гард:
+//    src/pages/children/quickAddPaidOnly.guard.test.ts
+const QUICK_ADD_FRP = 'P' as const
+
 function AddChildModal({ centerId, orgId, classrooms, onDone, onClose }: {
   centerId: string; orgId: string; classrooms: Classroom[]; onDone: (child: Child) => void; onClose: () => void
 }) {
   const [form, setForm] = useState({
     first_name: '', last_name: '', birthday: '', classroom_id: '',
-    date_in: new Date().toISOString().slice(0,10), frp: 'F'
+    date_in: new Date().toISOString().slice(0,10),
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -1158,7 +1181,7 @@ function AddChildModal({ centerId, orgId, classrooms, onDone, onClose }: {
         classroom_id: form.classroom_id,
         first_name: form.first_name, last_name: form.last_name,
         child_name, birthday: form.birthday,
-        date_in: form.date_in, frp: form.frp,
+        date_in: form.date_in, frp: QUICK_ADD_FRP,
         is_active: true,
         // Unknown, not a column default — this panel asks neither question.
         // (See rosterKey.ts / the 2026-07-28 survey: DEFAULT true had the system
@@ -1222,11 +1245,19 @@ function AddChildModal({ centerId, orgId, classrooms, onDone, onClose }: {
           </div>
           <div>
             <label style={lbl}>Meal Status (FRP)</label>
-            <select style={inp} value={form.frp} onChange={e=>set('frp',e.target.value)}>
-              <option value="F">Free</option>
-              <option value="R">Reduced</option>
-              <option value="P">Paid</option>
-            </select>
+            <div style={{
+              padding:'10px 12px', borderRadius:8, border:'1.5px solid #e5e7eb',
+              background:'#f9fafb', fontSize:14, color:'#374151', fontWeight:600,
+            }}>
+              Paid (P)
+            </div>
+            <div style={{ fontSize:11.5, color:'#6b7280', marginTop:6, lineHeight:1.5 }}>
+              Quick Add always files a child as <strong>Paid</strong> — this door records no
+              income determination, and a category shown here without one would not be counted
+              in the claim.{' '}
+              <strong>Free or Reduced is set on the child's card</strong>, with the document and
+              its date, after the income eligibility application is reviewed.
+            </div>
           </div>
           {error && <div style={{ color:'#dc2626', fontSize:13 }}>{error}</div>}
           <div style={{ display:'flex', gap:10, marginTop:4 }}>

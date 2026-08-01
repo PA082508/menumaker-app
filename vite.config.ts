@@ -10,9 +10,31 @@ const buildId =
   process.env.BUILD_ID ||
   'dev'
 
+// Публикует исполняемую сборку отдельным СЕТЕВЫМ файлом, чтобы клиент мог сверить,
+// что он исполняет, с тем, что сервер отдаёт (src/lib/appUpdate.ts, дорога 2).
+// Именно json: workbox прекэширует только js/css/html/ico/png/svg/woff (globPatterns
+// ниже), поэтому /version.json гарантированно идёт в сеть, а не из кэша. Файл, лежащий
+// в precache, для этой сверки был бы бесполезен — он сравнивал бы кэш сам с собой.
+const versionManifest = () => ({
+  name: 'menumaker-version-manifest',
+  apply: 'build' as const,
+  generateBundle(this: { emitFile: (f: { type: 'asset'; fileName: string; source: string }) => void }) {
+    this.emitFile({
+      type: 'asset',
+      fileName: 'version.json',
+      source: JSON.stringify({
+        build: buildId,
+        sha: process.env.VERCEL_GIT_COMMIT_SHA ?? 'dev',
+        built_at: new Date().toISOString(),
+      }),
+    })
+  },
+})
+
 export default defineConfig({
   plugins: [
     react(),
+    versionManifest(),
     // ── PWA / offline shell ────────────────────────────────────────────────
     // Why: one center loses WiFi for a full day and teachers still need to mark
     // meal counts. The generated service worker precaches the app shell so the

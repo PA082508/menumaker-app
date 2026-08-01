@@ -102,11 +102,21 @@ comment on table menumaker.meal_week_records_merged is
 -- ── 2. Кто выживает: РОСТЕРНОЕ НАПИСАНИЕ ПЕРВЫМ ──────────────────────────────
 -- Группы, где ростерного написания нет НИ У ОДНОЙ строки, исключаются целиком:
 -- за них решает человек, а не правило.
+-- ⏸ ОТЛОЖЕННЫЕ ДЕТИ — слово владельца 01.08: «схлопывание без Izabella, её случай ждёт».
+-- Список ЯВНЫЙ, а не выведенный из разрешимости: после правки ростера её группы стали бы
+-- разрешимыми и файл схлопнул бы их молча, вопреки слову. Пропуск обязан быть решением,
+-- а не побочным эффектом.
+--
+-- ⚠️ Групп у неё ДВЕ, а не одна (06.07 и 13.07) — значит схлопывается 22 группы, не 23.
+create temporary table _held on commit drop as
+select unnest(array['7c3af8ad-f421-4767-b701-59ec08296c8c']::uuid[]) as roster_id;
+
 create temporary table _split on commit drop as
 with grp as (
   select m.classroom_id, m.roster_id, m.monday_date
   from menumaker.meal_week_records m
   where m.roster_id is not null
+    and m.roster_id not in (select roster_id from _held)   -- ⏸ отложены по слову
   group by 1,2,3 having count(*) > 1
 ),
 rows_in as (

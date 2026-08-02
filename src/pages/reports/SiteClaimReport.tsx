@@ -514,7 +514,19 @@ export default function SiteClaimReport() {
                   <td style={TC}>{data.lunch}</td><td style={TC}>{data.pm_snack||""}</td>
                   <td style={TC}>{data.supper||""}</td><td style={TC}>{data.evening_snack||""}</td>
                   <td style={{...TC,color:"#1a5276"}}>{data.ada}</td>
-                  <td style={TC}>{data.total_attendance}</td>
+                  {/* Нижняя клетка столбца Total — СУММА ПРИЁМОВ МЕСЯЦА, не C2.
+                      Раньше здесь стояло data.total_attendance, а это C1×C3
+                      (22×67=1474 у Highland за июль) — величина посещаемости,
+                      которой в столбце приёмов не место. По образцу владельца
+                      (октябрь) смысл клетки — «Total meals for payment»: сумма
+                      приёмных колонок этой же строки, она же сумма Total по
+                      строкам классов. Выражение то же, что в
+                      classroomsMatchTotals(), которым страница себя и проверяет.
+                      C2 = C1×C3 остаётся наверху формы и не дублируется здесь. */}
+                  <td style={TC}>
+                    <div>{data.breakfast+data.am_snack+data.lunch+data.pm_snack+data.supper+data.evening_snack}</div>
+                    <div style={{fontWeight:"normal",fontSize:"7pt",color:"#555"}}>Total meals</div>
+                  </td>
                 </tr>
               </tbody>
             </table>

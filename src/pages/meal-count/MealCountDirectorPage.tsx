@@ -720,13 +720,21 @@ function DirectorMode({ isApproved, onApprove, ...gridProps }: Parameters<typeof
         <span className="mc-director-hint">Edit checkboxes if needed, then approve.</span>
       </div>
 
-      <WeekGrid {...gridProps} readOnly={isApproved} />
+      {/* DISABLED by owner 2026-08-02, until further notice.
+          Signature lock: an approved week's checkboxes were read-only. Removing the
+          lock is the owner's instruction of 02.08 and applies to every centre,
+          Alpha/Highland included. The line is kept, not deleted — restoring the lock
+          means deleting the unlocked line below and un-commenting this one.
+          Original: <WeekGrid {...gridProps} readOnly={isApproved} /> */}
+      <WeekGrid {...gridProps} />
 
       {/* Approve panel */}
       <div className="mc-approve-panel">
+        {/* The approved-state notice STAYS (it is a warning, not a lock). Only the
+            clause asserting a lock is corrected, because the lock is off. */}
         {isApproved ? (
           <div className="mc-approved-msg">
-            ✅ Week approved — data is locked for reporting.
+            ✅ Week approved — editing stays open by owner's instruction of 02.08.
           </div>
         ) : (
           <>

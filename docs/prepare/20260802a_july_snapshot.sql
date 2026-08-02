@@ -26,15 +26,17 @@
 begin;
 
 -- ── 0. ГАРД: не переписывать уже взятый снимок ───────────────────────────────
+-- Вложенный IF, а не `A and B`: PL/pgSQL планирует всё выражение целиком, и при
+-- первом прогоне (таблицы ещё нет) ссылка на неё роняет гард раньше проверки.
 do $$
 begin
-  if exists (select 1 from information_schema.tables
-              where table_schema='menumaker' and table_name='meal_week_snapshots')
-     and exists (select 1 from menumaker.meal_week_snapshots where label = 'pre-20260731a-july') then
-    raise exception using
-      errcode = 'raise_exception',
-      message = '20260802a ОСТАНОВЛЕН: снимок «pre-20260731a-july» уже взят.',
-      hint    = 'Снимок forward-only. Нужен новый — дай ему новый ярлык.';
+  if to_regclass('menumaker.meal_week_snapshots') is not null then
+    if exists (select 1 from menumaker.meal_week_snapshots where label = 'pre-20260731a-july') then
+      raise exception using
+        errcode = 'raise_exception',
+        message = '20260802a ОСТАНОВЛЕН: снимок «pre-20260731a-july» уже взят.',
+        hint    = 'Снимок forward-only. Нужен новый — дай ему новый ярлык.';
+    end if;
   end if;
 end $$;
 
@@ -118,6 +120,16 @@ select src.*, head.id from src cross join head;
 
 commit;
 
+-- ── ДВЕ ТОЧКИ ЗАМЕРА ─────────────────────────────────────────────────────────
+-- Точка 1 — инвентарь при подготовке файла:
+--     02.08.2026 14:57:49 UTC · 1388 строк · 4682ba46fb6f9a0d95271a5b1ae95947
+-- Точка 2 — контроль непосредственно перед взятием снимка:
+--     02.08.2026 16:17:46 UTC · 1388 строк · 4682ba46fb6f9a0d95271a5b1ae95947
+-- Хеш и число строк СОВПАЛИ: между подготовкой и взятием июль не двигался
+-- (последняя правка июльских строк так и осталась 14:57:49 — те 38 отметок
+-- браузера проверок). Снимок берётся у неподвижного месяца, и это проверено,
+-- а не предположено.
+--
 -- ── ЧИТКА НАЗАД (выполнить отдельно, после commit) ───────────────────────────
 -- Ждём: rows_stored = row_count = 1388, и hash_matches = true.
 -- Число 1388 и хеш 4682ba46fb6f9a0d95271a5b1ae95947 — замер 02.08 14:57:49 UTC;

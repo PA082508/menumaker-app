@@ -2,6 +2,70 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { fmtDateOnly } from "@/lib/dateOnly";
+import {
+  CHIME_VARIANTS, CHIME_VARIANT_KEYS, DEFAULT_VARIANT, isChimeVariant, previewChime,
+  type ChimeVariantKey,
+} from "@/lib/mealChime";
+
+// ─── «Пристегни ремни»: выбор голоса, по центру ──────────────────────────────
+// Прослушивание — это ещё и разблокировка звука на iOS: кнопку жмут пальцем,
+// то есть внутри настоящего жеста, единственного места, где WebKit оживляет
+// AudioContext. Директор, выбравший мелодию, тем самым уже включил звук.
+
+function ChimePicker({ centerId, value, persisted, onPick }: {
+  centerId: string; value: ChimeVariantKey; persisted: boolean;
+  onPick: (v: ChimeVariantKey) => void;
+}) {
+  return (
+    <div style={{marginTop:".8rem",paddingTop:".7rem",borderTop:"1px dashed #e0ebe0"}}>
+      <div style={{fontSize:".78rem",fontWeight:700,color:"#0f4c35",marginBottom:".4rem"}}>
+        🔔 Мелодия начала приёма
+        {!persisted && (
+          <span style={{marginLeft:".5rem",fontWeight:400,color:"#856404",background:"#fff3cd",
+            border:"1px solid #ffe08a",borderRadius:6,padding:".1rem .4rem",fontSize:".7rem"}}>
+            хранится на этом устройстве — колонка в базе ещё не заведена
+          </span>
+        )}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:".4rem"}}>
+        {CHIME_VARIANT_KEYS.map((k) => {
+          const v = CHIME_VARIANTS[k];
+          const on = value === k;
+          return (
+            <div key={k} style={{
+              border:`2px solid ${on ? "#0f4c35" : "#e0e0e0"}`, borderRadius:10, padding:".5rem .6rem",
+              background: on ? "#f4fdf7" : "#fafafa", display:"flex", flexDirection:"column", gap:".35rem",
+            }}>
+              <button onClick={() => onPick(k)} style={{
+                textAlign:"left", background:"transparent", border:"none", cursor:"pointer",
+                fontFamily:"inherit", padding:0, color:"#0a3320",
+              }}>
+                <div style={{fontSize:".8rem",fontWeight:700}}>{on ? "◉" : "○"} {v.label}</div>
+                <div style={{fontSize:".72rem",color:"#666",marginTop:".2rem"}}>
+                  старт: {v.start.notes.join("-")}<br/>
+                  напоминание: {v.reminder.notes.join("-")}
+                </div>
+              </button>
+              <div style={{display:"flex",gap:".3rem"}}>
+                <button onClick={() => void previewChime(k, "start")} title={v.start.words} style={{
+                  flex:1,padding:".25rem",borderRadius:6,border:"1px solid #c0d8c0",background:"#fff",
+                  fontSize:".7rem",cursor:"pointer",fontFamily:"inherit",color:"#0f4c35",fontWeight:600,
+                }}>▶ старт</button>
+                <button onClick={() => void previewChime(k, "reminder")} title={v.reminder.words} style={{
+                  flex:1,padding:".25rem",borderRadius:6,border:"1px solid #ddd",background:"#fff",
+                  fontSize:".7rem",cursor:"pointer",fontFamily:"inherit",color:"#666",
+                }}>▶ напом.</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{marginTop:".35rem",fontSize:".7rem",color:"#888"}}>
+        Закрытие окна — один низкий сигнал (D4→A3) во всех вариантах. Центр: {centerId.slice(0, 8)}…
+      </div>
+    </div>
+  );
+}
 
 interface MealCountConfig {
   center_id: string;
@@ -33,6 +97,12 @@ export default function MealCountSettings() {
   const [saved, setSaved]       = useState<string | null>(null);
   const [loading, setLoading]   = useState(true);
   const [lockModal, setLockModal] = useState<string | null>(null); // center_id
+  // Голос ритуала по центрам. `chimePersisted=false` — колонки в базе ещё нет
+  // (миграция подготовлена, но не применена), выбор живёт на устройстве, и об
+  // этом сказано прямо на экране: «сохранено» поверх несохранённого — та же
+  // ложь экрана, что и молчащий отказ записи.
+  const [chimes, setChimes] = useState<Record<string, ChimeVariantKey>>({});
+  const [chimePersisted, setChimePersisted] = useState(true);
   const [lockForm, setLockForm]   = useState({ approved_by: "", approved_date: new Date().toISOString().slice(0,10), approval_expires: "" });
 
   useEffect(() => {
@@ -47,9 +117,42 @@ export default function MealCountSettings() {
         map[ctr.id] = cfg ?? { center_id: ctr.id, active_slots: ["breakfast","am_snack","lunch","supper"], milk_slots: ["breakfast","lunch","supper"], is_locked: false, approved_slots: null, approved_date: null, approved_by: null, approval_expires: null };
       }
       setConfigs(map);
+
+      // Голоса читаются ОТДЕЛЬНЫМ запросом: PostgREST отбивает весь select на
+      // одну неизвестную колонку, и попроси мы chime_variant вместе с остальными,
+      // до миграции пустым остался бы ВЕСЬ экран настроек, а не одна строка.
+      const { data: cv, error: cvErr } = await supabase.schema("menumaker")
+        .from("meal_count_settings").select("center_id,chime_variant");
+      const picks: Record<string, ChimeVariantKey> = {};
+      if (cvErr) {
+        setChimePersisted(false);
+        for (const ctr of ctrs ?? []) {
+          const local = (() => { try { return localStorage.getItem(`mm_chime_${ctr.id}`) } catch { return null } })();
+          picks[ctr.id] = isChimeVariant(local) ? local : DEFAULT_VARIANT;
+        }
+      } else {
+        for (const row of (cv ?? []) as { center_id: string; chime_variant: string | null }[]) {
+          if (isChimeVariant(row.chime_variant)) picks[row.center_id] = row.chime_variant;
+        }
+      }
+      setChimes(picks);
       setLoading(false);
     })();
   }, []);
+
+  async function pickChime(centerId: string, v: ChimeVariantKey) {
+    setChimes(prev => ({ ...prev, [centerId]: v }));
+    void previewChime(v, "start");   // выбрал — сразу слышно, и звук разблокирован
+    try { localStorage.setItem(`mm_chime_${centerId}`, v) } catch { /* нестрашно */ }
+    if (!chimePersisted) return;     // колонки нет — писать в базу нечего
+    setSaving(centerId);
+    const { error } = await supabase.schema("menumaker").from("meal_count_settings")
+      .upsert({ center_id: centerId, chime_variant: v }, { onConflict: "center_id" });
+    setSaving(null);
+    if (error) { setChimePersisted(false); return; }   // сказали правду вместо «✓ Saved»
+    setSaved(centerId);
+    setTimeout(() => setSaved(null), 1500);
+  }
 
   async function toggleSlot(centerId: string, slotKey: string) {
     const cfg = configs[centerId];
@@ -198,6 +301,14 @@ export default function MealCountSettings() {
                 );
               })}
             </div>
+
+            {/* «Пристегни ремни» — голос центра */}
+            <ChimePicker
+              centerId={ctr.id}
+              value={chimes[ctr.id] ?? DEFAULT_VARIANT}
+              persisted={chimePersisted}
+              onPick={(v) => pickChime(ctr.id, v)}
+            />
 
             {/* Stats */}
             <div style={{marginTop:".6rem",fontSize:".75rem",color:"#666"}}>

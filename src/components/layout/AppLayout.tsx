@@ -38,7 +38,7 @@ const ROLE_COLORS: Record<string, string> = {
 type SubItem = { path: string; label: string; icon: string }
 type Section = { id: string; label: string; icon: string; noFlyout?: boolean; items?: SubItem[] }
 
-const SECTIONS: Section[] = [
+export const SECTIONS: Section[] = [
   {
     id: 'dashboard', label: 'Dashboard', icon: '⊞', noFlyout: true,
   },
@@ -136,20 +136,30 @@ const SECTIONS: Section[] = [
 // ── director desktop: curated section set ─────────────────────
 // The director works inside the existing MenuMaker app. Their sidebar is limited
 // to what they own: Director Home · Meal Count · Menu (VIEW ONLY — Current Menu +
-// official print, NO planner) · Children · Enrollment Inbox · Staff · Documents.
-// Budget / Reports / Policies / Settings are hidden. Admin and office_manager
-// keep the full sidebar (this filter never touches them).
+// official print, NO planner) · Children · Enrollment Inbox · Staff · Documents ·
+// Reports (ONE page: Attendance Blank, открыта 03.08). Budget / Policies /
+// Settings и остальные отчёты скрыты. Admin and office_manager keep the full
+// sidebar (this filter never touches them).
 //
 // Menu is view-only by design: the planner (/menu) is omitted here, blocked for
 // directors at the route level (see MenuPlannerPage), AND enforced in the DB —
 // RLS strips 'director' from the menu_cycles/menu_items/holidays write policies,
 // so a director cannot fire a planner mutation even outside the UI.
-const DIRECTOR_SECTION_IDS = new Set(['dashboard', 'operations', 'planning', 'people', 'documents'])
-const DIRECTOR_PATHS = new Set([
+export const DIRECTOR_SECTION_IDS = new Set(['dashboard', 'operations', 'planning', 'people', 'documents', 'reports'])
+export const DIRECTOR_PATHS = new Set([
   '/meal-count-director',                            // Operations → Director door (their own; cook has /meal-count)
   '/menu/current',                                   // Planning → Current Menu ONLY (no /menu planner)
   '/children', '/parents', '/staff',                 // People (Inbox/Issue-Packet reached via buttons)
   '/documents', '/instructions', '/document-hub',    // Documents
+  // Reports → Attendance Blank ONLY (03.08, по слову владельца). Директору нужен
+  // бланк недельной посещаемости на печать — тот самый, что проходил проверки.
+  // Раздел Reports открыт ровно на эту страницу: Site Claim, Eligibility Recon,
+  // Meal Count Summary, Time Log, Income Eligibility и Custom Export остаются
+  // скрытыми, потому что фильтр ниже пропускает только пути из этого набора.
+  // Охват страницы — свой центр: она читает currentCenter из OrgContext и
+  // спрашивает classrooms/roster с center_id этого центра, поверх чего стоит RLS.
+  // Админский охват не тронут: directorSections вызывается ТОЛЬКО при role==='director'.
+  '/attendance-blank',
 ])
 // Relabel single-purpose sections so the director's flyouts read clearly and the
 // dashboard reads as their home.
@@ -158,7 +168,7 @@ const DIRECTOR_SECTION_LABELS: Record<string, string> = {
   operations: 'Meal Count',
   planning:   'Menu',
 }
-function directorSections(secs: Section[]): Section[] {
+export function directorSections(secs: Section[]): Section[] {
   return secs
     .filter(s => DIRECTOR_SECTION_IDS.has(s.id))
     .map(s => {

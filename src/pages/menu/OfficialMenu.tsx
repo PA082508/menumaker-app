@@ -204,17 +204,36 @@ export function rotationWeek(monday: Date, cycleStart: string | null, totalWeeks
 }
 
 // Week pages that fall in a given month (эталон spread logic).
+//
+// ⚠️ 03.08.2026 — здесь месяц терял ВСЕ свои недели. Отсчёт начинается с понедельника
+// той недели, в которой лежит 1-е число; если 1-е выпало на СУББОТУ или ВОСКРЕСЕНЬЕ,
+// у этого понедельника все пять будних дней лежат в ПРЕДЫДУЩЕМ месяце. Прежний код
+// делал на нём `break` — и возвращал пустой список: ноль недель на весь месяц.
+// `break` был написан, чтобы остановиться ПОСЛЕ конца месяца, но срабатывал ДО его
+// начала. Так молча опустели август-2026 (1-е — суббота), ноябрь-2026, май-2027,
+// август-2027 — и на живой форме, и в опубликованном снимке, потому что рисует их
+// одна и та же функция.
+//
+// Ведущая неделя именно ПРОПУСКАЕТСЯ, а не показывается: её Пн–Пт — чужой месяц, а
+// 1–2 августа это суббота и воскресенье, которых в сетке Пн–Пт нет вовсе.
+// Предел цикла 7, а не 6: пропущенная ведущая неделя съедает одну итерацию
+// (пропуск + пять недель месяца = шесть), запас оставлен намеренно.
 export function weekPagesFor(year: number, month: number, cycleStart: string | null, totalWeeks: number) {
   const m = month - 1
   const pages: { monday: Date; weekNum: number }[] = []
   let mon = mondayOfWeekWith(new Date(year, m, 1, 12))
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 7; i++) {
     let inMonth = false
     for (let k = 0; k < 5; k++) {
       const d = new Date(mon); d.setDate(mon.getDate() + k)
       if (d.getMonth() === m) { inMonth = true; break }
     }
-    if (!inMonth) break
+    if (!inMonth) {
+      // Месяц уже кончился — выходим. Ещё не начался — шагаем дальше.
+      if (pages.length) break
+      mon = new Date(mon); mon.setDate(mon.getDate() + 7)
+      continue
+    }
     pages.push({ monday: new Date(mon), weekNum: rotationWeek(new Date(mon), cycleStart, totalWeeks) })
     mon = new Date(mon); mon.setDate(mon.getDate() + 7)
   }

@@ -22,6 +22,7 @@
 // stays network-only and never touches this queue.
 
 import localforage from 'localforage'
+import { weekRowKey } from './weekRowKey'
 import { supabase } from '@/lib/supabase'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -50,8 +51,13 @@ export interface QueuedMark {
 }
 
 /** Identity of a single grid cell — repeated taps of the same cell collapse. */
-export function cellKey(classroom_id: string, child_name: string, monday_date: string, col: string) {
-  return `${classroom_id}|${child_name}|${monday_date}|${col}`
+/**
+ * Ключ ячейки очереди. Второй сегмент — ИДЕНТИЧНОСТЬ СТРОКИ (`weekRowKey`), а не имя:
+ * переименование ребёнка не должно расщеплять очередь так же, как оно расщепляло строки
+ * недели. Передавать сюда сырое `child_name` нельзя — только результат `weekRowKey`.
+ */
+export function cellKey(classroom_id: string, rowKey: string, monday_date: string, col: string) {
+  return `${classroom_id}|${rowKey}|${monday_date}|${col}`
 }
 
 // ─── Durable store (IndexedDB) ───────────────────────────────────────────────
@@ -152,6 +158,9 @@ function genUuid(): string {
 
 const pendingKeys = new Set<string>()
 let hasError = false
+// ТЕКСТ последнего отказа, а не только факт. Флага мало: человеку у планшета нужно
+// прочитать, ЧТО именно ответил сервер, — «что-то пошло не так» не лечится ничем.
+let lastError: string | null = null
 let snapshotVersion = 0
 const listeners = new Set<() => void>()
 
@@ -169,6 +178,8 @@ export function subscribe(cb: () => void): () => void {
 export function getVersion() { return snapshotVersion }
 export function getPendingCount() { return pendingKeys.size }
 export function getHasError() { return hasError }
+/** Текст последнего отказа синхронизации (для видимой человеку полосы). */
+export function getLastError() { return lastError }
 /** Read-only membership test for cell rendering. */
 export function isCellPending(key: string) { return pendingKeys.has(key) }
 
@@ -180,8 +191,8 @@ function hydrate(): Promise<void> {
   hydrated = (async () => {
     try {
       await store.iterate<QueuedMark, void>((v) => {
-        if (v && v.attempts > 0 && v.last_error) hasError = true
-        pendingKeys.add(cellKey(v.classroom_id, v.child_name, v.monday_date, v.col))
+        if (v && v.attempts > 0 && v.last_error) { hasError = true; lastError = v.last_error }
+        pendingKeys.add(cellKey(v.classroom_id, weekRowKey(v.roster_id, v.child_name), v.monday_date, v.col))
       })
     } catch (e) {
       console.error('[mealMarkQueue] hydrate failed', e)
@@ -220,7 +231,7 @@ export async function enqueueMark(input: EnqueueInput): Promise<void> {
   // же, как отметка без времени тапа.
   const device_id = await ensureDeviceId()
   const now = new Date().toISOString()
-  const key = cellKey(input.classroom_id, input.child_name, input.monday_date, input.col)
+  const key = cellKey(input.classroom_id, weekRowKey(input.roster_id, input.child_name), input.monday_date, input.col)
   const item: QueuedMark = {
     id: genUuid(),
     center_id: input.center_id,
@@ -284,7 +295,7 @@ export async function drain(): Promise<void> {
     while (true) {
       const batch: Array<{ key: string; item: QueuedMark }> = []
       await store.iterate<QueuedMark, void>((v, k) => { batch.push({ key: k, item: v }) })
-      if (!batch.length) { hasError = false; backoffMs = 0; emit(); break }
+      if (!batch.length) { hasError = false; lastError = null; backoffMs = 0; emit(); break }
 
       const payload = batch.map(({ item }) => ({
         id: item.id,
@@ -310,6 +321,7 @@ export async function drain(): Promise<void> {
         // Keep everything queued; record the error and back off. Never drop.
         console.error('[mealMarkQueue] sync failed', error)
         hasError = true
+        lastError = error.message ?? String(error)
         for (const { key, item } of batch) {
           item.attempts += 1
           item.last_error = error.message ?? String(error)
@@ -327,6 +339,7 @@ export async function drain(): Promise<void> {
         pendingKeys.delete(key)
       }
       hasError = false
+      lastError = null
       backoffMs = 0
       emit()
 
@@ -335,6 +348,7 @@ export async function drain(): Promise<void> {
   } catch (e) {
     console.error('[mealMarkQueue] drain error', e)
     hasError = true
+    lastError = e instanceof Error ? e.message : String(e)
     emit()
     scheduleRetry()
   } finally {

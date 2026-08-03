@@ -19,6 +19,7 @@ import Avatar from "@/components/Avatar";
 import { format, startOfWeek, addDays, isWeekend } from "date-fns";
 import { displayChildName } from "@/lib/childName";
 import { enqueueMark, cellKey } from "@/lib/mealMarkQueue";
+import { weekRowKey, indexWeekRecords } from "@/lib/weekRowKey";
 import { useMealMarkQueue } from "@/hooks/useMealMarkQueue";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -61,10 +62,12 @@ interface MealCountSettings {
 interface WeekRecord {
   id: string;
   child_name: string;
+  /** Идентичность строки недели. Имя рядом — подпись, см. lib/weekRowKey.ts. */
+  roster_id?: string | null;
   status?: string;
   director_initials?: string;
   director_signed_at?: string;
-  [key: string]: string | number | undefined;
+  [key: string]: string | number | null | undefined;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -157,6 +160,12 @@ const ceilCups = (oz: number) => Math.ceil(oz / 8);
 
 // Display name: canonical CACFP "Last First" via shared helper. NOTE: child_name remains
 // the identity/join key into meal_week_records — only the label changes.
+// ИДЕНТИЧНОСТЬ СТРОКИ НЕДЕЛИ. Экран индексирует строки по roster_id, а не по написанию
+// имени: разное написание того же ребёнка — ОДНА строка, а не вторая. Работает в обеих
+// схемах (ключ по имени сегодня, по roster_id после 20260731a) — см. lib/weekRowKey.ts.
+const rowKeyOf = (c: { roster_id?: string | null; child_name: string }) =>
+  weekRowKey(c.roster_id, c.child_name);
+
 const displayName = (c: { last_name?: string | null; first_name?: string | null; child_name: string }) =>
   displayChildName(c);
 
@@ -205,8 +214,13 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
     const today = new Date();
     const dow = today.getDay();
     const mon = mondayOf(today);
-    if (dow === 6) return addDays(mon, 7);
-    if (dow === 0) return addDays(mon, 1);
+    // Выходные показывают СЛЕДУЮЩУЮ неделю. `mondayOf` (weekStartsOn:1) для воскресенья
+    // отдаёт понедельник ПРОШЕДШЕЙ недели, поэтому и субботе, и воскресенью нужен +7.
+    // Было `+1` для воскресенья: 02.08 экран открывал вторник 28.07 как «начало недели»,
+    // и отметка ушла бы с monday_date=2026-07-28 — неделей, которой не существует.
+    // В базе таких строк нет (проверено 02.08: 0 записей с monday_date не в понедельник),
+    // то есть в воскресенье экран пока не открывали. Чинится до того, как открыли.
+    if (dow === 6 || dow === 0) return addDays(mon, 7);
     return mon;
   });
   const [loading, setLoading] = useState(true);
@@ -216,7 +230,10 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
 
   // Offline meal-count queue — badge count, error state, and per-cell "queued"
   // (unsynced) styling. Marks tapped without a network survive here until sync.
-  const { pendingCount, hasError, isCellPending, syncNow } = useMealMarkQueue();
+  const { pendingCount, hasError, lastError, isCellPending, syncNow } = useMealMarkQueue();
+  // Отказ записи, показанный ЧЕЛОВЕКУ. Молчаливый откат галочки — худший из исходов:
+  // повар видит, что отметка «сама снялась», и считает, что промахнулся сам.
+  const [writeErr, setWriteErr] = useState<string | null>(null);
 
   const isStaff = selectedClassName.toLowerCase().includes("staff");
 
@@ -342,14 +359,13 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
         .select("id").eq("classroom_id", selectedClassId)
         .not("date_out", "is", null).lt("date_out", mon);
       const goneIds = new Set((departed ?? []).map((r: any) => r.id));
-      setRoster(((kids ?? []) as Child[]).filter((k) => !goneIds.has((k as any).roster_id)));
+      const kidsHere = ((kids ?? []) as Child[]).filter((k) => !goneIds.has((k as any).roster_id));
+      setRoster(kidsHere);
 
       const { data: recs } = await supabase
         .schema("menumaker").from("meal_week_records")
         .select("*").eq("classroom_id", selectedClassId).eq("monday_date", mon);
-      const map: Record<string, WeekRecord> = {};
-      for (const r of recs ?? []) map[r.child_name] = r;
-      setRecords(map);
+      setRecords(indexWeekRecords((recs ?? []) as WeekRecord[], kidsHere));
       setLoading(false);
     })();
   }, [selectedClassId, weekStart, classrooms]);
@@ -362,14 +378,15 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
   // carries marked_at = now = the CACFP point-of-service time.
   const toggle = useCallback(async (child: Child, day: DayKey, slot: SlotKey) => {
     const col = colName(day, slot);
-    const existing = records[child.child_name];
+    const rk = rowKeyOf(child);
+    const existing = records[rk];
     const current = existing ? (existing[col] as number) : 0;
     const next: 0 | 1 = current ? 0 : 1;
 
     // Optimistic UI (preserve any existing id so director approve/re-sync work).
     setRecords((prev) => ({
       ...prev,
-      [child.child_name]: { ...(prev[child.child_name] ?? { child_name: child.child_name }), [col]: next },
+      [rk]: { ...(prev[rk] ?? { child_name: child.child_name, roster_id: child.roster_id }), [col]: next },
     }));
 
     try {
@@ -382,17 +399,22 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
         monday_date: format(weekStart, "yyyy-MM-dd"),
         day, slot, col, value: next,
       });
-    } catch {
-      // Only reached if IndexedDB itself is unavailable — revert so we never
-      // imply a saved state we couldn't persist.
-      setRecords((prev) => ({ ...prev, [child.child_name]: { ...(prev[child.child_name] ?? {}), [col]: current } }));
+    } catch (e) {
+      // Сюда попадаем, только если недоступен сам IndexedDB. Откатываем клетку —
+      // но НЕ молча: без слов человек решит, что промахнулся, и отметит ещё раз.
+      setRecords((prev) => ({ ...prev, [rk]: { ...(prev[rk] ?? {}), [col]: current } }));
+      setWriteErr(
+        `Отметка НЕ сохранена — ${displayName(child)}, ${day} ${slot}. ` +
+        `${e instanceof Error ? e.message : String(e)}. Отметьте заново; если повторится — скажите офису.`,
+      );
     }
   }, [records, selectedClassId, selectedClassName, weekStart]);
 
   // Is this grid cell still awaiting sync? (drives the "queued" styling.)
   const mondayStr = format(weekStart, "yyyy-MM-dd");
   const isQueued = useCallback(
-    (childName: string, col: string) => isCellPending(cellKey(selectedClassId, childName, mondayStr, col)),
+    (child: { roster_id?: string | null; child_name: string }, col: string) =>
+      isCellPending(cellKey(selectedClassId, rowKeyOf(child), mondayStr, col)),
     [isCellPending, selectedClassId, mondayStr],
   );
 
@@ -438,10 +460,11 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
     const { data: recs } = await supabase
       .schema("menumaker").from("meal_week_records")
       .select("*").eq("classroom_id", selectedClassId).eq("monday_date", mon);
-    const map: Record<string, WeekRecord> = {};
-    for (const r of recs ?? []) map[r.child_name] = r;
-    setRecords(map);
-  }, [records, selectedClassId, weekStart]);
+    // Перечитывание после Approve индексируется ТЕМ ЖЕ ключом, что загрузка недели.
+    // Индексируй здесь по имени — и после подписи экран показал бы другую неделю,
+    // чем до неё, на тех же данных.
+    setRecords(indexWeekRecords((recs ?? []) as WeekRecord[], roster));
+  }, [records, roster, selectedClassId, weekStart]);
 
   // ─── Milk: bucket checked children by milk_label, sum oz ──────────────────
   function milkForSlot(slot: SlotKey, day: DayKey): { buckets: MilkBucket[]; totalCups: number } | null {
@@ -450,7 +473,7 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
     const map: Record<string, number> = {};
     let totalOz = 0;
     for (const child of roster) {
-      if (records[child.child_name]?.[col] !== 1) continue;
+      if (records[rowKeyOf(child)]?.[col] !== 1) continue;
       const oz = child.oz ?? 0;
       if (oz <= 0 || !child.milk_label) continue;
       map[child.milk_label] = (map[child.milk_label] ?? 0) + oz;
@@ -463,7 +486,7 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
   }
 
   function checkedCount(day: DayKey, slot: SlotKey) {
-    return roster.filter((c) => records[c.child_name]?.[colName(day, slot)] === 1).length;
+    return roster.filter((c) => records[rowKeyOf(c)]?.[colName(day, slot)] === 1).length;
   }
 
   function dayTotals(day: DayKey) {
@@ -471,7 +494,7 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
     const active = settings?.active_slots ?? (["breakfast", "am_snack", "lunch", "supper"] as SlotKey[]);
     let total = 0, reimbursable = 0;
     for (const child of roster) {
-      const checked = active.filter((s) => records[child.child_name]?.[colName(day, s)] === 1);
+      const checked = active.filter((s) => records[rowKeyOf(child)]?.[colName(day, s)] === 1);
       total += checked.length;
       reimbursable += reimbursableSlots(checked).size;
     }
@@ -536,7 +559,7 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
     roster.forEach((child, idx) => {                                                     // Rows 5+
       const r: (string | number)[] = [idx + 1, child.child_name];
       DAYS.forEach((day) => EXPORT_SLOTS.forEach((slot) =>
-        r.push(records[child.child_name]?.[colName(day, slot)] === 1 ? "TRUE" : "FALSE")));
+        r.push(records[rowKeyOf(child)]?.[colName(day, slot)] === 1 ? "TRUE" : "FALSE")));
       rows.push(r);
     });
 
@@ -609,6 +632,28 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
           )}
           {isApproved && <span className="mc-approved-badge">✓ Approved</span>}
         </div>
+
+        {/* ВИДИМЫЙ ОТКАЗ. Значок очереди в углу — не сообщение об ошибке: на планшете
+            нет наведения, а значит и подсказки title. Отказ обязан быть читаемым текстом
+            с именем ребёнка и словами сервера. */}
+        {(writeErr || (hasError && lastError)) && (
+          <div className="mc-write-err" role="alert">
+            <span className="mc-write-err-icon">⚠</span>
+            <div className="mc-write-err-body">
+              <b>{writeErr ? "Отметка не сохранена" : "Отметки не уходят на сервер"}</b>
+              <div className="mc-write-err-msg">{writeErr ?? lastError}</div>
+              {!writeErr && (
+                <div className="mc-write-err-note">
+                  Отметки целы на этом планшете и уйдут сами, когда связь вернётся.
+                </div>
+              )}
+            </div>
+            <div className="mc-write-err-actions">
+              {!writeErr && <button type="button" onClick={syncNow}>Повторить</button>}
+              <button type="button" onClick={() => setWriteErr(null)}>Скрыть</button>
+            </div>
+          </div>
+        )}
         {availableModes.length > 1 && (
           <div className="mc-mode-toggle">
             {availableModes.includes("current") && (
@@ -702,7 +747,7 @@ interface GridProps {
   milkForSlot: (s: SlotKey, d: DayKey) => { buckets: MilkBucket[]; totalCups: number } | null;
   weekStart: Date;
   /** True when this cell is queued offline (unsynced). Drives "queued" styling. */
-  isQueued: (childName: string, col: string) => boolean;
+  isQueued: (child: { roster_id?: string | null; child_name: string }, col: string) => boolean;
   isStaff: boolean;
   dayTotals: (d: DayKey) => { total: number; reimbursable: number };
   readOnly?: boolean;
@@ -721,7 +766,7 @@ function CurrentMode({ roster, records, activeSlots, selectedSlot, setSelectedSl
     toggle: (c: Child, d: DayKey, s: SlotKey) => void;
     checkedCount: (d: DayKey, s: SlotKey) => number;
     milkForSlot: (s: SlotKey, d: DayKey) => { buckets: MilkBucket[]; totalCups: number } | null;
-    isQueued: (childName: string, col: string) => boolean; isStaff: boolean;
+    isQueued: (child: { roster_id?: string | null; child_name: string }, col: string) => boolean; isStaff: boolean;
     dayTotals: (d: DayKey) => { total: number; reimbursable: number };
   }) {
   const day = selectedDay;
@@ -769,8 +814,8 @@ function CurrentMode({ roster, records, activeSlots, selectedSlot, setSelectedSl
           <div className="mc-checklist">
             {roster.map((child) => {
               const col = colName(day, selectedSlot);
-              const checked = records[child.child_name]?.[col] === 1;
-              const queued = isQueued(child.child_name, col);
+              const checked = records[rowKeyOf(child)]?.[col] === 1;
+              const queued = isQueued(child, col);
               return (
                 <button key={child.roster_id}
                   className={`mc-check-row ${checked ? "checked" : ""} ${queued ? "queued" : ""}`}
@@ -853,8 +898,8 @@ function WeekGrid({ roster, records, activeSlots, dayBlocked, slotBlocked, block
                 return activeSlots.map((slot) => {
                   const blocked = slotBlocked(day, slot);
                   const col = colName(day, slot);
-                  const checked = records[child.child_name]?.[col] === 1;
-                  const queued = isQueued(child.child_name, col);
+                  const checked = records[rowKeyOf(child)]?.[col] === 1;
+                  const queued = isQueued(child, col);
                   return (
                     <td key={`${day}_${slot}`} title={blocked ? blockLabel(day, slot) ?? "Closed" : undefined}
                       className={`mc-td-cell ${blocked ? "blocked" : ""} ${slot === activeSlots[0] ? "mc-td-day-start" : ""}`}>
@@ -1056,6 +1101,21 @@ const styles = `
 .mc-queue-badge { display:inline-flex; align-items:center; gap:.35rem; font-size:.8rem; font-weight:700; background:#f0a020; color:#3a2600; padding:.25rem .7rem; border-radius:12px; border:none; cursor:pointer; font-family:inherit; }
 .mc-queue-badge .mc-queue-icon { font-size:.85rem; }
 .mc-queue-badge.err { background:#e05a4a; color:#fff; animation:mc-pulse 1.4s ease-in-out infinite; }
+/* ВИДИМЫЙ ОТКАЗ ЗАПИСИ. Полоса во всю ширину шапки (flex-basis:100% при
+   flex-wrap у .mc-header) — на белом, чтобы читалась поверх зелёного, и с
+   кнопками в палец: планшет, наведения нет, консоли нет. */
+.mc-write-err { flex:1 1 100%; display:flex; align-items:flex-start; gap:.6rem; margin:.5rem 0 0;
+  padding:.6rem .8rem; background:#fff; border:2px solid #c0392b; border-left-width:6px;
+  border-radius:10px; color:#7a1f16; text-align:left; }
+.mc-write-err-icon { font-size:1.1rem; line-height:1.3; }
+.mc-write-err-body { flex:1; min-width:0; font-size:.85rem; }
+.mc-write-err-body b { display:block; font-size:.9rem; color:#7a1f16; }
+.mc-write-err-msg { margin-top:.15rem; word-break:break-word; }
+.mc-write-err-note { margin-top:.2rem; color:#5a4a20; }
+.mc-write-err-actions { display:flex; gap:.4rem; flex-shrink:0; }
+.mc-write-err-actions button { padding:.35rem .7rem; font-size:.8rem; font-weight:700;
+  font-family:inherit; border-radius:8px; border:1.5px solid #c0392b; background:#fff;
+  color:#7a1f16; cursor:pointer; }
 /* Per-cell "queued" state — distinct from the solid-green SYNCED check. */
 .mc-check-row.queued { border-color:#f0a020; background:#fff8ec; }
 .mc-check-row.queued.checked { background:#eef7ee; }

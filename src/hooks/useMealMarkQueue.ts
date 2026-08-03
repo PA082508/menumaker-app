@@ -8,7 +8,7 @@
 
 import { useSyncExternalStore } from 'react'
 import {
-  subscribe, getVersion, getPendingCount, getHasError, isCellPending, syncNow,
+  subscribe, getVersion, getPendingCount, getHasError, getLastError, isCellPending, syncNow,
 } from '@/lib/mealMarkQueue'
 
 export function useMealMarkQueue() {
@@ -17,6 +17,8 @@ export function useMealMarkQueue() {
   return {
     pendingCount: getPendingCount(),
     hasError: getHasError(),
+    /** Текст последнего отказа сервера — показывается человеку, а не в консоль. */
+    lastError: getLastError(),
     /** True if this specific grid cell is still awaiting sync. */
     isCellPending,
     /** Manual retry affordance. */

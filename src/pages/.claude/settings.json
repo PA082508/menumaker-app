@@ -72,7 +72,9 @@
       "Bash(grep -nE \"^#{2,3} \" docs/compliance/e-signature.md)",
       "Bash(grep -nE \"^#{1,3} \" docs/instructions/children.md)",
       "Bash(python3 -c \"import sys,json; print\\(json.dumps\\(sys.stdin.read\\(\\)\\)\\)\")",
-      "WebFetch(domain:www.ecfr.gov)"
+      "WebFetch(domain:www.ecfr.gov)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:4173/)",
+      "Bash(SHOTS=/tmp/claude-501/-Users-nikolaykutsenko-Downloads-menumaker-app-src-pages/caf78f11-a498-4bef-bcf7-6ab07399d001/scratchpad/smoke-out node scripts/smoke-rosterkey.mjs)"
     ],
     "additionalDirectories": [
       "/Users/nikolaykutsenko/Downloads",

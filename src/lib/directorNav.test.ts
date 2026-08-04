@@ -48,6 +48,18 @@ describe('боковая панель директора', () => {
     expect(paths('operations')).toEqual(['/meal-count-director'])
   })
 
+  it('People несёт дверь Parent access, и она названа НЕ словом Issue', () => {
+    // Замер 04.08: ссылки на /safepass/issue не было ни в одном меню — директор
+    // не мог начать активацию родителей, не зная адреса наизусть.
+    const people = paths('people')
+    expect(people, 'двери Parent access у директора нет').toContain('/safepass/issue')
+    const item = section('people')!.items!.find(i => i.path === '/safepass/issue')!
+    expect(item.label).toBe('Parent access')
+    // Рядом стоит «Issue Renewal» — продление зачисления. Два пункта на одно
+    // слово в одном меню это неверный тап, поэтому слово занято и повторно не берётся.
+    expect(item.label.toLowerCase()).not.toContain('issue')
+  })
+
   it('фильтр пропускает ровно то, что перечислено в DIRECTOR_PATHS', () => {
     const shown = dir().flatMap(s => (s.items ?? []).map(i => i.path))
     for (const p of shown) expect(DIRECTOR_PATHS.has(p)).toBe(true)

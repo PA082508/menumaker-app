@@ -16,6 +16,7 @@ import ScheduleEditor from '@/components/ScheduleEditor'
 import { useAuth } from '@/hooks/useAuth'
 import { parseIeaFiscalYear, frpExpiryDefault, recordDetermination } from '@/lib/enrollmentApprove'
 import { IEA_DOC_TYPE, PAPER_DOC_TYPE_BY_FIELD, expiryOverrideNote } from '@/lib/ieaOnFile'
+import { ATTACH_SCANS_KEY, readBoolSetting } from '@/lib/appSettings'
 import {
   changedFields, provenanceProblem, writeChildField, loadFieldHistory, loadFieldProvenance,
   loadFieldLocks, lockRefusal,
@@ -155,6 +156,16 @@ export default function ChildSettingsPage({
   // «Бумага в деле» — подтверждение человека, а не догадка программы: только
   // он знает, лежит ли лист в сейфе. По умолчанию снято.
   const [paperInSafe, setPaperInSafe] = useState(false)
+  // Просит ли организация скан. Только подсказка — см. lib/appSettings.ts.
+  const [askForScans, setAskForScans] = useState(false)
+  useEffect(() => {
+    // org берётся у самого ребёнка: карточка открыта по ссылке и знает свою
+    // организацию точнее, чем контекст выбранного центра.
+    if (!child?.org_id) return
+    let off = false
+    readBoolSetting(ATTACH_SCANS_KEY, child.org_id, false).then(v => { if (!off) setAskForScans(v) })
+    return () => { off = true }
+  }, [child?.org_id])
   const [writeResults, setWriteResults] = useState<WriteResult[] | null>(null)
   // Баннер результата стоит НАВЕРХУ вкладки, а кнопка «Save» — в подвале. На
   // Health полей полтора десятка, поэтому ответ экрана оказывался ЗА ПРЕДЕЛАМИ
@@ -706,6 +717,15 @@ export default function ChildSettingsPage({
                 style={{ accentColor:'#0f4c35' }} />
               📄 Paper form is in the safe
             </label>
+          )}
+          {/* МЯГКАЯ ПОДСКАЗКА, А НЕ ТРЕБОВАНИЕ. Настройка организации включена —
+              напоминаем, что скан желателен; выключена — НИ СЛОВА о сканах.
+              Ни в одном положении она не помечает запись неполной и ничего не
+              блокирует: бумага в сейфе полноценна без файла. */}
+          {askForScans && paperInSafe && prov.source !== 'verbal' && (
+            <span style={{ fontSize: 11.5, color: '#6b7280' }}>
+              A scan is welcome later — Documents tab. Nothing is waiting on it.
+            </span>
           )}
           <button type="button" onClick={async () => { setShowHistory(v => !v); if (!showHistory) { try { setHistory(await loadFieldHistory(childId)) } catch { setHistory([]) } } }}
             style={{ marginLeft:'auto', padding:'6px 12px', borderRadius:8, border:'1.5px solid #c0d8c0', background:'#fff', fontSize:12.5, fontFamily:'inherit', cursor:'pointer', color:'#0f4c35', fontWeight:600 }}>

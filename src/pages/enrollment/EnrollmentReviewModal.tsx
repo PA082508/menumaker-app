@@ -19,6 +19,7 @@ import {
   type RosterLite, type ApproveResult,
 } from '@/lib/enrollmentApprove'
 import { deriveMealFields } from '@/lib/ageGroups'
+import { enrollmentDisplayName } from '@/lib/childName'
 import { countersignSlot, loadSample, adoptSample, samplesEnabled, type SignatureSample, type SampleOwner, type SigMethod } from '@/lib/signatureSamples'
 import SignaturePad from '@/components/signing/SignaturePad'
 import { SIGNATURE_METHODS } from '@/lib/signatureMethods'
@@ -314,7 +315,7 @@ export default function EnrollmentReviewModal({
       const dupes = matchRoster(candidates, `${first} ${last}`, birthday)
       if (dupes.length > 0) {
         const m = dupes[0]
-        setDupWarn({ name: m.child_name || `${m.last_name ?? ''} ${m.first_name ?? ''}`.trim(), dob: m.birthday })
+        setDupWarn({ name: enrollmentDisplayName(m), dob: m.birthday })
         return
       }
     }
@@ -974,7 +975,7 @@ export default function EnrollmentReviewModal({
                 {cacfpMatches.map(m => (
                   <label key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                     <input type="radio" name="dupmatch" checked={chosenMatch === m.id} onChange={() => setChosenMatch(m.id)} />
-                    {m.is_active === false ? 'Reactivate' : 'Update'} <strong>{m.child_name || `${m.last_name ?? ''} ${m.first_name ?? ''}`}</strong>
+                    {m.is_active === false ? 'Reactivate' : 'Update'} <strong>{enrollmentDisplayName(m)}</strong>
                     {m.birthday ? <span style={{ color: '#9ca3af' }}>· {String(m.birthday).slice(0, 10)}</span> : null}
                     {m.is_active === false ? <span style={{ color: '#b45309', fontWeight: 600 }}>· inactive</span> : null}
                   </label>
@@ -1308,7 +1309,9 @@ function CountersignField({
 // it to ''. Enter selects the highlighted (else first) filtered row; Esc closes the
 // list. Sorted by last name, then first.
 function childLabel(c: RosterLite): string {
-  const name = c.child_name || `${c.last_name ?? ''} ${c.first_name ?? ''}`.trim() || '(no name)'
+  // Контур зачисления показывает «Имя Фамилия» (владелец 04.08); порядок берётся
+  // из структурных колонок, а не из витринной child_name — у неё разная история.
+  const name = enrollmentDisplayName(c)
   return `${name}${c.birthday ? ` · ${String(c.birthday).slice(0, 10)}` : ''}${c.is_active ? '' : ' · departed'}`
 }
 

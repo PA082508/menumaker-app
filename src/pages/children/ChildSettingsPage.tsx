@@ -17,8 +17,9 @@ import { useAuth } from '@/hooks/useAuth'
 import { parseIeaFiscalYear, frpExpiryDefault, recordDetermination } from '@/lib/enrollmentApprove'
 import { IEA_DOC_TYPE, PAPER_DOC_TYPE_BY_FIELD, expiryOverrideNote } from '@/lib/ieaOnFile'
 import { ATTACH_SCANS_KEY, readBoolSetting } from '@/lib/appSettings'
+import { recordRoomTransfer, transferRefusal } from '@/lib/roomTransfer'
 import {
-  changedFields, provenanceProblem, writeChildField, loadFieldHistory, loadFieldProvenance,
+  changedFields, provenanceProblem, writeChildField, loadFieldHistory, loadFieldProvenance, toText,
   loadFieldLocks, lockRefusal,
   type Provenance, type WriteResult, type FieldEvent, type FieldProvenance, type FieldLock,
 } from '@/lib/childFieldWrite'
@@ -376,6 +377,20 @@ export default function ChildSettingsPage({
       showResults(); return
     }
 
+    // ПЕРЕВОД БЕЗ ДАТЫ ДЕЙСТВИЯ отбивается ДО записи: без неё нельзя сказать,
+    // с какого дня ребёнок в новой комнате, а от этого дня читаются недельные
+    // счёты и ратио. Дата берётся из того же поля, что и документная — здесь
+    // она означает Transfer Date.
+    const roomChanged = toText(child?.classroom_id) !== toText(baseline.roster?.classroom_id)
+    const transferProblem = roomChanged
+      ? transferRefusal(toText(child?.classroom_id), prov.documentDate ?? null)
+      : null
+    if (transferProblem) {
+      setWriteResults([{ fieldKey: 'classroom_id', applied: false, reason: null, oldValue: null,
+                         newValue: null, isVerbal: false, error: transferProblem }])
+      showResults(); return
+    }
+
     const problem = provenanceProblem(prov)
     if (problem) {
       setWriteResults([{ fieldKey: '', applied: false, reason: null, oldValue: null, newValue: null, isVerbal: false, error: problem }])
@@ -485,6 +500,29 @@ export default function ChildSettingsPage({
       } catch (e: any) {
         results.push({ fieldKey: 'frp', applied: true, reason: null, oldValue: null, newValue: frpNorm,
                        isVerbal: false, error: `F/R/P saved to the card, but the determination record was not written: ${e?.message ?? e}` })
+      }
+    }
+
+    // ─── Перевод: строка истории рядом с правкой поля ─────────────────────
+    // Поле хранит ГДЕ ребёнок сейчас; история — С КАКОГО ДНЯ и почему. Без
+    // второго «кто был в Red 15 июля» отвечается только глазами.
+    if (roomChanged && child && prov.documentDate
+        && results.some(r => r.fieldKey === 'classroom_id' && r.applied)) {
+      const err = await recordRoomTransfer({
+        orgId: child.org_id, centerId: child.center_id, rosterId: childId,
+        fromClassroomId: (baseline.roster?.classroom_id as string) ?? null,
+        toClassroomId: child.classroom_id as string,
+        effectiveFrom: prov.documentDate,
+        reason: prov.note || null,
+        enteredBy: user?.id ?? null, enteredByName: who,
+      })
+      // Комната в карточке уже поменялась. Если история не легла — молчать
+      // нельзя: снаружи это выглядит как обычный перевод, а даты действия у него
+      // нет, и через месяц её неоткуда взять.
+      if (err) {
+        results.push({ fieldKey: 'classroom_id', applied: true, reason: null, oldValue: null,
+          newValue: null, isVerbal: true,
+          error: `The room was changed, but the transfer was NOT written to the room history: ${err}` })
       }
     }
 

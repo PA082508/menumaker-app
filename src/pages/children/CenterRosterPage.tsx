@@ -854,13 +854,21 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
           onReactivated={() => { setShowAddRouter(false); loadRoster(true) }}
           onNewEnrollment={() => { setShowAddRouter(false); navigate('/enrollment-inbox') }}
           onScan={() => { setShowAddRouter(false); navigate('/enrollment-inbox') }}
+          // «Manual entry» — прямой завод, МИМО разбора входящих: сабмишена нет,
+          // разбирать нечего, форму никто не подавал. Ребёнок сразу в ростере и в
+          // сетке питания, а следом открывается его полная карточка — все поля,
+          // три уровня замка, провенанс, плашка сейфа и вкладка документов.
           onRawInsert={() => { setShowAddRouter(false); setShowAddChild(true) }}
         />
       )}
       {showPacket && center && (
         <AddChildPacketPanel center={{ id: center.id, name: center.name, slug: center.slug }} onClose={() => setShowPacket(false)} />
       )}
-      {showAddChild && currentCenter && isOrgAdmin && (
+      {/* Дверь ручного завода открыта директору, а не только админу (владелец 04.08):
+          заводить ребёнка с бумагой на столе — его работа. Категория здесь
+          по-прежнему фиксирована на P (гард quickAddPaidOnly): F/R ставится
+          в карточке вместе с носителем и документной датой. */}
+      {showAddChild && currentCenter && (
         <AddChildModal
           centerId={currentCenter.id}
           orgId={org?.id ?? ''}
@@ -868,6 +876,12 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
           onDone={(newChild) => {
             setShowAddChild(false)
             loadRoster(true)                       // refetch in place — stay on this center roster
+            // ПОЛНАЯ КАРТОЧКА ОТКРЫВАЕТСЯ СРАЗУ. Минимум посадил ребёнка в сетку,
+            // но карточка — то место, где живут все остальные поля, три уровня
+            // замка, провенанс, плашка сейфа и документы. Не открыть её здесь
+            // значит оставить ребёнка с одним минимумом и надеяться, что кто-то
+            // вернётся; так и накапливались строки без ничего.
+            setChildSettingsId(newChild.id)
             const roomId = newChild.classroom_id ?? ''
             setExpanded(prev => ({ ...prev, [roomId]: true }))   // Cards: open the child's room
             setHighlightId(newChild.id)                          // flash + scroll the new card
@@ -1136,9 +1150,15 @@ const QUICK_ADD_FRP = 'P' as const
 function AddChildModal({ centerId, orgId, classrooms, onDone, onClose }: {
   centerId: string; orgId: string; classrooms: Classroom[]; onDone: (child: Child) => void; onClose: () => void
 }) {
+  // МИНИМУМ ДЛЯ ПОСАДКИ В СЕТКУ (владелец, 04.08): имя · ДР · комната · date_in ·
+  // тип молока. Категория здесь НЕ спрашивается вовсе — она фиксирована на P и
+  // ставится в карточке вместе с носителем и документной датой (гард
+  // quickAddPaidOnly). Молоко по возрасту выводится само, но выбор оставлен:
+  // у ребёнка бывает замена по медицинской справке, и узнать об этом можно
+  // только от того, кто его заводит.
   const [form, setForm] = useState({
     first_name: '', last_name: '', birthday: '', classroom_id: '',
-    date_in: new Date().toISOString().slice(0,10),
+    date_in: new Date().toISOString().slice(0,10), milk_kind: '',
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -1182,6 +1202,10 @@ function AddChildModal({ centerId, orgId, classrooms, onDone, onClose }: {
         first_name: form.first_name, last_name: form.last_name,
         child_name, birthday: form.birthday,
         date_in: form.date_in, frp: QUICK_ADD_FRP,
+        // Пусто = «выводить по возрасту» (v_meal_grid считает молоко из даты
+        // рождения). Записывать сюда угаданное значение значило бы заморозить
+        // догадку там, где система умеет считать сама.
+        milk_kind: form.milk_kind || null,
         is_active: true,
         // Unknown, not a column default — this panel asks neither question.
         // (See rosterKey.ts / the 2026-07-28 survey: DEFAULT true had the system
@@ -1242,6 +1266,20 @@ function AddChildModal({ centerId, orgId, classrooms, onDone, onClose }: {
           <div>
             <label style={lbl}>Date In</label>
             <input type="date" style={inp} value={form.date_in} onChange={e=>set('date_in',e.target.value)}/>
+          </div>
+          <div>
+            <label style={lbl}>Milk</label>
+            <select style={inp} value={form.milk_kind} onChange={e=>set('milk_kind',e.target.value)}>
+              <option value="">By age (automatic)</option>
+              <option value="whole">Whole</option>
+              <option value="1pct">1%</option>
+              <option value="skim">Skim</option>
+              <option value="fatfree">Fat-free</option>
+            </select>
+            <div style={{ fontSize:11.5, color:'#6b7280', marginTop:6, lineHeight:1.5 }}>
+              Leave on <strong>By age</strong> unless this child has a substitution on file —
+              milk and ounces are worked out from the birthday.
+            </div>
           </div>
           <div>
             <label style={lbl}>Meal Status (FRP)</label>

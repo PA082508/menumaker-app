@@ -29,6 +29,7 @@ import EligibilityReconciliationReport from './pages/reports/EligibilityReconcil
 import SkeletonReconciliationReport from './pages/reports/SkeletonReconciliationReport'
 import AttendanceBlankReport from './pages/reports/AttendanceBlankReport'
 import IssueRenewalPage from './pages/enrollment/IssueRenewalPage'
+import IeaConfirmPage from '@/pages/enrollment/IeaConfirmPage'
 import ReimbursementPreview from './pages/reports/ReimbursementPreview'
 import CACFPChecklistPage from './pages/cacfp-reports/CACFPChecklistPage'
 import SafePassTeacherPage from './pages/safepass/SafePassTeacherPage'
@@ -193,6 +194,8 @@ export default function App() {
               <Route path="issue-packet"       element={<ParentPacketPage />} />
               <Route path="packet-sets"        element={<PacketSetsPage />} />
               <Route path="issue-renewal"      element={<IssueRenewalPage />} />
+              {/* Доход — орг-уровень: страница сама отказывает всем, кроме admin/office_manager. */}
+              <Route path="iea-confirm"        element={<IeaConfirmPage />} />
               <Route path="center/:centerId"   element={<CenterRosterPage />} />
               <Route path="staff"              element={<StaffPage />} />
               <Route path="staff/:staffId/settings" element={<StaffSettingsPage />} />

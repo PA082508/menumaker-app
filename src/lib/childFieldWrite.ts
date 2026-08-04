@@ -171,6 +171,16 @@ export async function loadFieldLocks(): Promise<Record<string, FieldLock>> {
 /** Направление изменения по лестнице выгоды. Чистое — сервер считает так же. */
 export type BenefitDirection = 'increase' | 'decrease' | 'same' | 'unknown'
 
+/** Ступень значения на лестнице выгоды: 0 — низшая. null — значение не из набора. */
+export function benefitRank(
+  ladder: readonly string[] | null | undefined, value: string | null,
+): number | null {
+  if (!ladder || ladder.length === 0) return null
+  const k = (value ?? '').trim().slice(0, 1).toUpperCase()
+  const i = ladder.indexOf(k)
+  return i < 0 ? null : i
+}
+
 export function benefitDirection(
   ladder: readonly string[] | null | undefined, oldValue: string | null, newValue: string | null,
 ): BenefitDirection {
@@ -209,14 +219,19 @@ export function lockRefusal(
 
   if (lock.benefit_ladder && lock.benefit_ladder.length > 0) {
     if (source !== 'verbal') return null
-    const dir = benefitDirection(lock.benefit_ladder, ctx?.oldValue ?? null, ctx?.newValue ?? null)
-    if (dir === 'increase') {
+    // ГЕЙТ ПО НОВОМУ ЗНАЧЕНИЮ, А НЕ ПО НАПРАВЛЕНИЮ (уточнение владельца 04.08).
+    // Reduced и Free — ДОХОДНЫЕ категории: они определяются шкалой по документу,
+    // и «со слов» дохода не бывает. Поэтому F→R со слов тоже отказ, хотя это
+    // движение вниз: направление тут ни при чём, важно, КУДА пришли.
+    const rank = benefitRank(lock.benefit_ladder, ctx?.newValue ?? null)
+    if (rank === null) return null            // значение не из набора — решит база
+    if (rank > 0) {
       return lock.needs_document_text
-        ?? 'Raising a benefit needs a signed document — attach it and enter the date printed on it.'
+        ?? 'Reduced and Free are income categories — they need a signed income eligibility application (IEA) or USDA waiver with the date printed on it.'
     }
-    if (dir === 'decrease' && !(ctx?.note ?? '').trim()) {
+    if (!(ctx?.note ?? '').trim()) {
       return lock.needs_reason_text
-        ?? 'Lowering a category from what the family told you needs a reason in your own words.'
+        ?? 'Moving a child to Paid from what the family told you needs a reason in your own words.'
     }
     return null
   }

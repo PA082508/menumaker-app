@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   toWindow, buildWindows, phaseOf, activeWindow, activeRitualWindow, ritualLed, countdownLeft,
-  unbuckledWindows, bannerState, RITUAL_COUNTDOWN_MIN, REMINDER_LEAD_MIN,
+  unbuckledWindows, bannerState, alertStage, RITUAL_COUNTDOWN_MIN, REMINDER_LEAD_MIN,
 } from './mealWindows'
 
 // ============================================================================
@@ -186,5 +186,71 @@ describe('завтрак «по мере прихода» вне ритуала'
   it('список конца дня молчит, пока окно не закрылось', () => {
     const named = ws.map(w => ({ ...w, classroomName: 'Green Room' }))
     expect(unbuckledWindows(named, M(8, 30), () => false).map(w => w.slot)).toEqual([])
+  })
+})
+
+// ============================================================================
+// ЛЕСТНИЦА ПУСТОГО ОКНА (карта звуков 04.08): +10 горн · +15 директор.
+// Здесь же — единственное место, где проверяется, что закрытие окна МОЛЧИТ и
+// что тревога живёт внутри окна, а не после него.
+// ============================================================================
+
+describe('ступени пустого окна', () => {
+  const w = toWindow(ROW('am_snack', '09:15', '09:45'))!   // 30-минутный снек
+
+  it('первые десять минут — ни горна, ни директора', () => {
+    expect(alertStage(w, M(9, 15), false)).toBe('none')
+    expect(alertStage(w, M(9, 24), false)).toBe('none')
+  })
+
+  it('ровно на 10-й минуте — горн', () => {
+    expect(alertStage(w, M(9, 25), false)).toBe('horn')
+    expect(alertStage(w, M(9, 29), false)).toBe('horn')
+  })
+
+  it('ровно на 15-й — директор', () => {
+    expect(alertStage(w, M(9, 30), false)).toBe('director')
+    expect(alertStage(w, M(9, 44), false)).toBe('director')
+  })
+
+  it('есть хоть одна отметка — лестницы нет вовсе', () => {
+    expect(alertStage(w, M(9, 30), true)).toBe('none')
+    expect(alertStage(w, M(9, 44), true)).toBe('none')
+  })
+
+  it('закрытое окно МОЛЧИТ: догонять уже нечего, его подбирает красный список', () => {
+    expect(alertStage(w, M(9, 45), false)).toBe('none')
+    expect(alertStage(w, M(10, 30), false)).toBe('none')
+  })
+
+  it('до начала окна ступеней нет — ранняя подача дороже пропущенной отметки', () => {
+    expect(alertStage(w, M(9, 0), false)).toBe('none')
+  })
+
+  it('окно короче десяти минут ступеней не даёт вовсе', () => {
+    const tiny = toWindow(ROW('lunch', '11:30', '11:38'))!
+    for (let m = M(11, 30); m <= M(11, 45); m++) expect(alertStage(tiny, m, false)).toBe('none')
+  })
+})
+
+describe('пульсация плашки', () => {
+  const w = toWindow(ROW('lunch', '11:30', '12:30'))!
+  const banner = (min: number, marked: boolean, unlocked = true) =>
+    bannerState(w, min, marked, null, unlocked)
+
+  it('до 10-й минуты плашка не пульсирует', () => {
+    expect(banner(M(11, 39), false).alarm).toBe(false)
+  })
+
+  it('с 10-й минуты — пульсирует', () => {
+    expect(banner(M(11, 40), false).alarm).toBe(true)
+  })
+
+  it('пульс НЕ зависит от звука: беззвучная плашка пульсирует так же', () => {
+    expect(banner(M(11, 45), false, false).alarm).toBe(true)
+  })
+
+  it('отметили — пульс гаснет', () => {
+    expect(banner(M(11, 45), true).alarm).toBe(false)
   })
 })

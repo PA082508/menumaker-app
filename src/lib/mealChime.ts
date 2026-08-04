@@ -20,6 +20,8 @@
 // яркость»; у напоминания и закрытия обертона нет, поэтому они звучат глуше при
 // тех же нотах.
 
+import { isMuted } from './soundMute'
+
 export type ChimeVoice = 'start' | 'reminder' | 'close'
 export type ChimeVariantKey = 'v1' | 'v2' | 'v3'
 
@@ -128,7 +130,11 @@ export const VOICE_SHAPE: Record<ChimeVoice, VoiceShape> = {
   close:    { step: 0.28, decay: 1.10, peak: 0.18, overtone: 0,    type: 'sine' },
 }
 
-export interface ScheduledTone { freq: number; at: number; decay: number; peak: number; type: OscillatorType }
+export interface ScheduledTone {
+  freq: number; at: number; decay: number; peak: number; type: OscillatorType
+  /** Частота, к которой нота СКОЛЬЗИТ за своё затухание. Пусто — высота держится. */
+  glideTo?: number
+}
 
 /**
  * Что именно прозвучит — чистая функция. Проба смотрит сюда, а не «слышно ли»:
@@ -208,31 +214,54 @@ export async function unlockAudio(): Promise<boolean> {
  * планшета всё равно никто не видит.
  */
 export function playChime(variant: ChimeVariantKey, voice: ChimeVoice): boolean {
+  if (!playTones(scheduleTones(variant, voice))) return false
+  // Прозвучавшее объявляется событием. Услышать звук машиной нельзя, а
+  // «прозвенело ли в 11:30» — единственное, что проба обязана подтвердить;
+  // без этого проверялась бы только картинка. Слушателей в обычной работе нет,
+  // событие ничего не стоит.
+  try {
+    window.dispatchEvent(new CustomEvent('mm:chime', { detail: { variant, voice } }))
+  } catch { /* нет window (тест в node) — событие не нужно */ }
+  return true
+}
+
+/**
+ * Сыграть готовое расписание тонов. Времена в `tones` отсчитываются ОТ НУЛЯ —
+ * контекст добавляет свой «сейчас» сам, поэтому одну и ту же чистую раскладку
+ * можно и проверить тестом, и отдать в динамик.
+ *
+ * Отдельная функция появилась вместе с ярусами «капля» и «горн» (04.08): у них
+ * своя раскладка, а конверт колокола, глушитель и защита от неразблокированного
+ * звука обязаны быть ОДНИ на все голоса устройства. Второй такой цикл рядом —
+ * это второй набор правил, который однажды разойдётся с первым.
+ */
+export function playTones(tones: readonly ScheduledTone[]): boolean {
+  // Тумблер «тихий час» глушит ЛЮБОЙ звук устройства и делает это здесь, в
+  // единственном месте, где звук рождается: проверка в вызывающем коде — это
+  // проверка, которую однажды забудут добавить новому голосу.
+  if (isMuted()) return false
   if (!unlocked || !ctx) return false
   try {
     const t0 = ctx.currentTime + 0.02
-    for (const tone of scheduleTones(variant, voice, t0)) {
+    for (const tone of tones) {
       const osc = ctx.createOscillator()
       const gain = ctx.createGain()
       osc.type = tone.type
-      osc.frequency.setValueAtTime(tone.freq, tone.at)
+      osc.frequency.setValueAtTime(tone.freq, t0 + tone.at)
+      if (tone.glideTo && tone.glideTo > 0) {
+        // Капля: высота ПАДАЕТ по ходу ноты — это и делает её каплей, а не писком.
+        osc.frequency.exponentialRampToValueAtTime(tone.glideTo, t0 + tone.at + tone.decay)
+      }
       // Колокол: мгновенный удар, затем экспоненциальный хвост. Ноль в
       // exponentialRamp недопустим — отсюда 0.0001 как «практический ноль».
-      gain.gain.setValueAtTime(0.0001, tone.at)
-      gain.gain.exponentialRampToValueAtTime(tone.peak, tone.at + ATTACK_S)
-      gain.gain.exponentialRampToValueAtTime(0.0001, tone.at + tone.decay)
+      gain.gain.setValueAtTime(0.0001, t0 + tone.at)
+      gain.gain.exponentialRampToValueAtTime(tone.peak, t0 + tone.at + ATTACK_S)
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + tone.at + tone.decay)
       osc.connect(gain)
       gain.connect(ctx.destination)
-      osc.start(tone.at)
-      osc.stop(tone.at + tone.decay + 0.05)
+      osc.start(t0 + tone.at)
+      osc.stop(t0 + tone.at + tone.decay + 0.05)
     }
-    // Прозвучавшее объявляется событием. Услышать звук машиной нельзя, а
-    // «прозвенело ли в 11:30» — единственное, что проба обязана подтвердить;
-    // без этого проверялась бы только картинка. Слушателей в обычной работе нет,
-    // событие ничего не стоит.
-    try {
-      window.dispatchEvent(new CustomEvent('mm:chime', { detail: { variant, voice } }))
-    } catch { /* нет window (тест в node) — событие не нужно */ }
     return true
   } catch {
     return false

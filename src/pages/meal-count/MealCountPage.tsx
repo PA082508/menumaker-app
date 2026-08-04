@@ -23,8 +23,13 @@ import { weekRowKey, indexWeekRecords } from "@/lib/weekRowKey";
 import { useMealRitual } from "@/hooks/useMealRitual";
 import { hhmm, isRitualClockOverridden, ritualDay } from "@/lib/ritualClock";
 import { DEFAULT_VARIANT, isChimeVariant, phraseFor, type ChimeVariantKey } from "@/lib/mealChime";
-import type { BannerState, ScheduleRow, UnbuckledWindow } from "@/lib/mealWindows";
+import type { BannerState, MealWindow, ScheduleRow, UnbuckledWindow } from "@/lib/mealWindows";
 import { useMealMarkQueue } from "@/hooks/useMealMarkQueue";
+import MuteToggle from "@/components/sound/MuteToggle";
+import { mutedSinceHHMM, muteNoteLine } from "@/lib/soundMute";
+import { speakLine } from "@/lib/soundKit";
+import { directorAlertRow, spokenMarkRefusal } from "@/lib/spokenLines";
+import { DIRECTOR_ALERT_AFTER_MIN } from "@/lib/mealWindows";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -178,8 +183,8 @@ interface MilkBucket { label: string; oz: number; }
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function MealCountPage({ portalRoles, variant }: { portalRoles?: string[]; variant?: Variant } = {}) {
-  const { role, roles } = useAuth();
-  const { currentCenter, orgRole } = useOrg();
+  const { role, roles, user } = useAuth();
+  const { currentCenter, orgRole, org } = useOrg();
 
   // Union of user_roles + admin from org bootstrap.
   const effectiveRoles = useMemo(() => {
@@ -501,6 +506,11 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
         `Отметка НЕ сохранена — ${displayName(child)}, ${day} ${slot}. ` +
         `${e instanceof Error ? e.message : String(e)}. Отметьте заново; если повторится — скажите офису.`,
       );
+      // Голос ПОВЕРХ полосы отказа (карта звуков 04.08). Полоса красная и
+      // подробная, но человек в этот момент смотрит на ребёнка, а не на планшет:
+      // отказ, который только видно, на кухне пропускают. Вслух — коротко и тем
+      // же языком, что полоса; подробности остаются написанными.
+      speakLine(spokenMarkRefusal(displayName(child)), "ru-RU");
     }
   }, [records, selectedClassId, selectedClassName, weekStart]);
 
@@ -543,6 +553,41 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
     if (variant !== "director" && availableModes.includes("current")) setMode("current");
   }, [ritualDayKey, variant, availableModes]);
 
+  // ─── 15-я минута пустого окна: позвать директора ──────────────────────────
+  // РЕЛЬС — internal_messages, и выбран он не за красоту: это единственный из
+  // существующих каналов, который доходит от планшета до директора БЕЗ правки
+  // базы. Политика записи `send_as_self` пропускает планшет (он вошёл настоящей
+  // учёткой центра), политика чтения `can_see_message` доставляет строку роли
+  // director этого центра. Строка durable: закрытая вкладка её не теряет, и
+  // через месяц видно, звали ли директора и когда.
+  //
+  // Почему НЕ notification_log, который по смыслу ближе: у него RLS включена и
+  // НОЛЬ политик — туда пишет только служебный ключ из edge-функции, а планшету
+  // нужна новая политика, то есть правка боевой базы. Почему не одна лишь
+  // плашка на Director Home: плашка живёт в памяти вкладки, а деньги — нет.
+  const [alertNote, setAlertNote] = useState<string | null>(null);
+  const sendDirectorAlert = useCallback(async (w: MealWindow) => {
+    const className = classrooms.find((c) => c.id === (w.classroom_id ?? selectedClassId))?.name
+      ?? selectedClassName;
+    const row = directorAlertRow({
+      className,
+      slotLabel: SLOT_LABELS[w.slot as SlotKey] ?? w.slot,
+      startedHHMM: hhmm(w.start),
+      minutesIn: DIRECTOR_ALERT_AFTER_MIN,
+      muteLine: muteNoteLine(mutedSinceHHMM()),
+      orgId: org?.id,
+      centerId: currentCenter?.id ?? null,
+      centerName: currentCenter?.name ?? "",
+      senderId: user?.id,
+    });
+    const { error } = await supabase.schema("menumaker").from("internal_messages").insert(row);
+    // Тихо потерянный отказ здесь = комната уверена, что директора позвали, а его
+    // не позвали. Ступень одноразовая, второй попытки не будет — значит сказать
+    // надо сразу и на экране.
+    if (error) setAlertNote(`Директору НЕ ушло сообщение о ${className}: ${error.message}`);
+    else setAlertNote(`Директору отправлено: ${className} · ${SLOT_LABELS[w.slot as SlotKey] ?? w.slot} без отметок.`);
+  }, [classrooms, selectedClassId, selectedClassName, org?.id, currentCenter?.id, currentCenter?.name, user?.id]);
+
   const ritual = useMealRitual({
     enabled: ritualEnabled,
     todayISO: ritualDateISO,
@@ -553,6 +598,7 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
     isCenterSlotMarked,
     variant: chimeVariant,
     onOpenSlot: openSlotFromRitual,
+    onDirectorAlert: sendDirectorAlert,
   });
 
   // iOS: звук оживает ТОЛЬКО внутри жеста. Ловим первое касание экрана за день —
@@ -782,6 +828,9 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
             </button>
           )}
           {isApproved && <span className="mc-approved-badge">✓ Approved</span>}
+          {/* Тихий час. Глушит ВСЕ ярусы звука этого планшета — и только звук:
+              пульсация плашки и ступень директора остаются (решение 04.08). */}
+          <MuteToggle device={selectedClassName || currentCenter?.name || "Meal Count"} />
         </div>
 
         {/* ВИДИМЫЙ ОТКАЗ. Значок очереди в углу — не сообщение об ошибке: на планшете
@@ -802,6 +851,17 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
             <div className="mc-write-err-actions">
               {!writeErr && <button type="button" onClick={syncNow}>Повторить</button>}
               <button type="button" onClick={() => setWriteErr(null)}>Скрыть</button>
+            </div>
+          </div>
+        )}
+        {/* Ступень директора сработала — комната обязана знать, что его позвали
+            (или что позвать НЕ удалось): ступень одноразовая, второй попытки нет. */}
+        {alertNote && (
+          <div className="mc-write-err" role="status" style={{ background: "#fff8e6", borderColor: "#f0a020" }}>
+            <span className="mc-write-err-icon">📣</span>
+            <div className="mc-write-err-body"><b>{alertNote}</b></div>
+            <div className="mc-write-err-actions">
+              <button type="button" onClick={() => setAlertNote(null)}>Скрыть</button>
             </div>
           </div>
         )}
@@ -934,7 +994,7 @@ function BuckleBanner({ banner, variant, onUnlock }: {
   // Ноль на видном месте читается как «поздно», хотя отметить ещё можно и нужно.
   const counting = banner.minutesLeft > 0;
   return (
-    <div className={`mc-buckle ${banner.urgent ? "urgent" : "counting"}`} role="status">
+    <div className={`mc-buckle ${banner.urgent ? "urgent" : "counting"}${banner.alarm ? " alarm" : ""}`} role="status">
       <span className="mc-buckle-icon">{banner.urgent ? "⏰" : "🍽"}</span>
       <span className="mc-buckle-text">
         <b>{slotLabel} идёт — отметьте порции</b>
@@ -1355,6 +1415,20 @@ const styles = `
 .mc-buckle-unit { font-size:.75rem; font-weight:600; opacity:.7; }
 .mc-buckle-unlock { padding:.35rem .7rem; border-radius:8px; border:1.5px solid currentColor;
   background:transparent; color:inherit; font-family:inherit; font-size:.8rem; font-weight:700; cursor:pointer; }
+/* Тревога десятой минуты: МЯГКИЙ пульс, а не мигание. Мигающая полоса на
+   планшете посреди обеда раздражает и её выключают; медленное дыхание фона
+   замечают краем глаза и не гасят. Пульс НЕ зависит ни от звука, ни от тумблера
+   «тихий час» — заглушённая комната обязана остаться видимой. */
+.mc-buckle.alarm { animation: mc-pulse 1.8s ease-in-out infinite; }
+@keyframes mc-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 0 rgba(224,90,74,0); }
+  50%      { box-shadow: inset 0 0 0 9999px rgba(224,90,74,0.16); }
+}
+/* Кто выключил анимации в системе, тот их выключил и здесь — но плашка обязана
+   остаться заметной, поэтому вместо пульса ей достаётся постоянная рамка. */
+@media (prefers-reduced-motion: reduce) {
+  .mc-buckle.alarm { animation:none; box-shadow: inset 0 0 0 3px rgba(224,90,74,0.55); }
+}
 
 /* Непристёгнутые окна дня — видимость без запретов. */
 .mc-unbuckled { background:#fff; border-left:6px solid #c0392b; padding:.55rem 1rem;

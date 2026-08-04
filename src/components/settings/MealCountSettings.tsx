@@ -12,18 +12,22 @@ import {
 // то есть внутри настоящего жеста, единственного места, где WebKit оживляет
 // AudioContext. Директор, выбравший мелодию, тем самым уже включил звук.
 
-function ChimePicker({ centerId, value, persisted, onPick }: {
-  centerId: string; value: ChimeVariantKey; persisted: boolean;
+function ChimePicker({ centerId, value, err, onPick }: {
+  centerId: string; value: ChimeVariantKey; err: string | null;
   onPick: (v: ChimeVariantKey) => void;
 }) {
   return (
     <div style={{marginTop:".8rem",paddingTop:".7rem",borderTop:"1px dashed #e0ebe0"}}>
       <div style={{fontSize:".78rem",fontWeight:700,color:"#0f4c35",marginBottom:".4rem"}}>
         🔔 Мелодия начала приёма
-        {!persisted && (
-          <span style={{marginLeft:".5rem",fontWeight:400,color:"#856404",background:"#fff3cd",
-            border:"1px solid #ffe08a",borderRadius:6,padding:".1rem .4rem",fontSize:".7rem"}}>
-            хранится на этом устройстве — колонка в базе ещё не заведена
+        {/* Выбор хранится в БД по центру (20260802c). Прежняя надпись «хранится на
+            этом устройстве» снята вместе с запасным путём через localStorage: колонка
+            применена, и устройству больше нечего помнить. Если запись всё же не
+            прошла — говорим об этом словами, а не молчим поверх несохранённого. */}
+        {err && (
+          <span style={{marginLeft:".5rem",fontWeight:400,color:"#7f1d1d",background:"#fee2e2",
+            border:"1px solid #fca5a5",borderRadius:6,padding:".1rem .4rem",fontSize:".7rem"}}>
+            не сохранено: {err}
           </span>
         )}
       </div>
@@ -97,12 +101,11 @@ export default function MealCountSettings() {
   const [saved, setSaved]       = useState<string | null>(null);
   const [loading, setLoading]   = useState(true);
   const [lockModal, setLockModal] = useState<string | null>(null); // center_id
-  // Голос ритуала по центрам. `chimePersisted=false` — колонки в базе ещё нет
-  // (миграция подготовлена, но не применена), выбор живёт на устройстве, и об
-  // этом сказано прямо на экране: «сохранено» поверх несохранённого — та же
-  // ложь экрана, что и молчащий отказ записи.
+  // Голос ритуала по центрам. Хранится в БД (20260802c применена 03.08); устройство
+  // ничего не помнит. `chimeErr` — текст отказа записи: «сохранено» поверх
+  // несохранённого было бы той же ложью экрана, что и молчащий отказ.
   const [chimes, setChimes] = useState<Record<string, ChimeVariantKey>>({});
-  const [chimePersisted, setChimePersisted] = useState(true);
+  const [chimeErr, setChimeErr] = useState<string | null>(null);
   const [lockForm, setLockForm]   = useState({ approved_by: "", approved_date: new Date().toISOString().slice(0,10), approval_expires: "" });
 
   useEffect(() => {
@@ -124,16 +127,9 @@ export default function MealCountSettings() {
       const { data: cv, error: cvErr } = await supabase.schema("menumaker")
         .from("meal_count_settings").select("center_id,chime_variant");
       const picks: Record<string, ChimeVariantKey> = {};
-      if (cvErr) {
-        setChimePersisted(false);
-        for (const ctr of ctrs ?? []) {
-          const local = (() => { try { return localStorage.getItem(`mm_chime_${ctr.id}`) } catch { return null } })();
-          picks[ctr.id] = isChimeVariant(local) ? local : DEFAULT_VARIANT;
-        }
-      } else {
-        for (const row of (cv ?? []) as { center_id: string; chime_variant: string | null }[]) {
-          if (isChimeVariant(row.chime_variant)) picks[row.center_id] = row.chime_variant;
-        }
+      if (cvErr) setChimeErr(cvErr.message);
+      for (const row of (cv ?? []) as { center_id: string; chime_variant: string | null }[]) {
+        if (isChimeVariant(row.chime_variant)) picks[row.center_id] = row.chime_variant;
       }
       setChimes(picks);
       setLoading(false);
@@ -143,13 +139,12 @@ export default function MealCountSettings() {
   async function pickChime(centerId: string, v: ChimeVariantKey) {
     setChimes(prev => ({ ...prev, [centerId]: v }));
     void previewChime(v, "start");   // выбрал — сразу слышно, и звук разблокирован
-    try { localStorage.setItem(`mm_chime_${centerId}`, v) } catch { /* нестрашно */ }
-    if (!chimePersisted) return;     // колонки нет — писать в базу нечего
     setSaving(centerId);
     const { error } = await supabase.schema("menumaker").from("meal_count_settings")
       .upsert({ center_id: centerId, chime_variant: v }, { onConflict: "center_id" });
     setSaving(null);
-    if (error) { setChimePersisted(false); return; }   // сказали правду вместо «✓ Saved»
+    if (error) { setChimeErr(error.message); return; }   // сказали правду вместо «✓ Saved»
+    setChimeErr(null);
     setSaved(centerId);
     setTimeout(() => setSaved(null), 1500);
   }
@@ -306,7 +301,7 @@ export default function MealCountSettings() {
             <ChimePicker
               centerId={ctr.id}
               value={chimes[ctr.id] ?? DEFAULT_VARIANT}
-              persisted={chimePersisted}
+              err={chimeErr}
               onPick={(v) => pickChime(ctr.id, v)}
             />
 

@@ -399,10 +399,10 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
         .select("chime_variant").eq("center_id", centerId).maybeSingle();
       if (cancelled) return;
       if (error) {
-        // Колонки ещё нет (миграция не применена) — падать нельзя, ритуал звонит
-        // голосом по умолчанию, а выбор живёт на устройстве.
-        const local = (() => { try { return localStorage.getItem(`mm_chime_${centerId}`) } catch { return null } })();
-        setChimeVariant(isChimeVariant(local) ? local : DEFAULT_VARIANT);
+        // Колонка применена 03.08 (20260802c), но отдельный запрос оставлен: если он
+        // всё же откажет (сеть, права), экран звонит голосом по умолчанию и работает
+        // дальше. Запасного пути через localStorage больше нет — выбор живёт в БД.
+        setChimeVariant(DEFAULT_VARIANT);
         return;
       }
       const v = (data as { chime_variant?: string } | null)?.chime_variant;

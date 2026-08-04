@@ -65,7 +65,13 @@ export const CHIME_VARIANTS: Record<ChimeVariantKey, ChimeVariant> = {
 }
 
 export const CHIME_VARIANT_KEYS: ChimeVariantKey[] = ['v1', 'v2', 'v3']
-export const DEFAULT_VARIANT: ChimeVariantKey = 'v1'
+// Выбор владельца 03.08: «Маленькая песенка». Старт называет ДЕЙСТВИЕ («вымой руки
+// и ешь»), а не факт («время есть»), напоминание называет ОСТАТОК («десять минут») —
+// поэтому два голоса не путаются на слух даже через неделю, а это главное требование
+// к паре, которую слышат каждый день. То же значение стоит умолчанием у колонки
+// meal_count_settings.chime_variant (20260802c), чтобы центр без выбора и экран без
+// связи звонили одинаково.
+export const DEFAULT_VARIANT: ChimeVariantKey = 'v2'
 
 export function isChimeVariant(v: unknown): v is ChimeVariantKey {
   return typeof v === 'string' && (CHIME_VARIANT_KEYS as string[]).includes(v)

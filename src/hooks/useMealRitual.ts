@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  activeWindow, bannerState, buildWindows, phaseOf, unbuckledWindows,
+  activeRitualWindow, bannerState, buildWindows, phaseOf, ritualLed, unbuckledWindows,
   type BannerState, type MealWindow, type ScheduleRow, type UnbuckledWindow,
 } from '@/lib/mealWindows'
 import { ritualDay, ritualMinutes, hhmm, type RitualDayKey } from '@/lib/ritualClock'
@@ -93,7 +93,9 @@ export function useMealRitual(input: RitualInput): RitualOutput {
   )
 
   const live = enabled && day !== null
-  const active = useMemo(() => (live ? activeWindow(windows, nowMin) : null), [live, windows, nowMin])
+  // activeRitualWindow, а не activeWindow: завтрак «по мере прихода» ритуал не ведёт,
+  // и плашка с 30-минутным отсчётом над ним не появляется вовсе (решение 03.08).
+  const active = useMemo(() => (live ? activeRitualWindow(windows, nowMin) : null), [live, windows, nowMin])
 
   // Время первой замеченной отметки. Это наблюдение ЭТОГО устройства, а не
   // выписка из журнала: если отметили на другом планшете, а здесь только
@@ -132,11 +134,17 @@ export function useMealRitual(input: RitualInput): RitualOutput {
   useEffect(() => {
     if (!live || !classroomId) return
     for (const w of windows) {
+      // Завтрак «по мере прихода» ритуал не ведёт ЦЕЛИКОМ (решение владельца 03.08):
+      // ни старта, ни напоминания, ни закрытия, ни авто-переключения экрана. Раньше
+      // здесь стоял пропуск только на старте — напоминание и закрытие завтрак всё
+      // равно озвучивали, то есть исключение было наполовину. Причина прежняя и
+      // усиленная: у окна «по мере прихода» нет минуты, в которую можно начинать,
+      // и любой голос над ним толкает к ранней подаче — к тому, за что снимают
+      // возмещение (канон 31.07). В красный список конца дня завтрак по-прежнему
+      // попадает — молча и только при нуле отметок (см. unbuckledWindows).
+      if (!ritualLed(w)) continue
       const ph = phaseOf(w, nowMin)
-      // «По мере прихода» (завтрак) старт не объявляет: у него нет минуты, в
-      // которую можно начинать, а подсказка «начинайте» толкала бы к ранней
-      // подаче — ровно к тому, за что снимают возмещение (канон 31.07).
-      if (!w.onArrival && (ph === 'open' || ph === 'reminder')) {
+      if (ph === 'open' || ph === 'reminder') {
         const k = ringKey(todayISO, classroomId, w.slot, 'start')
         if (!alreadyRang(k)) {
           rememberRang(k)

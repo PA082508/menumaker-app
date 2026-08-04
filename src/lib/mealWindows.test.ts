@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  toWindow, buildWindows, phaseOf, activeWindow, countdownLeft,
+  toWindow, buildWindows, phaseOf, activeWindow, activeRitualWindow, ritualLed, countdownLeft,
   unbuckledWindows, bannerState, RITUAL_COUNTDOWN_MIN, REMINDER_LEAD_MIN,
 } from './mealWindows'
 
@@ -128,5 +128,63 @@ describe('плашка', () => {
 
   it('отметка гасит отсчёт и до разблокировки звука', () => {
     expect(bannerState(lunch, M(11, 40), true, '11:38', false).kind).toBe('done')
+  })
+})
+
+// ============================================================================
+// ЗАВТРАК «ПО МЕРЕ ПРИХОДА» — ВНЕ РИТУАЛА (решение владельца 03.08).
+// Не поёт, не крутит отсчёт, экран на него сам не переключается. В красный
+// список конца дня попадает — но только при нуле отметок за всё окно.
+// Расписание взято действующее и подтверждённое владельцем: 09:15 / 11:30 / 15:30.
+// ============================================================================
+describe('завтрак «по мере прихода» вне ритуала', () => {
+  const BREAKFAST = ROW('breakfast', '08:00:00', '09:00:00', 'on_arrival')
+  const AM_SNACK  = ROW('am_snack',  '09:15:00', '09:45:00')
+  const LUNCH     = ROW('lunch',     '11:30:00', '12:30:00')
+  const PM_SNACK  = ROW('pm_snack',  '15:30:00', '16:00:00')
+  const ws = buildWindows([BREAKFAST, AM_SNACK, LUNCH, PM_SNACK])
+
+  it('ritualLed отделяет вёдомые окна от «по мере прихода»', () => {
+    expect(ws.filter(ritualLed).map(w => w.slot)).toEqual(['am_snack', 'lunch', 'pm_snack'])
+  })
+
+  it('внутри завтрака ритуал не ведёт НИЧЕГО — плашки и отсчёта нет', () => {
+    expect(activeRitualWindow(ws, M(8, 30))).toBeNull()
+    // Плашка строится по вёдомому окну: его нет → пусто, kind === 'none'.
+    expect(bannerState(activeRitualWindow(ws, M(8, 30)), M(8, 30), false, null, true).kind).toBe('none')
+    // При этом окно как таковое существует и открыто — молчит именно ритуал.
+    expect(activeWindow(ws, M(8, 30))!.slot).toBe('breakfast')
+  })
+
+  it('снек, обед и полдник ритуал ведёт как прежде', () => {
+    expect(activeRitualWindow(ws, M(9, 20))!.slot).toBe('am_snack')
+    expect(activeRitualWindow(ws, M(11, 40))!.slot).toBe('lunch')
+    expect(activeRitualWindow(ws, M(15, 35))!.slot).toBe('pm_snack')
+  })
+
+  it('плашка обеда тикает и краснеет к концу окна — не задето', () => {
+    const lunch = activeRitualWindow(ws, M(11, 40))!
+    const b = bannerState(lunch, M(11, 40), false, null, true)
+    expect(b.kind).toBe('counting')
+    expect(b.minutesLeft).toBe(20)
+    expect(b.urgent).toBe(false)
+    expect(bannerState(lunch, M(12, 25), false, null, true).urgent).toBe(true)
+  })
+
+  it('в красный список завтрак попадает — при нуле отметок за всё окно', () => {
+    const named = ws.map(w => ({ ...w, classroomName: 'Green Room' }))
+    const none = unbuckledWindows(named, M(17, 0), () => false).map(w => w.slot)
+    expect(none).toContain('breakfast')
+  })
+
+  it('отмеченный завтрак в красный список НЕ попадает', () => {
+    const named = ws.map(w => ({ ...w, classroomName: 'Green Room' }))
+    const marked = unbuckledWindows(named, M(17, 0), (w) => w.slot === 'breakfast').map(w => w.slot)
+    expect(marked).not.toContain('breakfast')
+  })
+
+  it('список конца дня молчит, пока окно не закрылось', () => {
+    const named = ws.map(w => ({ ...w, classroomName: 'Green Room' }))
+    expect(unbuckledWindows(named, M(8, 30), () => false).map(w => w.slot)).toEqual([])
   })
 })

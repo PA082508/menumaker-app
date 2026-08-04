@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  CHIME_VARIANTS, CHIME_VARIANT_KEYS, CLOSE_PHRASE, VOICE_SHAPE, ATTACK_S,
+  CHIME_VARIANTS, CHIME_VARIANT_KEYS, CLOSE_PHRASE, VOICE_SHAPE, ATTACK_S, DEFAULT_VARIANT,
   noteToFreq, phraseFor, scheduleTones, isChimeVariant, playChime, isAudioUnlocked,
 } from './mealChime'
 
@@ -30,9 +30,20 @@ describe('варианты — ровно то, что заказано', () => 
     for (const k of CHIME_VARIANT_KEYS) expect(phraseFor(k, 'close')).toBe(CLOSE_PHRASE)
   })
 
-  it('неизвестный вариант не роняет экран — звучит первый', () => {
+  it('неизвестный вариант не роняет экран — звучит голос по умолчанию', () => {
     expect(isChimeVariant('v9')).toBe(false)
-    expect(phraseFor('v9' as any, 'start')).toEqual(CHIME_VARIANTS.v1.start)
+    expect(phraseFor('v9' as any, 'start')).toEqual(CHIME_VARIANTS[DEFAULT_VARIANT].start)
+  })
+
+  // Умолчание проверяется ЗАНОВО, а не через CHIME_VARIANTS[DEFAULT_VARIANT]:
+  // иначе тест подтвердил бы сам себя при любой подмене. Выбор владельца 03.08 —
+  // «Маленькая песенка», и то же значение стоит умолчанием колонки в БД (20260802c).
+  it('по умолчанию звучит вариант 2 «Маленькая песенка»', () => {
+    expect(DEFAULT_VARIANT).toBe('v2')
+    expect(phraseFor(DEFAULT_VARIANT, 'start')).toEqual(
+      { notes: ['G4', 'C5', 'E5', 'D5', 'C5'], words: 'Wash your hands and eat' })
+    expect(phraseFor(DEFAULT_VARIANT, 'reminder')).toEqual(
+      { notes: ['E4', 'A4', 'C5', 'B4', 'A4'], words: 'Ten more minutes left' })
   })
 })
 

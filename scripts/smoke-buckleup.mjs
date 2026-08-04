@@ -24,6 +24,16 @@ import fs from 'node:fs'
 const PROD = process.env.PROD_ORIGIN || 'https://menumaker-app.vercel.app'
 const APP = process.env.APP_ORIGIN || 'http://localhost:4173'
 const CENTER = process.env.SMOKE_CENTER || 'Ridge'
+// День недели для подменённых часов. По умолчанию понедельник, но проба требует
+// НЕОТМЕЧЕННОГО дня: на уже отмеченном окне плашка сразу зелёная, и проверять
+// нечего — отсчёт, напоминание и красный список к отмеченному окну не относятся.
+// SMOKE_DAY=tue берёт завтрашние клетки той же недели: они пусты, и ни одна
+// строка при этом не пишется — единственный писатель перехвачен ниже.
+const DAY = process.env.SMOKE_DAY || 'mon'
+// Голос центра по умолчанию — вариант 2 «Маленькая песенка» (20260802c).
+// Слова из плашки — единственный видимый признак того, КАКОЙ вариант звучит.
+const V2_START = 'Wash your hands and eat'
+const V2_REMINDER = 'Ten more minutes left'
 const SHOTS = path.resolve(process.env.SHOTS || './smoke-out')
 fs.mkdirSync(SHOTS, { recursive: true })
 
@@ -64,7 +74,7 @@ await page.addInitScript(() => {
 })
 
 async function openScreen(clock) {
-  await page.goto(`${APP}/meal-count?mm_clock=${clock}&mm_day=mon`, { waitUntil: 'domcontentloaded' })
+  await page.goto(`${APP}/meal-count?mm_clock=${clock}&mm_day=${DAY}`, { waitUntil: 'domcontentloaded' })
   await page.waitForTimeout(9000)
   await page.getByText('Organization', { exact: true }).first().click()
   await page.waitForTimeout(800)
@@ -79,6 +89,30 @@ const bannerText = async () => {
   const b = page.locator('.mc-buckle')
   return (await b.count()) ? (await b.first().innerText()).replace(/\s+/g, ' ').trim() : ''
 }
+
+// ─── 0. Завтрак «по мере прихода» — вне ритуала ─────────────────────────────
+// Решение владельца 03.08. Окно завтрака 07:00–08:00 ОТКРЫТО в 07:30, и всё же
+// экран обязан молчать: ни плашки, ни отсчёта, ни голоса, ни авто-переключения.
+console.log('\n0. 07:30 — завтрак «по мере прихода» открыт, но ритуал молчит')
+await openScreen('07:30')
+;(await bannerText()) === '' ? ok('плашки нет — завтрак не ведётся')
+                             : bad('плашки нет на завтраке', `висит: «${await bannerText()}»`)
+{
+  const c0 = await chimes()
+  c0.length === 0 ? ok('ни одного голоса на завтраке')
+                  : bad('тишина на завтраке', `сыграно: ${JSON.stringify(c0)}`)
+  // ⚠️ По выбранной кнопке судить НЕЛЬЗЯ: начальное значение selectedSlot в
+  // MealCountPage захардкожено 'breakfast' и стоит там до первого действия — так
+  // было и до ритуала. Решающий признак невмешательства другой: ритуал помечает
+  // КАЖДЫЙ свой звонок ключом mm_ritual_<дата>_<класс>_<приём>_<событие> в
+  // localStorage. Повёл бы он завтрак — ключ появился бы, даже если звук молчит.
+  const rings = await page.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('mm_ritual_')))
+  const bRings = rings.filter(k => k.includes('breakfast'))
+  bRings.length === 0
+    ? ok('ритуал не отметил ни одного звонка по завтраку — окно им не ведётся')
+    : bad('ритуал не ведёт завтрак', `остались ключи: ${JSON.stringify(bRings)}`)
+}
+await page.screenshot({ path: `${SHOTS}/buckle-0-breakfast-silent.png` })
 
 // ─── 1. Окно ещё не открылось ───────────────────────────────────────────────
 console.log('\n1. 11:29 — окно обеда ещё не открылось')
@@ -96,6 +130,8 @@ const openRe = /Lunch идёт — отметьте порции/
 const tickRe = /\b(29|30)\b/
 openRe.test(t2) ? ok(`плашка: «${t2}»`) : bad('текст плашки', `«${t2}»`)
 tickRe.test(t2) ? ok('отсчёт 30 минут тикает') : bad('отсчёт 30 минут', `в плашке нет счётчика: «${t2}»`)
+t2.includes(V2_START) ? ok(`поёт вариант 2: «${V2_START}»`)
+                      : bad('поёт вариант 2', `в плашке нет слов варианта 2: «${t2}»`)
 const activeSlot = await page.locator('.mc-slot-btn.active').first().innerText().catch(() => '?')
 activeSlot.trim() === 'Lunch' ? ok('экран сам переключился на Lunch')
                               : bad('экран переключился на Lunch', `выбран «${activeSlot.trim()}»`)
@@ -125,6 +161,8 @@ await page.waitForFunction(() => (window.__chimes ?? []).includes('reminder'), n
   .then(() => ok('прозвучал голос напоминания'))
   .catch(async () => bad('голос напоминания', `за две минуты не прозвучал: ${JSON.stringify(await chimes())}`))
 const t4 = await bannerText()
+t4.includes(V2_REMINDER) ? ok(`напоминание тоже вариантом 2: «${V2_REMINDER}»`)
+                         : bad('напоминание вариантом 2', `в плашке нет слов напоминания: «${t4}»`)
 ;(await page.locator('.mc-buckle.urgent').count()) ? ok(`плашка тревожная: «${t4}»`)
                                                    : bad('плашка тревожная', `«${t4}»`)
 await page.screenshot({ path: `${SHOTS}/buckle-3-reminder.png` })
@@ -162,7 +200,7 @@ await ios.addInitScript(() => {
   window.AudioContext = Suspended
   window.webkitAudioContext = Suspended
 })
-await ios.goto(`${APP}/meal-count?mm_clock=11:40&mm_day=mon`, { waitUntil: 'domcontentloaded' })
+await ios.goto(`${APP}/meal-count?mm_clock=11:40&mm_day=${DAY}`, { waitUntil: 'domcontentloaded' })
 await ios.waitForTimeout(9000)
 await ios.getByText('Organization', { exact: true }).first().click(); await ios.waitForTimeout(800)
 await ios.getByText(CENTER, { exact: true }).first().click(); await ios.waitForTimeout(4000)

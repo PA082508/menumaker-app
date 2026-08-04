@@ -61,6 +61,9 @@ export const SECTIONS: Section[] = [
       // одно слово в одном меню — это гарантированный неверный тап.
       { path: '/safepass/issue', label: 'Parent access', icon: 'ti-device-mobile-check' },
       { path: '/issue-renewal', label: 'Issue Renewal', icon: 'ti-send' },
+      // Список бумажных заявлений о доходе по семьям. В DIRECTOR_PATHS НЕ входит:
+      // доход — орг-уровень, директору центра он не показывается вовсе.
+      { path: '/iea-confirm', label: 'Paper applications', icon: 'ti-file-check' },
       { path: '/staff',    label: 'Staff',    icon: 'ti-id-badge' },
     ],
   },

@@ -279,10 +279,11 @@ export default function MenuPlannerPage() {
     (SLOT_TIMES[mealType] ?? '99:99') >= h.close_time.slice(0, 5)
 
   const [pubYear, pubMonthNum] = pubMonth.split('-').map(Number)
-  // Совпадает с политикой manage_published_menus на published_menus: кто может
-  // писать снимок в базу, тот и видит кнопку. Шире кнопку не показываем — RLS
-  // всё равно откажет, а человек прочтёт это как поломку.
-  const canPublish = roles.includes('director') || roles.includes('office_manager') || roles.includes('admin')
+  // ПУБЛИКАЦИЯ = АКТ ОФИСА (канон 04.08). Меню одно на организацию, и месяц
+  // закрывает офис сразу по всем центрам — директору кнопка не показывается,
+  // хотя RLS (manage_published_menus) его пустила бы: политику не трогаем,
+  // сужен экран. Директор остаётся читателем: /menu/current и бланк центра.
+  const canPublish = roles.includes('office_manager') || roles.includes('admin')
 
   // Меню в системе одно на организацию, а хранится ПО ЦЕНТРАМ: одна публикация
   // кладёт по снимку на каждый доступный центр (у каждого — свои праздники).

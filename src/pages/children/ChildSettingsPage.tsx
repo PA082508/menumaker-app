@@ -941,7 +941,8 @@ export default function ChildSettingsPage({
           )}
 
           {/* ── TAB 7: Documents ── */}
-          {tab === 7 && <ChildDocumentsTab childDbId={child.child_id ?? childId} rosterId={childId} />}
+          {tab === 7 && <ChildDocumentsTab childDbId={child.child_id ?? childId} rosterId={childId}
+            orgId={child.org_id} centerId={child.center_id} />}
         </div>
 
         {/* Footer */}

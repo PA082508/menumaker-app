@@ -11,98 +11,223 @@ import { supabase } from '@/lib/supabase'
 import { detectAndCrop } from '@/lib/detectAndCrop'
 import { hasOriginalReplica, originalReplica } from '@/lib/originalFormReplicas'
 import { captureAndUploadSnapshot, getLatestSnapshot } from '@/lib/enrollmentSnapshot'
+import {
+  CHILD_DOCS_BUCKET, hasFile, loadChildDocs, loadDocTypes, fileUploadedDoc, unfiledNames,
+  type ChildDocRow, type DocTypeRow,
+} from '@/lib/childDocuments'
 import ApprovedFormViewer from '@/pages/enrollment/ApprovedFormViewer'
 
 type FileRow = { name: string; id?: string; created_at?: string; metadata?: { size?: number } | null }
 
 const fmtSize = (b?: number) => b == null ? '' : b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(0)} KB` : `${(b / 1048576).toFixed(1)} MB`
+// Документная дата — date-only: через new Date() она в нью-йоркской зоне
+// съезжает на день назад (STANDING-правило репозитория).
+const fmtDateOnlyISO = (s?: string | null) => {
+  if (!s) return ''
+  const [y, m, d] = s.slice(0, 10).split('-')
+  return `${Number(m)}/${Number(d)}/${y}`
+}
 const fmtDate = (s?: string) => s ? new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''
 // Uploaded name is "{epoch}_{original}" — strip the ts prefix for display.
 const cleanName = (n: string) => n.replace(/^\d{10,}_/, '')
 const iconFor = (n: string) => /\.(png|jpe?g|gif|webp|heic)$/i.test(n) ? '🖼️' : /\.pdf$/i.test(n) ? '📄' : '📎'
 
-export default function ChildDocumentsTab({ childDbId, rosterId }: { childDbId: string; rosterId?: string }) {
+export default function ChildDocumentsTab({ childDbId, rosterId, orgId, centerId }: {
+  childDbId: string; rosterId?: string; orgId?: string; centerId?: string | null
+}) {
   const dir = `children/${childDbId}`
-  const [files, setFiles] = useState<FileRow[]>([])
+  const listId = rosterId ?? childDbId
+  const [docs, setDocs] = useState<ChildDocRow[]>([])
+  const [storageNames, setStorageNames] = useState<string[]>([])
+  const [types, setTypes] = useState<DocTypeRow[]>([])
   const [loading, setLoading] = useState(true)
-  const [busy, setBusy] = useState<string>('')   // status line during upload/delete
+  const [busy, setBusy] = useState<string>('')
   const inputRef = useRef<HTMLInputElement>(null)
+  // Разбор файла: какой файл сейчас заводим и с какими типом/датой.
+  const [filing, setFiling] = useState<{ name: string; docType: string; date: string } | null>(null)
 
-  useEffect(() => { load() }, [childDbId])
+  useEffect(() => { load() }, [childDbId, listId])
+  useEffect(() => { loadDocTypes().then(setTypes) }, [])
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase.storage.from('org-files').list(dir, {
-      limit: 100, sortBy: { column: 'created_at', order: 'desc' },
-    })
-    // storage.list returns a phantom ".emptyFolderPlaceholder" for empty dirs — drop it
-    setFiles((data ?? []).filter(f => f.name !== '.emptyFolderPlaceholder') as FileRow[])
+    const [rows, { data: files }] = await Promise.all([
+      loadChildDocs(listId),
+      supabase.storage.from(CHILD_DOCS_BUCKET).list(dir, { limit: 100, sortBy: { column: 'created_at', order: 'desc' } }),
+    ])
+    setDocs(rows)
+    // storage.list возвращает призрачный ".emptyFolderPlaceholder" у пустой папки
+    setStorageNames((files ?? []).map(f => f.name).filter(n => n !== '.emptyFolderPlaceholder'))
     setLoading(false)
   }
 
+  // Загрузка кладёт файл и СРАЗУ открывает разбор: тип и документная дата
+  // спрашиваются здесь, пока файл в руках. Спросить их позже — значит не
+  // спросить никогда: так и накопилась папка файлов без типа и без даты.
   async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const picked = Array.from(e.target.files ?? [])
-    if (e.target) e.target.value = ''   // allow re-picking the same file
+    if (e.target) e.target.value = ''
+    let last = ''
     for (const raw of picked) {
       setBusy(`Uploading ${raw.name}…`)
       const file = await detectAndCrop(raw)
-      const path = `${dir}/${Date.now()}_${file.name}`
-      const { error } = await supabase.storage.from('org-files').upload(path, file, { upsert: true })
-      if (error) { setBusy(`✗ ${error.message}`); await new Promise(r => setTimeout(r, 2500)) }
+      const name = `${Date.now()}_${file.name}`
+      const { error } = await supabase.storage.from(CHILD_DOCS_BUCKET).upload(`${dir}/${name}`, file, { upsert: true })
+      if (error) { setBusy(`✗ ${error.message}`); await new Promise(r => setTimeout(r, 2500)); continue }
+      last = name
     }
     setBusy('')
-    load()
+    await load()
+    if (last) setFiling({ name: last, docType: types[0]?.code ?? '', date: '' })
   }
 
-  async function view(name: string) {
-    const { data, error } = await supabase.storage.from('org-files').createSignedUrl(`${dir}/${name}`, 3600)
+  async function fileIt() {
+    if (!filing || !filing.docType || !filing.date) return
+    if (!orgId) { setBusy('✗ This card has no organisation id — nothing was filed.'); return }
+    setBusy('Filing…')
+    const err = await fileUploadedDoc({
+      orgId, centerId: centerId ?? null, rosterId: listId,
+      docType: filing.docType, documentDate: filing.date,
+      storagePath: `${dir}/${filing.name}`, title: cleanName(filing.name),
+    })
+    // Отказ здесь = файл лежит, а строки нет: ровно то состояние, из которого
+    // мы выходим. Молчать про него нельзя.
+    setBusy(err ? `✗ Not filed: ${err}` : '')
+    if (!err) { setFiling(null); await load() }
+  }
+
+  async function signedUrl(path: string): Promise<string | null> {
+    const { data, error } = await supabase.storage.from(CHILD_DOCS_BUCKET).createSignedUrl(path, 3600)
     if (error || !data?.signedUrl) {
       alert(`This document could not be opened: ${error?.message ?? 'no link was returned'}`)
-      return
+      return null
     }
-    window.open(data.signedUrl, '_blank')
+    return data.signedUrl
+  }
+  async function download(path: string) { const u = await signedUrl(path); if (u) window.open(u, '_blank') }
+  async function print(path: string) {
+    const u = await signedUrl(path)
+    if (!u) return
+    // Печать через отдельное окно: у PDF в iframe печать перехватывает вьюер
+    // браузера и печатает не тот документ.
+    const w = window.open(u, '_blank')
+    setTimeout(() => { try { w?.print() } catch { /* браузер сам покажет вьюер */ } }, 900)
   }
 
-  async function remove(name: string) {
+  async function removeUnfiled(name: string) {
     if (!window.confirm(`Delete "${cleanName(name)}"? This cannot be undone.`)) return
-    setBusy(`Deleting…`)
-    await supabase.storage.from('org-files').remove([`${dir}/${name}`])
-    setBusy('')
-    load()
+    setBusy('Deleting…')
+    const { error } = await supabase.storage.from(CHILD_DOCS_BUCKET).remove([`${dir}/${name}`])
+    setBusy(error ? `✗ ${error.message}` : '')
+    await load()
   }
+
+  const unfiled = unfiledNames(storageNames, dir, docs)
+  const typeName = (code: string) => types.find(t => t.code === code)?.name ?? code
+  const btn: React.CSSProperties = { padding: '5px 12px', borderRadius: 6, border: '1.5px solid #0f4c35', background: '#fff', color: '#0f4c35', cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'inherit' }
+  const rowBox: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, border: '1.5px solid #e8f0e8', marginBottom: 8, background: '#fff' }
 
   return (
     <div>
-      {/* Step 3: approved enrollment forms → view/print the frozen original (child → document → print). */}
-      <ApprovedEnrollmentForms rosterId={rosterId ?? childDbId} />
+      <ApprovedEnrollmentForms rosterId={listId} />
       <div style={{ fontSize: 13, fontWeight: 700, color: '#0f4c35', marginBottom: 12, paddingBottom: 6, borderBottom: '1.5px solid #e8f0e8' }}>Child Documents</div>
 
-      {/* Upload dropzone */}
+      {/* Зона догрузки работает ВСЕГДА, при любом положении настройки о сканах:
+          запретить приложить документ — это не настройка, это поломка. */}
       <div onClick={() => inputRef.current?.click()}
         style={{ border: '2px dashed #c0d8c0', borderRadius: 12, padding: '20px 16px', textAlign: 'center', cursor: 'pointer', background: '#f8faf8', marginBottom: 14 }}>
         <div style={{ fontSize: 26, marginBottom: 4 }}>⤒</div>
         <div style={{ fontSize: 13, color: '#0f4c35', fontWeight: 600 }}>Click to upload a document or photo</div>
-        <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>Photos of forms are auto-cropped · PDF, images accepted</div>
+        <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>You'll be asked what it is and the date printed on it</div>
         <input ref={inputRef} type="file" multiple accept="image/*,application/pdf" onChange={onPick} style={{ display: 'none' }} />
       </div>
       {busy && <div style={{ fontSize: 12, color: busy.startsWith('✗') ? '#dc2626' : '#0f4c35', marginBottom: 10 }}>{busy}</div>}
 
-      {/* File list */}
+      {/* Разбор файла: тип из реестра + ДАТА С ДОКУМЕНТА (не сегодняшняя). */}
+      {filing && (
+        <div style={{ border: '1.5px solid #f0c674', background: '#fff8e6', borderRadius: 10, padding: '10px 12px', marginBottom: 12 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: '#7a4a00', marginBottom: 8 }}>
+            What is “{cleanName(filing.name)}”?
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <select value={filing.docType} onChange={e => setFiling(f => f ? { ...f, docType: e.target.value } : f)}
+              style={{ padding: '6px 9px', border: '1.5px solid #c0d8c0', borderRadius: 8, fontSize: 12.5, fontFamily: 'inherit', background: '#fff' }}>
+              <option value="">— document type —</option>
+              {types.map(t => <option key={t.code} value={t.code}>{t.name}</option>)}
+            </select>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#374151' }}>
+              Date ON THE DOCUMENT
+              <input type="date" value={filing.date} onChange={e => setFiling(f => f ? { ...f, date: e.target.value } : f)}
+                style={{ padding: '5px 8px', border: '1.5px solid #c0d8c0', borderRadius: 8, fontSize: 12.5, fontFamily: 'inherit' }} />
+            </label>
+            <button onClick={fileIt} disabled={!filing.docType || !filing.date}
+              style={{ ...btn, background: filing.docType && filing.date ? '#0f4c35' : '#e5e7eb', color: filing.docType && filing.date ? '#fff' : '#9ca3af', borderColor: 'transparent' }}>
+              File it
+            </button>
+            <button onClick={() => setFiling(null)} style={{ ...btn, borderColor: '#e5e7eb', color: '#6b7280' }}>Later</button>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div style={{ color: '#aaa', fontSize: 13, padding: '12px 0' }}>Loading…</div>
-      ) : files.length === 0 ? (
+      ) : docs.length === 0 && unfiled.length === 0 ? (
         <div style={{ color: '#aaa', fontSize: 13, padding: '16px 0', textAlign: 'center' }}>No documents on file yet.</div>
-      ) : files.map(f => (
-        <div key={f.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, border: '1.5px solid #e8f0e8', marginBottom: 8, background: '#fff' }}>
-          <span style={{ fontSize: 18 }}>{iconFor(f.name)}</span>
+      ) : null}
+
+      {/* ОДИН список, три источника, порядок по документной дате. */}
+      {docs.map(d => (
+        <div key={d.id} style={rowBox}>
+          <span style={{ fontSize: 18 }}>{d.source === 'paper' ? '📄' : iconFor(d.storage_path ?? '')}</span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#1a2e1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cleanName(f.name)}</div>
-            <div style={{ fontSize: 11, color: '#9ca3af' }}>{fmtDate(f.created_at)}{f.metadata?.size ? ` · ${fmtSize(f.metadata.size)}` : ''}</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#1a2e1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {typeName(d.doc_type)}
+            </div>
+            <div style={{ fontSize: 11, color: '#9ca3af' }}>
+              {d.valid_from ? `Document date ${fmtDateOnlyISO(d.valid_from)}` : 'No document date'}
+              {d.valid_until ? ` · valid to ${fmtDateOnlyISO(d.valid_until)}` : ''}
+            </div>
           </div>
-          <button onClick={() => view(f.name)} style={{ padding: '5px 12px', borderRadius: 6, border: '1.5px solid #0f4c35', background: '#fff', color: '#0f4c35', cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'inherit' }}>View</button>
-          <button onClick={() => remove(f.name)} title="Delete" style={{ padding: '5px 10px', borderRadius: 6, border: '1.5px solid #f0c0c0', background: '#fff', color: '#dc2626', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' }}>🗑</button>
+          {d.source === 'paper' ? (
+            // У бумаги НЕТ кнопок файла — их и нечем обслужить. Плашка говорит,
+            // почему их нет, иначе строка читается как сломанная.
+            <span title={d.attested_at ? `Attested ${fmtDate(d.attested_at)}` : undefined}
+              style={{ fontSize: 11.5, fontWeight: 700, color: '#0f4c35', background: '#f0fff4', border: '1.5px solid #bbf7d0', borderRadius: 999, padding: '4px 10px', whiteSpace: 'nowrap' }}>
+              📄 Paper form is in the safe
+            </span>
+          ) : hasFile(d) ? (
+            <>
+              <button onClick={() => download(d.storage_path!)} style={btn}>Download</button>
+              <button onClick={() => print(d.storage_path!)} style={btn}>Print</button>
+            </>
+          ) : (
+            <span style={{ fontSize: 11.5, color: '#b45309' }}>file missing</span>
+          )}
         </div>
       ))}
+
+      {/* Файлы без строки. Автоматически им тип и дату никто не проставляет:
+          угадать их может только человек, открыв файл. */}
+      {unfiled.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: '#b45309', marginBottom: 6 }}>
+            Unfiled uploads · {unfiled.length}
+            <span style={{ fontWeight: 400, color: '#9ca3af' }}> — a file with no type and no document date. Nothing is broken; tell us what it is.</span>
+          </div>
+          {unfiled.map(n => (
+            <div key={n} style={{ ...rowBox, borderColor: '#f0c674', background: '#fffdf6' }}>
+              <span style={{ fontSize: 18 }}>{iconFor(n)}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#1a2e1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cleanName(n)}</div>
+                <div style={{ fontSize: 11, color: '#9ca3af' }}>not filed</div>
+              </div>
+              <button onClick={() => download(`${dir}/${n}`)} style={{ ...btn, borderColor: '#e5e7eb', color: '#6b7280' }}>Open</button>
+              <button onClick={() => setFiling({ name: n, docType: types[0]?.code ?? '', date: '' })} style={btn}>File it</button>
+              <button onClick={() => removeUnfiled(n)} title="Delete" style={{ padding: '5px 10px', borderRadius: 6, border: '1.5px solid #f0c0c0', background: '#fff', color: '#dc2626', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' }}>🗑</button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

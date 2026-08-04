@@ -157,11 +157,13 @@ export type FieldLock = {
   benefit_ladder?: string[] | null
   /** Отказ, когда понижение вносят со слов без причины. */
   needs_reason_text?: string | null
+  /** Требовать причину у marked-поля без лестницы (даты зачисления и ухода). */
+  needs_reason?: boolean | null
 }
 
 export async function loadFieldLocks(): Promise<Record<string, FieldLock>> {
   const { data, error } = await supabase.schema('menumaker').from('child_field_locks')
-    .select('field_key,lock_level,needs_document_text,benefit_ladder,needs_reason_text')
+    .select('field_key,lock_level,needs_document_text,benefit_ladder,needs_reason_text,needs_reason')
   if (error) throw error
   const out: Record<string, FieldLock> = {}
   for (const row of (data ?? []) as FieldLock[]) out[row.field_key] = row
@@ -236,10 +238,39 @@ export function lockRefusal(
     return null
   }
 
+  // Поле, помечающее запись со слов и требующее причину (даты зачисления и
+  // ухода). Причина — не украшение: без неё через год нельзя сказать, ребёнок
+  // ушёл или его вычеркнули из списка.
+  if (lock.lock_level === 'marked' && lock.needs_reason && source === 'verbal' && !(ctx?.note ?? '').trim()) {
+    return lock.needs_reason_text
+      ?? 'Say in your own words why this changed — it is written to the change history.'
+  }
+
   if (lock.lock_level !== 'document') return null
   if (source !== 'verbal') return null
   return lock.needs_document_text
     ?? 'This field can only be changed from a signed document — attach it and enter the date printed on it.'
+}
+
+/**
+ * ДЕНЕЖНЫЙ ГЕЙТ ДАТЫ УХОДА, слышимый ДО СЕТИ. Числа те же, что назовёт сервер, —
+ * он их и считает; экран лишь повторяет их раньше, чтобы человек не отправлял
+ * заведомо отказную дату.
+ *
+ * Отметка ПОСЛЕ ухода — это вопрос «как вы кормили ребёнка, который у вас не
+ * числился», и ответить на него нечем. Поэтому возражение стоит ЗДЕСЬ, где
+ * ставят дату, а не на экране счёта: повар в 11:30 не должен упираться в замок
+ * из-за бумажной работы офиса.
+ */
+export function endDateRefusal(
+  lastMarkDay: string | null, marksAfter: number, newDate: string | null, confirmed: boolean,
+): string | null {
+  if (!newDate || !lastMarkDay) return null
+  if (lastMarkDay <= newDate) return null
+  if (confirmed) return null
+  return `Marks exist through ${lastMarkDay}. An end date of ${newDate} would leave ${marksAfter} mark(s) ` +
+         'after the child left. Check the date; if it is right, confirm explicitly and say why — ' +
+         'the confirmation is written to the history.'
 }
 
 export type FieldProvenance = {

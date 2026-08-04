@@ -197,3 +197,52 @@ describe('гейт по НОВОМУ значению — экран и серв
       .toContain('signed document')
   })
 })
+
+// ============================================================================
+// ДАТЫ ЗАЧИСЛЕНИЯ И УХОДА (заход F): причина обязательна, денежный гейт слышен
+// до сети. Числа в отказе — те же, что назовёт сервер: он их и считает.
+// ============================================================================
+
+import { endDateRefusal } from './childFieldWrite'
+
+const dateLock = {
+  field_key: 'date_out', lock_level: 'marked' as const,
+  needs_document_text: null, benefit_ladder: null,
+  needs_reason: true,
+  needs_reason_text: 'Say in your own words why this date changed.',
+}
+
+describe('причина у даты', () => {
+  it('со слов без причины — отказ', () => {
+    expect(lockRefusal(dateLock, 'verbal', { oldValue: null, newValue: '2026-08-01' })!)
+      .toContain('why this date changed')
+  })
+  it('со слов с причиной — проходит', () => {
+    expect(lockRefusal(dateLock, 'verbal',
+      { oldValue: null, newValue: '2026-08-01', note: 'family gave notice' })).toBeNull()
+  })
+  it('marked без требования причины остаётся свободным', () => {
+    expect(lockRefusal({ ...dateLock, needs_reason: false }, 'verbal', { newValue: '2026-08-01' })).toBeNull()
+  })
+})
+
+describe('денежный гейт даты ухода', () => {
+  it('дата ПОЗЖЕ последней отметки — проходит', () => {
+    expect(endDateRefusal('2026-08-03', 0, '2026-08-10', false)).toBeNull()
+  })
+  it('дата РАНЬШЕ последней отметки — отказ С ЧИСЛАМИ', () => {
+    const r = endDateRefusal('2026-08-03', 4, '2026-07-31', false)!
+    expect(r).toContain('2026-08-03')
+    expect(r).toContain('2026-07-31')
+    expect(r).toContain('4 mark(s)')
+  })
+  it('подтверждено явно — проходит', () => {
+    expect(endDateRefusal('2026-08-03', 4, '2026-07-31', true)).toBeNull()
+  })
+  it('ровно в день последней отметки — проходит: этот день ребёнок ещё был', () => {
+    expect(endDateRefusal('2026-08-03', 0, '2026-08-03', false)).toBeNull()
+  })
+  it('отметок нет вовсе — гейту нечего защищать', () => {
+    expect(endDateRefusal(null, 0, '2026-07-31', false)).toBeNull()
+  })
+})

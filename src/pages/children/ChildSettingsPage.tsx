@@ -15,7 +15,7 @@ import AvatarUpload from '@/components/AvatarUpload'
 import ScheduleEditor from '@/components/ScheduleEditor'
 import { useAuth } from '@/hooks/useAuth'
 import { parseIeaFiscalYear, frpExpiryDefault, recordDetermination } from '@/lib/enrollmentApprove'
-import { IEA_DOC_TYPE, PAPER_DOC_TYPE_BY_FIELD } from '@/lib/ieaOnFile'
+import { IEA_DOC_TYPE, PAPER_DOC_TYPE_BY_FIELD, expiryOverrideNote } from '@/lib/ieaOnFile'
 import {
   changedFields, provenanceProblem, writeChildField, loadFieldHistory, loadFieldProvenance,
   loadFieldLocks, lockRefusal,
@@ -434,9 +434,24 @@ export default function ChildSettingsPage({
       setChild(p => p ? ({ ...p, child_id: newKey } as any) : p)
     }
 
+    // Срок, который дало бы правило CACFP от даты документа. Нужен не для записи
+    // (пишется то, что в поле), а для СРАВНЕНИЯ: разница между вычисленным и
+    // введённым — факт о документе, и он уходит в журнал вместе со значением.
+    const computedExpiry = (frpNorm === 'F' || frpNorm === 'R')
+      ? frpExpiryDefault(prov.documentDate || todayStr, null)
+      : null
+    const expiryNote = expiryOverrideNote(computedExpiry, expiresNorm ?? null)
+
     for (const w of writes) {
+      // У поля срока — своя приписка к провенансу. Через год, когда ребёнок
+      // окажется просрочен раньше ожидаемого, единственный способ понять почему —
+      // найти в журнале, что срок взят С БЛАНКА, а не выведен правилом.
+      const noteForField = w.fieldKey === 'frp_expires' && expiryNote
+        ? [prov.note, expiryNote].filter(Boolean).join(' · ')
+        : prov.note
       results.push(await writeChildField(childId, w, {
-        ...prov, documentDate: prov.source === 'verbal' ? null : (prov.documentDate || null),
+        ...prov, note: noteForField,
+        documentDate: prov.source === 'verbal' ? null : (prov.documentDate || null),
       }, who))
     }
     // Побочный эффект прежнего пути, который нельзя потерять: изменение F/R/P
@@ -617,6 +632,25 @@ export default function ChildSettingsPage({
           )}
         </div>
         {renderEditor(f)}
+        {/* «Взято с бланка» — видимая пометка расхождения ДО сохранения.
+            Правило CACFP даёт 12 месяцев от даты документа до конца месяца, но на
+            бланке бывает напечатан свой срок, и тогда прав бланк. Разница — не
+            ошибка ввода, а факт о документе; здесь он виден, а в журнал уходит
+            вместе со значением. */}
+        {f.key === 'frp_expires' && (() => {
+          const frpNow = (child?.frp ?? '').trim().toUpperCase().slice(0, 1)
+          if (frpNow !== 'F' && frpNow !== 'R') return null
+          const computed = frpExpiryDefault(prov.documentDate || todayStr, null)
+          const note = expiryOverrideNote(computed, (child?.frp_expires ?? null) as string | null)
+          if (!note) return null
+          return (
+            <div style={{ marginTop: 5, fontSize: 12, color: '#7a4a00', background: '#fff8e6',
+              border: '1px solid #f0c674', borderRadius: 8, padding: '7px 10px', lineHeight: 1.45 }}>
+              📄 Taken from the form — the 12-month rule from the document date would give <b>{computed}</b>.
+              This difference is written to the change history.
+            </div>
+          )
+        })()}
         {/* Вторая петля: тот же текст, что скажет save-путь, но до сети.
             Решает база — здесь только слышно раньше. */}
         {lockRefusal(fieldLocks[f.key], prov.source) && (

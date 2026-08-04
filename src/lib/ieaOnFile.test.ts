@@ -50,3 +50,23 @@ describe('тип из реестра', () => {
     expect(IEA_DOC_TYPE).toBe('ieg_application')
   })
 })
+
+import { expiryOverrideNote } from './ieaOnFile'
+
+describe('срок: вычисленный против введённого', () => {
+  it('совпало — записывать нечего', () => {
+    expect(expiryOverrideNote('2027-07-31', '2027-07-31')).toBeNull()
+  })
+
+  it('на бланке свой срок — журнал несёт ОБЕ даты', () => {
+    const note = expiryOverrideNote('2027-07-31', '2027-05-31')!
+    expect(note).toContain('2027-05-31')   // что стоит на бумаге
+    expect(note).toContain('2027-07-31')   // что дало бы правило
+    expect(note.toLowerCase()).toContain('from the form')
+  })
+
+  it('нечего сравнивать — молчим, а не выдумываем расхождение', () => {
+    expect(expiryOverrideNote(null, '2027-05-31')).toBeNull()
+    expect(expiryOverrideNote('2027-07-31', null)).toBeNull()
+  })
+})

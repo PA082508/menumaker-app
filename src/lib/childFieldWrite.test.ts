@@ -158,20 +158,31 @@ describe('направление по лестнице выгоды', () => {
   })
 })
 
-describe('отказ экрана совпадает с отказом сервера', () => {
-  it('ПОВЫШЕНИЕ со слов — отказ, и он называет документ', () => {
-    const r = lockRefusal(frpLock, 'verbal', { oldValue: 'P', newValue: 'F' })!
+describe('гейт по НОВОМУ значению — экран и сервер говорят одно', () => {
+  // Reduced и Free — доходные категории: определяются шкалой по документу, и
+  // «со слов» дохода не бывает. Поэтому направление тут ни при чём — важно, КУДА
+  // пришли. F→R со слов отказывается наравне с P→F.
+  it('со слов к Free — отказ с названием документа', () => {
+    expect(lockRefusal(frpLock, 'verbal', { oldValue: 'P', newValue: 'F' })!).toContain('IEA')
+  })
+
+  it('со слов к Reduced — отказ ДАЖЕ ВНИЗ, с F', () => {
+    const r = lockRefusal(frpLock, 'verbal', { oldValue: 'F', newValue: 'R', note: 'they said' })!
     expect(r).toContain('IEA')
   })
 
-  it('ПОНИЖЕНИЕ со слов БЕЗ причины — отказ про причину', () => {
-    const r = lockRefusal(frpLock, 'verbal', { oldValue: 'F', newValue: 'R' })!
-    expect(r.toLowerCase()).toContain('reason')
+  it('со слов к Paid БЕЗ причины — отказ про причину', () => {
+    expect(lockRefusal(frpLock, 'verbal', { oldValue: 'F', newValue: 'P' })!.toLowerCase()).toContain('reason')
   })
 
-  it('ПОНИЖЕНИЕ со слов С ПРИЧИНОЙ — проходит', () => {
-    expect(lockRefusal(frpLock, 'verbal',
-      { oldValue: 'F', newValue: 'R', note: 'income went up' })).toBeNull()
+  it('со слов к Paid С ПРИЧИНОЙ — проходит, хоть с F, хоть с R', () => {
+    expect(lockRefusal(frpLock, 'verbal', { oldValue: 'F', newValue: 'P', note: 'income went up' })).toBeNull()
+    expect(lockRefusal(frpLock, 'verbal', { oldValue: 'R', newValue: 'P', note: 'stopped claiming' })).toBeNull()
+  })
+
+  it('пустое старое: к Paid со слов можно, к Free — нет', () => {
+    expect(lockRefusal(frpLock, 'verbal', { oldValue: null, newValue: 'P', note: 'no application' })).toBeNull()
+    expect(lockRefusal(frpLock, 'verbal', { oldValue: null, newValue: 'F', note: 'x' })!).toContain('IEA')
   })
 
   it('повышение С ДОКУМЕНТОМ — проходит', () => {

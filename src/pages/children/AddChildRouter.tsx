@@ -174,15 +174,24 @@ function NotFoundBlock({ name, isOrgAdmin, onScan, onNewEnrollment, onRawInsert,
       <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>
         No one named <strong>“{name}”</strong> is on file at this center. Start a new enrollment:
       </div>
+      {/* ДВЕ РАВНОПРАВНЫЕ ДВЕРИ (владелец, 04.08). Разница между ними не в
+          «правильности», а в том, КТО заполняет: онлайн — семья со своего
+          телефона, вручную — директор с бумагой на столе. Обе ведут в один
+          ростер и одну сетку питания; вторая не проходит через разбор входящих,
+          потому что разбирать нечего — форму никто не подавал. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <button style={big} onClick={onScan}>📷 <span>Scan paper form <span style={{ fontWeight: 400, color: '#6b7280' }}>— photo → Inbox</span></span></button>
-        <button style={{ ...big, background: GREEN, color: '#fff', border: 'none' }} onClick={onNewEnrollment}>＋ <span>New enrollment</span></button>
-        <button style={big} onClick={onManual}>✍️ <span>Manual entry <span style={{ fontWeight: 400, color: '#6b7280' }}>— no scan (paper unusable)</span></span></button>
-        {isOrgAdmin && (
-          <button style={{ ...big, borderColor: '#e5e7eb', color: '#6b7280', fontWeight: 600 }} onClick={onRawInsert}>
-            ⚙️ <span>Create record directly <span style={{ fontWeight: 400 }}>— admin only</span></span>
-          </button>
-        )}
+        <button style={{ ...big, background: GREEN, color: '#fff', border: 'none' }} onClick={onNewEnrollment}>
+          🔗 <span>Online enrollment <span style={{ fontWeight: 400, opacity: 0.85 }}>— family fills it in on their phone</span></span>
+        </button>
+        <button style={{ ...big, borderWidth: 2 }} onClick={onRawInsert}>
+          ✍️ <span>Manual entry <span style={{ fontWeight: 400, color: '#6b7280' }}>— you type it now, card opens next</span></span>
+        </button>
+        <button style={{ ...big, borderColor: '#e5e7eb', color: '#6b7280', fontWeight: 600 }} onClick={onScan}>
+          📷 <span>Scan paper form <span style={{ fontWeight: 400 }}>— photo → Inbox</span></span>
+        </button>
+        <button style={{ ...big, borderColor: '#e5e7eb', color: '#6b7280', fontWeight: 600 }} onClick={onManual}>
+          🗂 <span>Type the paper form into the Inbox <span style={{ fontWeight: 400 }}>— when the paper is unusable</span></span>
+        </button>
       </div>
     </div>
   )

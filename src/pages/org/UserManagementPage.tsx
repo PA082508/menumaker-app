@@ -191,6 +191,8 @@ function AddUserModal({
           const j = await (fnError as any)?.context?.json?.()
           if (j?.error) msg = j.error
         } catch { /* keep default */ }
+        // ui-english-exempt: сопоставление с ответом edge-функции, который приходит
+        // по-русски. Это ДАННЫЕ внешней службы; наш текст ниже — уже английский.
         setError(/exists|существует|занят/i.test(msg) ? 'An account with this email already exists.' : msg)
         return
       }

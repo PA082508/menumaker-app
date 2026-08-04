@@ -323,7 +323,7 @@ export async function applyDcyPeople(
       })
       // Пустой список кандидатов означает «двойников нет» и ведёт к созданию
       // новой личности. Отказ, прочитанный как пустой список, плодит дубли.
-      throwIf(candErr, 'Поиск двойников не выполнен')
+      throwIf(candErr, 'The duplicate search did not run')
       const list = (cands ?? []) as any[]
       const exact = list.find(c => c.why === 'exact_key')
 

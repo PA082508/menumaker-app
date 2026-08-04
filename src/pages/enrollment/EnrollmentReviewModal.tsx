@@ -924,7 +924,7 @@ export default function EnrollmentReviewModal({
 
               {dupWarn && (
                 <div style={{ fontSize: 12, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 10px', color: '#92400e' }}>
-                  Похоже уже есть: «{dupWarn.name}»{dupWarn.dob ? ` ${String(dupWarn.dob).slice(0, 10)}` : ''} — точно новый?
+                  Looks like this child already exists: “{dupWarn.name}”{dupWarn.dob ? ` ${String(dupWarn.dob).slice(0, 10)}` : ''} — is this really a new one?
                 </div>
               )}
 

@@ -56,7 +56,7 @@ export async function loadMenuSource(program: string = 'child'): Promise<MenuSou
     .eq('program', program)
     .order('created_at', { ascending: false })
     .limit(1)
-  throwIf(cycleErr, 'меню не прочитано (цикл)')
+  throwIf(cycleErr, 'The menu was not read (cycle)')
 
   const cycle = cycles?.[0]
   if (!cycle) return null
@@ -69,7 +69,7 @@ export async function loadMenuSource(program: string = 'child'): Promise<MenuSou
              recipes:recipe_id(is_whole_grain)`)
     .eq('cycle_id', cycle.id)
     .order('sort_order')
-  throwIf(itemsErr, 'меню не прочитано (блюда цикла)')
+  throwIf(itemsErr, 'The menu was not read (cycle dishes)')
 
   const lookup: Lookup = {}
   const recipeIds = new Set<string>()
@@ -92,7 +92,7 @@ export async function loadMenuSource(program: string = 'child'): Promise<MenuSou
       .from('recipe_components')
       .select('recipe_id, quantity, unit, recipes:recipe_id(name, menu_form_primary_component), components:component_id(slug,label), age_groups:age_group_id(slug)')
       .in('recipe_id', [...recipeIds])
-    throwIf(rcErr, 'меню не прочитано (состав рецептов)')
+    throwIf(rcErr, 'The menu was not read (recipe components)')
     combos = buildCombos((rcs || []).map((r: any) => ({
       recipe_id: r.recipe_id, name: r.recipes?.name || '', quantity: r.quantity, unit: r.unit,
       comp_slug: r.components?.slug, comp_label: r.components?.label, age_slug: r.age_groups?.slug,
@@ -122,7 +122,7 @@ export async function loadHolidaysByCenter(
     .select('center_id, year, month, day, name, type, close_time')
     .in('center_id', centerIds)
   // Тихо потерянные праздники = бланк, где закрытый день расписан как рабочий.
-  throwIf(error, 'праздники центра не прочитаны')
+  throwIf(error, 'Centre holidays were not read')
 
   for (const h of (data || []) as any[]) {
     const bucket = (byCenter[h.center_id] ??= {})

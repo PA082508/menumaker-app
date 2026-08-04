@@ -48,19 +48,19 @@ export const CLOSE_PHRASE: ChimePhrase = {
 export const CHIME_VARIANTS: Record<ChimeVariantKey, ChimeVariant> = {
   v1: {
     key: 'v1',
-    label: 'Вариант 1 · «It\'s time to eat!»',
+    label: 'Variant 1 · «It\'s time to eat!»',
     start:    { notes: ['C5', 'E5', 'G5', 'C6'], words: "It's time to eat!" },
     reminder: { notes: ['G4', 'B4', 'D5', 'G5'], words: 'Please mark the meal' },
   },
   v2: {
     key: 'v2',
-    label: 'Вариант 2 · «Wash your hands and eat»',
+    label: 'Variant 2 · «Wash your hands and eat»',
     start:    { notes: ['G4', 'C5', 'E5', 'D5', 'C5'], words: 'Wash your hands and eat' },
     reminder: { notes: ['E4', 'A4', 'C5', 'B4', 'A4'], words: 'Ten more minutes left' },
   },
   v3: {
     key: 'v3',
-    label: 'Вариант 3 · «Yummy-yummy time!»',
+    label: 'Variant 3 · «Yummy-yummy time!»',
     start:    { notes: ['E5', 'C5', 'E5', 'C5', 'G5'], words: 'Yummy-yummy time!' },
     reminder: { notes: ['C5', 'A4', 'C5', 'A4', 'D5'], words: 'Did you mark the meal?' },
   },
@@ -96,7 +96,7 @@ const SEMITONE: Record<string, number> = {
 
 export function noteToFreq(note: string): number {
   const m = /^([A-G][#b]?)(-?\d)$/.exec(note.trim())
-  if (!m) throw new Error(`mealChime: не нота — «${note}»`)
+  if (!m) throw new Error(`mealChime: not a note — “${note}”`)
   const semi = SEMITONE[m[1]]
   const octave = Number(m[2])
   // MIDI: A4 = 69, C-1 = 0.

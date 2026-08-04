@@ -119,6 +119,28 @@ every iPad model.
 What replaces it: the **pulsing banner** (silent, always on, unaffected by mute) and,
 15 minutes in, this alert on your screen.
 
+## Your check-in is a legal act
+
+The check-in you make on the tablet with your PIN is not a convenience for payroll.
+It is the moment you **take responsibility for the center**, recorded to the minute.
+
+- **Check in** = from this minute, the children in this building are your
+  responsibility. The record names you, the device, and the time.
+- **Check out** = you hand that responsibility back. Until a check-out exists, the
+  record says you are still holding it.
+- **A missing check-out is not a blank — it is a claim.** If you leave and never
+  check out, the record shows you as responsible for the center for those hours.
+  That is the version an inspector, an insurer or a court would read.
+- **Breaks go through check-out and check-in**, the same two taps. The record cannot
+  tell a break from a shift; only your taps can.
+- **Only your own taps count.** Nobody can check you in or out — that is what the PIN
+  is for, and it is why the tablet answers with one drop for in and two for out.
+
+The same rule applies to every teacher in the building, and their hours are built from
+the same two taps. When you ask staff to be exact about checking out, you are not
+policing their minutes — you are keeping them from being recorded as responsible for a
+room they had already left.
+
 ## Creating director accounts
 
 Directors sign in with their **own email + password** (Supabase Auth), the same login

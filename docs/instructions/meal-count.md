@@ -4,6 +4,7 @@ module: meal-count
 order: 1
 roles: [director, cook, teacher, admin]
 # video: <url>   # (Stage 2) short walkthrough
+updated: 2026-08-04
 ---
 
 # Meal Count
@@ -40,6 +41,35 @@ Use **Kitchen View** for planning and weekly totals.
 3. **Week View** — the full week at a glance for food planning and ordering.
 4. **Kitchen Report** (Operations → Kitchen Report) — print/export the weekly summary.
 5. **Export for Google Sheets** — the Export button (top right) downloads the data for CACFP reporting.
+
+## The sound ladder of a meal window
+
+The kitchen tablet is not a metronome. Each sound sits at a known minute of the
+window and means one thing; there is nothing to acknowledge and nothing to dismiss.
+
+| Minute of the window | What happens | What it means for the kitchen |
+|---|---|---|
+| **0 — window opens** | 🎵 the meal song, and the screen switches itself to that meal | Serve. The song says *"you may start now"* — never earlier: a meal served ahead of the posted window is a meal the inspector can refuse to pay for. |
+| **+10, still zero marks** | 📯 **bugle** on the class tablet + the banner starts pulsing | The room has been eating for ten minutes and not one portion is recorded. Somebody has a free hand — use it. |
+| **+15, still zero marks** | **the director is told** — room, meal, the time the window opened | The director is now walking to the room. This is not a reprimand; it is the last cheap moment to fix it. |
+| **10 minutes before close** | 🎵 a softer song — *"Ten more minutes left"* | Last call. |
+| **close** | **silence — on purpose** | A sound here would read as *"too late, don't touch"*. It is never too late: marking is not blocked at close, nor tomorrow. |
+| after close, unmarked | 🔴 the red list at the bottom of the screen | Silent, visible, and it stays until the meal is marked. This is the same list that becomes a hole in the monthly claim if it is ignored. |
+
+**The bugle and the director alert fire only on a window with ZERO marks.** One
+portion marked in the first ten minutes and neither ever happens — that is the whole
+rule. Breakfast served *as children arrive* has no start minute at all, so it plays
+nothing: no song, no bugle, no director. It still appears in the red list if the day
+ends with nothing marked.
+
+**Quiet hour.** The `🔊 Sound on` button in the header mutes every sound on this
+tablet. The pulsing banner and the director alert keep working while muted — and the
+alert the director receives says *"sound muted since HH:MM — the room did not hear
+it"*, so nobody mistakes a silent room for an indifferent one.
+
+**If a mark refuses to save**, the red strip says so *and says it out loud*, naming
+the child. Tap **Retry**. Marks are never lost while this happens — they sit on the
+device and send themselves when the connection returns.
 
 ## For directors
 

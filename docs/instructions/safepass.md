@@ -4,6 +4,7 @@ module: safepass
 order: 2
 roles: [director, teacher, driver, admin]
 # video: <url>   # (Stage 2) short walkthrough
+updated: 2026-08-04
 ---
 
 # SafePass
@@ -49,6 +50,56 @@ never when a parent merely enters the building.
 3. **Point 2 — Driver → School** — driver completes the checklist with GPS timestamp; Play Academy responsibility ends at the school's drop-off point.
 4. **Point 3 — School → Driver** — school staff confirms children boarding the return vehicle.
 5. **Point 4 — Driver → Center** — confirm each child returned; tap ✓ *Confirm All Children Returned*.
+
+## What you hear and see — and what to do about it
+
+The tablet talks to you so you can keep your hands on the children. Every sound
+means exactly one thing; nothing here ever needs a reply on the screen.
+
+| I hear / I see | It means | I do |
+|---|---|---|
+| 🎵 A short song — *"Wash your hands and eat"* | A meal window just opened. The screen switches itself to that meal. | Serve. Mark portions when hands are free. |
+| 🟡 Banner counting down | The window is running. The number is minutes left. | Nothing yet — it is a clock, not an alarm. |
+| 📯 **A bugle** + the banner starts **pulsing** | 10 minutes into the meal and **not one portion is marked**. | **Mark now.** The bugle only ever means "zero marks". |
+| 🔴 Pulsing continues, no bugle | Same window, sound is muted on this device. | Mark now — the room heard nothing. |
+| 🎵 A softer song — *"Ten more minutes left"* | 10 minutes before the window closes. | Last call to mark. |
+| (silence) at close | The window closed. **Closing makes no sound on purpose.** | You can still mark it — nothing is blocked. |
+| 🔴 Red list at the bottom of the screen | Windows that closed today with zero marks. | Mark them. It is a reminder, not a punishment. |
+| 💧 One drop | Your **check-in** was recorded. | Nothing. That is your receipt. |
+| 💧💧 Two drops | Your **check-out** was recorded. | Nothing. |
+| 🗣 *"Emma Carter — accepted, 8:02"* | A drop-off was confirmed under your PIN. | Nothing — you just heard your own receipt read back. |
+| 🗣 *"Emma Carter — released to Maria Lopez, 5:12"* | A pick-up was confirmed: child, person, time. | If any of those three words is wrong, **say so immediately** — the record is already written. |
+| 🗣 *"Maria Lopez is here for Emma Carter"* | A parent has tapped *I'm here* in their app. They are at the door **but nothing has been recorded yet.** | Bring the child, look at the person, then tap Release. |
+| ⚠️ Red strip **"Mark not saved"** with **Retry** | A mark did not save. It also says it out loud. | Tap **Retry**. If it fails twice, tell your director. |
+| 🔇 *Muted since 09:40* in the header | Someone put this tablet in quiet-hour mode. | Sound is off; the pulsing banner and the director alert still work. |
+
+**The bugle is not decoration.** It sounds only when a meal has been running ten
+minutes with zero marks. Five minutes after it, your director is told — by name of
+room and meal. Nobody is being watched: an unmarked meal simply cannot be claimed
+later, and the money for food already eaten is gone.
+
+**Quiet hour.** The `🔊 Sound on` button in the header mutes every sound on this
+tablet with one tap and changes to `🔇 Muted since HH:MM`. It is recorded — the time
+it started, and on which device — and that fact travels inside the director's alert.
+Mute silences sound only: the banner still pulses, and the director is still told.
+
+## Transparent pay runs on your own taps
+
+Your hours come from **your own check-in and check-out** — nobody types them in for
+you afterwards, and nobody can quietly round them.
+
+- **Check in with your PIN when you start.** One drop = recorded, with the minute.
+- **Check out with your PIN when you leave.** Two drops = recorded.
+- **Breaks go through check-out and check-in**, the same two taps. A break you did
+  not check out of is time you were on the clock — the record cannot tell the
+  difference, and neither can payroll.
+- **Only your own taps count**, and only inside your approved schedule. A colleague
+  cannot check you in; the PIN is what makes the record yours.
+- **Not checked out = still on duty.** The system keeps you responsible for the room
+  until a check-out exists.
+
+This is why the drop sounds exist at all: two quiet taps a day are the whole basis
+of a paycheck nobody has to argue about.
 
 ## Rules
 

@@ -51,6 +51,15 @@ export const SECTIONS: Section[] = [
     items: [
       { path: '/children', label: 'Children', icon: 'ti-baby-carriage' },
       { path: '/parents',  label: 'Parents',  icon: 'ti-users' },
+      // Дверь к экрану регистрации родительского телефона (/safepass/issue).
+      // Ссылки на него не было НИ В ОДНОМ меню — замер 04.08: маршрут существовал,
+      // но открыть его можно было только набрав адрес руками, поэтому директор
+      // физически не мог начать активацию родителей.
+      //
+      // Имя НЕ содержит слова «Issue» нарочно: рядом уже стоит «Issue Renewal»
+      // (продление зачисления, к SafePass отношения не имеет), и два пункта на
+      // одно слово в одном меню — это гарантированный неверный тап.
+      { path: '/safepass/issue', label: 'Parent access', icon: 'ti-device-mobile-check' },
       { path: '/issue-renewal', label: 'Issue Renewal', icon: 'ti-send' },
       { path: '/staff',    label: 'Staff',    icon: 'ti-id-badge' },
     ],
@@ -150,6 +159,13 @@ export const DIRECTOR_PATHS = new Set([
   '/meal-count-director',                            // Operations → Director door (their own; cook has /meal-count)
   '/menu/current',                                   // Planning → Current Menu ONLY (no /menu planner)
   '/children', '/parents', '/staff',                 // People (Inbox/Issue-Packet reached via buttons)
+  // Parent access — регистрация родительского телефона. Директору открыт нарочно:
+  // активация родителей его центра — его работа, и до 04.08 у него не было двери.
+  // Охват центра держит НЕ этот список, а сам экран: обе его RPC
+  // (safepass_pickup_candidates / safepass_mark_person_registered) фильтруют по
+  // `my_center_ids()` OR `is_org_owner(org_id)` — у трёх директоров ровно по одной
+  // строке доступа, у админа и офис-менеджера проходит владельческая ветка.
+  '/safepass/issue',
   '/documents', '/instructions', '/document-hub',    // Documents
   // Reports → Attendance Blank ONLY (03.08, по слову владельца). Директору нужен
   // бланк недельной посещаемости на печать — тот самый, что проходил проверки.

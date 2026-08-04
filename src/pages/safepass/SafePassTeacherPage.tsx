@@ -21,6 +21,23 @@ import {
   fetchCheckedInToday, staffCheckIn, staffCheckOut,
   type DeviceContext, type HandoffResult, type CheckedInTeacher,
 } from '@/lib/safepassDevice'
+import { isAudioUnlocked, unlockAudio } from '@/lib/mealChime'
+import { playDropIn, playDropOut, speakLine } from '@/lib/soundKit'
+import { spokenArrival, spokenHandoff } from '@/lib/spokenLines'
+import MuteToggle from '@/components/sound/MuteToggle'
+
+// Объявление прихода произносится РОВНО ОДИН РАЗ на заявку и переживает
+// перезагрузку планшета: ключ живёт в localStorage, как память звонков ритуала.
+// Без этого достаточно потянуть страницу вниз, чтобы очередь у двери заговорила
+// заново — и голосу перестанут верить.
+const spokeKey = (sessionId: string) => `mm_spoke_arrival_${sessionId}`
+function speakOnce(sessionId: string, line: string) {
+  try {
+    if (localStorage.getItem(spokeKey(sessionId)) === '1') return
+    localStorage.setItem(spokeKey(sessionId), '1')
+  } catch { /* хранилища нет — скажем и, возможно, повторим; молчать хуже */ }
+  speakLine(line)
+}
 
 // org_id (3a9a290e-7e49-491e-946b-ad86f2399910) is stamped on INSERT by the
 // parent flow (Step 4); the teacher view only reads/confirms existing sessions.
@@ -271,6 +288,21 @@ export default function SafePassTeacherPage() {
     return () => clearInterval(t)
   }, [])
 
+  // iOS оживляет звук И РЕЧЬ только внутри настоящего жеста. Ловим первое касание
+  // экрана — любое, хоть по пустому месту. Тот же приём, что на экране счёта:
+  // механизм разблокировки один на всё устройство (lib/mealChime.ts), второй
+  // рядом означал бы два разных «звук готов» на одном планшете.
+  useEffect(() => {
+    if (isAudioUnlocked()) return
+    const h = () => { void unlockAudio() }
+    window.addEventListener('pointerdown', h, { once: true })
+    window.addEventListener('keydown', h, { once: true })
+    return () => {
+      window.removeEventListener('pointerdown', h)
+      window.removeEventListener('keydown', h)
+    }
+  }, [])
+
   const [selectedCenterId, setSelectedCenterId] = useState<string>(currentCenter?.id ?? '')
   const [allCenters, setAllCenters] = useState<{id:string;name:string}[]>([])
 
@@ -373,6 +405,11 @@ export default function SafePassTeacherPage() {
         ({ new: s }: any) => {
           if (s.status === 'waiting' && s.auth_method === 'app') {
             setQueue(q => q.some(x => x.id === s.id) ? q : [...q, s as Session])
+            // Родитель заявил приход из своего приложения — объявляем ВСЛУХ.
+            // Отдельного «раннего события» строить не пришлось: оно уже есть —
+            // safepass_request_handoff кладёт заявку со статусом waiting, а эта
+            // подписка и есть её живая доставка на планшет класса.
+            speakOnce(s.id, spokenArrival(s.trusted_person_name ?? s.parent_name, s.child_name))
           }
         })
       .on('postgres_changes',
@@ -450,6 +487,11 @@ export default function SafePassTeacherPage() {
         ? (r.already ? `${r.staff_name} was already checked in — nothing changed.` : `${r.staff_name} checked in.`)
         : `${r.staff_name} checked out.`,
     })
+    // Ярус «капля»: одна на приход, две на уход. Звучит НА ЭТОМ устройстве —
+    // это расписка тому, кто нажал, а не объявление комнате, поэтому и тише
+    // всех прочих ярусов. «Уже отмечен» каплей не сопровождается: капля —
+    // о событии, а события не было.
+    if (!r.already) { if (wasIn) playDropIn(); else playDropOut() }
     loadCheckedIn()
   }
 
@@ -479,6 +521,16 @@ export default function SafePassTeacherPage() {
         ? `✓ ${s.child_name} accepted — ${r.staff_name}`
         : `✓ ${s.child_name} released — ${r.staff_name}`,
       s.action_type !== 'drop_off')
+    // Ярус «голос»: вслух произносится ПИСЬМЕННАЯ КВИТАНЦИЯ — то же событие, тот
+    // же час, то же имя. Руки у учителя заняты ребёнком и сумкой, на экран он в
+    // эту секунду не смотрит; голос — единственный способ подтвердить передачу,
+    // не отнимая рук. Больше написанного голос не говорит (lib/spokenLines.ts).
+    speakLine(spokenHandoff({
+      action: s.action_type === 'drop_off' ? 'drop_off' : 'pick_up',
+      childName: s.child_name,
+      personName: s.trusted_person_name ?? s.parent_name,
+      atISO: ts,
+    }))
   }
 
   const skip = (id: string) => setQueue(q => q.filter(x => x.id !== id))
@@ -665,7 +717,9 @@ export default function SafePassTeacherPage() {
       )}
 
       {/* Help link */}
-      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: '6px 20px', display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: '6px 20px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12 }}>
+        {/* Тихий час — один тап глушит каплю и голос на ЭТОМ планшете. */}
+        <MuteToggle device={`${centerName} · ${className}`} dark />
         <a href="/safepass/help" target="_blank"
           style={{ fontSize: 12, color: C.blue, textDecoration: 'none', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
           ❓ Teacher Guide & Help

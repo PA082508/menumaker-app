@@ -24,6 +24,37 @@ export const RITUAL_COUNTDOWN_MIN = 30
 /** За сколько минут до конца окна звучит напоминание. */
 export const REMINDER_LEAD_MIN = 10
 
+// ─── Ступени пустого окна (карта звуков 04.08) ───────────────────────────────
+// Отсчёт идёт от НАЧАЛА окна, а не от его конца, и только при НУЛЕ отметок:
+//   +10 мин → горн на планшете класса   (звук, глушится тумблером)
+//   +15 мин → сообщение директору центра (не звук — глушителем не отменяется)
+// Почему от начала: еда уже на столах, и цена промедления растёт с первой минуты,
+// а не с последней. Почему две ступени, а не одна: горн даёт комнате шанс
+// исправиться самой, и только если она им не воспользовалась, тревожат директора.
+
+export const HORN_AFTER_MIN = 10
+export const DIRECTOR_ALERT_AFTER_MIN = 15
+
+export type AlertStage = 'none' | 'horn' | 'director'
+
+/**
+ * Ступень тревоги для окна прямо сейчас. Чистая функция — вся лестница
+ * проверяется машиной, а не глазами в 9:40.
+ *
+ * Ступени живут ВНУТРИ окна: закрывшееся окно молчит вовсе (решение 04.08 —
+ * «закрытие без звука»), его подбирает красный список конца дня. У окна короче
+ * 10 минут ступеней не бывает — и это верно: догонять там уже нечего.
+ */
+export function alertStage(w: MealWindow, nowMin: number, marked: boolean): AlertStage {
+  if (marked) return 'none'
+  const ph = phaseOf(w, nowMin)
+  if (ph !== 'open' && ph !== 'reminder') return 'none'
+  const since = nowMin - w.start
+  if (since >= DIRECTOR_ALERT_AFTER_MIN) return 'director'
+  if (since >= HORN_AFTER_MIN) return 'horn'
+  return 'none'
+}
+
 export interface ScheduleRow {
   slot: string
   start_time: string | null
@@ -160,10 +191,18 @@ export interface BannerState {
   markedAt: string | null
   /** true — идут последние 10 минут окна. */
   urgent: boolean
+  /**
+   * true с 10-й минуты пустого окна — плашка ПУЛЬСИРУЕТ.
+   *
+   * Видимость нарочно не зависит ни от разблокировки звука, ни от тумблера
+   * «тихий час»: заглушённый планшет в тихий час обязан остаться видимым, иначе
+   * тумблер выключал бы не звук, а само предупреждение.
+   */
+  alarm: boolean
 }
 
 export const EMPTY_BANNER: BannerState = {
-  kind: 'none', slot: null, minutesLeft: 0, minutesToClose: 0, markedAt: null, urgent: false,
+  kind: 'none', slot: null, minutesLeft: 0, minutesToClose: 0, markedAt: null, urgent: false, alarm: false,
 }
 
 /**
@@ -179,7 +218,7 @@ export function bannerState(
 ): BannerState {
   if (!active) return EMPTY_BANNER
   if (marked) {
-    return { kind: 'done', slot: active.slot, minutesLeft: 0, minutesToClose: 0, markedAt, urgent: false }
+    return { kind: 'done', slot: active.slot, minutesLeft: 0, minutesToClose: 0, markedAt, urgent: false, alarm: false }
   }
   return {
     kind: audioUnlocked ? 'counting' : 'locked',
@@ -188,5 +227,6 @@ export function bannerState(
     minutesToClose: Math.max(0, active.end - nowMin),
     markedAt: null,
     urgent: phaseOf(active, nowMin) === 'reminder',
+    alarm: alertStage(active, nowMin, false) !== 'none',
   }
 }

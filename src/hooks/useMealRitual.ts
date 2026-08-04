@@ -12,21 +12,26 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  activeRitualWindow, bannerState, buildWindows, phaseOf, ritualLed, unbuckledWindows,
+  activeRitualWindow, bannerState, buildWindows, unbuckledWindows,
   type BannerState, type MealWindow, type ScheduleRow, type UnbuckledWindow,
 } from '@/lib/mealWindows'
+import { ritualDue, type RitualEventKind } from '@/lib/ritualEvents'
 import { ritualDay, ritualMinutes, hhmm, type RitualDayKey } from '@/lib/ritualClock'
 import { isAudioUnlocked, playChime, subscribeChime, unlockAudio, type ChimeVariantKey } from '@/lib/mealChime'
+import { playBugle } from '@/lib/soundKit'
 
-export type RitualEvent = 'start' | 'reminder' | 'close'
+/**
+ * События с памятью «ровно один раз». `close` больше НЕ звучит: карта звуков
+ * 04.08 закрывает окно молча — красный список остаётся только видимостью.
+ * Ключ 'close' удалён вместе со звонком, а не оставлен «на всякий случай»:
+ * мёртвый ключ завтра прочитают как живое поведение.
+ */
+export type RitualEvent = RitualEventKind
 
 /** Как часто пересчитывать. 15 с: окно открывается в минуту, и опоздать на минуту
  *  «можно начинать» — значит опоздать по-настоящему; чаще смысла нет. */
 const TICK_MS = 15000
 
-function ringKey(dateISO: string, classroomId: string, slot: string, ev: RitualEvent) {
-  return `mm_ritual_${dateISO}_${classroomId}_${slot}_${ev}`
-}
 function alreadyRang(k: string): boolean {
   try { return localStorage.getItem(k) === '1' } catch { return false }
 }
@@ -51,6 +56,13 @@ export interface RitualInput {
   variant: ChimeVariantKey
   /** Переключить экран на приём, чьё окно открылось. */
   onOpenSlot?: (slot: string) => void
+  /**
+   * 15-я минута пустого окна — позвать директора центра. Хук НЕ знает, каким
+   * рельсом: он называет ЧТО случилось, отправку делает страница. Иначе арифметика
+   * ритуала потянула бы за собой базу и перестала проверяться чистым тестом.
+   * Обещание вызывающему: на одно окно за день — ровно один вызов.
+   */
+  onDirectorAlert?: (w: MealWindow) => void
 }
 
 export interface RitualOutput {
@@ -67,7 +79,7 @@ export interface RitualOutput {
 export function useMealRitual(input: RitualInput): RitualOutput {
   const {
     enabled, todayISO, classroomId, rows, centerRows,
-    isSlotMarked, isCenterSlotMarked, variant, onOpenSlot,
+    isSlotMarked, isCenterSlotMarked, variant, onOpenSlot, onDirectorAlert,
   } = input
 
   const [nowMin, setNowMin] = useState(() => ritualMinutes())
@@ -130,37 +142,38 @@ export function useMealRitual(input: RitualInput): RitualOutput {
   onOpenRef.current = onOpenSlot
   const markedRef = useRef(isSlotMarked)
   markedRef.current = isSlotMarked
+  const onAlertRef = useRef(onDirectorAlert)
+  onAlertRef.current = onDirectorAlert
 
   useEffect(() => {
     if (!live || !classroomId) return
-    for (const w of windows) {
-      // Завтрак «по мере прихода» ритуал не ведёт ЦЕЛИКОМ (решение владельца 03.08):
-      // ни старта, ни напоминания, ни закрытия, ни авто-переключения экрана. Раньше
-      // здесь стоял пропуск только на старте — напоминание и закрытие завтрак всё
-      // равно озвучивали, то есть исключение было наполовину. Причина прежняя и
-      // усиленная: у окна «по мере прихода» нет минуты, в которую можно начинать,
-      // и любой голос над ним толкает к ранней подаче — к тому, за что снимают
-      // возмещение (канон 31.07). В красный список конца дня завтрак по-прежнему
-      // попадает — молча и только при нуле отметок (см. unbuckledWindows).
-      if (!ritualLed(w)) continue
-      const ph = phaseOf(w, nowMin)
-      if (ph === 'open' || ph === 'reminder') {
-        const k = ringKey(todayISO, classroomId, w.slot, 'start')
-        if (!alreadyRang(k)) {
-          rememberRang(k)
-          onOpenRef.current?.(w.slot)          // табло само загорается
+    // ЧТО делать — решает чистая функция (lib/ritualEvents.ts), здесь остаётся
+    // только исполнение. Так вся лестница окна проверяется машиной, а не глазами
+    // в 9:25, и «после перезагрузки повторов нет» — это второй прогон по той же
+    // памяти в пробе, а не рассуждение.
+    for (const ev of ritualDue({
+      windows, nowMin, dateISO: todayISO, classroomId,
+      isMarked: (slot) => markedRef.current(slot),
+      hasRung: alreadyRang,
+    })) {
+      rememberRang(ev.key)
+      switch (ev.kind) {
+        case 'start':
+          onOpenRef.current?.(ev.window.slot)   // табло само загорается
           playChime(variant, 'start')
-        }
-      }
-      if (ph === 'reminder' && !markedRef.current(w.slot)) {
-        const k = ringKey(todayISO, classroomId, w.slot, 'reminder')
-        if (!alreadyRang(k)) { rememberRang(k); playChime(variant, 'reminder') }
-      }
-      if (ph === 'closed' && !markedRef.current(w.slot)) {
-        const k = ringKey(todayISO, classroomId, w.slot, 'close')
-        // Закрытие звонит только по свежему следу: открыли планшет вечером —
-        // молча, иначе он отыграет весь пропущенный день подряд.
-        if (!alreadyRang(k) && nowMin - w.end <= 5) { rememberRang(k); playChime(variant, 'close') }
+          break
+        case 'reminder':
+          playChime(variant, 'reminder')
+          break
+        case 'horn':
+          playBugle()
+          break
+        case 'director':
+          // Память поставлена ДО отправки нарочно: повторить сообщение директору
+          // хуже, чем не отправить второй раз. Не дошло — видно по пустому ящику,
+          // а пять одинаковых писем про один снек он перестанет читать вовсе.
+          onAlertRef.current?.(ev.window)
+          break
       }
     }
   }, [live, windows, nowMin, todayISO, classroomId, variant])

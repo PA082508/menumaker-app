@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
+import { useAuth } from '@/hooks/useAuth'
 import { rotationWeek, mondayOfWeekWith } from './OfficialMenu'
+import { publishMonth } from './publishMonth'
 
 // Auto-return to the live week after this much inactivity on another tab.
 const IDLE_RETURN_MS = 3 * 60 * 1000
@@ -51,6 +53,12 @@ interface Holiday {
 
 const MONTH_LABELS = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
+const MONTH_FULL = ['', 'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December']
+
+// Месяц публикации в виде 'YYYY-MM' (значение <input type="month">).
+const monthValue = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
 const DAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
 
@@ -70,7 +78,8 @@ const MEAL_ICONS: Record<string, string> = {
 
 export default function MenuPlannerPage() {
   const navigate = useNavigate()
-  const { currentCenter, centers } = useOrg()
+  const { currentCenter, centers, org } = useOrg()
+  const { user, roles } = useAuth()
   const [cycle, setCycle]         = useState<Cycle | null>(null)
   const [items, setItems]         = useState<MenuItem[]>([])
   const [loading, setLoading]     = useState(true)
@@ -80,6 +89,12 @@ export default function MenuPlannerPage() {
   const [holidayMap, setHolidayMap]     = useState<Record<string, Holiday>>({})
   const [cycleStart, setCycleStart]     = useState<string | null>(null)
   const [savingDate, setSavingDate]     = useState(false)
+  // Публикация месяца по всем центрам. Месяц берётся ЯВНО (по умолчанию —
+  // текущий календарный), а не из выбранной вкладки недели: вкладка — номер
+  // недели ротации, он не обязан лежать в том месяце, который публикуют.
+  const [pubMonth, setPubMonth]         = useState(() => monthValue(new Date()))
+  const [publishing, setPublishing]     = useState(false)
+  const [pubMsg, setPubMsg]             = useState<{ ok: boolean; text: string } | null>(null)
 
   // The live week of the rotation for today (from cycle_start, mod total_weeks).
   const currentCycleWeek = useMemo(
@@ -263,13 +278,41 @@ export default function MenuPlannerPage() {
     !!h && h.type === 'short_day' && !!h.close_time &&
     (SLOT_TIMES[mealType] ?? '99:99') >= h.close_time.slice(0, 5)
 
-  // Official monthly print form — per center, month derived from the selected
-  // week's Monday (falls back to today when no cycle anchor is set).
+  const [pubYear, pubMonthNum] = pubMonth.split('-').map(Number)
+  // Совпадает с политикой manage_published_menus на published_menus: кто может
+  // писать снимок в базу, тот и видит кнопку. Шире кнопку не показываем — RLS
+  // всё равно откажет, а человек прочтёт это как поломку.
+  const canPublish = roles.includes('director') || roles.includes('office_manager') || roles.includes('admin')
+
+  // Меню в системе одно на организацию, а хранится ПО ЦЕНТРАМ: одна публикация
+  // кладёт по снимку на каждый доступный центр (у каждого — свои праздники).
+  // Публикация только вперёд: повторная даёт новую версию, старую не трогает.
+  const publishAllCenters = async () => {
+    if (!centers.length) { setPubMsg({ ok: false, text: 'No centers available to publish for.' }); return }
+    setPublishing(true)
+    setPubMsg(null)
+    const { published, error } = await publishMonth({
+      centers: centers.map(c => ({ id: c.id, slug: c.slug, name: c.name })),
+      year: pubYear,
+      month: pubMonthNum,
+      orgId: org?.id ?? null,
+      userId: user?.id ?? null,
+    })
+    setPublishing(false)
+    if (error) { setPubMsg({ ok: false, text: `Not published — ${error}` }); return }
+    setPubMsg({
+      ok: true,
+      text: `Published ${MONTH_FULL[pubMonthNum]} ${pubYear} · ` +
+        published.map(p => `${p.center.name} v${p.version}`).join(' · '),
+    })
+  }
+
+  // Official monthly print form — per center (view / print / admin re-issue),
+  // for the same month the Publish button targets.
   const openOfficialPrint = () => {
     const slug = currentCenter?.slug || centers[0]?.slug
     if (!slug) { alert('No center available to print an official menu for.'); return }
-    const d = cellDate(0) ?? new Date()
-    navigate(`/menu/print-official/${slug}/${d.getFullYear()}/${d.getMonth() + 1}`)
+    navigate(`/menu/print-official/${slug}/${pubYear}/${pubMonthNum}`)
   }
 
   if (loading) return (
@@ -325,17 +368,65 @@ export default function MenuPlannerPage() {
           }}>
             🖨️ Print Week {selectedWeek}
           </button>
-          <button onClick={openOfficialPrint} title="Official CACFP monthly menu — review, Publish (creates a new version parents can see), print or save as PDF" style={{
+          <button onClick={openOfficialPrint} title="Official CACFP monthly menu for the active center — review, print or save as PDF" style={{
             display: 'flex', alignItems: 'center', gap: 6,
             padding: '8px 16px', borderRadius: 8,
             border: '1px solid #0f4c35', background: '#fff',
             color: '#0f4c35', fontSize: 12, fontWeight: 600,
             cursor: 'pointer', fontFamily: 'inherit',
           }}>
-            📢 Publish / Official Menu
+            🖨️ Official Menu
           </button>
+          {canPublish && (
+            <>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#888' }}>
+                Month:
+                <input type="month" value={pubMonth} onChange={e => { setPubMonth(e.target.value); setPubMsg(null) }}
+                  style={{
+                    padding: '6px 8px', borderRadius: 8, border: '1px solid #d0d5d0',
+                    fontSize: 12, fontFamily: 'inherit', color: '#333',
+                  }} />
+              </label>
+              <button onClick={publishAllCenters} disabled={publishing || !centers.length}
+                title={`Publishes ${MONTH_FULL[pubMonthNum] || ''} ${pubYear || ''} for ALL centers in one operation — each center gets its own snapshot (its own holidays). Re-publishing adds a new version and never overwrites the old one.`}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '8px 16px', borderRadius: 8,
+                  border: '1px solid #0f4c35',
+                  background: publishing ? '#7f9d90' : '#0f4c35',
+                  color: '#fff', fontSize: 12, fontWeight: 600,
+                  cursor: publishing || !centers.length ? 'default' : 'pointer', fontFamily: 'inherit',
+                }}>
+                {publishing
+                  ? 'Publishing…'
+                  : `📢 Publish ${MONTH_FULL[pubMonthNum] || ''} · ${centers.length} center${centers.length === 1 ? '' : 's'}`}
+              </button>
+            </>
+          )}
         </div>
       </div>
+
+      {/* Итог публикации — словами, с версией по каждому центру */}
+      {pubMsg && (
+        <div style={{
+          marginBottom: 20, padding: '10px 16px', borderRadius: 10, fontSize: 12,
+          background: pubMsg.ok ? '#f0fff4' : '#fff1f1',
+          border: `1px solid ${pubMsg.ok ? '#bbf7d0' : '#fbc5c5'}`,
+          color: pubMsg.ok ? '#0f4c35' : '#b91c1c',
+          display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10,
+        }}>
+          <span>{pubMsg.ok ? '✅' : '⚠️'} {pubMsg.text}</span>
+          {pubMsg.ok && (
+            <button onClick={() => navigate('/menu/current')} style={{
+              padding: '4px 10px', borderRadius: 6, border: '1px solid #0f4c35',
+              background: '#fff', color: '#0f4c35', fontSize: 11, fontWeight: 600,
+              cursor: 'pointer', fontFamily: 'inherit',
+            }}>
+              Open current menu →
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Week selector */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>

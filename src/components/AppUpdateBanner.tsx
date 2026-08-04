@@ -27,6 +27,10 @@ export default function AppUpdateBanner() {
   return (
     <div
       role="status"
+      // Полоса «приложение устарело» — сообщение экрана, а не часть документа.
+      // Без no-print она печаталась поверх официальных форм: 03.08 её нашли
+      // на первом листе меню, где она заняла верх страницы вместе с боковой панелью.
+      className="no-print"
       style={{
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
         display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',

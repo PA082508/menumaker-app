@@ -37,6 +37,33 @@ export function displayChildName(c: ChildNameParts): string {
   return c.child_name?.trim() || '—'
 }
 
+/**
+ * ENROLLMENT-CONTOUR display: "First Last" (владелец, подтверждено 04.08).
+ *
+ * ДВА КОНТУРА, ДВА ПОРЯДКА, И ЭТО НЕ НЕПОСЛЕДОВАТЕЛЬНОСТЬ. На бланке CACFP имя
+ * пишется «Фамилия Имя» — так требует форма, и `displayChildName` остаётся
+ * ровно для тех поверхностей: сетка счёта, молочная панель, отчёты и печатные
+ * бланки. Контур зачисления разговаривает с СЕМЬЁЙ, а семья себя так не
+ * называет: «Mathews Harlei» в окне разбора читается как чужая строка из
+ * реестра, а не как ребёнок, которого сейчас заводят.
+ *
+ * ПОЧЕМУ НЕ ЧЕРЕЗ `child_name`. Эта колонка — витрина, и у неё РАЗНАЯ история:
+ * у детей, заведённых через форму, она собрана как «First Last» (ратифицировано
+ * 23.07), у импортированных из Master List — «Last First». Прочитать порядок из
+ * самой строки нельзя, поэтому имя собирается из СТРУКТУРНЫХ колонок, а
+ * `child_name` остаётся последним запасным путём, когда их нет вовсе.
+ *
+ * ❌ НЕ применять к клеткам официальных бланков — там порядок задан формой.
+ */
+export function enrollmentDisplayName(c: ChildNameParts): string {
+  const first = c.first_name?.trim()
+  const last = c.last_name?.trim()
+  if (first && last) return `${first} ${last}`
+  if (first) return first
+  if (last) return last
+  return c.child_name?.trim() || '—'
+}
+
 /** Enrollment-context comparator: alphabetical by last_name, then first_name. */
 export function byEnrollmentName(a: ChildNameParts, b: ChildNameParts): number {
   const la = (a.last_name ?? '').toLowerCase()

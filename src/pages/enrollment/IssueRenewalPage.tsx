@@ -20,7 +20,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
 import { useAuth } from '@/hooks/useAuth'
-import { displayChildName, byEnrollmentName } from '@/lib/childName'
+// Контур зачисления показывает «Имя Фамилия» (владелец 04.08). Сортировка
+// остаётся по фамилии — порядок показа и порядок сортировки это разные вещи.
+import { enrollmentDisplayName, byEnrollmentName } from '@/lib/childName'
 import { notDepartedBefore, isoDay } from '@/lib/childActive'
 import { storefrontTokenUrl } from '@/config/showcaseLinks'
 import Button, { ButtonRow } from '@/components/ui/Button'
@@ -293,7 +295,7 @@ export default function IssueRenewalPage() {
                       onChange={e => setSel(s => { const n = new Set(s); e.target.checked ? n.add(r.id) : n.delete(r.id); return n })} />
                   </td>
                   <td style={td}>
-                    {displayChildName(r)}
+                    {enrollmentDisplayName(r)}
                     {!r.child_id && (
                       <span title="This roster row has no link to a parent record, so there is no address on file"
                         style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#92400e', background: '#fef3c7', padding: '1px 5px', borderRadius: 4 }}>

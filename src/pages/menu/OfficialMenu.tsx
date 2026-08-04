@@ -421,8 +421,24 @@ export const PRINT_CSS = `
 .menu-official .week-block { margin-bottom: 14px; padding: 6px; }
 .menu-official .wk-footer { margin: 5px 0 0; font-size: 8.5px; line-height: 1.35; }
 @media print {
+  /* ⚠️ 03.08: лист резал ЛЕВЫЙ БОРДЮР таблицы, и причина была не в полях формы.
+     На бумагу уходила ВСЯ оболочка приложения: боковая панель печаталась слева,
+     <main> нёс свой marginLeft в её ширину, и таблица уезжала вправо — левая рамка
+     оказывалась под панелью, а правый край выходил за лист. Печать PDF показала
+     это прямо: панель, полоса «приложение устарело» и обрезанная рамка на одном
+     листе. Лечится не масштабом, а исключением оболочки — содержимое не тронуто. */
   .no-print { display: none !important; }
-  .menu-official .week-block { page-break-after: always; padding: 0; }
+  aside { display: none !important; }
+  main { margin-left: 0 !important; }
+  html, body, #root, main {
+    height: auto !important; max-height: none !important;
+    overflow: visible !important; background: #fff !important;
+  }
+  /* Полоса недели: 2px по бокам вместо нуля. При border-collapse внешняя рамка
+     ложится ровно по краю поля страницы, и печать съедает её волосяную половину.
+     Два пикселя отводят таблицу от края; ширины колонок процентные, поэтому
+     перевёрстки не происходит. */
+  .menu-official .week-block { page-break-after: always; padding: 0 2px; }
   .menu-official .week-block:last-child { page-break-after: auto; }
 }
 `

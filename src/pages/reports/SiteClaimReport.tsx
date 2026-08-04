@@ -355,7 +355,7 @@ export default function SiteClaimReport() {
     <div style={{padding:"1.5rem",fontFamily:"Calibri,Arial,sans-serif",maxWidth:920}}>
 
       {/* Top controls */}
-      <div style={{display:"flex",alignItems:"center",gap:"1rem",marginBottom:"1rem",flexWrap:"wrap"}}>
+      <div className="no-print" style={{display:"flex",alignItems:"center",gap:"1rem",marginBottom:"1rem",flexWrap:"wrap"}}>
         <h2 style={{margin:0,fontSize:"1.1rem",fontWeight:700,color:"#0f4c35"}}>📋 CACFP Claim</h2>
         <select value={month} onChange={e=>setMonth(+e.target.value)} style={SEL}>
           {MONTHS.map((m,i)=><option key={i} value={i+1}>{m}</option>)}
@@ -391,7 +391,7 @@ export default function SiteClaimReport() {
       </div>
 
       {/* Tabs */}
-      <div style={{display:"flex",gap:0,marginBottom:"1rem",borderBottom:"2px solid #0f4c35"}}>
+      <div className="no-print" style={{display:"flex",gap:0,marginBottom:"1rem",borderBottom:"2px solid #0f4c35"}}>
         {([["claim","📋 Site Claim"],["recap","💰 Claim Recap"],["costs","📊 Cost Details"]] as [Tab,string][]).map(([t,l])=>(
           <button key={t} onClick={()=>setTab(t)} style={{
             padding:".5rem 1.25rem",border:"none",fontFamily:"inherit",fontSize:".88rem",fontWeight:600,
@@ -405,7 +405,7 @@ export default function SiteClaimReport() {
 
       {/* Progress bar */}
       {ready&&data&&!isClosed&&data.weeks_total>0&&tab==="claim"&&(
-        <div style={{marginBottom:"1rem",background:"#f4f7f4",borderRadius:10,padding:".75rem 1rem",border:"1px solid #c0d8c0"}}>
+        <div className="no-print" style={{marginBottom:"1rem",background:"#f4f7f4",borderRadius:10,padding:".75rem 1rem",border:"1px solid #c0d8c0"}}>
           <div style={{display:"flex",justifyContent:"space-between",fontSize:".8rem",marginBottom:4}}>
             <span style={{fontWeight:600,color:"#0f4c35"}}>📊 Approval Progress</span>
             <span style={{color:"#666"}}>{data.weeks_approved} of {data.weeks_total} week-classes approved ({progressPct}%)</span>
@@ -453,7 +453,7 @@ export default function SiteClaimReport() {
           <DR2 code="C4" label="Number of Shifts" value={isClosed?data.number_of_shifts:
             <input value={data.number_of_shifts} type="number" onChange={e=>setData(d=>d?{...d,number_of_shifts:+e.target.value}:d)} style={INP}/>}/>
           {!!undocFR && (
-            <div style={{background:"#fff3cd",border:"1px solid #ffc107",borderRadius:6,padding:".5rem .75rem",
+            <div className="no-print" style={{background:"#fff3cd",border:"1px solid #ffc107",borderRadius:6,padding:".5rem .75rem",
               fontSize:".8rem",color:"#856404",margin:".25rem 0 .75rem"}}>
               🟡 {undocFR} Free/Reduced child{undocFR===1?"":"ren"} without a current IEA on file.{" "}
               <a href="/eligibility-reconciliation" style={{color:"#856404",fontWeight:600}}>Review eligibility reconciliation →</a>
@@ -487,7 +487,7 @@ export default function SiteClaimReport() {
               style={{width:"100%",border:"1px solid #ccc",borderRadius:4,padding:"4px",fontFamily:"inherit",fontSize:"8pt",resize:"vertical"}}/>
           </div>)}
           {/* Classroom breakdown */}
-          <div style={{marginTop:12,borderTop:"2px solid #1a5276",paddingTop:8}}>
+          <div id="claim-breakdown" style={{marginTop:12,borderTop:"2px solid #1a5276",paddingTop:8}}>
             <div style={{fontWeight:"bold",fontSize:"9pt",color:"#1a5276",marginBottom:4}}>Breakdown by Classroom</div>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:"8pt"}}>
               <thead><tr style={{background:"#d6e4f0"}}>
@@ -679,10 +679,57 @@ export default function SiteClaimReport() {
           ))}
         </div>
       )}
-      <style>{`@media print{body>*:not(#claim-report){display:none}#claim-report{border:none}}`}</style>
+      <style>{PRINT_CSS}</style>
     </div>
   );
 }
+
+// ─── Печатная вёрстка ─────────────────────────────────────────────────────────
+//
+// ⚠️ ЧТО ЗДЕСЬ БЫЛО СЛОМАНО. Прежнее правило занимало одну строку:
+//     @media print { body > *:not(#claim-report) { display: none } }
+// и печатало ПУСТОЙ ЛИСТ. `#claim-report` — не ребёнок body: между ними лежит
+// #root, оболочка приложения и <main>. Селектор `body > *` попадал ровно в #root,
+// то есть прятал всё дерево вместе с самим отчётом. Правило выглядело осмысленным
+// и было ложью: единственное, что доходило до бумаги, — пустая страница.
+//
+// КАК СДЕЛАНО ТЕПЕРЬ. Не «спрятать всё, кроме», а три отдельных действия:
+//   1. убрать оболочку — боковую панель (<aside>) и всё, помеченное .no-print
+//      (шапка отчёта с кнопками, вкладки): они не часть документа;
+//   2. развернуть содержимое из прокрутки в полный поток — снять у предков
+//      ограничения высоты и overflow, иначе браузер печатает ровно один экран
+//      и обрезает остальное;
+//   3. задать лист официальной формы: Letter, портрет, поля 0.5in, и запретить
+//      рвать строки таблиц посередине.
+//
+// Печать зовётся кнопкой Print этой же страницы (printClaim → window.print),
+// поэтому вёрстка живёт здесь, а не в глобальном css: страница, которая печатает
+// себя сама, обязана носить своё правило рядом с собой.
+const PRINT_CSS = `
+@media print {
+  @page { size: Letter portrait; margin: 0.5in; }
+
+  /* 1. Оболочка приложения на бумагу не идёт. */
+  aside, .no-print { display: none !important; }
+  main { margin-left: 0 !important; }
+
+  /* 2. Полный поток вместо прокрутки: печатается весь отчёт, а не первый экран. */
+  html, body, #root, main {
+    height: auto !important; max-height: none !important;
+    overflow: visible !important; background: #fff !important;
+  }
+
+  /* 3. Сам документ: без рамки экрана, во всю ширину листа. */
+  #claim-report {
+    border: none !important; padding: 0 !important; margin: 0 !important;
+    max-width: none !important; width: 100% !important; box-shadow: none !important;
+  }
+  #claim-report table { break-inside: auto; }
+  #claim-report tr, #claim-report thead { break-inside: avoid; }
+  /* Разбивка по классам — отдельным листом: её читают как самостоятельную сводку. */
+  #claim-breakdown { break-before: page; }
+}
+`;
 
 // ─── Shared styles ────────────────────────────────────────────────────────────
 const SEL:React.CSSProperties={padding:".35rem .6rem",borderRadius:7,border:"1.5px solid #c0d8c0",fontSize:".85rem",fontFamily:"inherit",background:"#fff",cursor:"pointer"};

@@ -19,7 +19,7 @@ function ChimePicker({ centerId, value, err, onPick }: {
   return (
     <div style={{marginTop:".8rem",paddingTop:".7rem",borderTop:"1px dashed #e0ebe0"}}>
       <div style={{fontSize:".78rem",fontWeight:700,color:"#0f4c35",marginBottom:".4rem"}}>
-        🔔 Мелодия начала приёма
+        🔔 Meal-start chime
         {/* Выбор хранится в БД по центру (20260802c). Прежняя надпись «хранится на
             этом устройстве» снята вместе с запасным путём через localStorage: колонка
             применена, и устройству больше нечего помнить. Если запись всё же не
@@ -27,7 +27,7 @@ function ChimePicker({ centerId, value, err, onPick }: {
         {err && (
           <span style={{marginLeft:".5rem",fontWeight:400,color:"#7f1d1d",background:"#fee2e2",
             border:"1px solid #fca5a5",borderRadius:6,padding:".1rem .4rem",fontSize:".7rem"}}>
-            не сохранено: {err}
+            not saved: {err}
           </span>
         )}
       </div>
@@ -46,26 +46,26 @@ function ChimePicker({ centerId, value, err, onPick }: {
               }}>
                 <div style={{fontSize:".8rem",fontWeight:700}}>{on ? "◉" : "○"} {v.label}</div>
                 <div style={{fontSize:".72rem",color:"#666",marginTop:".2rem"}}>
-                  старт: {v.start.notes.join("-")}<br/>
-                  напоминание: {v.reminder.notes.join("-")}
+                  start: {v.start.notes.join("-")}<br/>
+                  reminder: {v.reminder.notes.join("-")}
                 </div>
               </button>
               <div style={{display:"flex",gap:".3rem"}}>
                 <button onClick={() => void previewChime(k, "start")} title={v.start.words} style={{
                   flex:1,padding:".25rem",borderRadius:6,border:"1px solid #c0d8c0",background:"#fff",
                   fontSize:".7rem",cursor:"pointer",fontFamily:"inherit",color:"#0f4c35",fontWeight:600,
-                }}>▶ старт</button>
+                }}>▶ start</button>
                 <button onClick={() => void previewChime(k, "reminder")} title={v.reminder.words} style={{
                   flex:1,padding:".25rem",borderRadius:6,border:"1px solid #ddd",background:"#fff",
                   fontSize:".7rem",cursor:"pointer",fontFamily:"inherit",color:"#666",
-                }}>▶ напом.</button>
+                }}>▶ remind</button>
               </div>
             </div>
           );
         })}
       </div>
       <div style={{marginTop:".35rem",fontSize:".7rem",color:"#888"}}>
-        Закрытие окна — один низкий сигнал (D4→A3) во всех вариантах. Центр: {centerId.slice(0, 8)}…
+        A window closes in silence (sound map 04.08); an unmarked window shows in the red end-of-day list. Centre: {centerId.slice(0, 8)}…
       </div>
     </div>
   );

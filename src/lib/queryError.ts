@@ -23,6 +23,6 @@ export function throwIf(error: { message?: string } | null | undefined, scope: s
  */
 export function warnIf(error: { message?: string } | null | undefined, scope: string): boolean {
   if (!error) return false
-  console.error(`[${scope}] запрос отказан, экран покажет пустоту: ${error.message ?? 'unknown'}`)
+  console.error(`[${scope}] request refused, the screen will show emptiness: ${error.message ?? 'unknown'}`)
   return true
 }

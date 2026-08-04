@@ -59,7 +59,7 @@ describe('ноты → частоты', () => {
     expect(noteToFreq('C6') / noteToFreq('C5')).toBeCloseTo(2, 9)
   })
   it('не нота — отказ словами, а не тихий ноль', () => {
-    expect(() => noteToFreq('H7')).toThrow(/не нота/)
+    expect(() => noteToFreq('H7')).toThrow(/not a note/)
   })
 })
 

@@ -276,8 +276,8 @@ export default function MealCountPage() {
       // держит у себя и не теряет). Откатываем клетку — но НЕ молча.
       setRecords(prev => ({ ...prev, [rk]: { ...(prev[rk] ?? {}), [col]: current } }));
       setWriteErr(
-        `Отметка НЕ сохранена — ${child.child_name}, ${DAY_LABELS[day]} ${SLOT_LABELS[slot]}. ` +
-        `${e instanceof Error ? e.message : String(e)}. Отметьте заново; если повторится — скажите офису.`,
+        `Mark NOT saved — ${child.child_name}, ${DAY_LABELS[day]} ${SLOT_LABELS[slot]}. ` +
+        `${e instanceof Error ? e.message : String(e)}. Mark it again; if it happens twice, tell the office.`,
       );
     } finally {
       setSaving(false);
@@ -307,7 +307,7 @@ export default function MealCountPage() {
     const { error: signErr } = await supabase.schema("menumaker").from("meal_week_records")
       .update({ status: "director_approved", director_initials: initials, director_signed_at: now })
       .eq("classroom_id", selectedClassId).eq("monday_date", mon);
-    if (signErr) throw new Error(`Неделя НЕ подписана: ${signErr.message}`);
+    if (signErr) throw new Error(`The week was NOT signed: ${signErr.message}`);
 
     // Upload attendance scan if provided
     if (scanFile) {
@@ -444,17 +444,17 @@ export default function MealCountPage() {
           <div className="mc-write-err" role="alert">
             <span className="mc-write-err-icon">⚠</span>
             <div className="mc-write-err-body">
-              <b>{writeErr ? "Не сохранено" : "Отметки не уходят на сервер"}</b>
+              <b>{writeErr ? "Not saved" : "Marks are not reaching the server"}</b>
               <div className="mc-write-err-msg">{writeErr ?? lastError}</div>
               {!writeErr && (
                 <div className="mc-write-err-note">
-                  Отметки целы на этом устройстве и уйдут сами, когда связь вернётся.
+                  Marks are safe on this device and will send themselves when the connection is back.
                 </div>
               )}
             </div>
             <div className="mc-write-err-actions">
-              {!writeErr && <button type="button" onClick={syncNow}>Повторить</button>}
-              <button type="button" onClick={() => setWriteErr(null)}>Скрыть</button>
+              {!writeErr && <button type="button" onClick={syncNow}>Retry</button>}
+              <button type="button" onClick={() => setWriteErr(null)}>Dismiss</button>
             </div>
           </div>
         )}

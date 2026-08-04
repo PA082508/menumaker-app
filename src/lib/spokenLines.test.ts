@@ -58,11 +58,13 @@ describe('объявление прихода родителя', () => {
 })
 
 describe('отказ записи отметки', () => {
+  // Язык — английский, как и весь интерфейс (правило владельца 04.08): русская
+  // фраза над английской полосой была бы вторым сообщением об одном отказе.
   it('говорит имя ребёнка и что делать — тем же языком, что полоса', () => {
-    expect(spokenMarkRefusal('Иванов Пётр')).toBe('Отметка не сохранена: Иванов Пётр. Отметьте заново.')
+    expect(spokenMarkRefusal('Peter Ivanov')).toBe('Mark not saved: Peter Ivanov. Mark it again.')
   })
   it('без имени всё равно говорит главное', () => {
-    expect(spokenMarkRefusal('')).toBe('Отметка не сохранена. Отметьте заново.')
+    expect(spokenMarkRefusal('')).toBe('Mark not saved. Mark it again.')
   })
 })
 

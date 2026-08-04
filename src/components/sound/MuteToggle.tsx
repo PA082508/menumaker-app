@@ -42,8 +42,8 @@ export default function MuteToggle({ device, dark = false }: {
         onClick={() => setMuted(!muted, device)}
         onDoubleClick={() => setOpen(v => !v)}
         title={muted
-          ? `Звук заглушён с ${since ?? '—'}. Нажмите, чтобы вернуть. Двойное нажатие — журнал.`
-          : 'Заглушить все звуки на этом устройстве (тихий час)'}
+          ? `Sound muted since ${since ?? '—'}. Tap to unmute. Double-tap for the log.`
+          : 'Mute every sound on this device (quiet hour)'}
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 6,
           padding: '6px 12px', borderRadius: 8, cursor: 'pointer',
@@ -52,7 +52,7 @@ export default function MuteToggle({ device, dark = false }: {
           whiteSpace: 'nowrap',
         }}
       >
-        {muted ? `🔇 Беззвучно с ${since ?? '—'}` : '🔊 Звук включён'}
+        {muted ? `🔇 Muted since ${since ?? '—'}` : '🔊 Sound on'}
       </button>
 
       {open && (
@@ -61,17 +61,17 @@ export default function MuteToggle({ device, dark = false }: {
           background: '#fff', color: '#333', border: '1px solid #e4e8e4', borderRadius: 10,
           boxShadow: '0 8px 24px rgba(0,0,0,0.16)', padding: '10px 12px', fontSize: 12,
         }}>
-          <div style={{ fontWeight: 700, marginBottom: 6, color: '#0a3320' }}>Журнал тишины · {device}</div>
+          <div style={{ fontWeight: 700, marginBottom: 6, color: '#0a3320' }}>Quiet-hour log · {device}</div>
           {log.length === 0
-            ? <div style={{ color: '#888' }}>Пока ничего не глушили.</div>
+            ? <div style={{ color: '#888' }}>Nothing has been muted yet.</div>
             : log.slice(0, 12).map((e, i) => (
               <div key={`${e.at}_${i}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '2px 0' }}>
-                <span>{e.on ? '🔇 заглушено' : '🔊 возвращено'}</span>
+                <span>{e.on ? '🔇 muted' : '🔊 unmuted'}</span>
                 <span style={{ color: '#888' }}>{new Date(e.at).toLocaleString()}</span>
               </div>
             ))}
           <div style={{ marginTop: 8, color: '#888', lineHeight: 1.4 }}>
-            Пульсация плашки и сообщение директору на 15-й минуте работают и в тишине.
+            The pulsing banner and the 15-minute director alert keep working while muted.
           </div>
         </div>
       )}

@@ -354,7 +354,7 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
       // Отказ здесь = «окон нет» = пустой красный список, то есть тихое «всё хорошо»
       // поверх непроверенного. Пусть лучше список пуст и об этом сказано в консоли,
       // чем он молча выглядит как чистый день.
-      if (error) { console.error("[ritual] расписание центра не прочитано", error.message); setCenterSchedule([]); return; }
+      if (error) { console.error("[ritual] centre schedule was not read", error.message); setCenterSchedule([]); return; }
       const byId = new Map(classrooms.map((c) => [c.id, c.name]));
       setCenterSchedule(((data ?? []) as ScheduleRow[]).map((r) => ({
         ...r, classroomName: byId.get(r.classroom_id ?? "") ?? "—",
@@ -377,7 +377,7 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
         .select(`classroom_id,${cols}`)
         .in("classroom_id", ids).eq("monday_date", format(weekStart, "yyyy-MM-dd"));
       if (cancelled) return;
-      if (error) { console.error("[ritual] отметки центра не прочитаны", error.message); return; }
+      if (error) { console.error("[ritual] centre marks were not read", error.message); return; }
       const acc: Record<string, boolean> = {};
       for (const r of (data ?? []) as Record<string, any>[]) {
         for (const s of ["breakfast", "am_snack", "lunch", "supper"] as SlotKey[]) {
@@ -503,14 +503,14 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
       // но НЕ молча: без слов человек решит, что промахнулся, и отметит ещё раз.
       setRecords((prev) => ({ ...prev, [rk]: { ...(prev[rk] ?? {}), [col]: current } }));
       setWriteErr(
-        `Отметка НЕ сохранена — ${displayName(child)}, ${day} ${slot}. ` +
-        `${e instanceof Error ? e.message : String(e)}. Отметьте заново; если повторится — скажите офису.`,
+        `Mark NOT saved — ${displayName(child)}, ${day} ${slot}. ` +
+        `${e instanceof Error ? e.message : String(e)}. Mark it again; if it happens twice, tell the office.`,
       );
       // Голос ПОВЕРХ полосы отказа (карта звуков 04.08). Полоса красная и
       // подробная, но человек в этот момент смотрит на ребёнка, а не на планшет:
       // отказ, который только видно, на кухне пропускают. Вслух — коротко и тем
-      // же языком, что полоса; подробности остаются написанными.
-      speakLine(spokenMarkRefusal(displayName(child)), "ru-RU");
+      // же языком, что полоса (интерфейс английский); подробности остаются написанными.
+      speakLine(spokenMarkRefusal(displayName(child)));
     }
   }, [records, selectedClassId, selectedClassName, weekStart]);
 
@@ -584,8 +584,8 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
     // Тихо потерянный отказ здесь = комната уверена, что директора позвали, а его
     // не позвали. Ступень одноразовая, второй попытки не будет — значит сказать
     // надо сразу и на экране.
-    if (error) setAlertNote(`Директору НЕ ушло сообщение о ${className}: ${error.message}`);
-    else setAlertNote(`Директору отправлено: ${className} · ${SLOT_LABELS[w.slot as SlotKey] ?? w.slot} без отметок.`);
+    if (error) setAlertNote(`The director was NOT told about ${className}: ${error.message}`);
+    else setAlertNote(`Director notified: ${className} · ${SLOT_LABELS[w.slot as SlotKey] ?? w.slot} — no marks.`);
   }, [classrooms, selectedClassId, selectedClassName, org?.id, currentCenter?.id, currentCenter?.name, user?.id]);
 
   const ritual = useMealRitual({
@@ -840,17 +840,17 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
           <div className="mc-write-err" role="alert">
             <span className="mc-write-err-icon">⚠</span>
             <div className="mc-write-err-body">
-              <b>{writeErr ? "Отметка не сохранена" : "Отметки не уходят на сервер"}</b>
+              <b>{writeErr ? "Mark not saved" : "Marks are not reaching the server"}</b>
               <div className="mc-write-err-msg">{writeErr ?? lastError}</div>
               {!writeErr && (
                 <div className="mc-write-err-note">
-                  Отметки целы на этом планшете и уйдут сами, когда связь вернётся.
+                  Marks are safe on this tablet and will send themselves when the connection is back.
                 </div>
               )}
             </div>
             <div className="mc-write-err-actions">
-              {!writeErr && <button type="button" onClick={syncNow}>Повторить</button>}
-              <button type="button" onClick={() => setWriteErr(null)}>Скрыть</button>
+              {!writeErr && <button type="button" onClick={syncNow}>Retry</button>}
+              <button type="button" onClick={() => setWriteErr(null)}>Dismiss</button>
             </div>
           </div>
         )}
@@ -861,7 +861,7 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
             <span className="mc-write-err-icon">📣</span>
             <div className="mc-write-err-body"><b>{alertNote}</b></div>
             <div className="mc-write-err-actions">
-              <button type="button" onClick={() => setAlertNote(null)}>Скрыть</button>
+              <button type="button" onClick={() => setAlertNote(null)}>Dismiss</button>
             </div>
           </div>
         )}
@@ -983,7 +983,7 @@ function BuckleBanner({ banner, variant, onUnlock }: {
       <div className="mc-buckle done" role="status">
         <span className="mc-buckle-icon">✓</span>
         <span className="mc-buckle-text">
-          <b>{slotLabel} отмечен{banner.markedAt ? ` ${banner.markedAt}` : ""}</b>
+          <b>{slotLabel} marked{banner.markedAt ? ` ${banner.markedAt}` : ""}</b>
         </span>
       </div>
     );
@@ -997,18 +997,18 @@ function BuckleBanner({ banner, variant, onUnlock }: {
     <div className={`mc-buckle ${banner.urgent ? "urgent" : "counting"}${banner.alarm ? " alarm" : ""}`} role="status">
       <span className="mc-buckle-icon">{banner.urgent ? "⏰" : "🍽"}</span>
       <span className="mc-buckle-text">
-        <b>{slotLabel} идёт — отметьте порции</b>
+        <b>{slotLabel} in progress — mark portions</b>
         <span className="mc-buckle-words">«{words}»</span>
       </span>
       <span className="mc-buckle-timer">
         {counting ? banner.minutesLeft : banner.minutesToClose}
-        <span className="mc-buckle-unit">{counting ? " мин" : " мин до конца"}</span>
+        <span className="mc-buckle-unit">{counting ? " min" : " min to close"}</span>
       </span>
       {banner.kind === "locked" && (
         // Беззвучно — и сказано об этом. Молчащая плашка без объяснения читается
         // как сломанный звук, и через день ей перестают верить.
         <button type="button" className="mc-buckle-unlock" onClick={onUnlock}>
-          🔇 Коснитесь, чтобы включить звук
+          🔇 Tap to enable sound
         </button>
       )}
     </div>
@@ -1023,8 +1023,8 @@ function UnbuckledList({ items }: { items: UnbuckledWindow[] }) {
   return (
     <div className="mc-unbuckled" role="status">
       <div className="mc-unbuckled-head">
-        Окна закрылись без отметок: {items.length}
-        <span className="mc-unbuckled-note">Ничего не заблокировано — отметить можно и сейчас.</span>
+        Windows closed with no marks: {items.length}
+        <span className="mc-unbuckled-note">Nothing is blocked — you can still mark them now.</span>
       </div>
       <div className="mc-unbuckled-rows">
         {items.map((w) => (

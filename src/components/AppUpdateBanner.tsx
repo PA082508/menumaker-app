@@ -41,9 +41,9 @@ export default function AppUpdateBanner() {
       }}
     >
       <span style={{ flex: '1 1 260px' }}>
-        <strong>Приложение устарело.</strong>{' '}
-        Отметки с этой версии могут сохраняться без времени подачи. Нажмите «Обновить» —
-        несохранённые отметки не потеряются, они лежат в памяти устройства.
+        <strong>This app is out of date.</strong>{' '}
+        Marks made on this version may be saved without a point-of-service time. Tap “Update” —
+        unsent marks are not lost, they are held in this device’s memory.
       </span>
 
       <span style={{ fontFamily: 'monospace', fontSize: 11, opacity: 0.7 }}>
@@ -60,7 +60,7 @@ export default function AppUpdateBanner() {
           cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit',
         }}
       >
-        {busy ? 'Обновляем…' : 'Обновить'}
+        {busy ? 'Updating…' : 'Update'}
       </button>
     </div>
   )

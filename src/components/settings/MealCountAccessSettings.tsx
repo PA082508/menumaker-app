@@ -111,6 +111,8 @@ export default function MealCountAccessSettings() {
         const status = (fnError as any)?.context?.status
         const isConflict =
           status === 409 ||
+          // ui-english-exempt: сопоставление с РУССКИМ ответом edge-функции — это
+          // данные внешней службы, а не наш текст. Перевести значило бы сломать разбор.
           (bodyError && /занят|409/i.test(bodyError))
 
         if (isConflict) {
@@ -122,6 +124,7 @@ export default function MealCountAccessSettings() {
       }
 
       if (bodyError) {
+        // ui-english-exempt: тот же русский ответ edge-функции (данные, не UI).
         if (/занят|409/i.test(bodyError)) {
           setError('This email is already taken.')
         } else {

@@ -15,6 +15,7 @@ import AvatarUpload from '@/components/AvatarUpload'
 import ScheduleEditor from '@/components/ScheduleEditor'
 import { useAuth } from '@/hooks/useAuth'
 import { parseIeaFiscalYear, frpExpiryDefault, recordDetermination } from '@/lib/enrollmentApprove'
+import { IEA_DOC_TYPE, PAPER_DOC_TYPE_BY_FIELD } from '@/lib/ieaOnFile'
 import {
   changedFields, provenanceProblem, writeChildField, loadFieldHistory, loadFieldProvenance,
   loadFieldLocks, lockRefusal,
@@ -151,6 +152,9 @@ export default function ChildSettingsPage({
   // 🔒-полей это не касается: они отказывают «со слов» своим текстом, видимо,
   // и директор переключает источник — потери записи здесь нет.
   const [prov, setProv] = useState<Provenance>({ source: 'verbal', documentDate: '', formKey: 'dcy_01234', note: '' })
+  // «Бумага в деле» — подтверждение человека, а не догадка программы: только
+  // он знает, лежит ли лист в сейфе. По умолчанию снято.
+  const [paperInSafe, setPaperInSafe] = useState(false)
   const [writeResults, setWriteResults] = useState<WriteResult[] | null>(null)
   // Баннер результата стоит НАВЕРХУ вкладки, а кнопка «Save» — в подвале. На
   // Health полей полтора десятка, поэтому ответ экрана оказывался ЗА ПРЕДЕЛАМИ
@@ -458,6 +462,41 @@ export default function ChildSettingsPage({
       }
     }
 
+    // ─── Третье состояние: «бумага в деле» ────────────────────────────────
+    // Канон владельца 01.08. Значение документного поля внесено руками, скана
+    // нет и сегодня не будет — но бумага СУЩЕСТВУЕТ и лежит в сейфе. Пока это
+    // состояние негде было записать, директор выбирал между «соврать, что
+    // загружено» и «оставить пустым», и оставлял пустым: ребёнок с действующей
+    // бумагой числился недокументированным до самой проверки.
+    //
+    // Строка пишется ТОЛЬКО когда: источник документный, дата с бумаги названа,
+    // человек подтвердил галочкой, и поле действительно применилось. Дата с
+    // бумаги ложится в valid_from, срок — в valid_until: ровно так их читает
+    // claim_packet_manifest, и своего второго источника периода не заводится.
+    if (paperInSafe && prov.source !== 'verbal' && prov.documentDate && child) {
+      const paperFields = results.filter(r => r.applied && PAPER_DOC_TYPE_BY_FIELD[r.fieldKey])
+      const types = [...new Set(paperFields.map(r => PAPER_DOC_TYPE_BY_FIELD[r.fieldKey]))]
+      for (const docType of types) {
+        const { error } = await supabase.schema('menumaker').from('documents').insert({
+          org_id: child.org_id, center_id: child.center_id, doc_type: docType,
+          title: `${docType} — paper on file`, roster_id: childId,
+          source: 'paper', storage_path: null,
+          valid_from: prov.documentDate,
+          valid_until: docType === IEA_DOC_TYPE ? (expiresNorm ?? null) : null,
+          status: 'active',
+          attested_by: user?.id ?? null, attested_at: new Date().toISOString(),
+          notes: prov.note || null,
+        })
+        // Отказ здесь = карточка изменилась, а бумага НЕ засвидетельствована:
+        // жёлтая плашка останется гореть, и человек решит, что подтверждение не
+        // сработало вовсе. Молчать нельзя.
+        if (error) {
+          results.push({ fieldKey: docType, applied: false, reason: null, oldValue: null, newValue: null,
+            isVerbal: false, error: `The value was saved, but «paper in the safe» was NOT recorded: ${error.message}` })
+        }
+      }
+    }
+
     setWriteResults(results)
     setSaving(false)
     showResults()
@@ -617,6 +656,21 @@ export default function ChildSettingsPage({
               Date ON THE DOCUMENT
               <input type="date" value={prov.documentDate ?? ''} onChange={e => setProv(p => ({ ...p, documentDate: e.target.value }))}
                 style={{ padding:'5px 8px', border:'1.5px solid #c0d8c0', borderRadius:8, fontSize:12.5, fontFamily:'inherit' }} />
+            </label>
+          )}
+          {/* ТРЕТЬЕ СОСТОЯНИЕ ДОКУМЕНТА (канон владельца 01.08).
+              Скана нет и сегодня не будет — но бумага существует и лежит в деле.
+              Подтверждает ЧЕЛОВЕК: только он это знает, программе догадаться
+              неоткуда. Галочка снята по умолчанию — молчание не может значить
+              «поручился». Показывается лишь при документном источнике: над
+              записью «со слов» подтверждать нечего. */}
+          {prov.source !== 'verbal' && (
+            <label title="Records that the signed paper exists and is filed. No file needed."
+              style={{ display:'flex', alignItems:'center', gap:6, fontSize:12.5, color:'#0f4c35',
+                       background:'#f4fdf7', border:'1.5px solid #c0d8c0', borderRadius:8, padding:'5px 10px' }}>
+              <input type="checkbox" checked={paperInSafe} onChange={e => setPaperInSafe(e.target.checked)}
+                style={{ accentColor:'#0f4c35' }} />
+              📄 Paper form is in the safe
             </label>
           )}
           <button type="button" onClick={async () => { setShowHistory(v => !v); if (!showHistory) { try { setHistory(await loadFieldHistory(childId)) } catch { setHistory([]) } } }}

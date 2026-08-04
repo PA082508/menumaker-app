@@ -664,10 +664,18 @@ export default function ChildSettingsPage({
         })()}
         {/* Вторая петля: тот же текст, что скажет save-путь, но до сети.
             Решает база — здесь только слышно раньше. */}
-        {lockRefusal(fieldLocks[f.key], prov.source) && (
+        {lockRefusal(fieldLocks[f.key], prov.source, {
+          oldValue: baseline.roster?.[f.column] ?? baseline.medical?.[f.column] ?? null,
+          newValue: (child as any)?.[f.column] ?? (medical as any)?.[f.column] ?? null,
+          note: prov.note,
+        }) && (
           <div style={{ marginTop: 5, fontSize: 12, color: '#3730a3', background: '#eef2ff',
             border: '1px solid #c7d2fe', borderRadius: 8, padding: '7px 10px', lineHeight: 1.45 }}>
-            {lockRefusal(fieldLocks[f.key], prov.source)}
+            {lockRefusal(fieldLocks[f.key], prov.source, {
+          oldValue: baseline.roster?.[f.column] ?? baseline.medical?.[f.column] ?? null,
+          newValue: (child as any)?.[f.column] ?? (medical as any)?.[f.column] ?? null,
+          note: prov.note,
+        })}
           </div>
         )}
       </div>

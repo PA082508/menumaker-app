@@ -151,21 +151,77 @@ export async function loadFieldHistory(rosterId: string, limit = 100): Promise<F
 // ЧИТАЮТ — чтобы показать состояние и отказать до сети. Это ВТОРАЯ петля:
 // решает save-путь, а гашение поля на экране обходится любым другим клиентом.
 export type LockLevel = 'document' | 'marked' | 'free'
-export type FieldLock = { field_key: string; lock_level: LockLevel; needs_document_text: string | null }
+export type FieldLock = {
+  field_key: string; lock_level: LockLevel; needs_document_text: string | null
+  /** Лестница выгоды от НИЗШЕЙ к высшей, напр. ['P','R','F']. null — направления нет. */
+  benefit_ladder?: string[] | null
+  /** Отказ, когда понижение вносят со слов без причины. */
+  needs_reason_text?: string | null
+}
 
 export async function loadFieldLocks(): Promise<Record<string, FieldLock>> {
   const { data, error } = await supabase.schema('menumaker').from('child_field_locks')
-    .select('field_key,lock_level,needs_document_text')
+    .select('field_key,lock_level,needs_document_text,benefit_ladder,needs_reason_text')
   if (error) throw error
   const out: Record<string, FieldLock> = {}
   for (const row of (data ?? []) as FieldLock[]) out[row.field_key] = row
   return out
 }
 
-/** The refusal the save path would give, computed on screen so the user hears it
- *  before the network. Returns null when the write would be allowed. */
-export function lockRefusal(lock: FieldLock | undefined, source: FieldSource): string | null {
-  if (!lock || lock.lock_level !== 'document') return null
+/** Направление изменения по лестнице выгоды. Чистое — сервер считает так же. */
+export type BenefitDirection = 'increase' | 'decrease' | 'same' | 'unknown'
+
+export function benefitDirection(
+  ladder: readonly string[] | null | undefined, oldValue: string | null, newValue: string | null,
+): BenefitDirection {
+  if (!ladder || ladder.length === 0) return 'unknown'
+  const rank = (v: string | null) => {
+    const k = (v ?? '').trim().slice(0, 1).toUpperCase()
+    const i = ladder.indexOf(k)
+    return i < 0 ? null : i
+  }
+  const nr = rank(newValue)
+  if (nr === null) return 'unknown'
+  const or = rank(oldValue)
+  // Значения не было вовсе → это НАЗНАЧЕНИЕ. Низшая ступень назначением выгоды
+  // не является и идёт как понижение; всё выше требует бумаги. Иначе через
+  // пустое значение открылся бы обход: стереть и назначить льготу со слов.
+  if (or === null) return nr === 0 ? 'decrease' : 'increase'
+  return nr > or ? 'increase' : nr < or ? 'decrease' : 'same'
+}
+
+/**
+ * Отказ, который даст save-путь, посчитанный НА ЭКРАНЕ — чтобы человек услышал
+ * его до сети. Решает всё равно база; здесь только слышно раньше, и тексты
+ * берутся ИЗ ТЕХ ЖЕ КОЛОНОК, а не пишутся в клиенте второй раз.
+ *
+ * НАПРАВЛЕННЫЙ ЗАМОК (04.08): у поля с лестницей выгоды правило асимметрично —
+ * повышение требует подписанного документа, понижение можно со слов, но с
+ * НАЗВАННОЙ ПРИЧИНОЙ. До этой правки экран отказывал и на понижении: он врал,
+ * запрещая то, что сервер пропускает, и директор не мог снять льготу, которой
+ * семья больше не соответствует.
+ */
+export function lockRefusal(
+  lock: FieldLock | undefined, source: FieldSource,
+  ctx?: { oldValue?: string | null; newValue?: string | null; note?: string | null },
+): string | null {
+  if (!lock) return null
+
+  if (lock.benefit_ladder && lock.benefit_ladder.length > 0) {
+    if (source !== 'verbal') return null
+    const dir = benefitDirection(lock.benefit_ladder, ctx?.oldValue ?? null, ctx?.newValue ?? null)
+    if (dir === 'increase') {
+      return lock.needs_document_text
+        ?? 'Raising a benefit needs a signed document — attach it and enter the date printed on it.'
+    }
+    if (dir === 'decrease' && !(ctx?.note ?? '').trim()) {
+      return lock.needs_reason_text
+        ?? 'Lowering a category from what the family told you needs a reason in your own words.'
+    }
+    return null
+  }
+
+  if (lock.lock_level !== 'document') return null
   if (source !== 'verbal') return null
   return lock.needs_document_text
     ?? 'This field can only be changed from a signed document — attach it and enter the date printed on it.'

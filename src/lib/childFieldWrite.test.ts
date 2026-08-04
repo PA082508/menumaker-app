@@ -118,3 +118,71 @@ describe('lockRefusal — the screen says what the save path would say', () => {
       .toMatch(/signed document/)
   })
 })
+
+// ============================================================================
+// НАПРАВЛЕННЫЙ ЗАМОК ВЫГОДЫ (04.08) — обе петли обязаны совпадать.
+// Экран, который отказывает там, где сервер пропускает, хуже отсутствия экрана:
+// он запрещает снять льготу, которой семья больше не соответствует, и ребёнок
+// остаётся Free без основания. Это переклайм.
+// ============================================================================
+
+import { benefitDirection } from './childFieldWrite'
+
+const LADDER = ['P', 'R', 'F']
+const frpLock = {
+  field_key: 'frp', lock_level: 'document' as const,
+  needs_document_text: 'Raising a child to Reduced or Free needs a signed document — IEA or USDA waiver.',
+  benefit_ladder: LADDER,
+  needs_reason_text: 'Lowering a category needs a reason in your own words.',
+}
+
+describe('направление по лестнице выгоды', () => {
+  it('вверх, вниз и на месте', () => {
+    expect(benefitDirection(LADDER, 'P', 'F')).toBe('increase')
+    expect(benefitDirection(LADDER, 'F', 'R')).toBe('decrease')
+    expect(benefitDirection(LADDER, 'R', 'R')).toBe('same')
+  })
+
+  it('пустое старое: назначить Paid — понижение, назначить Free — повышение', () => {
+    // Иначе через пустое значение открылся бы обход: стереть и назначить льготу со слов.
+    expect(benefitDirection(LADDER, null, 'P')).toBe('decrease')
+    expect(benefitDirection(LADDER, null, 'F')).toBe('increase')
+  })
+
+  it('регистр и лишние буквы не мешают', () => {
+    expect(benefitDirection(LADDER, 'free', 'paid')).toBe('decrease')
+  })
+
+  it('без лестницы направления нет', () => {
+    expect(benefitDirection(null, 'P', 'F')).toBe('unknown')
+  })
+})
+
+describe('отказ экрана совпадает с отказом сервера', () => {
+  it('ПОВЫШЕНИЕ со слов — отказ, и он называет документ', () => {
+    const r = lockRefusal(frpLock, 'verbal', { oldValue: 'P', newValue: 'F' })!
+    expect(r).toContain('IEA')
+  })
+
+  it('ПОНИЖЕНИЕ со слов БЕЗ причины — отказ про причину', () => {
+    const r = lockRefusal(frpLock, 'verbal', { oldValue: 'F', newValue: 'R' })!
+    expect(r.toLowerCase()).toContain('reason')
+  })
+
+  it('ПОНИЖЕНИЕ со слов С ПРИЧИНОЙ — проходит', () => {
+    expect(lockRefusal(frpLock, 'verbal',
+      { oldValue: 'F', newValue: 'R', note: 'income went up' })).toBeNull()
+  })
+
+  it('повышение С ДОКУМЕНТОМ — проходит', () => {
+    expect(lockRefusal(frpLock, 'library_form', { oldValue: 'P', newValue: 'F' })).toBeNull()
+  })
+
+  it('соседний замок НЕ ослаблен: день рождения со слов по-прежнему отбит', () => {
+    const bday = { field_key: 'birthday', lock_level: 'document' as const,
+      needs_document_text: 'Birthday can only be changed from a signed document.',
+      benefit_ladder: null, needs_reason_text: null }
+    expect(lockRefusal(bday, 'verbal', { oldValue: '2023-01-01', newValue: '2020-01-01' }))
+      .toContain('signed document')
+  })
+})

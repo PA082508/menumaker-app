@@ -20,6 +20,10 @@ import { format, startOfWeek, addDays, isWeekend } from "date-fns";
 import { displayChildName } from "@/lib/childName";
 import { enqueueMark, cellKey } from "@/lib/mealMarkQueue";
 import { weekRowKey, indexWeekRecords } from "@/lib/weekRowKey";
+import { useMealRitual } from "@/hooks/useMealRitual";
+import { hhmm, isRitualClockOverridden, ritualDay } from "@/lib/ritualClock";
+import { DEFAULT_VARIANT, isChimeVariant, phraseFor, type ChimeVariantKey } from "@/lib/mealChime";
+import type { BannerState, ScheduleRow, UnbuckledWindow } from "@/lib/mealWindows";
 import { useMealMarkQueue } from "@/hooks/useMealMarkQueue";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -210,6 +214,12 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
   const [records, setRecords] = useState<Record<string, WeekRecord>>({});
   const [holidays, setHolidays] = useState<Record<string, { type: string; close_time: string | null }>>({});
   const [slotStart, setSlotStart] = useState<Record<string, string>>({});
+  // «Пристегни ремни» — окна выбранного класса, окна всего центра, отметки центра
+  // и выбранная мелодия. Всё, что ритуалу нужно знать снаружи себя.
+  const [scheduleRows, setScheduleRows] = useState<ScheduleRow[]>([]);
+  const [centerSchedule, setCenterSchedule] = useState<(ScheduleRow & { classroomName: string })[]>([]);
+  const [centerMarks, setCenterMarks] = useState<Record<string, boolean>>({});
+  const [chimeVariant, setChimeVariant] = useState<ChimeVariantKey>(DEFAULT_VARIANT);
   const [weekStart, setWeekStart] = useState<Date>(() => {
     const today = new Date();
     const dow = today.getDay();
@@ -242,6 +252,10 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
     return map[new Date().getDay()] ?? "mon";
   })();
   const [selectedDay, setSelectedDay] = useState<DayKey>(todayDayKey);
+
+  // День ритуала: в выходной — null, ритуала нет. На localhost его можно подменить
+  // (?mm_clock=11:31&mm_day=mon) — иначе окно 11:30 проверялось бы только в 11:30.
+  const ritualDayKey = ritualDay() as DayKey | null;
 
   // ─── Load classrooms + settings + holidays ────────────────────────────────
   useEffect(() => {
@@ -300,22 +314,102 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
     })();
   }, [currentCenter?.id]);
 
-  // Per-classroom slot start times (for short-day slot blocking).
+  // Per-classroom slot start times (for short-day slot blocking) + the full window
+  // rows the ritual needs (end_time, intake_mode). ОДИН запрос на оба дела: время
+  // начала уже читалось здесь, и второй поход за теми же строками был бы данью
+  // структуре кода, а не нуждой.
   useEffect(() => {
-    if (!selectedClassId) { setSlotStart({}); return; }
+    if (!selectedClassId) { setSlotStart({}); setScheduleRows([]); return; }
     let cancelled = false;
     (async () => {
       const { data } = await supabase.schema("menumaker").from("meal_schedule")
-        .select("slot, start_time").eq("classroom_id", selectedClassId);
+        .select("slot, start_time, end_time, intake_mode").eq("classroom_id", selectedClassId);
       if (cancelled) return;
+      const rows = (data ?? []) as ScheduleRow[];
       const m: Record<string, string> = {};
-      for (const r of (data ?? []) as { slot: string; start_time: string | null }[]) {
-        if (r.start_time) m[r.slot] = r.start_time.slice(0, 5);
-      }
+      for (const r of rows) if (r.start_time) m[r.slot] = r.start_time.slice(0, 5);
       setSlotStart(m);
+      setScheduleRows(rows.map((r) => ({ ...r, classroom_id: selectedClassId })));
     })();
     return () => { cancelled = true; };
   }, [selectedClassId]);
+
+  // ─── «Пристегни ремни»: расписание ВСЕГО центра + отметки всех классов ──────
+  // Красный список к концу дня показывает центр целиком, а не только открытую
+  // комнату: пропущенное окно чужого класса — это ровно то, что иначе всплывёт
+  // через месяц, на сверке заявки.
+  useEffect(() => {
+    if (!classrooms.length) { setCenterSchedule([]); return; }
+    let cancelled = false;
+    (async () => {
+      const ids = classrooms.map((c) => c.id);
+      const { data, error } = await supabase.schema("menumaker").from("meal_schedule")
+        .select("classroom_id, slot, start_time, end_time, intake_mode").in("classroom_id", ids);
+      if (cancelled) return;
+      // Отказ здесь = «окон нет» = пустой красный список, то есть тихое «всё хорошо»
+      // поверх непроверенного. Пусть лучше список пуст и об этом сказано в консоли,
+      // чем он молча выглядит как чистый день.
+      if (error) { console.error("[ritual] расписание центра не прочитано", error.message); setCenterSchedule([]); return; }
+      const byId = new Map(classrooms.map((c) => [c.id, c.name]));
+      setCenterSchedule(((data ?? []) as ScheduleRow[]).map((r) => ({
+        ...r, classroomName: byId.get(r.classroom_id ?? "") ?? "—",
+      })));
+    })();
+    return () => { cancelled = true; };
+  }, [classrooms]);
+
+  // Отметки всех классов центра за сегодняшнюю колонку — источник «пристёгнут ли».
+  // Обновляется раз в минуту: список к концу дня, минутная точность здесь избыточна.
+  useEffect(() => {
+    if (!classrooms.length || !ritualDayKey) { setCenterMarks({}); return; }
+    let cancelled = false;
+    const col = colName(ritualDayKey, "breakfast").split("_")[0];  // 'mon' и т.п.
+    const load = async () => {
+      const ids = classrooms.map((c) => c.id);
+      const cols = (["breakfast", "am_snack", "lunch", "supper"] as SlotKey[])
+        .map((s) => `${col}_${SLOT_COL[s]}`).join(",");
+      const { data, error } = await supabase.schema("menumaker").from("meal_week_records")
+        .select(`classroom_id,${cols}`)
+        .in("classroom_id", ids).eq("monday_date", format(weekStart, "yyyy-MM-dd"));
+      if (cancelled) return;
+      if (error) { console.error("[ritual] отметки центра не прочитаны", error.message); return; }
+      const acc: Record<string, boolean> = {};
+      for (const r of (data ?? []) as Record<string, any>[]) {
+        for (const s of ["breakfast", "am_snack", "lunch", "supper"] as SlotKey[]) {
+          if (r[`${col}_${SLOT_COL[s]}`] === 1) acc[`${r.classroom_id}|${s}`] = true;
+        }
+      }
+      setCenterMarks(acc);
+    };
+    void load();
+    const t = setInterval(load, 60000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [classrooms, weekStart, ritualDayKey]);
+
+  // Мелодия центра. ОТДЕЛЬНЫМ запросом нарочно: колонка `chime_variant` появится
+  // миграцией, а PostgREST на неизвестную колонку отбивает ВЕСЬ select — попроси
+  // её вместе с active_slots, и до миграции экран остался бы без настроек вообще
+  // (см. docs/platform-standards.md и правило «а view is NOT its table»).
+  useEffect(() => {
+    const centerId = currentCenter?.id;
+    if (!centerId) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.schema("menumaker").from("meal_count_settings")
+        .select("chime_variant").eq("center_id", centerId).maybeSingle();
+      if (cancelled) return;
+      if (error) {
+        // Колонка применена 03.08 (20260802c), но отдельный запрос оставлен: если он
+        // всё же откажет (сеть, права), экран звонит голосом по умолчанию и работает
+        // дальше. Запасного пути через localStorage больше нет — выбор живёт в БД.
+        setChimeVariant(DEFAULT_VARIANT);
+        return;
+      }
+      const v = (data as { chime_variant?: string } | null)?.chime_variant;
+      setChimeVariant(isChimeVariant(v) ? v : DEFAULT_VARIANT);
+    })();
+    return () => { cancelled = true; };
+  }, [currentCenter?.id]);
 
   // ─── Load roster (v_meal_grid) + records ──────────────────────────────────
   useEffect(() => {
@@ -417,6 +511,63 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
       isCellPending(cellKey(selectedClassId, rowKeyOf(child), mondayStr, col)),
     [isCellPending, selectedClassId, mondayStr],
   );
+
+  // ─── «Пристегни ремни» ─────────────────────────────────────────────────────
+  // Ритуал живёт только на СЕГОДНЯШНЕЙ неделе: листая архив, никто не должен
+  // слышать звонок обеда и видеть отсчёт по неделе, которая давно прошла.
+  const showsThisWeek = format(weekStart, "yyyy-MM-dd") === format(mondayOf(new Date()), "yyyy-MM-dd");
+  const ritualEnabled = ritualDayKey !== null && (showsThisWeek || isRitualClockOverridden());
+  const ritualDateISO = ritualDayKey
+    ? format(addDays(weekStart, DAYS.indexOf(ritualDayKey)), "yyyy-MM-dd")
+    : format(weekStart, "yyyy-MM-dd");
+
+  const isSlotMarked = useCallback((slot: string) => {
+    if (!ritualDayKey) return false;
+    const col = colName(ritualDayKey, slot as SlotKey);
+    return roster.some((c) => records[rowKeyOf(c)]?.[col] === 1);
+  }, [ritualDayKey, roster, records]);
+
+  const isCenterSlotMarked = useCallback((classroomId: string, slot: string) => {
+    // У ОТКРЫТОЙ комнаты правда живее в сетке: тап виден сразу, а сводка по центру
+    // перечитывается раз в минуту. Иначе только что отмеченное окно на минуту
+    // краснело бы у себя же на экране.
+    if (classroomId === selectedClassId) return isSlotMarked(slot);
+    return centerMarks[`${classroomId}|${slot}`] === true;
+  }, [selectedClassId, isSlotMarked, centerMarks]);
+
+  const openSlotFromRitual = useCallback((slot: string) => {
+    setSelectedSlot(slot as SlotKey);
+    if (ritualDayKey) setSelectedDay(ritualDayKey);
+    // Табло само загорается — но только на кухонной двери. Директору, который
+    // разбирает прошлую неделю, экран из-под рук не выдёргивают.
+    if (variant !== "director" && availableModes.includes("current")) setMode("current");
+  }, [ritualDayKey, variant, availableModes]);
+
+  const ritual = useMealRitual({
+    enabled: ritualEnabled,
+    todayISO: ritualDateISO,
+    classroomId: selectedClassId,
+    rows: scheduleRows,
+    centerRows: centerSchedule,
+    isSlotMarked,
+    isCenterSlotMarked,
+    variant: chimeVariant,
+    onOpenSlot: openSlotFromRitual,
+  });
+
+  // iOS: звук оживает ТОЛЬКО внутри жеста. Ловим первое касание экрана за день —
+  // любое, хоть по пустому месту, — и на нём разблокируем. До этого плашка
+  // беззвучная и прямо об этом говорит.
+  useEffect(() => {
+    if (ritual.audioUnlocked) return;
+    const h = () => ritual.unlock();
+    window.addEventListener("pointerdown", h, { once: true });
+    window.addEventListener("keydown", h, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", h);
+      window.removeEventListener("keydown", h);
+    };
+  }, [ritual.audioUnlocked, ritual.unlock]);
 
   // ─── Director: approve week ───────────────────────────────────────────────
   const approveWeek = useCallback(async (initials: string, scanFile: File | null) => {
@@ -679,6 +830,9 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
         </button>
       </div>
 
+      <BuckleBanner banner={ritual.banner} variant={chimeVariant} onUnlock={ritual.unlock} />
+      <UnbuckledList items={ritual.unbuckled} />
+
       <div className="mc-class-bar">
         {classrooms.map((cls) => (
           <button key={cls.id}
@@ -751,6 +905,76 @@ interface GridProps {
   isStaff: boolean;
   dayTotals: (d: DayKey) => { total: number; reimbursable: number };
   readOnly?: boolean;
+}
+
+// ─── «Пристегни ремни»: плашка окна ──────────────────────────────────────────
+// Плашка НИЧЕГО НЕ БЛОКИРУЕТ и ничего не закрывает собой: у неё нет ни оверлея,
+// ни модального окна, ни кнопки «понятно», без которой не пройти. Отнять экран
+// посреди обеда дороже, чем не напомнить (канон 31.07 о сообщении на планшете).
+
+function BuckleBanner({ banner, variant, onUnlock }: {
+  banner: BannerState; variant: ChimeVariantKey; onUnlock: () => void;
+}) {
+  if (banner.kind === "none" || !banner.slot) return null;
+  const slotLabel = SLOT_LABELS[banner.slot as SlotKey] ?? banner.slot;
+
+  if (banner.kind === "done") {
+    return (
+      <div className="mc-buckle done" role="status">
+        <span className="mc-buckle-icon">✓</span>
+        <span className="mc-buckle-text">
+          <b>{slotLabel} отмечен{banner.markedAt ? ` ${banner.markedAt}` : ""}</b>
+        </span>
+      </div>
+    );
+  }
+
+  const words = phraseFor(variant, banner.urgent ? "reminder" : "start").words;
+  // Ритуальные 30 минут вышли, а окно ещё идёт → показываем время ДО ЗАКРЫТИЯ.
+  // Ноль на видном месте читается как «поздно», хотя отметить ещё можно и нужно.
+  const counting = banner.minutesLeft > 0;
+  return (
+    <div className={`mc-buckle ${banner.urgent ? "urgent" : "counting"}`} role="status">
+      <span className="mc-buckle-icon">{banner.urgent ? "⏰" : "🍽"}</span>
+      <span className="mc-buckle-text">
+        <b>{slotLabel} идёт — отметьте порции</b>
+        <span className="mc-buckle-words">«{words}»</span>
+      </span>
+      <span className="mc-buckle-timer">
+        {counting ? banner.minutesLeft : banner.minutesToClose}
+        <span className="mc-buckle-unit">{counting ? " мин" : " мин до конца"}</span>
+      </span>
+      {banner.kind === "locked" && (
+        // Беззвучно — и сказано об этом. Молчащая плашка без объяснения читается
+        // как сломанный звук, и через день ей перестают верить.
+        <button type="button" className="mc-buckle-unlock" onClick={onUnlock}>
+          🔇 Коснитесь, чтобы включить звук
+        </button>
+      )}
+    </div>
+  );
+}
+
+// Красный список к концу дня. ТОЛЬКО ВИДИМОСТЬ: ни одна строка ничего не
+// запрещает и ничего не правит задним числом — она лишь показывает сегодня то,
+// что иначе всплывёт через месяц, на сверке заявки.
+function UnbuckledList({ items }: { items: UnbuckledWindow[] }) {
+  if (!items.length) return null;
+  return (
+    <div className="mc-unbuckled" role="status">
+      <div className="mc-unbuckled-head">
+        Окна закрылись без отметок: {items.length}
+        <span className="mc-unbuckled-note">Ничего не заблокировано — отметить можно и сейчас.</span>
+      </div>
+      <div className="mc-unbuckled-rows">
+        {items.map((w) => (
+          <span key={`${w.classroom_id}_${w.slot}`} className="mc-unbuckled-row">
+            <b>{w.classroomName}</b> · {SLOT_LABELS[w.slot as SlotKey] ?? w.slot} · {hhmm(w.start)}–{hhmm(w.end)}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 // ─── Current Meal Mode ────────────────────────────────────────────────────────
@@ -1116,6 +1340,32 @@ const styles = `
 .mc-write-err-actions button { padding:.35rem .7rem; font-size:.8rem; font-weight:700;
   font-family:inherit; border-radius:8px; border:1.5px solid #c0392b; background:#fff;
   color:#7a1f16; cursor:pointer; }
+/* «Пристегни ремни» — плашка окна. Она НЕ перекрывает экран: обычная полоса в
+   потоке, лента комнат и сетка остаются доступны в любую секунду. */
+.mc-buckle { display:flex; align-items:center; gap:.7rem; margin:0; padding:.6rem 1rem;
+  border-bottom:2px solid transparent; font-size:.9rem; }
+.mc-buckle.counting { background:#fff6e0; border-color:#f0a020; color:#5a4200; }
+.mc-buckle.urgent   { background:#ffe9e4; border-color:#e05a4a; color:#7a1f16; }
+.mc-buckle.done     { background:#e8f7ee; border-color:#0f4c35; color:#0a3320; }
+.mc-buckle-icon { font-size:1.25rem; line-height:1; }
+.mc-buckle-text { display:flex; flex-direction:column; gap:.1rem; flex:1; min-width:0; }
+.mc-buckle-text b { font-size:.95rem; }
+.mc-buckle-words { font-size:.8rem; opacity:.75; font-style:italic; }
+.mc-buckle-timer { font-size:1.5rem; font-weight:800; font-variant-numeric:tabular-nums; letter-spacing:.02em; white-space:nowrap; }
+.mc-buckle-unit { font-size:.75rem; font-weight:600; opacity:.7; }
+.mc-buckle-unlock { padding:.35rem .7rem; border-radius:8px; border:1.5px solid currentColor;
+  background:transparent; color:inherit; font-family:inherit; font-size:.8rem; font-weight:700; cursor:pointer; }
+
+/* Непристёгнутые окна дня — видимость без запретов. */
+.mc-unbuckled { background:#fff; border-left:6px solid #c0392b; padding:.55rem 1rem;
+  display:flex; flex-direction:column; gap:.3rem; }
+.mc-unbuckled-head { font-size:.85rem; font-weight:700; color:#7a1f16;
+  display:flex; gap:.6rem; align-items:baseline; flex-wrap:wrap; }
+.mc-unbuckled-note { font-weight:400; font-size:.78rem; color:#7a6a20; }
+.mc-unbuckled-rows { display:flex; flex-wrap:wrap; gap:.35rem .6rem; }
+.mc-unbuckled-row { font-size:.8rem; color:#7a1f16; background:#fdecea;
+  border:1px solid #f3c3bc; border-radius:8px; padding:.15rem .5rem; }
+
 /* Per-cell "queued" state — distinct from the solid-green SYNCED check. */
 .mc-check-row.queued { border-color:#f0a020; background:#fff8ec; }
 .mc-check-row.queued.checked { background:#eef7ee; }

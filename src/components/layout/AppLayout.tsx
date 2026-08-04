@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, Fragment } from 'react'
+import { ORG_LABEL, centerLabel, sortCentersForSwitcher } from '@/lib/centerLabels'
 import { NavLink, Outlet, useNavigate, useLocation, Link } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { usePushNotifications } from '@/hooks/usePushNotifications'
@@ -210,7 +211,7 @@ const NAV_ITEMS: NavItem[] = [
 export default function AppLayout() {
   usePushNotifications() // Auto-subscribe to push notifications
   const { user, role, signOut } = useAuth()
-  const { modules, navModules } = useOrg()
+  const { modules, navModules, currentCenter } = useOrg()
   const navigate = useNavigate()
   const location = useLocation()
   const [collapsed, setCollapsed] = useState(false)
@@ -253,8 +254,20 @@ export default function AppLayout() {
 
   // Director desktop: a director sees only their curated sections; every other
   // role keeps the full sidebar unchanged.
+  // КОНТЕКСТНОЕ МЕНЮ (владелец, 04.08). Выбран центр — показывается ТОЛЬКО
+  // центровой набор страниц; Main Office — полное организационное меню.
+  //
+  // ПРАВА НЕ МЕНЯЮТСЯ, сужается ВИДИМОСТЬ. Админ в контексте Wickliffe остаётся
+  // админом: он может открыть любую страницу по адресу, и RLS его пропустит.
+  // Меню перестаёт предлагать организационные разделы, потому что человек,
+  // выбравший центр, работает в центре, — а не потому, что ему что-то запретили.
+  // Возврат в Main Office — один клик в том же переключателе, он виден всегда.
+  //
+  // Набор центровых страниц один и тот же для директора и для админа в контексте
+  // центра: DIRECTOR_PATHS. Второй такой список рядом разошёлся бы с первым.
   const directorMode = role === 'director'
-  const sections = directorMode ? directorSections(SECTIONS) : SECTIONS
+  const centerContext = !!currentCenter
+  const sections = (directorMode || centerContext) ? directorSections(SECTIONS) : SECTIONS
 
   // block check (kept from original)
   const usingPerms = Array.isArray(navModules) && navModules.length > 0
@@ -519,11 +532,13 @@ function CenterSwitcher({ collapsed, onOpen, onLeave, onEnterFly, flyId, flyTop,
   overlap: number
 }) {
   const { isOrgAdmin, centers, currentCenter, viewMode, setCurrentCenter } = useOrg()
-  const short = (n?: string | null) => (n ?? '').replace(/^Play Academy\s+/i, '').trim() || '—'
 
   if (!currentCenter && !isOrgAdmin) return null
 
-  const label = viewMode === 'org' ? 'Organization' : short(currentCenter?.name)
+  // Подписи — разговорные (по городу), порядок — заказанный владельцем.
+  // Официальное имя центра здесь НЕ участвует: оно живёт на бланках и в снимках.
+  const label = viewMode === 'org' ? ORG_LABEL : centerLabel(currentCenter ?? {})
+  const ordered = sortCentersForSwitcher(centers)
 
   return (
     <div
@@ -570,16 +585,16 @@ function CenterSwitcher({ collapsed, onOpen, onLeave, onEnterFly, flyId, flyTop,
             onClick={() => setCurrentCenter(null)}
             style={{ ...orgItemStyle, color: viewMode === 'org' ? '#a7f0d0' : 'rgba(255,255,255,0.75)', fontWeight: viewMode === 'org' ? 500 : 400 }}
           >
-            <i className="ti ti-building-community" style={{ fontSize: 15 }} /> Organization
+            <i className="ti ti-building-community" style={{ fontSize: 15 }} /> {ORG_LABEL}
           </div>
           <div style={{ height: '0.5px', background: 'rgba(255,255,255,0.1)', margin: '4px 0' }} />
-          {centers.map(c => (
+          {ordered.map(c => (
             <div
               key={c.id}
               onClick={() => setCurrentCenter(c)}
               style={{ ...orgItemStyle, color: currentCenter?.id === c.id && viewMode !== 'org' ? '#a7f0d0' : 'rgba(255,255,255,0.75)' }}
             >
-              <i className="ti ti-building" style={{ fontSize: 15 }} /> {short(c.name)}
+              <i className="ti ti-building" style={{ fontSize: 15 }} /> {centerLabel(c)}
             </div>
           ))}
         </div>

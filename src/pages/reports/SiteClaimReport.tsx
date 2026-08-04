@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { format } from "date-fns";
 import { useOrg } from "@/contexts/OrgContext";
 import { useAuth } from "@/hooks/useAuth";
+import { loadIeaOnFile } from "@/lib/ieaOnFile";
 import { parseIeaFiscalYear } from "@/lib/enrollmentApprove";
 import { claimFromRpc, classroomsMatchTotals } from "@/lib/claimFromRpc";
 import { loadWeekApprovalProgress } from "@/lib/weekApprovalProgress";
@@ -84,14 +85,18 @@ export default function SiteClaimReport() {
       if(cancelled) return;
       if(!fy){ setUndocFR(null); return; }
       const today=format(new Date(),"yyyy-MM-dd");
-      const [{data:roster},{data:cls},{data:ie}]=await Promise.all([
+      // «Есть IEA» = решение в системе ИЛИ БУМАГА В ДЕЛЕ (третье состояние,
+      // канон 01.08). Ответ считает одна общая функция — на этот же вопрос
+      // отвечает страница сверки, и два счётчика на одних данных однажды
+      // разойдутся. Манифест сюда не годится: он центровой по замыслу и на
+      // вопрос про конкретного ребёнка отвечает «да» за весь центр.
+      const [{data:roster},{data:cls},onFile]=await Promise.all([
         supabase.schema("menumaker").from("roster")
           .select("id,frp,classroom_id,date_out").eq("center_id",centerId).eq("is_active",true).in("frp",["F","R"]),
         supabase.schema("menumaker").from("classrooms").select("id,is_roster").eq("center_id",centerId),
-        supabase.schema("menumaker").from("income_eligibility").select("roster_id").eq("center_id",centerId).eq("fiscal_year",fy),
+        loadIeaOnFile(centerId, fy, today),
       ]);
       const staff=new Set((cls||[]).filter((c:any)=>c.is_roster===false).map((c:any)=>c.id));
-      const onFile=new Set((ie||[]).map((r:any)=>r.roster_id));
       const n=(roster||[]).filter((r:any)=>
         !staff.has(r.classroom_id) &&
         !(r.date_out && String(r.date_out).slice(0,10)<today) &&

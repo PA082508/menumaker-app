@@ -3,6 +3,7 @@ title: GatePulse — For Parents
 module: gatepulse-parent
 order: 8
 icon: 📲
+updated: 2026-08-04
 ---
 
 
@@ -43,6 +44,31 @@ you use it. *[built today]*
   time. Until you see it, nothing has been recorded: don't leave on a request alone. *[built today]*
 
 That green check is your receipt. The same two records appear under **Today** on your screen.
+
+## 3a. What you'll hear
+
+The tablet in your child's room **says the record out loud** the moment it is written.
+It is the spoken half of the same receipt you see on your phone — the room hears it,
+so a mistake is caught while you are still standing there, not a week later.
+
+- When you tap **I'm here**, before any teacher has touched anything, the room hears
+  **“Maria Lopez is here for Emma Carter.”** That is an announcement, not a record —
+  nothing has been signed yet, and your child has not been released to anyone.
+- When the teacher accepts your child in the morning:
+  **“Emma Carter — accepted, 8:02.”**
+- When the teacher releases your child to you or to someone you authorized:
+  **“Emma Carter — released to Maria Lopez, 5:12.”**
+
+Three things are said aloud every time — **who, to whom, and at what minute** — and
+they are exactly the three things written into the record and shown on your phone.
+
+**If what you hear is not what is happening — say so immediately.** A wrong name or a
+wrong person spoken aloud means a wrong record was just written, and the fastest fix
+is the one made at the door.
+
+The room may be in quiet hour (nap time), and then you will hear nothing at all. That
+changes nothing about the record: your green ✅ on your own phone is the receipt, and
+it always appears.
 
 ## 4. Who else may pick up your child
 

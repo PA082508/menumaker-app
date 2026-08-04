@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import { warnIf } from '@/lib/queryError'
 import { useOrg } from '@/contexts/OrgContext'
 import { useAuth } from '@/hooks/useAuth'
-import OfficialMenu, { weekPagesFor, buildCombos, type Lookup, type Holiday, type Combos } from './OfficialMenu'
+import OfficialMenu, { weekPagesFor, type Lookup, type Holiday, type Combos } from './OfficialMenu'
+import { loadMenuSource, loadHolidaysByCenter, publishMonth } from './publishMonth'
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December']
@@ -18,9 +20,11 @@ const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
  * recipes.is_whole_grain; holidays are per center_id. Rendering lives in the pure
  * <OfficialMenu> component.
  *
- * Publish (step b): saves the resolved data snapshot to published_menus as a new
- * version (re-publishing the same month never overwrites). Published months are
- * viewed at /menu/published/:center/:year/:month, re-rendered from the snapshot.
+ * Publish here is the ADMIN's point tool: it re-issues ONE center's month as a new
+ * version (re-publishing never overwrites). The normal path is the org-wide
+ * «Publish» on the Menu Planner, which publishes the month for ALL centers in one
+ * operation — both go through publishMonth(), so the snapshot shape stays one.
+ * Published months are viewed at /menu/published/:center/:year/:month.
  */
 export default function MenuPrintOfficialPage() {
   const { center: centerSlug, year: yearStr, month: monthStr } = useParams()
@@ -38,86 +42,52 @@ export default function MenuPrintOfficialPage() {
   const [holidayByDate, setHolidayByDate] = useState<Record<string, Holiday>>({})
   const [latestVersion, setLatestVersion] = useState<number | null>(null)
   const [publishState, setPublishState] = useState<'idle' | 'busy' | string>('idle')
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const center = useMemo(
     () => centers.find(c => c.slug === centerSlug) || null,
     [centers, centerSlug])
-  const canPublish = roles.includes('director') || roles.includes('office_manager') || roles.includes('admin')
+  // Точечное переиздание одного центра — инструмент админа. Обычная публикация
+  // месяца идёт по всем центрам сразу, кнопкой на планировщике.
+  const canPublish = roles.includes('admin')
 
   useEffect(() => {
     if (orgLoading) return
     if (!center) { setLoading(false); return }
     const load = async () => {
       setLoading(true)
+      setLoadError(null)
 
-      const { data: cycles } = await supabase.schema('menumaker')
-        .from('menu_cycles')
-        .select('id, total_weeks, start_date')
-        .eq('program', 'child')
-        .order('created_at', { ascending: false })
-        .limit(1)
-      const cycle = cycles?.[0]
-      if (!cycle) { setLoading(false); return }
-      setCycleId(cycle.id)
-      setCycleStart(cycle.start_date ?? null)
-      if (cycle.total_weeks) setTotalWeeks(cycle.total_weeks)
+      try {
+        // Ровно те же данные, из которых собирается публикуемый снимок —
+        // живая форма и снимок не могут разойтись, их строит один код.
+        const source = await loadMenuSource('child')
+        if (!source) { setLoading(false); return }
+        setCycleId(source.cycleId)
+        setCycleStart(source.cycleStart)
+        setTotalWeeks(source.totalWeeks)
+        setLookup(source.lookup)
+        setCombos(source.combos)
 
-      const { data: items } = await supabase.schema('menumaker')
-        .from('menu_items')
-        .select(`week_number, day_of_week, item_text, recipe_id,
-                 meal_types:meal_type_id(label),
-                 components:component_id(slug),
-                 recipes:recipe_id(is_whole_grain)`)
-        .eq('cycle_id', cycle.id)
-        .order('sort_order')
-
-      const lk: Lookup = {}
-      const recipeIds = new Set<string>()
-      for (const it of (items || []) as any[]) {
-        const meal = it.meal_types?.label as string | undefined
-        const comp = it.components?.slug as string | undefined
-        if (!meal || !comp) continue
-        if (it.recipe_id) recipeIds.add(it.recipe_id)
-        ;((((lk[it.week_number] ??= {})[it.day_of_week] ??= {})[meal] ??= {})[comp] ??= []).push({
-          text: it.item_text || '',
-          wg: !!it.recipes?.is_whole_grain,
-          recipeId: it.recipe_id ?? null,
-        })
+        // Holidays for THIS center (small table → fetch all, key by full date).
+        const hols = await loadHolidaysByCenter([center.id])
+        setHolidayByDate(hols[center.id] ?? {})
+      } catch (e: any) {
+        // Пустой бланк выглядит как «в меню ничего не запланировано».
+        // Отказ обязан сказать это словами и не притворяться формой.
+        setLoadError(e?.message ?? 'the database refused the request')
+        setLoading(false)
+        return
       }
-      setLookup(lk)
-
-      // Combination-dish metadata: recipes crediting 2+ non-Extras components.
-      let combosMap: Combos = {}
-      if (recipeIds.size) {
-        const { data: rcs } = await supabase.schema('menumaker')
-          .from('recipe_components')
-          .select('recipe_id, quantity, unit, recipes:recipe_id(name, menu_form_primary_component), components:component_id(slug,label), age_groups:age_group_id(slug)')
-          .in('recipe_id', [...recipeIds])
-        combosMap = buildCombos((rcs || []).map((r: any) => ({
-          recipe_id: r.recipe_id, name: r.recipes?.name || '', quantity: r.quantity, unit: r.unit,
-          comp_slug: r.components?.slug, comp_label: r.components?.label, age_slug: r.age_groups?.slug,
-          primary_override: r.recipes?.menu_form_primary_component ?? null,
-        })))
-      }
-      setCombos(combosMap)
-
-      // Holidays for THIS center (small table → fetch all, key by full date).
-      const { data: hols } = await supabase.schema('menumaker')
-        .from('holidays')
-        .select('year, month, day, name, type, close_time')
-        .eq('center_id', center.id)
-      const hmap: Record<string, Holiday> = {}
-      for (const h of (hols || []) as any[])
-        hmap[`${h.year}-${h.month}-${h.day}`] = { type: h.type, name: h.name, close_time: h.close_time }
-      setHolidayByDate(hmap)
 
       // Latest published version for this center/month (for the Publish button label).
       if (year && month) {
-        const { data: pub } = await supabase.schema('menumaker')
+        const { data: pub, error: pubErr } = await supabase.schema('menumaker')
           .from('published_menus')
           .select('version')
           .eq('program', 'child').eq('center_id', center.id).eq('year', year).eq('month', month)
           .order('version', { ascending: false }).limit(1)
+        warnIf(pubErr, 'MenuPrintOfficialPage/latest-version')
         setLatestVersion(pub?.[0]?.version ?? null)
       }
 
@@ -129,27 +99,25 @@ export default function MenuPrintOfficialPage() {
   const publish = async () => {
     if (!center || !year || !month) return
     setPublishState('busy')
-    const snapshot = { centerName: center.name, cycleStart, totalWeeks, lookup, holidayByDate, combos }
-    const nextVersion = (latestVersion ?? 0) + 1
-    const { error } = await supabase.schema('menumaker').from('published_menus').insert({
-      org_id: org?.id ?? undefined,
-      program: 'child',
-      center_id: center.id,
-      cycle_id: cycleId,
+    const { published, error } = await publishMonth({
+      centers: [{ id: center.id, slug: center.slug, name: center.name }],
       year, month,
-      version: nextVersion,
-      snapshot,
-      published_by: user?.id ?? null,
+      orgId: org?.id ?? null,
+      userId: user?.id ?? null,
+      source: { cycleId, cycleStart, totalWeeks, lookup, combos },
+      holidaysByCenter: { [center.id]: holidayByDate },
     })
-    if (error) { setPublishState(`Error: ${error.message}`); return }
-    setLatestVersion(nextVersion)
-    setPublishState(`Published v${nextVersion} ✓`)
+    if (error) { setPublishState(`Error: ${error}`); return }
+    const v = published[0]?.version ?? null
+    if (v) setLatestVersion(v)
+    setPublishState(`Published v${v} ✓`)
   }
 
   if (!year || !month || month < 1 || month > 12)
     return <Msg>Invalid month in URL. Use /menu/print-official/:center/:year/:month.</Msg>
   if (orgLoading || loading) return <Msg>Loading official menu…</Msg>
   if (!center) return <Msg>Center “{centerSlug}” not found or not accessible.</Msg>
+  if (loadError) return <Msg>Official menu not built — {loadError}. Nothing was published.</Msg>
 
   const pageCount = weekPagesFor(year, month, cycleStart, totalWeeks).length
   const monthName = MONTH_NAMES[month - 1]
@@ -163,7 +131,7 @@ export default function MenuPrintOfficialPage() {
           🖨 Print / Save PDF
         </button>
         {canPublish && (
-          <button onClick={publish} disabled={publishState === 'busy'} title="Save this month as a published version (parents / website)" style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #0f4c35', background: '#fff', color: '#0f4c35', fontSize: 13, fontWeight: 600, cursor: publishState === 'busy' ? 'default' : 'pointer' }}>
+          <button onClick={publish} disabled={publishState === 'busy'} title="Admin tool: re-issue THIS center's month as a new version. The normal path is Publish on the Menu Planner — it publishes the month for all centers at once." style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #0f4c35', background: '#fff', color: '#0f4c35', fontSize: 13, fontWeight: 600, cursor: publishState === 'busy' ? 'default' : 'pointer' }}>
             {publishState === 'busy' ? 'Publishing…' : latestVersion ? `📢 Publish (next v${latestVersion + 1})` : '📢 Publish'}
           </button>
         )}

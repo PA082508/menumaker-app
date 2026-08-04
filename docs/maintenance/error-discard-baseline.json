@@ -1,6 +1,6 @@
 {
   "frozen": "2026-07-29",
-  "total": 190,
+  "total": 180,
   "byFile": {
     "components/dashboard/ActionItemsWidget.tsx": 3,
     "components/meal-count/FiveDayReconciliation.tsx": 3,
@@ -45,7 +45,6 @@
     "pages/meal-count/MealCountDirectorPage.tsx": 7,
     "pages/meal-count/MealCountPage.tsx": 7,
     "pages/menu/MenuPlannerPage.tsx": 3,
-    "pages/menu/MenuPrintOfficialPage.tsx": 5,
     "pages/messages/MessagesPage.tsx": 3,
     "pages/messages/PortalMessagesPanel.tsx": 2,
     "pages/purchases/PurchasesPage.tsx": 4,

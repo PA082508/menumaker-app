@@ -101,16 +101,6 @@ export default function EnrollmentInboxPage() {
   // Auto-open the signature queue on first load when it is non-empty (spec §2b:
   // "включённым по умолчанию"). One-shot — a manual tab change afterwards sticks.
   const autoViewedRef = useRef(false)
-  // Enrollment-enabled center_ids, from the embed registry's `centers` map. Null
-  // until loaded — the "Open the enrollment form" picker offers only these
-  // (intersection), so Kitchen / future non-enrollment centers never appear.
-  // Adding a center to the registry surfaces it here automatically.
-  const [enrollCenterIds, setEnrollCenterIds] = useState<Set<string> | null>(null)
-  // Standalone enroll-form URL (current version) + center_id→slug map, both from
-  // the registry — used to open the real GitHub-Pages form (?center=<slug>) in a
-  // new tab. Submitting there files a source='online' row into this Inbox.
-  const [enrollBaseUrl, setEnrollBaseUrl] = useState<string | null>(null)
-  const [slugById, setSlugById] = useState<Map<string, string>>(new Map())
 
   const isStaff = useMemo(
     () => (roles ?? []).some(r => STAFF_ROLES.includes(r)),
@@ -121,29 +111,9 @@ export default function EnrollmentInboxPage() {
     return (id: string) => map.get(id) ?? '—'
   }, [centers])
 
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      try {
-        const r = await fetch('/enroll-registry.json?t=' + Date.now(), { cache: 'no-store' })
-        if (!r.ok) return
-        const reg = await r.json()
-        const centersMap = (reg?.centers ?? {}) as Record<string, { center_id?: string }>
-        const ids: string[] = []
-        const byId = new Map<string, string>()
-        for (const [slug, c] of Object.entries(centersMap)) {
-          if (c?.center_id) { ids.push(c.center_id); byId.set(c.center_id, slug) }
-        }
-        // Context-aware: from Staff, "Open the enrollment form" must open the STAFF
-        // enrollment form — not the parent CACFP form (fix: staff inbox opened the parent form).
-        const which = new URLSearchParams(window.location.search).get('from') === 'staff' ? 'staff' : 'enroll'
-        const ef = reg?.forms?.[which]
-        const url = (ef?.versions && ef.current && ef.versions[ef.current]) || ef?.fallbackUrl || null
-        if (!cancelled) { setEnrollCenterIds(new Set(ids)); setSlugById(byId); setEnrollBaseUrl(url) }
-      } catch { /* registry unreachable → picker stays empty, no leak */ }
-    })()
-    return () => { cancelled = true }
-  }, [])
+  // Реестр форм здесь БОЛЬШЕ НЕ ЧИТАЕТСЯ: его единственным потребителем была
+  // кнопка «Open the enrollment form ↗», убранная 04.08. Оставлять загрузку
+  // ради ничего — это запрос, который однажды объяснят как нужный.
 
   // Which submission types require a director signature. RPC is authenticated-only
   // (revoked from PUBLIC in step 0) — this page is staff-gated, so the director's
@@ -337,32 +307,12 @@ export default function EnrollmentInboxPage() {
         </div>
         {/* Active center → open the real form directly (new tab). Org view → pick
             a center first (slim picker, no broken in-app embed). */}
-        {currentCenter?.id ? (
-          <a
-            href={enrollBaseUrl && slugById.get(currentCenter.id)
-              ? `${enrollBaseUrl}?center=${encodeURIComponent(slugById.get(currentCenter.id)!)}`
-              : enrollBaseUrl ?? '#'}
-            target="_blank" rel="noopener noreferrer"
-            onClick={e => { if (!enrollBaseUrl) e.preventDefault() }}
-            style={{
-              padding: '8px 16px', borderRadius: 9, background: '#0f4c35', color: '#fff',
-              fontSize: 13, fontWeight: 700, cursor: enrollBaseUrl ? 'pointer' : 'not-allowed',
-              whiteSpace: 'nowrap', textDecoration: 'none', display: 'inline-block',
-              opacity: enrollBaseUrl ? 1 : 0.6,
-            }}>
-            Open the enrollment form ↗
-          </a>
-        ) : (
-          // Org view → no current center. One center source: prompt the header switcher.
-          <span
-            title="Pick a center in the switcher at the top"
-            style={{
-              padding: '8px 16px', borderRadius: 9, border: '1px solid #e5e7eb', background: '#f9fafb',
-              color: '#6b7280', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', cursor: 'default',
-            }}>
-            Pick a center ↑ to open its form
-          </span>
-        )}
+        {/* «Open the enrollment form ↗» УБРАНА (владелец, 04.08).
+            Директору она не нужна: заполняет форму СЕМЬЯ, со своего телефона, по
+            ссылке или QR из витрины. Кнопка на разборе входящих звала директора
+            открыть чистый бланк — то есть предлагала ему заполнить за родителя
+            то, что родитель подписывает сам. Родительские ссылки не тронуты:
+            витрина, QR и пакеты работают как работали. */}
       </div>
       <div style={{ fontSize: 13, color: '#888', marginBottom: 20 }}>
         Pending enrollment packet submissions awaiting director review.

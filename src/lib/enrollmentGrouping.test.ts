@@ -60,9 +60,11 @@ describe('groupSubmissionsByChild', () => {
   it('counts the signature forms in the group', () => {
     const groups = groupSubmissionsByChild([
       sub({ type: 'dcy_01234', name: 'Hazel Broadwater' }),
-      // 22.07 iea ушла в доходную ветку и слота больше не объявляет; её место
-      // в списке подписных с 05.08 занимает форма питания.
-      sub({ type: 'cacfp_enrollment', name: 'Hazel Broadwater' }),
+      // Список подписных менялся дважды за день: 22.07 из него ушла iea, 05.08
+      // вошла и в тот же день вышла форма питания (поворот канона — она
+      // контрподписи не требует). Поэтому вторая подписная здесь — start_form,
+      // а тест сверяется с картой, а не с её состоянием на час написания.
+      sub({ type: 'start_form', name: 'Hazel Broadwater' }),
       sub({ type: 'parent_consent', name: 'Hazel Broadwater' }),
     ])
     expect(groups[0].signatureCount).toBe(2)
@@ -71,7 +73,7 @@ describe('groupSubmissionsByChild', () => {
   it('does NOT count a filed (received) signature form — filed is a fact, not a task', () => {
     const groups = groupSubmissionsByChild([
       sub({ type: 'dcy_01234', name: 'Hazel Broadwater', status: 'received' }),
-      sub({ type: 'cacfp_enrollment', name: 'Hazel Broadwater', status: 'pending' }),
+      sub({ type: 'start_form', name: 'Hazel Broadwater', status: 'pending' }),
     ])
     // Two signature-required forms, but the received one is filed → only the
     // pending one is still awaiting a signature.

@@ -88,3 +88,64 @@ export function bulkAllowed(rows: readonly { input: ConfirmInput }[]): boolean {
 export function childrenCovered(f: FamilyRow): number {
   return f.children.length
 }
+
+// ============================================================================
+// ПОИСК ПО ИМЕНИ РЕБЁНКА (заказ владельца 05.08)
+//
+// ЗАЧЕМ. Строка списка — СЕМЬЯ, и подписана она опекуном. Но родители зачастую
+// носят другую фамилию, чем дети: искать семью Bella Cheeks по слову «Cheeks»
+// бесполезно, если строка называется «Thiana Carter». Человек со стопкой бумаг
+// в руках читает имя РЕБЁНКА — по нему и должен находить.
+//
+// ПОЧЕМУ СЛОВА, А НЕ ПОДСТРОКА. Имя ребёнка хранится «Фамилия Имя» (канон CACFP),
+// а произносят и пишут его «Имя Фамилия». Поиск подстрокой по всей строке нашёл бы
+// «Mathews Harlei» и не нашёл бы «Harlei Mathews» — то есть отвечал бы «нет такого
+// ребёнка» на правильно набранное имя. Поэтому запрос бьётся на слова, и каждое
+// слово запроса должно начать КАКОЕ-ТО слово имени, в любом порядке.
+// ============================================================================
+
+/**
+ * Слова имени для сравнения: нижний регистр, без диакритики, дефис/апостроф —
+ * границы слов (иначе «Mathews-Smith» не нашлась бы по «Smith»).
+ */
+export function nameWords(s: string): string[] {
+  return (s ?? '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')   // Núñez → Nunez
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)                            // не только латиница
+    .filter(Boolean)
+}
+
+/** Каждое слово запроса начинает какое-то слово имени. Порядок не важен. */
+export function nameMatches(name: string, query: string): boolean {
+  const q = nameWords(query)
+  if (q.length === 0) return true
+  const words = nameWords(name)
+  return q.every(t => words.some(w => w.startsWith(t)))
+}
+
+export interface FamilyHit<T extends FamilyRow = FamilyRow> {
+  row: T
+  /** rosterId детей, совпавших с запросом — их подсвечивает экран. */
+  childIds: string[]
+  /** Совпало имя опекуна (а не ребёнка) — подсвечивается заголовок строки. */
+  guardianHit: boolean
+}
+
+/**
+ * Семьи, подходящие под запрос. Совпадение по ЛЮБОМУ ребёнку строки или по
+ * имени опекуна. Пустой запрос — все семьи и ни одной подсветки: поиск, который
+ * ничего не спросили, ничего и не выделяет.
+ */
+export function searchFamilies<T extends FamilyRow>(rows: readonly T[], query: string): FamilyHit<T>[] {
+  if (nameWords(query).length === 0) {
+    return rows.map(row => ({ row, childIds: [], guardianHit: false }))
+  }
+  const out: FamilyHit<T>[] = []
+  for (const row of rows) {
+    const childIds = row.children.filter(c => nameMatches(c.name, query)).map(c => c.rosterId)
+    const guardianHit = nameMatches(row.guardianName, query)
+    if (childIds.length || guardianHit) out.push({ row, childIds, guardianHit })
+  }
+  return out
+}

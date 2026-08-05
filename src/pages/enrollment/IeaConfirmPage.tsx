@@ -29,12 +29,16 @@ import { useAuth } from '@/hooks/useAuth'
 import { parseIeaFiscalYear, frpExpiryDefault, recordDetermination } from '@/lib/enrollmentApprove'
 import { IEA_DOC_TYPE } from '@/lib/ieaOnFile'
 import {
-  confirmRefusal, sortFamiliesByWork, type ConfirmInput, type FamilyRow, type Frp,
+  confirmRefusal, searchFamilies, sortFamiliesByWork,
+  type ConfirmInput, type FamilyRow, type Frp,
 } from '@/lib/ieaConfirm'
 
 const GREEN = '#0f4c35'
 const wrap: React.CSSProperties = { padding: '24px 32px', fontFamily: "'DM Sans', sans-serif", maxWidth: 1080 }
 const inp: React.CSSProperties = { padding: '7px 10px', borderRadius: 8, border: '1.5px solid #c0d8c0', fontSize: 13, fontFamily: 'inherit', background: '#fff' }
+// Подсветка совпадения. Тёплый фон, а не цвет текста: строка и так разноцветная
+// (✓/○, комната, категория), и ещё один оттенок в ней потерялся бы.
+const hiRow: React.CSSProperties = { background: '#fef3c7', borderRadius: 5, padding: '1px 5px', boxShadow: 'inset 0 0 0 1px #fcd34d' }
 
 type Row = FamilyRow & { input: ConfirmInput; busy?: boolean; done?: string | null; err?: string | null }
 
@@ -49,6 +53,9 @@ export default function IeaConfirmPage() {
   const [loadErr, setLoadErr] = useState<string | null>(null)
   const [fy, setFy] = useState<string | null>(null)
   const [onlyOpen, setOnlyOpen] = useState(true)
+  // Поиск идёт по имени РЕБЁНКА: строка подписана опекуном, а родители зачастую
+  // носят другую фамилию, и по подписи строки ребёнка не найти.
+  const [q, setQ] = useState('')
 
   useEffect(() => {
     fetch('/enroll-registry.json?t=' + Date.now(), { cache: 'no-store' })
@@ -198,7 +205,11 @@ export default function IeaConfirmPage() {
     </div></div>
   }
 
-  const shown = onlyOpen ? rows.filter(r => r.children.some(c => !c.onFile)) : rows
+  // Порядок: сначала поиск, потом фильтр «только открытые». Иначе поиск отвечал бы
+  // «такой семьи нет» про семью, которую спрятал фильтр, — а это разные ответы.
+  const found = searchFamilies(rows, q)
+  const shown = onlyOpen ? found.filter(h => h.row.children.some(c => !c.onFile)) : found
+  const hiddenByFilter = found.length - shown.length
   const openKids = rows.flatMap(r => r.children).filter(c => !c.onFile).length
 
   return (
@@ -220,12 +231,22 @@ export default function IeaConfirmPage() {
       )}
 
       <div style={{ display: 'flex', gap: 14, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
+        <input
+          type="search" value={q} onChange={e => setQ(e.target.value)}
+          placeholder="Search by child or guardian name…"
+          aria-label="Search by child or guardian name"
+          title="Any word, any order — a child is found by their own surname, which is often not the guardian's."
+          style={{ ...inp, minWidth: 260, flex: '0 1 300px' }}
+        />
         <label style={{ fontSize: 13, color: '#374151', display: 'flex', alignItems: 'center', gap: 6 }}>
           <input type="checkbox" checked={onlyOpen} onChange={e => setOnlyOpen(e.target.checked)} style={{ accentColor: GREEN }} />
           Only families with someone still open
         </label>
         <span style={{ fontSize: 12.5, color: '#6b7280' }}>
-          {rows.length} famil{rows.length === 1 ? 'y' : 'ies'} · <strong>{openKids}</strong> child{openKids === 1 ? '' : 'ren'} without an application on file
+          {q.trim()
+            ? <>{found.length} of {rows.length} famil{rows.length === 1 ? 'y' : 'ies'} match
+                {hiddenByFilter > 0 && <> · {hiddenByFilter} hidden by the filter above</>}</>
+            : <>{rows.length} famil{rows.length === 1 ? 'y' : 'ies'} · <strong>{openKids}</strong> child{openKids === 1 ? '' : 'ren'} without an application on file</>}
         </span>
         {/* Массового «подтвердить всё» здесь НЕТ и не будет: сто определений,
             за которыми не стоит ни одной названной бумаги, — это сто строк,
@@ -233,20 +254,49 @@ export default function IeaConfirmPage() {
       </div>
 
       {loading ? <div style={{ color: '#aaa', fontSize: 13 }}>Loading…</div>
+        /* Пустой результат обязан СКАЗАТЬ, почему он пуст. Три разных пустоты —
+           три разных ответа: не нашлось вовсе; нашлось, но спрятано фильтром;
+           искать нечего, потому что всё подтверждено. Одна общая фраза на все три
+           случая отправила бы человека искать ребёнка, который на экране есть. */
+        : shown.length === 0 && q.trim() && found.length === 0 ? (
+          <div style={{ color: '#6b7280', fontSize: 13, lineHeight: 1.6 }}>
+            No child or guardian matches <strong style={{ color: '#0a3320' }}>{q.trim()}</strong> at {currentCenter?.name ?? 'this centre'}.
+            <br />The search looks at every child&apos;s own name and at the guardian&apos;s — any word, in any order.
+            Check the spelling, or try just the first name.
+          </div>
+        )
+        : shown.length === 0 && q.trim() ? (
+          <div style={{ color: '#6b7280', fontSize: 13, lineHeight: 1.6 }}>
+            <strong style={{ color: '#0a3320' }}>{q.trim()}</strong> matches {found.length} famil{found.length === 1 ? 'y' : 'ies'}, and
+            {found.length === 1 ? ' it already has' : ' they already have'} an application on file.
+            <br />Untick <em>Only families with someone still open</em> to see {found.length === 1 ? 'it' : 'them'}.
+          </div>
+        )
         : shown.length === 0 ? <div style={{ color: '#6b7280', fontSize: 13 }}>Nothing open — every child here has an application on file.</div>
-        : shown.map(r => {
+        : shown.map(hit => {
+          const r = hit.row
           const refusal = confirmRefusal(r.input)
           return (
             <div key={r.guardianId} style={{ border: '1.5px solid #e8f0e8', borderRadius: 12, padding: '12px 14px', marginBottom: 10, background: '#fff' }}>
               <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                 <div style={{ flex: '1 1 260px', minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: '#0a3320' }}>{r.guardianName}</div>
-                  <div style={{ fontSize: 12.5, color: '#6b7280', marginTop: 3, lineHeight: 1.5 }}>
-                    {r.children.map(c => (
-                      <span key={c.rosterId} style={{ marginRight: 10, whiteSpace: 'nowrap' }}>
-                        {c.onFile ? '✓' : '○'} {c.name} <span style={{ color: '#9ca3af' }}>· {c.room} · {c.frp ?? '—'}</span>
-                      </span>
-                    ))}
+                  <div style={{ fontWeight: 700, fontSize: 14, color: '#0a3320' }}>
+                    <span style={hit.guardianHit ? hiRow : undefined}>{r.guardianName}</span>
+                  </div>
+                  <div style={{ fontSize: 12.5, color: '#6b7280', marginTop: 3, lineHeight: 1.8 }}>
+                    {/* Подсвечен ИМЕННО совпавший ребёнок: глаз должен сразу увидеть,
+                        почему эта семья выпала в результат, а не пересчитывать детей. */}
+                    {r.children.map(c => {
+                      const hi = hit.childIds.includes(c.rosterId)
+                      return (
+                        <span key={c.rosterId}
+                          data-match={hi ? 'child' : undefined}
+                          style={{ marginRight: 10, whiteSpace: 'nowrap', ...(hi ? hiRow : null) }}>
+                          {c.onFile ? '✓' : '○'} {hi ? <strong style={{ color: '#0a3320' }}>{c.name}</strong> : c.name}
+                          {' '}<span style={{ color: '#9ca3af' }}>· {c.room} · {c.frp ?? '—'}</span>
+                        </span>
+                      )
+                    })}
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>

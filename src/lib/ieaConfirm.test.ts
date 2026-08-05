@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { bulkAllowed, confirmRefusal, sortFamiliesByWork, childrenCovered, type FamilyRow } from './ieaConfirm'
+import { bulkAllowed, confirmRefusal, sortFamiliesByWork, childrenCovered, searchFamilies, nameMatches, type FamilyRow } from './ieaConfirm'
 
 // ============================================================================
 // СПИСОК ТАТЬЯНЫ — правила, на которых стоит запрет массового подтверждения.
@@ -75,5 +75,74 @@ describe('порядок работы', () => {
 
   it('один ввод закрывает столько детей, сколько в семье — это и есть смысл списка', () => {
     expect(childrenCovered(fam('x', 'Bates', [kid('1'), kid('2'), kid('3')]))).toBe(3)
+  })
+})
+
+// ============================================================================
+// ПОИСК ПО ИМЕНИ РЕБЁНКА. Родители зачастую носят другую фамилию, чем дети:
+// строка подписана опекуном, а в руках у человека бумага с именем РЕБЁНКА.
+// ============================================================================
+
+describe('поиск по имени ребёнка', () => {
+  // Настоящая пара из базы Highland Heights: опекун Carter, ребёнок Cheeks.
+  const carter = fam('g1', 'Thiana Carter', [kid('Cheeks Bella')])
+  const mathews = fam('g2', 'Dana Smith', [kid('Mathews Harlei')])
+  const brothers = fam('g3', 'Roman Guarnera', [kid('Guarnera Lily'), kid('Guarnera Nico')])
+  const all = [carter, mathews, brothers]
+
+  it('семья находится по фамилии РЕБЁНКА, которой нет у опекуна', () => {
+    const hits = searchFamilies(all, 'Cheeks')
+    expect(hits).toHaveLength(1)
+    expect(hits[0].row.guardianId).toBe('g1')
+    // Подсветка знает, ПОЧЕМУ строка выпала в результат.
+    expect(hits[0].childIds).toEqual(['Cheeks Bella'])
+    expect(hits[0].guardianHit).toBe(false)
+  })
+
+  it('порядок слов не мешает: Harlei Mathews = Mathews Harlei', () => {
+    expect(searchFamilies(all, 'Harlei Mathews').map(h => h.row.guardianId)).toEqual(['g2'])
+    expect(searchFamilies(all, 'Mathews Harlei').map(h => h.row.guardianId)).toEqual(['g2'])
+  })
+
+  it('регистр не мешает', () => {
+    expect(searchFamilies(all, 'cHeEkS').map(h => h.row.guardianId)).toEqual(['g1'])
+  })
+
+  it('ищется и по началу слова — человек не дописывает фамилию до конца', () => {
+    expect(searchFamilies(all, 'chee').map(h => h.row.guardianId)).toEqual(['g1'])
+  })
+
+  it('поиск по имени опекуна тоже работает — строка подписана им', () => {
+    const hits = searchFamilies(all, 'Guarnera')
+    expect(hits).toHaveLength(1)
+    expect(hits[0].guardianHit).toBe(true)
+    expect(hits[0].childIds).toEqual(['Guarnera Lily', 'Guarnera Nico'])
+  })
+
+  it('в семье подсвечен ТОЛЬКО совпавший ребёнок, а не вся строка', () => {
+    const hits = searchFamilies(all, 'Nico')
+    expect(hits[0].childIds).toEqual(['Guarnera Nico'])
+  })
+
+  it('ничего не найдено — пустой список, а не вся страница', () => {
+    expect(searchFamilies(all, 'Zzzz')).toHaveLength(0)
+  })
+
+  it('пустой запрос — все семьи и ни одной подсветки', () => {
+    const hits = searchFamilies(all, '   ')
+    expect(hits).toHaveLength(3)
+    expect(hits.every(h => h.childIds.length === 0 && !h.guardianHit)).toBe(true)
+  })
+
+  it('дефис — граница слова: Mathews-Smith находится по Smith', () => {
+    expect(nameMatches('Mathews-Smith Harlei', 'smith')).toBe(true)
+  })
+
+  it('диакритика не мешает: Núñez находится по Nunez', () => {
+    expect(nameMatches('Núñez Sofía', 'nunez')).toBe(true)
+  })
+
+  it('оба слова обязаны совпасть — «Bella Guarnera» не находит чужую семью', () => {
+    expect(searchFamilies(all, 'Bella Guarnera')).toHaveLength(0)
   })
 })

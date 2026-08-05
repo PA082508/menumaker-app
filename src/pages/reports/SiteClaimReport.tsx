@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { format } from "date-fns";
 import { useOrg } from "@/contexts/OrgContext";
 import { useAuth } from "@/hooks/useAuth";
-import { loadIeaOnFile } from "@/lib/ieaOnFile";
+import { loadIeaOnFile, needsIeaOnFile } from "@/lib/ieaOnFile";
 import { parseIeaFiscalYear } from "@/lib/enrollmentApprove";
 import { claimFromRpc, classroomsMatchTotals } from "@/lib/claimFromRpc";
 import { loadWeekApprovalProgress } from "@/lib/weekApprovalProgress";
@@ -96,11 +96,10 @@ export default function SiteClaimReport() {
         supabase.schema("menumaker").from("classrooms").select("id,is_roster").eq("center_id",centerId),
         loadIeaOnFile(centerId, fy, today),
       ]);
-      const staff=new Set((cls||[]).filter((c:any)=>c.is_roster===false).map((c:any)=>c.id));
-      const n=(roster||[]).filter((r:any)=>
-        !staff.has(r.classroom_id) &&
-        !(r.date_out && String(r.date_out).slice(0,10)<today) &&
-        !onFile.has(r.id)).length;
+      // Предикат общий с `/iea-confirm` (`needsIeaOnFile`): пока он жил здесь,
+      // второй экран считал по-своему и показывал детей с P.
+      const staff=new Set<string>((cls||[]).filter((c:any)=>c.is_roster===false).map((c:any)=>c.id as string));
+      const n=(roster||[]).filter((r:any)=>needsIeaOnFile(r, onFile, staff, today)).length;
       if(!cancelled) setUndocFR(n);
     })();
     return ()=>{cancelled=true;};

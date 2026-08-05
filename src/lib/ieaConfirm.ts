@@ -33,7 +33,7 @@ export interface FamilyRow {
 
 /** Семьи, отсортированные так, как их удобно проходить: сначала те, где на
  *  файле нет НИКОГО, потом частично закрытые, потом закрытые целиком. */
-export function sortFamiliesByWork(rows: readonly FamilyRow[]): FamilyRow[] {
+export function sortFamiliesByWork<T extends FamilyRow>(rows: readonly T[]): T[] {
   const rank = (f: FamilyRow) => {
     const done = f.children.filter(c => c.onFile).length
     if (done === 0) return 0

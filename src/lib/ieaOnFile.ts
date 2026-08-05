@@ -77,6 +77,43 @@ export async function loadIeaOnFile(
   return onFile
 }
 
+export interface IeaCandidate {
+  /** roster.id — ключ, которым считается всё остальное. */
+  id: string
+  frp: string | null
+  classroom_id: string | null
+  date_out: string | null
+}
+
+/**
+ * «Этого ребёнка ждёт заявление» — ОДИН предикат на жёлтую плашку и на список
+ * бумажных заявлений.
+ *
+ * ПОЧЕМУ ЗДЕСЬ, А НЕ НА КАЖДОМ ЭКРАНЕ. Плашка Site Claim и `/iea-confirm` задают
+ * ОДИН вопрос, и пока правило жило внутри плашки, второй экран считал по-своему:
+ * показывал детей с P, которым заявления не бывает вовсе, и его число не сходилось
+ * с плашкой. Два счётчика на одних данных однажды расходятся — это здесь уже
+ * стоило денег.
+ *
+ * Четыре условия, и каждое обязано быть названо:
+ *   1. категория F или R — на Paid заявления НЕ БЫВАЕТ, это состояние
+ *      «определения не было», а не документ, которого ждут;
+ *   2. не комната персонала (`is_roster = false`) — это не дети;
+ *   3. ребёнок не ушёл до сегодня — за ушедшего заявление не подают;
+ *   4. у него нет действующей IEA (решение за текущий ФГ ИЛИ бумага в деле).
+ */
+export function needsIeaOnFile(
+  r: IeaCandidate,
+  onFile: ReadonlySet<string>,
+  staffRooms: ReadonlySet<string>,
+  todayISO: string,
+): boolean {
+  if (r.frp !== 'F' && r.frp !== 'R') return false
+  if (r.classroom_id && staffRooms.has(r.classroom_id)) return false
+  if (r.date_out && String(r.date_out).slice(0, 10) < todayISO) return false
+  return !onFile.has(r.id)
+}
+
 /**
  * Документное поле карточки → тип документа из реестра 28, которым оно
  * доказывается. Карта НАМЕРЕННО узкая: строка «бумага в деле» пишется только

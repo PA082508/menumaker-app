@@ -27,10 +27,10 @@ import { warnIf } from '@/lib/queryError'
 import { useOrg } from '@/contexts/OrgContext'
 import { useAuth } from '@/hooks/useAuth'
 import { parseIeaFiscalYear, frpExpiryDefault, recordDetermination } from '@/lib/enrollmentApprove'
-import { IEA_DOC_TYPE } from '@/lib/ieaOnFile'
+import { IEA_DOC_TYPE, loadIeaOnFile, needsIeaOnFile } from '@/lib/ieaOnFile'
 import {
   confirmRefusal, searchFamilies, sortFamiliesByWork,
-  type ConfirmInput, type FamilyRow, type Frp,
+  type ConfirmInput, type FamilyChild, type FamilyRow, type Frp,
 } from '@/lib/ieaConfirm'
 
 const GREEN = '#0f4c35'
@@ -40,7 +40,10 @@ const inp: React.CSSProperties = { padding: '7px 10px', borderRadius: 8, border:
 // (✓/○, комната, категория), и ещё один оттенок в ней потерялся бы.
 const hiRow: React.CSSProperties = { background: '#fef3c7', borderRadius: 5, padding: '1px 5px', boxShadow: 'inset 0 0 0 1px #fcd34d' }
 
-type Row = FamilyRow & { input: ConfirmInput; busy?: boolean; done?: string | null; err?: string | null }
+// `children` — кого показывает строка (ждут заявления), `household` — кому пишет
+// подтверждение (household-правило: одна бумага определяет всех детей семьи).
+type Row0 = FamilyRow & { household: FamilyChild[] }
+type Row = Row0 & { input: ConfirmInput; busy?: boolean; done?: string | null; err?: string | null }
 
 export default function IeaConfirmPage() {
   const { org, currentCenter } = useOrg()
@@ -52,7 +55,6 @@ export default function IeaConfirmPage() {
   const [loading, setLoading] = useState(false)
   const [loadErr, setLoadErr] = useState<string | null>(null)
   const [fy, setFy] = useState<string | null>(null)
-  const [onlyOpen, setOnlyOpen] = useState(true)
   // Поиск идёт по имени РЕБЁНКА: строка подписана опекуном, а родители зачастую
   // носят другую фамилию, и по подписи строки ребёнка не найти.
   const [q, setQ] = useState('')
@@ -69,31 +71,38 @@ export default function IeaConfirmPage() {
     setLoading(true); setLoadErr(null)
 
     const { data: roster, error: rErr } = await supabase.schema('menumaker').from('roster')
-      .select('id, child_id, child_name, first_name, last_name, classroom_id, frp')
+      .select('id, child_id, child_name, first_name, last_name, classroom_id, frp, date_out')
       .eq('center_id', currentCenter.id).eq('is_active', true)
     // Пустой список здесь читался бы как «все подтверждены». Отказ обязан сказать.
     if (rErr) { setLoadErr(`The roster could not be read — ${rErr.message}`); setLoading(false); return }
 
-    const kids = (roster ?? []).filter(r => r.child_id)
+    // Ребёнок БЕЗ `child_id` в списке остаётся. Связь с опекуном идёт через
+    // `child_id`, и раньше такие строки просто отбрасывались — на Wickliffe это
+    // ровно 6 детей F/R, из-за которых экран показывал 58 там, где плашка знает 64.
+    // Молча потерять ребёнка, которого ждёт заявление, хуже, чем показать его
+    // без опекуна: он уйдёт в секцию «No guardian on file», где его увидят.
+    const kids = (roster ?? [])
     if (kids.length === 0) { setRows([]); setLoading(false); return }
-    const childIds = kids.map(r => r.child_id as string)
+    const childIds = kids.map(r => r.child_id).filter(Boolean) as string[]
 
-    // Каждый отказ связывается ОТДЕЛЬНО. Молча потерять любой из четырёх значит
-    // показать «семей нет» или «все подтверждены» — оба ответа ложные и оба
-    // выглядят как работа.
-    const [qLinks, qRooms, qIe, qPaper] = await Promise.all([
-      supabase.schema('menumaker').from('child_guardian').select('child_id, guardian_id').in('child_id', childIds),
-      supabase.schema('menumaker').from('classrooms').select('id, name').eq('center_id', currentCenter.id),
-      supabase.schema('menumaker').from('income_eligibility').select('roster_id').eq('center_id', currentCenter.id).eq('fiscal_year', fy),
-      supabase.schema('menumaker').from('documents').select('roster_id')
-        .eq('center_id', currentCenter.id).eq('doc_type', IEA_DOC_TYPE).eq('source', 'paper').eq('status', 'active'),
+    // Каждый отказ связывается ОТДЕЛЬНО. Молча потерять любой значит показать
+    // «семей нет» или «все подтверждены» — оба ответа ложные и оба выглядят
+    // как работа. «Есть IEA» спрашивается ОБЩЕЙ функцией `loadIeaOnFile` — той же,
+    // что отвечает жёлтой плашке Site Claim.
+    const today = new Date().toISOString().slice(0, 10)
+    const [qLinks, qRooms, onFile] = await Promise.all([
+      childIds.length
+        ? supabase.schema('menumaker').from('child_guardian').select('child_id, guardian_id').in('child_id', childIds)
+        : Promise.resolve({ data: [] as any[], error: null }),
+      supabase.schema('menumaker').from('classrooms').select('id, name, is_roster').eq('center_id', currentCenter.id),
+      loadIeaOnFile(currentCenter.id, fy, today),
     ])
-    const firstErr = qLinks.error ?? qRooms.error ?? qIe.error ?? qPaper.error
+    const firstErr = qLinks.error ?? qRooms.error
     if (firstErr) {
       setLoadErr(`The list could not be built — ${firstErr.message}. Nothing is shown rather than a partial list.`)
       setLoading(false); return
     }
-    const links = qLinks.data, rooms = qRooms.data, ie = qIe.data, paper = qPaper.data
+    const links = qLinks.data, rooms = qRooms.data
 
     const gIds = Array.from(new Set((links ?? []).map(l => l.guardian_id as string)))
     const gq = gIds.length
@@ -102,51 +111,59 @@ export default function IeaConfirmPage() {
     warnIf(gq?.error, 'ieaConfirm/guardian')
     const gs = (gq?.data ?? []) as { id: string; first_name: string | null; last_name: string | null }[]
 
-    const onFile = new Set<string>([
-      ...((ie ?? []) as any[]).map(r => r.roster_id as string),
-      ...((paper ?? []) as any[]).map(r => r.roster_id as string),
-    ])
     const roomName = new Map((rooms ?? []).map(r => [r.id as string, r.name as string]))
-    const kidByCid = new Map(kids.map(r => [r.child_id as string, r]))
+    const staffRooms = new Set((rooms ?? []).filter(r => (r as any).is_roster === false).map(r => r.id as string))
+    const kidByCid = new Map(kids.filter(r => r.child_id).map(r => [r.child_id as string, r]))
     const gName = new Map(gs.map(g => [g.id, `${g.first_name ?? ''} ${g.last_name ?? ''}`.trim() || '—']))
 
-    const byGuardian = new Map<string, FamilyRow>()
+    const asChild = (k: any): FamilyChild => ({
+      rosterId: k.id as string,
+      name: (k.child_name as string) || `${k.first_name ?? ''} ${k.last_name ?? ''}`.trim(),
+      room: roomName.get(k.classroom_id as string) ?? '—',
+      frp: (k.frp as string) ?? null,
+      onFile: onFile.has(k.id as string),
+    })
+    // СТРОКОЙ ИДЁТ ТОЛЬКО ТОТ, КОГО ЖДЁТ ЗАЯВЛЕНИЕ. Предикат общий с жёлтой
+    // плашкой: F или R, не персонал, не ушедший, без действующей IEA. Дети с P
+    // в списке были ошибкой — на Paid заявления не бывает вовсе, и их
+    // присутствие раздувало счётчик до чисел, которых не знает плашка.
+    const needs = (k: any) => needsIeaOnFile(k, onFile, staffRooms, today)
+
+    const byGuardian = new Map<string, Row0>()
     for (const l of (links ?? []) as any[]) {
       const kid = kidByCid.get(l.child_id as string)
       if (!kid) continue
       const gid = l.guardian_id as string
-      if (!byGuardian.has(gid)) byGuardian.set(gid, { guardianId: gid, guardianName: gName.get(gid) ?? '—', children: [] })
+      if (!byGuardian.has(gid)) {
+        byGuardian.set(gid, { guardianId: gid, guardianName: gName.get(gid) ?? '—', children: [], household: [] })
+      }
       const fam = byGuardian.get(gid)!
-      if (fam.children.some(c => c.rosterId === kid.id)) continue     // один ребёнок — один раз в семье
-      fam.children.push({
-        rosterId: kid.id as string,
-        name: (kid.child_name as string) || `${kid.first_name ?? ''} ${kid.last_name ?? ''}`.trim(),
-        room: roomName.get(kid.classroom_id as string) ?? '—',
-        frp: (kid.frp as string) ?? null,
-        onFile: onFile.has(kid.id as string),
-      })
+      if (fam.household.some(c => c.rosterId === kid.id)) continue    // один ребёнок — один раз в семье
+      const child = asChild(kid)
+      // household — КОМУ ПИШЕТ подтверждение (household-правило: одна бумага на всех),
+      // children — КОГО ПОКАЗЫВАЕТ строка (только те, кого заявление ждёт).
+      fam.household.push(child)
+      if (needs(kid)) fam.children.push(child)
     }
 
     // Дети БЕЗ опекуна не исчезают: они собираются в псевдо-семью, иначе экран
     // «всё подтверждено» врал бы ровно про тех, до кого никто не дошёл.
-    const covered = new Set(Array.from(byGuardian.values()).flatMap(f => f.children.map(c => c.rosterId)))
-    const orphans = kids.filter(k => !covered.has(k.id as string))
+    const covered = new Set(Array.from(byGuardian.values()).flatMap(f => f.household.map(c => c.rosterId)))
+    const orphans = kids.filter(k => !covered.has(k.id as string) && needs(k))
     if (orphans.length) {
+      const list = orphans.map(asChild)
       byGuardian.set('__no_guardian__', {
         guardianId: '__no_guardian__',
         guardianName: 'No guardian on file',
-        children: orphans.map(k => ({
-          rosterId: k.id as string,
-          name: (k.child_name as string) || `${k.first_name ?? ''} ${k.last_name ?? ''}`.trim(),
-          room: roomName.get(k.classroom_id as string) ?? '—',
-          frp: (k.frp as string) ?? null,
-          onFile: onFile.has(k.id as string),
-        })),
+        children: list,
+        household: list,
       })
     }
 
-    setRows(sortFamiliesByWork(Array.from(byGuardian.values()))
-      .map(f => ({ ...f, input: { frp: '', documentDate: '', paperInSafe: false } })))
+    // Семья без единого ожидающего ребёнка на этом экране делать нечего.
+    const withWork = Array.from(byGuardian.values()).filter(f => f.children.length > 0)
+    setRows(sortFamiliesByWork(withWork)
+      .map(f => ({ ...(f as Row0), input: { frp: '', documentDate: '', paperInSafe: false } })))
     setLoading(false)
   }, [allowed, currentCenter?.id, fy])
 
@@ -167,7 +184,7 @@ export default function IeaConfirmPage() {
     const who = (user?.user_metadata?.full_name as string) || (user?.email?.split('@')[0]) || 'Staff'
     const problems: string[] = []
 
-    for (const c of row.children) {
+    for (const c of row.household) {
       try {
         // 1) НОСИТЕЛЬ — им считается заявка.
         await recordDetermination({
@@ -194,7 +211,7 @@ export default function IeaConfirmPage() {
     setRows(rs => rs.map(r => r.guardianId === row.guardianId
       ? { ...r, busy: false,
           err: problems.length ? problems.join(' · ') : null,
-          done: problems.length ? null : `✓ ${row.children.length} child${row.children.length === 1 ? '' : 'ren'} recorded`,
+          done: problems.length ? null : `✓ ${row.household.length} child${row.household.length === 1 ? '' : 'ren'} recorded`,
           children: problems.length ? r.children : r.children.map(c => ({ ...c, onFile: true, frp })) }
       : r))
   }
@@ -205,12 +222,11 @@ export default function IeaConfirmPage() {
     </div></div>
   }
 
-  // Порядок: сначала поиск, потом фильтр «только открытые». Иначе поиск отвечал бы
-  // «такой семьи нет» про семью, которую спрятал фильтр, — а это разные ответы.
-  const found = searchFamilies(rows, q)
-  const shown = onlyOpen ? found.filter(h => h.row.children.some(c => !c.onFile)) : found
-  const hiddenByFilter = found.length - shown.length
-  const openKids = rows.flatMap(r => r.children).filter(c => !c.onFile).length
+  const shown = searchFamilies(rows, q)
+  // Счётчик считает РЕБЁНКА ОДИН РАЗ. Строка списка — опекун, и у ребёнка с тремя
+  // доверенными лицами три строки; сложить длины строк значило бы показать число
+  // втрое больше того, что знает жёлтая плашка.
+  const openKids = new Set(rows.flatMap(r => r.children.map(c => c.rosterId))).size
 
   return (
     <div style={wrap}>
@@ -238,15 +254,13 @@ export default function IeaConfirmPage() {
           title="Any word, any order — a child is found by their own surname, which is often not the guardian's."
           style={{ ...inp, minWidth: 260, flex: '0 1 300px' }}
         />
-        <label style={{ fontSize: 13, color: '#374151', display: 'flex', alignItems: 'center', gap: 6 }}>
-          <input type="checkbox" checked={onlyOpen} onChange={e => setOnlyOpen(e.target.checked)} style={{ accentColor: GREEN }} />
-          Only families with someone still open
-        </label>
+        {/* Галочки «только открытые» здесь больше нет и не должно быть: список
+            И ТАК состоит только из тех, кого заявление ждёт. Переключатель,
+            который ничего не переключает, хуже отсутствующего. */}
         <span style={{ fontSize: 12.5, color: '#6b7280' }}>
           {q.trim()
-            ? <>{found.length} of {rows.length} famil{rows.length === 1 ? 'y' : 'ies'} match
-                {hiddenByFilter > 0 && <> · {hiddenByFilter} hidden by the filter above</>}</>
-            : <>{rows.length} famil{rows.length === 1 ? 'y' : 'ies'} · <strong>{openKids}</strong> child{openKids === 1 ? '' : 'ren'} without an application on file</>}
+            ? <>{shown.length} of {rows.length} famil{rows.length === 1 ? 'y' : 'ies'} match</>
+            : <>{rows.length} famil{rows.length === 1 ? 'y' : 'ies'} · <strong>{openKids}</strong> child{openKids === 1 ? '' : 'ren'} with Free/Reduced and no application on file</>}
         </span>
         {/* Массового «подтвердить всё» здесь НЕТ и не будет: сто определений,
             за которыми не стоит ни одной названной бумаги, — это сто строк,
@@ -254,25 +268,18 @@ export default function IeaConfirmPage() {
       </div>
 
       {loading ? <div style={{ color: '#aaa', fontSize: 13 }}>Loading…</div>
-        /* Пустой результат обязан СКАЗАТЬ, почему он пуст. Три разных пустоты —
-           три разных ответа: не нашлось вовсе; нашлось, но спрятано фильтром;
-           искать нечего, потому что всё подтверждено. Одна общая фраза на все три
-           случая отправила бы человека искать ребёнка, который на экране есть. */
-        : shown.length === 0 && q.trim() && found.length === 0 ? (
-          <div style={{ color: '#6b7280', fontSize: 13, lineHeight: 1.6 }}>
-            No child or guardian matches <strong style={{ color: '#0a3320' }}>{q.trim()}</strong> at {currentCenter?.name ?? 'this centre'}.
-            <br />The search looks at every child&apos;s own name and at the guardian&apos;s — any word, in any order.
-            Check the spelling, or try just the first name.
-          </div>
-        )
+        /* Пустота обязана СКАЗАТЬ, почему она пуста, и назвать, кого этот список
+           не показывает вовсе. Иначе человек, ищущий ребёнка с Paid или уже
+           подтверждённого, прочтёт «нет такого ребёнка» — и пойдёт искать
+           ошибку в данных, которых никто не ломал. */
         : shown.length === 0 && q.trim() ? (
           <div style={{ color: '#6b7280', fontSize: 13, lineHeight: 1.6 }}>
-            <strong style={{ color: '#0a3320' }}>{q.trim()}</strong> matches {found.length} famil{found.length === 1 ? 'y' : 'ies'}, and
-            {found.length === 1 ? ' it already has' : ' they already have'} an application on file.
-            <br />Untick <em>Only families with someone still open</em> to see {found.length === 1 ? 'it' : 'them'}.
+            No family waiting for an application matches <strong style={{ color: '#0a3320' }}>{q.trim()}</strong> at {currentCenter?.name ?? 'this centre'}.
+            <br />This list holds only children with <strong>Free or Reduced</strong> and no application on file.
+            A child who is Paid, or whose application is already filed, is not here — and neither is a spelling that does not match.
           </div>
         )
-        : shown.length === 0 ? <div style={{ color: '#6b7280', fontSize: 13 }}>Nothing open — every child here has an application on file.</div>
+        : shown.length === 0 ? <div style={{ color: '#6b7280', fontSize: 13 }}>Nothing waiting — every Free/Reduced child at this centre has an application on file.</div>
         : shown.map(hit => {
           const r = hit.row
           const refusal = confirmRefusal(r.input)
@@ -292,12 +299,22 @@ export default function IeaConfirmPage() {
                         <span key={c.rosterId}
                           data-match={hi ? 'child' : undefined}
                           style={{ marginRight: 10, whiteSpace: 'nowrap', ...(hi ? hiRow : null) }}>
-                          {c.onFile ? '✓' : '○'} {hi ? <strong style={{ color: '#0a3320' }}>{c.name}</strong> : c.name}
+                          {hi ? <strong style={{ color: '#0a3320' }}>{c.name}</strong> : c.name}
                           {' '}<span style={{ color: '#9ca3af' }}>· {c.room} · {c.frp ?? '—'}</span>
                         </span>
                       )
                     })}
                   </div>
+                  {/* Кнопка пишет ВСЕМУ домохозяйству — household-правило. Когда в семье
+                      есть дети, которых этот список не показывает (Paid или уже
+                      подтверждённые), число на кнопке обязано быть объяснено ЗДЕСЬ,
+                      иначе оно читается как ошибка счёта. */}
+                  {r.household.length > r.children.length && (
+                    <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 4 }}>
+                      household of {r.household.length} — the record is written to all of them, including
+                      {' '}{r.household.length - r.children.length} not listed above (Paid, or already on file)
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                   <select value={r.input.frp} onChange={e => patch(r.guardianId, { frp: e.target.value as Frp | '' })} style={inp}>
@@ -318,7 +335,7 @@ export default function IeaConfirmPage() {
                     style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: refusal || r.busy ? 'default' : 'pointer',
                       background: refusal || r.busy ? '#e5e7eb' : GREEN, color: refusal || r.busy ? '#9ca3af' : '#fff',
                       fontSize: 13, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
-                    {r.busy ? 'Recording…' : `Confirm · ${r.children.length}`}
+                    {r.busy ? 'Recording…' : `Confirm · ${r.household.length}`}
                   </button>
                 </div>
               </div>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { paperCoversDay, IEA_DOC_TYPE } from './ieaOnFile'
+import { paperCoversDay, needsIeaOnFile, IEA_DOC_TYPE } from './ieaOnFile'
 
 // ============================================================================
 // ДЕЙСТВУЮЩИЙ ПЕРИОД БУМАГИ — там, где ошибка не видна глазами.
@@ -68,5 +68,53 @@ describe('срок: вычисленный против введённого', (
   it('нечего сравнивать — молчим, а не выдумываем расхождение', () => {
     expect(expiryOverrideNote(null, '2027-05-31')).toBeNull()
     expect(expiryOverrideNote('2027-07-31', null)).toBeNull()
+  })
+})
+
+
+// ============================================================================
+// «ЭТОГО РЕБЁНКА ЖДЁТ ЗАЯВЛЕНИЕ» — один предикат на жёлтую плашку Site Claim и
+// на список /iea-confirm. Пока правило жило внутри плашки, второй экран считал
+// по-своему и показывал детей с P: 248 строк там, где плашка знает 64.
+// ============================================================================
+
+describe('кого ждёт заявление', () => {
+  const NONE = new Set<string>()
+  const TODAY = '2026-08-05'
+  const kid = (o: Partial<{ id: string; frp: string | null; classroom_id: string | null; date_out: string | null }> = {}) =>
+    ({ id: 'r1', frp: 'F', classroom_id: 'room', date_out: null, ...o })
+
+  it('F без заявления — ждёт', () => {
+    expect(needsIeaOnFile(kid(), NONE, NONE, TODAY)).toBe(true)
+  })
+
+  it('R без заявления — тоже ждёт', () => {
+    expect(needsIeaOnFile(kid({ frp: 'R' }), NONE, NONE, TODAY)).toBe(true)
+  })
+
+  it('P НЕ ждёт: на Paid заявления не бывает вовсе', () => {
+    expect(needsIeaOnFile(kid({ frp: 'P' }), NONE, NONE, TODAY)).toBe(false)
+    expect(needsIeaOnFile(kid({ frp: null }), NONE, NONE, TODAY)).toBe(false)
+  })
+
+  it('заявление уже на файле — не ждёт', () => {
+    expect(needsIeaOnFile(kid(), new Set(['r1']), NONE, TODAY)).toBe(false)
+  })
+
+  it('комната персонала — не дети, не ждут', () => {
+    expect(needsIeaOnFile(kid({ classroom_id: 'staff' }), NONE, new Set(['staff']), TODAY)).toBe(false)
+  })
+
+  it('ушёл вчера — не ждёт; уходит сегодня — ещё ждёт', () => {
+    expect(needsIeaOnFile(kid({ date_out: '2026-08-04' }), NONE, NONE, TODAY)).toBe(false)
+    expect(needsIeaOnFile(kid({ date_out: '2026-08-05' }), NONE, NONE, TODAY)).toBe(true)
+  })
+
+  it('дата ухода с временем — сравнение по дню, а не по строке целиком', () => {
+    expect(needsIeaOnFile(kid({ date_out: '2026-08-05T00:00:00Z' }), NONE, NONE, TODAY)).toBe(true)
+  })
+
+  it('ребёнок без комнаты не теряется — комнаты персонала у него нет', () => {
+    expect(needsIeaOnFile(kid({ classroom_id: null }), NONE, new Set(['staff']), TODAY)).toBe(true)
   })
 })

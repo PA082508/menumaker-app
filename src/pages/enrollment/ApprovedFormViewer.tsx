@@ -8,12 +8,14 @@ import { getLatestSnapshot, snapshotPageUrls, type SnapshotRow } from '@/lib/enr
 import OriginalFormViewer from './OriginalFormViewer'
 
 export default function ApprovedFormViewer({
-  submissionId, submissionType, formData, signatures, onClose,
+  submissionId, submissionType, formData, signatures, signatureDate, onClose,
 }: {
   submissionId: string
   submissionType: string
   formData: any
   signatures: Record<string, any> | null | undefined
+  /** Дата подписи с самой подачи — реплика ставит её на бланк (в form_data её нет). */
+  signatureDate?: string | null
   onClose: () => void
 }) {
   const [loading, setLoading] = useState(true)
@@ -42,7 +44,7 @@ export default function ApprovedFormViewer({
 
   // No snapshot (older approvals / capture pending) → live replica render, never a dead end.
   if (!loading && !snap) {
-    return <OriginalFormViewer submissionType={submissionType} formData={formData} signatures={signatures} onClose={onClose} note="Live render — no snapshot on file" />
+    return <OriginalFormViewer submissionType={submissionType} formData={formData} signatures={signatures} signatureDate={signatureDate ?? null} onClose={onClose} note="Live render — no snapshot on file" />
   }
 
   // Print the CLEAN official pages only — a bare print iframe with the page images at 8.5×11in,

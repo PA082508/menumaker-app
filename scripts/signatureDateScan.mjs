@@ -35,6 +35,8 @@ export const ALLOW = {
     'показывает найденную дату и говорит, откуда она взята',
   'pages/enrollment/EnrollmentInboxPage.tsx':
     'тянет колонку в список и ПЕРЕДАЁТ её резолверу; сам о документной дате не решает',
+  'pages/children/ChildDocumentsTab.tsx':
+    'тянет колонку в select, чтобы отдать её documentDateOf для даты на реплике бланка; сам не решает',
 }
 
 const inComment = (text, idx) => {

@@ -577,6 +577,40 @@ export default function EnrollmentReviewModal({
           : null
         result = await approveDocument(submission, target, reviewerId, paperSigned, cs)
 
+        // Авто-подшивка filing-only: форму, которую нечего разбирать (Child Release
+        // и подобные), Approve сам кладёт в дело ребёнка строкой documents. Функция
+        // САМА отказывает всем прочим типам (dcy_01234 → not_filing_only, тихо: у
+        // него поля идут в карточку, а не в дело). Подшивка — не условие одобрения:
+        // ребёнок уже привязан; сбой мы называем, но не откатываем апрув. Undo,
+        // если подшивка состоялась, снимает и её — иначе снятое одобрение оставило
+        // бы за собой висящий документ.
+        if (target) {
+          try {
+            const { data: filed, error: fileErr } =
+              await (supabase.schema('menumaker').rpc as any)('file_submission_document', { p_submission: submission.id })
+            if (fileErr) throw fileErr
+            if (filed?.filed) {
+              result = {
+                ...result,
+                message: `${result.message} · filed to ${childName}'s Documents`,
+                undo: async () => {
+                  // Ошибку снятия НЕ проглатываем: отменённое одобрение с
+                  // пережившим его документом — это карточка, которая врёт.
+                  const { error: unfileErr } =
+                    await (supabase.schema('menumaker').rpc as any)('unfile_submission_document', { p_submission: submission.id })
+                  await result.undo()
+                  if (unfileErr) setErr(`The approval was undone, but the document it filed is still in ${childName}'s Documents: ${unfileErr.message}`)
+                },
+              }
+            } else if (filed?.code && !['not_filing_only', 'already'].includes(filed.code)) {
+              // Реальный отказ подшивки (не «этот тип разбирается» и не «уже в деле»).
+              setErr(`Filed the form, but it was not placed in ${childName}'s Documents: ${filed.reason}`)
+            }
+          } catch (e: any) {
+            setErr(`Filed the form, but it was not placed in ${childName}'s Documents: ${e?.message ?? e}`)
+          }
+        }
+
         // Этап Г: DCY 01234 наконец ОТДАЁТ запись то, что собрала. Раньше Approve
         // подшивал документ и не писал ничего — 81 ключ уходил в печать нетронутым,
         // пока карточка стояла пустой. Порт идёт ЧЕРЕЗ ЗАЩИЩЁННЫЙ ПУТЬ, поэтому
@@ -1299,6 +1333,7 @@ export default function EnrollmentReviewModal({
           submissionType={submission.submission_type}
           formData={submission.form_data}
           signatures={previewSignatures}
+          signatureDate={resolvedDocDate}
           onClose={() => setShowOriginal(false)}
         />
       )}

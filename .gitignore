@@ -29,3 +29,6 @@ supabase/.temp/
 # recordings are large binaries. Neither belongs in git.
 .demo-profile/
 demo-out/
+
+# Снимки проб: на них живые имена детей — в репозиторий им нельзя.
+smoke-out/

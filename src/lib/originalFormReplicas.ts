@@ -16,6 +16,11 @@ export type OriginalReplica = { url: string; title: string; version: string }
 
 const REPLICAS: Record<string, OriginalReplica> = {
   dcy_01234: { url: '/forms/DCY_01234_v7_original.html', title: 'DCY 01234 — Child Enrollment & Health', version: 'v7' },
+  // CACFP Enrollment (05.08). Собрана ГЕНЕРАТОРОМ `scripts/gen_cacfp_replica.py`:
+  // координаты читаются из витринного кита v11, а не переписываются руками, —
+  // поэтому реплика 1:1 по построению. Когда витрина двинет поля, генератор
+  // перезапускается, и расхождению неоткуда взяться.
+  cacfp_enrollment: { url: '/forms/CACFP_Enrollment_v11_original.html', title: 'CACFP Enrollment — meal schedule', version: 'v11' },
 }
 
 /** True when a local read-only replica exists for this submission type. */

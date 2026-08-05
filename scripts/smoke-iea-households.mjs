@@ -111,10 +111,19 @@ await page.waitForTimeout(1000)
 {
   const before = await page.locator('[data-scroll-top="1"]').count()
   before === 0 ? ok('в начале страницы кнопки «наверх» нет') : bad('кнопка наверх', 'висит на первом экране')
-  await page.evaluate(() => window.scrollTo(0, window.innerHeight * 3))
-  await page.waitForTimeout(700)
-  const after = await page.locator('[data-scroll-top="1"]').count()
-  after === 1 ? ok('после двух экранов кнопка появилась') : bad('кнопка наверх', 'не появилась после прокрутки')
+  // Порог — ОДИН экран (поправка владельца 05.08): на первом экране кнопки нет,
+  // на втором она уже есть.
+  await page.evaluate(() => window.scrollTo(0, Math.round(window.innerHeight * 0.8)))
+  await page.waitForTimeout(600)
+  const onFirst = await page.locator('[data-scroll-top="1"]').count()
+  onFirst === 0 ? ok('на первом экране кнопки всё ещё нет') : bad('порог', 'кнопка появилась, не выйдя за первый экран')
+  await page.evaluate(() => window.scrollTo(0, Math.round(window.innerHeight * 1.4)))
+  await page.waitForTimeout(600)
+  const onSecond = await page.locator('[data-scroll-top="1"]').count()
+  onSecond === 1 ? ok('на втором экране кнопка уже видна') : bad('порог', 'на втором экране кнопки нет')
+  const cls = await page.locator('[data-scroll-top="1"]').getAttribute('class').catch(() => '')
+  ;(cls ?? '').includes('no-print') ? ok('кнопка помечена no-print') : bad('печать', `class=${cls}`)
+  const after = onSecond
   if (after === 1) {
     await page.locator('[data-scroll-top="1"]').click()
     await page.waitForTimeout(1200)

@@ -128,7 +128,9 @@ for (const q of [CHILD_FULL_NATURAL, CHILD_FULL_STORED, CHILD_LAST.toLowerCase()
 // 3. Пустой результат объяснён словами
 {
   const r = await search(NONSENSE)
-  const said = r.bodyText.includes('No child or guardian matches')
+  // Текст пустоты изменился 05.08 вместе с отбором: список держит только
+  // ожидающих заявления, и пустота теперь называет ЭТО, а не «нет совпадений».
+  const said = r.bodyText.includes('No family waiting for an application matches')
   said ? ok('пустой поиск объяснён словами, а не пустотой') : bad('пустой поиск', 'нет объяснения на экране')
   const namesQuery = r.bodyText.includes(NONSENSE)
   namesQuery ? ok('в объяснении назван сам запрос') : bad('пустой поиск', 'запрос в тексте не назван')

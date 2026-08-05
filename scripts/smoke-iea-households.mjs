@@ -1,0 +1,138 @@
+// smoke-iea-households.mjs — проба слияния домохозяйств, статусов и кнопки «наверх»
+// на /iea-confirm ЧЕРЕЗ НАСТОЯЩИЙ ПУТЬ.
+//
+// Что проверяется (заказ владельца 05.08):
+//   1. счётчик Wickliffe СОШЁЛСЯ С ЖЁЛТОЙ ПЛАШКОЙ до единицы — число читается
+//      с ДВУХ РАЗНЫХ ЭКРАНОВ (Site Claim и /iea-confirm), а не из одного кода дважды;
+//   2. Bates — ОДНА строка, два опекуна в подписи, домохозяйство из шести детей;
+//   3. ушедший ребёнок виден серым с пометкой «left MM/DD», Confirm его не считает;
+//   4. ребёнок дома, которого строка не показывает, всё равно НАХОДИТСЯ поиском —
+//      и рядом сказано, почему его нет в списке;
+//   5. кнопка «наверх» появляется после двух экранов и уносит страницу в начало.
+//
+// Confirm НЕ нажимается: это боевые дети боевого центра, а запись определения —
+// вперёд-только. Цель кнопки проверяется числом на ней.
+
+import { chromium } from 'playwright'
+import path from 'node:path'
+import fs from 'node:fs'
+
+const PROD = process.env.PROD_ORIGIN || 'https://menumaker-app.vercel.app'
+const APP = process.env.APP_ORIGIN || 'http://localhost:4173'
+const PROFILE = path.resolve('./.demo-profile')
+const SHOTS = path.resolve(process.env.SHOTS || './smoke-out')
+const CENTRE = 'Wickliffe'
+const BATES = { query: 'Bates', guardians: ['Bryant Jackson', 'Deidra Booker'], household: 6 }
+const HIDDEN_CHILD = 'Bates Kylie'   // активен, бумага уже в деле — строкой не идёт
+
+fs.mkdirSync(SHOTS, { recursive: true })
+const fails = []
+const ok = (n) => console.log(`  ✓ ${n}`)
+const bad = (n, why) => { fails.push(`${n}: ${why}`); console.log(`  ✗ ${n} — ${why}`) }
+
+const ctx = await chromium.launchPersistentContext(PROFILE, { headless: true, serviceWorkers: 'block' })
+const page = ctx.pages()[0] ?? await ctx.newPage()
+
+await page.goto(PROD, { waitUntil: 'domcontentloaded' })
+await page.waitForTimeout(12000)
+const sess = await page.evaluate(() => {
+  const k = Object.keys(localStorage).find(k => k.startsWith('sb-'))
+  return k ? { k, v: localStorage.getItem(k) } : null
+})
+if (!sess) { console.error('НЕТ сессии в .demo-profile'); await ctx.close(); process.exit(2) }
+await page.goto(APP, { waitUntil: 'domcontentloaded' })
+await page.evaluate(({ k, v }) => localStorage.setItem(k, v), sess)
+
+// Выбор центра НЕ ПЕРЕЖИВАЕТ переход на другую страницу в этой сессии: после
+// каждого goto контекст возвращается в Main Office. Поэтому центр выбирается
+// заново на КАЖДОЙ странице — иначе проба читает пустой экран и объявляет провал
+// там, где его нет.
+async function openAtCentre(pathname, settleMs = 6000) {
+  await page.goto(APP + pathname, { waitUntil: 'domcontentloaded' })
+  await page.waitForTimeout(3500)
+  for (const label of ['Main Office', 'Organization']) {
+    const el = page.getByText(label, { exact: true }).first()
+    if (await el.count().catch(() => 0)) {
+      await el.click().catch(() => {})
+      await page.waitForTimeout(900)
+      const c = page.getByText(CENTRE, { exact: false }).first()
+      if (await c.count().catch(() => 0)) { await c.click().catch(() => {}); break }
+    }
+  }
+  await page.keyboard.press('Escape').catch(() => {})
+  await page.mouse.move(1200, 700)
+  await page.waitForTimeout(settleMs)
+}
+
+// ─── 1. Число с ДВУХ экранов ─────────────────────────────────────────────────
+await openAtCentre('/iea-confirm')
+
+const headerLine = (await page.locator('body').innerText())
+  .split('\n').find(l => l.includes('with Free/Reduced and no application on file')) ?? ''
+const confirmCount = Number((headerLine.match(/·\s*(\d+)\s+child/) || [])[1])
+console.log(`    /iea-confirm: ${headerLine.trim()}`)
+
+await openAtCentre('/claim-report', 10000)
+let bannerText = (await page.locator('body').innerText())
+  .split('\n').find(l => l.includes('without a current IEA on file')) ?? ''
+const bannerCount = Number((bannerText.match(/(\d+)\s+Free\/Reduced/) || [])[1])
+console.log(`    плашка Site Claim: ${bannerText.trim() || '(не найдена)'}`)
+if (!bannerText) bad('сверка с плашкой', 'плашку Site Claim не удалось прочитать')
+else if (confirmCount === bannerCount) ok(`${CENTRE}: ${confirmCount} = ${bannerCount} — два экрана сошлись до единицы`)
+else bad('сверка с плашкой', `/iea-confirm ${confirmCount}, плашка ${bannerCount}`)
+
+// ─── 2-4. Дом Bates ──────────────────────────────────────────────────────────
+await openAtCentre('/iea-confirm')
+const box = page.getByPlaceholder('Search by child or guardian name…')
+await box.fill(BATES.query)
+await page.waitForTimeout(1000)
+{
+  const body = await page.locator('body').innerText()
+  const rows = Number((body.match(/(\d+)\s+of\s+\d+\s+famil/) || [])[1])
+  rows === 1 ? ok('Bates — ОДНА строка (домохозяйство склеено по общим опекунам)')
+             : bad('слияние домохозяйств', `строк ${rows}, ожидалась 1`)
+  const bothGuardians = BATES.guardians.every(g => body.includes(g))
+  bothGuardians ? ok(`оба опекуна перечислены: ${BATES.guardians.join(' · ')}`)
+                : bad('опекуны', 'в подписи строки не оба доверенных лица')
+  const btn = await page.locator('button', { hasText: 'Confirm ·' }).first().innerText().catch(() => '')
+  btn.includes(`· ${BATES.household}`) ? ok(`запись целится в шесть активных детей: «${btn.trim()}»`)
+                                       : bad('household-правило', `на кнопке «${btn.trim()}», ожидалось · ${BATES.household}`)
+  const foundHidden = body.includes(HIDDEN_CHILD)
+  const explained = body.includes('already on file') || body.includes('left ') || body.includes('Paid')
+  foundHidden ? ok(`${HIDDEN_CHILD} найден, хотя строкой не идёт`) : bad('поиск по всему дому', `${HIDDEN_CHILD} не показан`)
+  explained ? ok('рядом сказано, почему он не в списке') : bad('причина', 'причина отсутствия не названа')
+  await page.screenshot({ path: path.join(SHOTS, 'iea-household-bates.png'), fullPage: true })
+}
+
+// Ушедшие: ищем строку с пометкой «left MM/DD» по всему списку
+{
+  await box.fill('')
+  await page.waitForTimeout(1200)
+  const former = await page.locator('[data-former="1"]').count()
+  const body = await page.locator('body').innerText()
+  const leftMark = /left \d{2}\/\d{2}|no longer enrolled/.test(body)
+  if (former > 0 && leftMark) ok(`ушедшие дети показаны серым с пометкой (${former} шт.)`)
+  else if (former > 0) bad('пометка ухода', 'серые есть, а даты ухода нет')
+  else console.log('    ⓘ ушедших детей в семьях этого центра сейчас нет — проверять нечего')
+}
+
+// ─── 5. Кнопка «наверх» ──────────────────────────────────────────────────────
+{
+  const before = await page.locator('[data-scroll-top="1"]').count()
+  before === 0 ? ok('в начале страницы кнопки «наверх» нет') : bad('кнопка наверх', 'висит на первом экране')
+  await page.evaluate(() => window.scrollTo(0, window.innerHeight * 3))
+  await page.waitForTimeout(700)
+  const after = await page.locator('[data-scroll-top="1"]').count()
+  after === 1 ? ok('после двух экранов кнопка появилась') : bad('кнопка наверх', 'не появилась после прокрутки')
+  if (after === 1) {
+    await page.locator('[data-scroll-top="1"]').click()
+    await page.waitForTimeout(1200)
+    const y = await page.evaluate(() => window.scrollY)
+    y < 50 ? ok('нажатие вернуло страницу в начало') : bad('кнопка наверх', `после клика scrollY=${y}`)
+  }
+  await page.screenshot({ path: path.join(SHOTS, 'iea-scrolltop.png'), fullPage: false })
+}
+
+await ctx.close()
+console.log(fails.length ? `\nПРОВАЛЕНО: ${fails.length}\n  ${fails.join('\n  ')}` : '\nВСЁ ЗЕЛЁНОЕ')
+process.exit(fails.length ? 1 : 0)

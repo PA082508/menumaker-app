@@ -13,6 +13,7 @@ import { useOrg } from '@/contexts/OrgContext'
 import { displayChildName } from '@/lib/childName'
 import { useAuth } from '@/hooks/useAuth'
 import CenterRosterPage from './CenterRosterPage'
+import ScrollToTop from '@/components/common/ScrollToTop'
 
 // Center IDs
 const CENTER_ORDER = [
@@ -364,6 +365,7 @@ export default function ChildrenPage() {
           })}
         </div>
       )}
+      <ScrollToTop />
     </div>
   )
 }

@@ -29,9 +29,10 @@ import { useAuth } from '@/hooks/useAuth'
 import { parseIeaFiscalYear, frpExpiryDefault, recordDetermination } from '@/lib/enrollmentApprove'
 import { IEA_DOC_TYPE, loadIeaOnFile, needsIeaOnFile } from '@/lib/ieaOnFile'
 import {
-  confirmRefusal, searchFamilies, sortFamiliesByWork,
+  confirmRefusal, mergeHouseholds, searchFamilies, sortFamiliesByWork, whyNotListed,
   type ConfirmInput, type FamilyChild, type FamilyRow, type Frp,
 } from '@/lib/ieaConfirm'
+import ScrollToTop from '@/components/common/ScrollToTop'
 
 const GREEN = '#0f4c35'
 const wrap: React.CSSProperties = { padding: '24px 32px', fontFamily: "'DM Sans', sans-serif", maxWidth: 1080 }
@@ -41,8 +42,9 @@ const inp: React.CSSProperties = { padding: '7px 10px', borderRadius: 8, border:
 const hiRow: React.CSSProperties = { background: '#fef3c7', borderRadius: 5, padding: '1px 5px', boxShadow: 'inset 0 0 0 1px #fcd34d' }
 
 // `children` — кого показывает строка (ждут заявления), `household` — кому пишет
-// подтверждение (household-правило: одна бумага определяет всех детей семьи).
-type Row0 = FamilyRow & { household: FamilyChild[] }
+// подтверждение (household-правило: одна бумага определяет всех АКТИВНЫХ детей
+// семьи), `former` — ушедшие: они видны серым, но ни в счёт, ни в запись не идут.
+type Row0 = FamilyRow & { household: FamilyChild[]; former: FamilyChild[] }
 type Row = Row0 & { input: ConfirmInput; busy?: boolean; done?: string | null; err?: string | null }
 
 export default function IeaConfirmPage() {
@@ -71,8 +73,8 @@ export default function IeaConfirmPage() {
     setLoading(true); setLoadErr(null)
 
     const { data: roster, error: rErr } = await supabase.schema('menumaker').from('roster')
-      .select('id, child_id, child_name, first_name, last_name, classroom_id, frp, date_out')
-      .eq('center_id', currentCenter.id).eq('is_active', true)
+      .select('id, child_id, child_name, first_name, last_name, classroom_id, frp, date_out, is_active')
+      .eq('center_id', currentCenter.id)
     // Пустой список здесь читался бы как «все подтверждены». Отказ обязан сказать.
     if (rErr) { setLoadErr(`The roster could not be read — ${rErr.message}`); setLoading(false); return }
 
@@ -122,46 +124,49 @@ export default function IeaConfirmPage() {
       room: roomName.get(k.classroom_id as string) ?? '—',
       frp: (k.frp as string) ?? null,
       onFile: onFile.has(k.id as string),
+      active: k.is_active !== false,
+      dateOut: (k.date_out as string | null) ?? null,
     })
-    // СТРОКОЙ ИДЁТ ТОЛЬКО ТОТ, КОГО ЖДЁТ ЗАЯВЛЕНИЕ. Предикат общий с жёлтой
-    // плашкой: F или R, не персонал, не ушедший, без действующей IEA. Дети с P
-    // в списке были ошибкой — на Paid заявления не бывает вовсе, и их
-    // присутствие раздувало счётчик до чисел, которых не знает плашка.
-    const needs = (k: any) => needsIeaOnFile(k, onFile, staffRooms, today)
+    // СТРОКОЙ ИДЁТ ТОЛЬКО ТОТ, КОГО ЖДЁТ ЗАЯВЛЕНИЕ: активный, F или R, не персонал,
+    // не ушедший, без действующей IEA. Предикат общий с жёлтой плашкой; `is_active`
+    // проверяется отдельно, потому что плашка отбирает активных ещё в запросе.
+    const needs = (k: any) => k.is_active !== false && needsIeaOnFile(k, onFile, staffRooms, today)
 
-    const byGuardian = new Map<string, Row0>()
+    // СЕМЬЯ — ГРУППА ДЕТЕЙ, СВЯЗАННЫХ ОБЩИМИ ОПЕКУНАМИ, а не строка опекуна.
+    // У Bates шесть детей и два доверенных лица: строкой-опекуном выходило восемь
+    // строк на одну семью, и одну бумагу вносили дважды.
+    const guardiansOf = new Map<string, string[]>()
     for (const l of (links ?? []) as any[]) {
-      const kid = kidByCid.get(l.child_id as string)
-      if (!kid) continue
-      const gid = l.guardian_id as string
-      if (!byGuardian.has(gid)) {
-        byGuardian.set(gid, { guardianId: gid, guardianName: gName.get(gid) ?? '—', children: [], household: [] })
-      }
-      const fam = byGuardian.get(gid)!
-      if (fam.household.some(c => c.rosterId === kid.id)) continue    // один ребёнок — один раз в семье
-      const child = asChild(kid)
-      // household — КОМУ ПИШЕТ подтверждение (household-правило: одна бумага на всех),
-      // children — КОГО ПОКАЗЫВАЕТ строка (только те, кого заявление ждёт).
-      fam.household.push(child)
-      if (needs(kid)) fam.children.push(child)
+      const cid = l.child_id as string
+      if (!guardiansOf.has(cid)) guardiansOf.set(cid, [])
+      const arr = guardiansOf.get(cid)!
+      if (!arr.includes(l.guardian_id as string)) arr.push(l.guardian_id as string)
     }
+    const kidById = new Map(kids.map(k => [k.id as string, k]))
+    const households = mergeHouseholds(kids.map(k => ({
+      rosterId: k.id as string,
+      guardianIds: guardiansOf.get(k.child_id as string) ?? [],
+    })))
 
-    // Дети БЕЗ опекуна не исчезают: они собираются в псевдо-семью, иначе экран
-    // «всё подтверждено» врал бы ровно про тех, до кого никто не дошёл.
-    const covered = new Set(Array.from(byGuardian.values()).flatMap(f => f.household.map(c => c.rosterId)))
-    const orphans = kids.filter(k => !covered.has(k.id as string) && needs(k))
-    if (orphans.length) {
-      const list = orphans.map(asChild)
-      byGuardian.set('__no_guardian__', {
-        guardianId: '__no_guardian__',
-        guardianName: 'No guardian on file',
-        children: list,
-        household: list,
-      })
-    }
+    const rowsBuilt: Row0[] = households.map(h => {
+      const members = h.rosterIds.map(id => kidById.get(id)).filter(Boolean) as any[]
+      const names = h.guardianIds.map(g => gName.get(g) ?? '—').filter(Boolean)
+      return {
+        guardianId: h.key,
+        // Перечислены ВСЕ опекуны дома: строка подписана семьёй, а не первым из них.
+        guardianName: names.length ? names.join(' · ') : 'No guardian on file',
+        children: members.filter(needs).map(asChild),
+        household: members.filter(k => k.is_active !== false).map(asChild),
+        former: members.filter(k => k.is_active === false).map(asChild),
+        // Ищутся ВСЕ дети дома, включая тех, кого строка не показывает: человек
+        // набирает имя с бумаги, и «нет такого ребёнка» про ребёнка этого дома —
+        // самый дорогой ответ из возможных.
+        others: members.filter(k => !needs(k)).map(asChild),
+      }
+    })
 
     // Семья без единого ожидающего ребёнка на этом экране делать нечего.
-    const withWork = Array.from(byGuardian.values()).filter(f => f.children.length > 0)
+    const withWork = rowsBuilt.filter(f => f.children.length > 0)
     setRows(sortFamiliesByWork(withWork)
       .map(f => ({ ...(f as Row0), input: { frp: '', documentDate: '', paperInSafe: false } })))
     setLoading(false)
@@ -309,9 +314,36 @@ export default function IeaConfirmPage() {
                       есть дети, которых этот список не показывает (Paid или уже
                       подтверждённые), число на кнопке обязано быть объяснено ЗДЕСЬ,
                       иначе оно читается как ошибка счёта. */}
+                  {/* Совпавший ребёнок, которого строка не показывает, называется
+                      ВМЕСТЕ С ПРИЧИНОЙ. Молча не показать найденного — то же самое,
+                      что сказать «такого ребёнка нет». */}
+                  {hit.otherIds.length > 0 && (
+                    <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
+                      {(r.others ?? []).filter(c => hit.otherIds.includes(c.rosterId)).map(c => (
+                        <span key={c.rosterId} data-match="other" style={{ ...hiRow, marginRight: 8, whiteSpace: 'nowrap' }}>
+                          {c.name} <span style={{ color: '#92400e' }}>· {whyNotListed(c)}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {/* Ушедшие дети семьи ВИДНЫ, но серым и без действия: они не в счёте
+                      и не в записи. Спрятать их значило бы заставить человека гадать,
+                      почему в семье «не хватает» ребёнка с бумаги. */}
+                  {r.former.length > 0 && (
+                    <div style={{ fontSize: 12, color: '#b0b7c0', marginTop: 3, lineHeight: 1.7 }}>
+                      {r.former.map(c => (
+                        <span key={c.rosterId} data-former="1" style={{ marginRight: 10, whiteSpace: 'nowrap', textDecoration: 'line-through' }}>
+                          {c.name}
+                        </span>
+                      ))}
+                      <span style={{ textDecoration: 'none', color: '#9ca3af' }}>
+                        · {r.former.map(c => c.dateOut ? `left ${c.dateOut.slice(5, 7)}/${c.dateOut.slice(8, 10)}` : 'no longer enrolled').join(' · ')}
+                      </span>
+                    </div>
+                  )}
                   {r.household.length > r.children.length && (
                     <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 4 }}>
-                      household of {r.household.length} — the record is written to all of them, including
+                      household of {r.household.length} — the record is written to every active child, including
                       {' '}{r.household.length - r.children.length} not listed above (Paid, or already on file)
                     </div>
                   )}
@@ -345,6 +377,7 @@ export default function IeaConfirmPage() {
             </div>
           )
         })}
+      <ScrollToTop />
     </div>
   )
 }

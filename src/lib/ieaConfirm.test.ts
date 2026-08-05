@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { bulkAllowed, confirmRefusal, sortFamiliesByWork, childrenCovered, searchFamilies, nameMatches, type FamilyRow } from './ieaConfirm'
+import { bulkAllowed, confirmRefusal, sortFamiliesByWork, childrenCovered, searchFamilies, nameMatches, mergeHouseholds, whyNotListed, type FamilyRow } from './ieaConfirm'
 
 // ============================================================================
 // СПИСОК ТАТЬЯНЫ — правила, на которых стоит запрет массового подтверждения.
@@ -144,5 +144,89 @@ describe('поиск по имени ребёнка', () => {
 
   it('оба слова обязаны совпасть — «Bella Guarnera» не находит чужую семью', () => {
     expect(searchFamilies(all, 'Bella Guarnera')).toHaveLength(0)
+  })
+})
+
+// ============================================================================
+// СЕМЬЯ — ГРУППА ДЕТЕЙ. Боевой случай Bates (Wickliffe): шесть детей, у каждого
+// по два доверенных лица. Строкой-опекуном выходило восемь строк на одну семью.
+// ============================================================================
+
+describe('слияние домохозяйств', () => {
+  const m = (rosterId: string, ...guardianIds: string[]) => ({ rosterId, guardianIds })
+
+  it('общий опекун склеивает детей в один дом', () => {
+    const hh = mergeHouseholds([m('a', 'g1'), m('b', 'g1'), m('c', 'g2')])
+    expect(hh).toHaveLength(2)
+    expect(hh.find(h => h.rosterIds.includes('a'))!.rosterIds).toEqual(['a', 'b'])
+  })
+
+  it('склейка идёт ПО ЦЕПОЧКЕ, а не по первому опекуну', () => {
+    // A:{X,Y} · B:{Y} · C:{X} — один дом, хотя у B и C общих опекунов нет.
+    const hh = mergeHouseholds([m('A', 'X', 'Y'), m('B', 'Y'), m('C', 'X')])
+    expect(hh).toHaveLength(1)
+    expect(hh[0].rosterIds).toEqual(['A', 'B', 'C'])
+    expect(hh[0].guardianIds).toEqual(['X', 'Y'])
+  })
+
+  it('Bates: шесть детей и два опекуна — ОДНА строка', () => {
+    const kids = ['armani', 'bella', 'khaza', 'kylie', 'yomii', 'carmella']
+    const hh = mergeHouseholds(kids.map(k => m(k, 'jackson', 'booker')))
+    expect(hh).toHaveLength(1)
+    expect(hh[0].rosterIds).toHaveLength(6)
+    expect(hh[0].guardianIds).toEqual(['booker', 'jackson'])
+  })
+
+  it('дубль связи не удваивает опекуна', () => {
+    const hh = mergeHouseholds([m('a', 'g1', 'g1', 'g2')])
+    expect(hh[0].guardianIds).toEqual(['g1', 'g2'])
+  })
+
+  it('ребёнок без опекуна — свой дом, ключ по нему самому', () => {
+    const hh = mergeHouseholds([m('lonely')])
+    expect(hh).toHaveLength(1)
+    expect(hh[0].guardianIds).toEqual([])
+    expect(hh[0].key).toBe('c:lonely')
+  })
+
+  it('ключ дома устойчив к порядку опекунов', () => {
+    const a = mergeHouseholds([m('x', 'g2', 'g1')])[0].key
+    const b = mergeHouseholds([m('x', 'g1', 'g2')])[0].key
+    expect(a).toBe(b)
+  })
+
+  it('два независимых дома не сливаются', () => {
+    const hh = mergeHouseholds([m('a', 'g1'), m('b', 'g2')])
+    expect(hh).toHaveLength(2)
+  })
+})
+
+describe('поиск находит и тех, кого строка не показывает', () => {
+  const row: FamilyRow = {
+    guardianId: 'h:booker+jackson', guardianName: 'Bryant Jackson · Deidra Booker',
+    children: [{ rosterId: 'carmella', name: 'Carmella Sims', room: 'SA', frp: 'F', onFile: false, active: true }],
+    others: [
+      { rosterId: 'kylie', name: 'Bates Kylie', room: 'SA', frp: 'F', onFile: true, active: true },
+      { rosterId: 'brinx', name: 'Sims Brinx', room: 'SA', frp: 'F', onFile: false, active: false, dateOut: '2026-06-12' },
+    ],
+  }
+
+  it('«Bates Kylie» находит дом, хотя строкой этот ребёнок не идёт', () => {
+    const hits = searchFamilies([row], 'Bates Kylie')
+    expect(hits).toHaveLength(1)
+    expect(hits[0].childIds).toEqual([])
+    expect(hits[0].otherIds).toEqual(['kylie'])
+  })
+
+  it('причина названа словами, а не молчанием', () => {
+    expect(whyNotListed(row.others![0])).toBe('application already on file')
+    expect(whyNotListed(row.others![1])).toBe('left 06/12')
+    expect(whyNotListed({ rosterId: 'p', name: 'X', room: 'A', frp: 'P', onFile: false, active: true }))
+      .toContain('Paid')
+  })
+
+  it('дата ухода режется СТРОКОЙ, без new Date — иначе Нью-Йорк отдаст вчера', () => {
+    expect(whyNotListed({ rosterId: 'z', name: 'Z', room: 'A', frp: 'F', onFile: false, active: false, dateOut: '2026-01-01' }))
+      .toBe('left 01/01')
   })
 })

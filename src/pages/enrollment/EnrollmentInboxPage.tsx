@@ -101,7 +101,10 @@ export default function EnrollmentInboxPage() {
   // показываются и не считаются: он их не разбирает и не может закрыть, а число,
   // которое нельзя обнулить, читается как «ты не доделал». У него остаются
   // Release и DCY. Признак тот же, которым решает бейдж, — орг-роль.
-  const ORG_DESK_TYPES = ['cacfp_enrollment', 'iea', 'usda_waiver']
+  // ПОВОРОТ КАНОНА 05.08: форма питания — ДИРЕКТОРСКАЯ. Дохода она не несёт и
+  // контрподписи не требует, значит и держать её на орг-столе незачем: разбирает
+  // тот, кто знает ребёнка. На столе остаётся только доход.
+  const ORG_DESK_TYPES = ['iea', 'usda_waiver']
   const { roles, user } = useAuth()
 
   const [rows, setRows] = useState<Submission[]>([])
@@ -115,7 +118,7 @@ export default function EnrollmentInboxPage() {
   const [search, setSearch] = useState('')
   // The queue defaults to what needs a person. Auto-filed rows are a FACT to look up,
   // not a task — "видно ≠ actionable" (spec §1.1).
-  const [view, setView] = useState<'todo' | 'auto' | 'all' | 'countersign' | 'orgdesk'>('todo')
+  const [view, setView] = useState<'todo' | 'auto' | 'all' | 'countersign' | 'orgdesk' | 'rejected'>('todo')
   // Forms that ALWAYS need a director signature and NEVER auto-file (spec §2b).
   // Single source of truth = the DB function, which matches the registry flags
   // (renewal_countersign_types(): transition_into_program · dcy_01234 ·
@@ -167,7 +170,9 @@ export default function EnrollmentInboxPage() {
         // Approve). It must be VISIBLE — a row that vanished from every screen the moment
         // it was filed would read as a lost document, not as work saved. It is kept OUT
         // of the work list by the view toggle below, not by hiding it from the query.
-        .in('status', ['pending', 'received'])
+        // Отклонённые ТОЖЕ грузятся: до них нельзя было дойти ни из одной вкладки,
+        // а на них висит фотография бумаги, которую надо уметь подшить.
+        .in('status', ['pending', 'received', 'rejected'])
         // A rehearsal probe is not a document. It is a real sealed row written by
         // the recording rehearsal through the live anon channel to prove the
         // submit path is open, and the seal forbids deleting it — so it is kept
@@ -260,6 +265,7 @@ export default function EnrollmentInboxPage() {
       // Стол Татьяны: питание и доход. Считается по тем же `scoped`, поэтому
       // у директора он всегда 0 — эти строки к нему не приходят вовсе.
       orgdesk: scoped.filter(r => r.status === 'pending' && ORG_DESK_TYPES.includes(r.submission_type)).length,
+      rejected: scoped.filter(r => r.status === 'rejected').length,
     }
   }, [scoped, countersignTypes])
 
@@ -268,6 +274,7 @@ export default function EnrollmentInboxPage() {
       .filter(r => view === 'all' ? true
                  : view === 'auto' ? r.status === 'received'
                  : view === 'countersign' ? (r.status === 'pending' && countersignTypes.includes(r.submission_type))
+                 : view === 'rejected' ? r.status === 'rejected'
                  : view === 'orgdesk' ? (r.status === 'pending' && ORG_DESK_TYPES.includes(r.submission_type))
                  // «Needs a person» больше НЕ показывает питание и доход: у них
                  // своя вкладка, иначе одна и та же работа лежала бы в двух местах.
@@ -301,9 +308,12 @@ export default function EnrollmentInboxPage() {
     // за ней для него нет: одно правило, один ответ, никаких «видно, но нельзя».
     if (isOrgAdmin) t.push(['orgdesk', `Meals & income${counts.orgdesk ? ` · ${counts.orgdesk}` : ''}`])
     t.push(['auto', `Filed automatically${counts.auto ? ` · ${counts.auto}` : ''}`])
+    // Отклонённые — не мусор: на них живут фотографии бумаг, и подшить их можно
+    // только дойдя до строки.
+    if (counts.rejected) t.push(['rejected', `Rejected · ${counts.rejected}`])
     t.push(['all', 'All'])
     return t
-  }, [counts.todo, counts.auto, counts.countersign, counts.orgdesk, isOrgAdmin])
+  }, [counts.todo, counts.auto, counts.countersign, counts.orgdesk, counts.rejected, isOrgAdmin])
 
   // search-v2: filter the pending list by child name (scoreMatch), ranked when set.
   const visible = useMemo(() => {
@@ -413,7 +423,8 @@ export default function EnrollmentInboxPage() {
           padding: '40px 24px', textAlign: 'center', color: '#9ca3af', fontSize: 14,
           background: '#fafafa', borderRadius: 12, border: '1px dashed #e5e7eb',
         }}>
-          {view === 'orgdesk' ? 'Nothing waiting on the meals & income desk.'
+          {view === 'rejected' ? 'Nothing was rejected here.'
+           : view === 'orgdesk' ? 'Nothing waiting on the meals & income desk.'
            : view === 'auto' ? 'Nothing has been filed automatically yet.'
            : view === 'countersign' ? 'No forms are waiting for a director signature.'
            : view === 'all' ? 'No submissions.'

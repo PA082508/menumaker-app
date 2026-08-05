@@ -31,7 +31,7 @@ describe('countersignSlot — fill the slot the form declares, mint none', () =>
   })
 
   it('the map holds only measured director slots (no income — Ф4)', () => {
-    expect(Object.keys(COUNTERSIGN_SLOT).sort()).toEqual(['cacfp_enrollment', 'dcy_01234', 'start_form'])
+    expect(Object.keys(COUNTERSIGN_SLOT).sort()).toEqual(['dcy_01234', 'start_form'])
   })
 })
 

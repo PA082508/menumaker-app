@@ -201,6 +201,12 @@ export default function EnrollmentReviewModal({
   const [scanUrl, setScanUrl] = useState<string | null>(null)
   // Step 1 "View original form" — a local read-only replica beside the field-diff.
   const [showOriginal, setShowOriginal] = useState(false)
+  // ПЕРЕВЕСКА СКАНА (заказ владельца 05.08). Reject не должен хоронить изображение
+  // бумаги: строка отклонена, а фотография остаётся законным документом ребёнка.
+  // Файл УЖЕ лежит в корзине — перевеска не грузит второй, она пишет строку
+  // документа на тот же путь. Поэтому «файл один» — не пожелание, а устройство.
+  const [rehangMsg, setRehangMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [rehangBusy, setRehangBusy] = useState(false)
   const canViewOriginal = hasOriginalReplica(submission.submission_type)
   useEffect(() => {
     let cancelled = false
@@ -647,6 +653,36 @@ export default function EnrollmentReviewModal({
       }
       onDone(result)
     } catch (e: any) { setErr(e?.message ?? String(e)); setBusy(false) }
+  }
+
+  async function rehangScan() {
+    const ref = (submission.form_data as any)?.scan_ref
+    const target = resolvedChildId ?? docChild
+    if (!ref) { setRehangMsg({ ok: false, text: 'This submission carries no scan.' }); return }
+    if (!target) { setRehangMsg({ ok: false, text: 'Link a child first — a document has to hang on someone.' }); return }
+    // Путь внутри корзины: строка-путь, {bucket,path} или URL. URL перевесить
+    // нельзя — документ хранится путём, и чужая ссылка завтра протухнет.
+    const parsed = typeof ref === 'string'
+      ? (/^https?:/i.test(ref) ? null : { bucket: 'enrollment-scans', path: ref })
+      : (() => { try { const o = typeof ref === 'object' ? ref : JSON.parse(String(ref)); return o?.path ? { bucket: o.bucket || 'enrollment-scans', path: o.path } : null } catch { return null } })()
+    if (!parsed) { setRehangMsg({ ok: false, text: 'The scan is stored as a link, not as a file — nothing to file.' }); return }
+    setRehangBusy(true); setRehangMsg(null)
+    try {
+      const { error } = await (supabase.schema('menumaker').rpc as any)('register_document', {
+        p_org_id: submission.org_id, p_doc_type: 'enrollment_form',
+        p_storage_path: `${parsed.bucket}/${parsed.path}`,
+        p_center_id: submission.center_id,
+        p_title: `${submissionTypeLabel(submission.submission_type)} — scan`,
+        p_period_start: null, p_period_end: null,
+        p_valid_from: effectiveDocDate || null, p_valid_until: null,
+        p_notes: `Scan filed from a ${submission.status} submission — the paper is kept even though the row was not approved.`,
+        p_roster_id: target,
+      })
+      if (error) throw error
+      setRehangMsg({ ok: true, text: '✓ The scan is filed as a document on this child — the image outlives the row.' })
+    } catch (e: any) {
+      setRehangMsg({ ok: false, text: `Nothing was filed — ${e?.message ?? String(e)}` })
+    } finally { setRehangBusy(false) }
   }
 
   async function doReject() {
@@ -1135,6 +1171,11 @@ export default function EnrollmentReviewModal({
         {/* footer */}
         <div style={{ padding: '12px 22px', borderTop: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 8 }}>
           {err && <span style={{ color: '#991b1b', fontSize: 12.5, flex: 1 }}>{err}</span>}
+          {!err && rehangMsg && (
+            <span style={{ fontSize: 12.5, flex: 1, color: rehangMsg.ok ? '#0f4c35' : '#991b1b', fontWeight: rehangMsg.ok ? 700 : 400 }}>
+              {rehangMsg.text}
+            </span>
+          )}
           {!err && <span style={{ flex: 1, fontSize: 11.5, color: '#9ca3af' }}>
             {rejecting
               ? 'Rejecting doesn’t require valid fields — just add a reason and confirm.'
@@ -1142,6 +1183,14 @@ export default function EnrollmentReviewModal({
               : v.status === 'errors' ? 'Resolve required fields before approving.' : dupUnresolved ? 'Choose a duplicate resolution above.' : chosenInactive ? 'Reactivate & admit the matched child first, then Approve attaches this scan.' : 'Nothing is written to the roster until you Approve.'}
           </span>}
           <button onClick={onClose} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Close</button>
+          {hasScan(submission.form_data) && (
+            <button onClick={rehangScan} disabled={rehangBusy}
+              title="File the photographed paper as a document on the linked child — even if this row is rejected"
+              style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #c0d8c0', fontSize: 13, fontWeight: 600,
+                cursor: rehangBusy ? 'default' : 'pointer', background: '#fff', color: '#0f4c35' }}>
+              {rehangBusy ? 'Filing…' : '📎 File this scan'}
+            </button>
+          )}
           {canViewOriginal && (
             <button onClick={() => setShowOriginal(true)} title="See the filed form with the parent signature, exactly as submitted"
               style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #c0d8c0', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: '#fff', color: '#0f4c35' }}>

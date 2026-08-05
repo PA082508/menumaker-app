@@ -269,6 +269,9 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
   const [expanded,   setExpanded]   = useState<Record<string, boolean>>({})
   const [popup,      setPopup]      = useState<PopupData | null>(null)
   const [showAddChild, setShowAddChild] = useState(false)
+  // Ручной завод открывает НАСТОЯЩУЮ карточку в режиме создания. Отдельное короткое
+  // окно разошлось бы с карточкой на первой же правке — правило владельца 05.08.
+  const [createChild, setCreateChild] = useState(false)
   const [showAddRouter, setShowAddRouter] = useState(false)
   const [highlightId, setHighlightId] = useState<string|null>(null)  // just-added child → flash + scroll
   const [toast, setToast] = useState<string|null>(null)
@@ -841,6 +844,29 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
       )}
 
       {popup && <DetailPopup data={popup} onClose={() => setPopup(null)} classrooms={classrooms} onChanged={() => loadRoster(true)} />}
+      {/* ЗАВОД РЕБЁНКА = ТА ЖЕ КАРТОЧКА, пустая. Все вкладки и поля доступны сразу;
+          обязательный минимум проверяется на «Add child», остальное дозаполняется
+          позже — красные бейджи вкладок помнят, чего нет. */}
+      {createChild && center && org?.id && (
+        <ChildSettingsPage
+          createIn={{ centerId: center.id, orgId: org.id, centerName: center.name }}
+          classrooms={classrooms}
+          onClose={() => setCreateChild(false)}
+          onUseExisting={(rosterId) => {
+            setCreateChild(false)
+            setChildSettingsId(rosterId)
+            setHighlightId(rosterId)
+            setTimeout(() => setHighlightId(id => id === rosterId ? null : id), 4000)
+          }}
+          onCreated={(rosterId) => {
+            setCreateChild(false)
+            loadRoster(true)
+            setChildSettingsId(rosterId)          // карточка остаётся открытой — уже на строке
+            setHighlightId(rosterId)
+            setTimeout(() => setHighlightId(id => id === rosterId ? null : id), 4000)
+          }}
+        />
+      )}
       {childSettingsId && (
         <ChildSettingsPage
           childId={childSettingsId}
@@ -890,7 +916,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
       {showDoors && center && (
         <AddChildDoors
           onOnline={() => { setShowDoors(false); setShowPacket(true) }}
-          onManual={() => { setShowDoors(false); setShowAddChild(true) }}
+          onManual={() => { setShowDoors(false); setCreateChild(true) }}
           onClose={() => setShowDoors(false)}
         />
       )}
@@ -1095,12 +1121,13 @@ function EditChildPanel({ child, classrooms, onDone }: {
         </div>
         <div>
           <label style={lbl}>Milk</label>
+          {/* Словарь базы: roster_milk_kind_check пропускает red | 1pct | substitute.
+              «whole» и «formula» здесь отбивались бы check-constraint'ом. */}
           <select style={inp} value={form.milk_kind} onChange={e => set('milk_kind', e.target.value)}>
             <option value="">—</option>
-            <option value="whole">Whole</option>
+            <option value="red">Red cap (whole)</option>
             <option value="1pct">1%</option>
-            <option value="red">Reduced</option>
-            <option value="formula">Formula</option>
+            <option value="substitute">Substitute (medical)</option>
           </select>
         </div>
       </div>
@@ -1367,8 +1394,10 @@ function AddChildModal({ centerId, orgId, classrooms, onDone, onClose, onUseExis
             <label style={lbl}>Milk</label>
             <select style={inp} value={form.milk_kind} onChange={e=>set('milk_kind',e.target.value)}>
               <option value="">By age (automatic)</option>
-              <option value="whole">Whole</option>
+              {/* Словарь базы: roster_milk_kind_check пропускает red | 1pct | substitute. */}
+              <option value="red">Red cap (whole)</option>
               <option value="1pct">1%</option>
+              <option value="substitute">Substitute (medical)</option>
               <option value="skim">Skim</option>
               <option value="fatfree">Fat-free</option>
             </select>

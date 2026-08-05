@@ -103,9 +103,11 @@ await page.waitForTimeout(5000)
   await page.screenshot({ path: path.join(SHOTS, 'addchild-doors.png'), fullPage: false })
 
   await page.locator('[data-door="manual"]').click()
-  await page.waitForTimeout(2500)
-  await page.getByPlaceholder('First').fill(EXISTING.first)
-  await page.getByPlaceholder('Last').fill(EXISTING.last)
+  // С 05.08 ручной завод открывает ПОЛНУЮ карточку, а не короткое окно: поля
+  // ищутся по ключам реестра, а не по placeholder'ам старой модалки.
+  await page.waitForTimeout(3000)
+  await page.locator('#field-first_name input').first().fill(EXISTING.first)
+  await page.locator('#field-last_name input').first().fill(EXISTING.last)
   await page.waitForTimeout(1500)
   const banner = page.locator('[data-dedup="1"]')
   const shown = await banner.count()

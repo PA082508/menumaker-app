@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { QRCodeCanvas } from 'qrcode.react'
 import { supabase } from '@/lib/supabase'
 import { storefrontOnlyUrl, storefrontPacketUrl } from '@/config/showcaseLinks'
+import { formGate } from '@/lib/formGate'
 
 const GREEN = '#0f4c35'
 const SETS: { key: string; label: string; sub: string }[] = [
@@ -179,6 +180,21 @@ export default function AddChildPacketPanel({ center, onClose }: { center: { id:
                   // The QR/share target: always the storefront only= card, so a scan
                   // follows registry `current` instead of freezing today's version.
                   const link = fileLink ? storefrontOnlyUrl(center.slug, s.key) : null
+                  // ПОЛКА: форма в наборе ЕСТЬ, но витрина её не выдаёт, пока
+                  // не пришло разрешение. Показываем строкой — молча пропустить
+                  // значило бы, что набор «похудел» без объяснения, и кто-то
+                  // пошёл бы искать пропавшую форму.
+                  const gate = formGate(reg, s.key)
+                  if (gate.gated) return (
+                    <div key={s.key} data-gated="1" style={{ display: 'flex', alignItems: 'center', gap: 12, border: '1px dashed #e5e7eb', borderRadius: 11, padding: '11px 14px', background: '#fafafa', opacity: 0.8 }}>
+                      <span style={{ width: 19, height: 19, borderRadius: 5, border: '1.5px solid #d1d5db', flex: '0 0 auto' }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: '#6b7280' }}>{label}</div>
+                        <div style={{ fontSize: 11.5, color: '#9ca3af' }}>{gate.reason} — the form stays in the packet, it is simply not handed out yet.</div>
+                      </div>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: '#3730a3', background: '#eef2ff', borderRadius: 999, padding: '2px 8px' }}>on hold</span>
+                    </div>
+                  )
                   if (s.pending) return (
                     <div key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 12, border: '1px dashed #e5e7eb', borderRadius: 11, padding: '11px 14px', background: '#fafafa', opacity: 0.75 }}>
                       <span style={{ width: 19, height: 19, borderRadius: 5, border: '1.5px solid #d1d5db', flex: '0 0 auto' }} />

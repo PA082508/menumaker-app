@@ -726,8 +726,14 @@ export default function ChildSettingsPage({
     if (fields.length === 0) return <div style={{ color: '#aaa', fontSize: 13 }}>No fields on this tab yet.</div>
     const provBar = (
       <div ref={provRef} style={{ background:'#f8fbf9', border:'1.5px solid #c0d8c0', borderRadius:10, padding:'10px 12px', marginBottom:14 }}>
-        <div style={{ fontSize:12, fontWeight:700, color:'#0f4c35', marginBottom:7 }}>
-          Where this change comes from <span style={{ fontWeight:400, color:'#6b7280' }}>— applies to everything you change and save</span>
+        <div style={{ fontSize:12, fontWeight:700, color:'#0f4c35', marginBottom:7, display:'flex', alignItems:'baseline', gap:8, flexWrap:'wrap' }}>
+          <span>Where this change comes from <span style={{ fontWeight:400, color:'#6b7280' }}>— applies to everything you change and save</span></span>
+          {/* Вторая дверь названа ЗДЕСЬ же: человек, ставящий категорию в карточке,
+              должен знать про стопку — и наоборот. Правила за обеими дверями одни. */}
+          <a href="/instructions?doc=income-categories" target="_blank" rel="noreferrer"
+             style={{ fontWeight:600, fontSize:11.5, color:'#0f4c35', textDecoration:'underline' }}>
+            How this works
+          </a>
         </div>
         <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
           <select value={prov.source} onChange={e => setProv(p => ({ ...p, source: e.target.value as Provenance['source'],

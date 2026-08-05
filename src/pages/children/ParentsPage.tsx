@@ -23,6 +23,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
+import ScrollToTop from '@/components/common/ScrollToTop'
 
 type Guardian = {
   id: string
@@ -363,6 +364,7 @@ function FamilyCard({ f, onSaved, income }: { f: Family; onSaved: (g: Guardian) 
           From an enrollment form — not a family record yet, so it can't be edited here. Admit or resume from Children.
         </div>
       )}
+      <ScrollToTop />
     </div>
   )
 }

@@ -69,47 +69,48 @@ async function openDoors(centerId, tag) {
 // ─── 1. ZZ Demo по прямому адресу ────────────────────────────────────────────
 if (await openDoors(ZZ_ID, 'ZZ Demo')) {
   await page.locator('[data-door="manual"]').click()
-  await page.waitForTimeout(2500)
-  const first = await page.getByPlaceholder('First').count()
-  first === 1 ? ok('ZZ Demo: окно ручного завода открылось') : bad('ZZ Demo: окно', 'поля First нет')
+  await page.waitForTimeout(3000)
+  const first = await page.locator('#field-first_name input').count()
+  first === 1 ? ok('ZZ Demo: карточка ручного завода открылась') : bad('ZZ Demo: окно', 'поля имени нет')
   await page.screenshot({ path: path.join(SHOTS, 'zz-after.png'), fullPage: false })
 
   // 2. Чей ростер в окне: подсказка должна знать СВОЙ центр.
   // Единственный ребёнок ZZ Demo — «ZZSMOKE Keytest», и он неактивен: подсказка
   // обязана поднять и ушедшего (он же и есть тот, кого заводят повторно).
-  await page.getByPlaceholder('First').fill('Keytest')
-  await page.getByPlaceholder('Last').fill('ZZSMOKE')
+  await page.locator('#field-first_name input').first().fill('Keytest')
+  await page.locator('#field-last_name input').first().fill('ZZSMOKE')
   await page.waitForTimeout(1400)
   const own = await page.locator('[data-dedup="1"]').count()
   const ownTxt = own ? (await page.locator('[data-dedup="1"]').innerText()).replace(/\s+/g, ' ').trim() : ''
   own === 1 ? ok(`ZZ Demo: дедуп поднялся на СВОЕГО ребёнка — «${ownTxt.slice(0, 90)}»`)
             : bad('ZZ Demo: дедуп', 'подсказки на своего ребёнка нет — окно смотрит не в тот ростер')
-  await page.getByPlaceholder('First').fill('Kylie')
-  await page.getByPlaceholder('Last').fill('Bates')
+  await page.locator('#field-first_name input').first().fill('Kylie')
+  await page.locator('#field-last_name input').first().fill('Bates')
   await page.waitForTimeout(1400)
   const foreign = await page.locator('[data-dedup="1"]').count()
   foreign === 0 ? ok('ZZ Demo: на чужого ребёнка (Bates, Wickliffe) подсказки нет')
                 : bad('ZZ Demo: дедуп', 'подсказка на ребёнка ДРУГОГО центра — окно взяло чужой ростер')
   // Ничего не сохраняем.
-  await page.getByRole('button', { name: 'Cancel' }).first().click().catch(() => {})
+  // В карточке кнопка называется Close — и она НИЧЕГО не пишет.
+  await page.getByRole('button', { name: 'Close' }).first().click().catch(() => {})
   await page.waitForTimeout(800)
 }
 
 // ─── 3. Боевой центр тем же прогоном, без сохранения ─────────────────────────
 if (await openDoors(RIDGE_ID, 'Wickliffe')) {
   await page.locator('[data-door="manual"]').click()
-  await page.waitForTimeout(2500)
-  const first = await page.getByPlaceholder('First').count()
-  first === 1 ? ok('Wickliffe: окно ручного завода открылось') : bad('Wickliffe: окно', 'поля First нет')
-  await page.getByPlaceholder('First').fill('Kylie')
-  await page.getByPlaceholder('Last').fill('Bates')
+  await page.waitForTimeout(3000)
+  const first = await page.locator('#field-first_name input').count()
+  first === 1 ? ok('Wickliffe: карточка ручного завода открылась') : bad('Wickliffe: окно', 'поля имени нет')
+  await page.locator('#field-first_name input').first().fill('Kylie')
+  await page.locator('#field-last_name input').first().fill('Bates')
   await page.waitForTimeout(1400)
   const own = await page.locator('[data-dedup="1"]').count()
   own === 1 ? ok('Wickliffe: дедуп поднялся на своего Bates Kylie') : bad('Wickliffe: дедуп', 'подсказки нет')
   await page.screenshot({ path: path.join(SHOTS, 'ridge-after.png'), fullPage: false })
-  await page.getByRole('button', { name: 'Cancel' }).first().click().catch(() => {})
-  await page.waitForTimeout(1000)
-  const stillOpen = await page.getByPlaceholder('First').count()
+  await page.getByRole('button', { name: 'Close' }).first().click().catch(() => {})
+  await page.waitForTimeout(1200)
+  const stillOpen = await page.locator('#field-first_name input').count()
   stillOpen === 0 ? ok('Wickliffe: окно закрыто по Cancel — ничего не сохранено') : bad('Wickliffe', 'окно осталось открытым')
 }
 

@@ -55,9 +55,16 @@ export const TABS: TabDef[] = [
 const FRP_OPTIONS: FieldOption[] = [
   { value: 'F', label: 'Free' }, { value: 'R', label: 'Reduced' }, { value: 'P', label: 'Paid' },
 ]
+// СЛОВАРЬ МОЛОКА — ТОТ, ЧТО В БАЗЕ, и другого быть не может:
+// `roster_milk_kind_check` пропускает ровно 'red' | '1pct' | 'substitute'.
+// До 05.08 здесь стояли 'whole' | '1%' | 'skim' | 'soy' | 'none' — НИ ОДНО из них
+// база не принимает, и сохранение молока с карточки отбивалось всегда. Поймано
+// пробой ручного завода: молоко входит в обязательный минимум, и первый же Save
+// упёрся в check-constraint. Замер данных: 1pct — 288 строк, red — 37, пусто — 299.
 const MILK_OPTIONS: FieldOption[] = [
-  { value: 'whole', label: 'Whole' }, { value: '1%', label: '1%' },
-  { value: 'skim', label: 'Skim' }, { value: 'soy', label: 'Soy (sub)' }, { value: 'none', label: 'None' },
+  { value: 'red', label: 'Red cap (whole)' },
+  { value: '1pct', label: '1%' },
+  { value: 'substitute', label: 'Substitute (medical)' },
 ]
 const HHC_OPTIONS: FieldOption[] = [
   { value: 'true', label: 'Yes' }, { value: 'false', label: 'No' },

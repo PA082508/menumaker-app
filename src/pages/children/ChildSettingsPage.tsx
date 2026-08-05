@@ -6,7 +6,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
   completeness as regCompleteness, tabCounts as regTabCounts,
-  fieldsForTab, isFieldActive, fieldValue,
+  FIELDS, fieldsForTab, isFieldActive, fieldValue,
   type TabKey, type RecordCtx, type FieldDef,
 } from '@/lib/childFieldRegistry'
 import { displayChildName } from '@/lib/childName'
@@ -26,6 +26,7 @@ import {
 import ChildExportPanel from './ChildExportPanel'
 import ChildDocumentsTab from './ChildDocumentsTab'
 import { fmtDateOnly } from '@/lib/dateOnly'
+import { similarChildren, candidateLine, type DedupCandidate } from '@/lib/childDedup'
 
 // registry helpers don't export isEmpty — mirror it locally for the filled-indicator.
 const isEmptyVal = (v: any) => v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0)
@@ -108,14 +109,21 @@ function Badge({ empty, overdue }: { empty: number; overdue: number }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function ChildSettingsPage({
-  childId, onClose, classrooms, initialTab = 0, focusField
+  childId, onClose, classrooms, initialTab = 0, focusField, createIn, onCreated, onUseExisting,
 }: {
-  childId: string
+  childId?: string
   onClose: () => void
   classrooms: { id: string; name: string }[]
   initialTab?: number
   focusField?: string   // registry field key to scroll to + highlight on open (e.g. 'date_out')
+  /** РЕЖИМ СОЗДАНИЯ: строки ростера ещё нет, поля копятся в черновике.
+   *  Форма ввода — ЭТА ЖЕ карточка: второе окно разошлось бы с ней на первой правке. */
+  createIn?: { centerId: string; orgId: string; centerName?: string }
+  onCreated?: (rosterId: string) => void
+  /** «Это он» из плашки двойника — уводит в карточку существующего, ничего не пишет. */
+  onUseExisting?: (rosterId: string) => void
 }) {
+  const isCreate = !!createIn && !childId
   const [tab, setTab] = useState(initialTab)
   const [highlightKey, setHighlightKey] = useState<string | null>(null)
   const [child, setChild] = useState<Child | null>(null)
@@ -201,6 +209,10 @@ export default function ChildSettingsPage({
   // save-путь, поэтому гашение поля здесь есть вторая петля, а не правило.
   const [fieldLocks, setFieldLocks] = useState<Record<string, FieldLock>>({})
   const [fiscalYear, setFiscalYear] = useState<string | null>(null)
+  // Фоновый дедуп — только в режиме создания: подсказка на вводе имени, та же,
+  // что была в коротком окне. Проверка, которую надо запускать, не запускается.
+  const [dedupPool, setDedupPool] = useState<DedupCandidate[]>([])
+  const [dedupOff, setDedupOff] = useState(false)
   const [detSig, setDetSig] = useState<{ eligibility: string | null; by: string | null; at: string | null; source: string | null } | null>(null)
 
   useEffect(() => {
@@ -217,6 +229,33 @@ export default function ChildSettingsPage({
 
   useEffect(() => { loadAll() }, [childId])
 
+  useEffect(() => {
+    if (!isCreate || !createIn) return
+    let cancelled = false
+    ;(async () => {
+      const { data, error } = await supabase.schema('menumaker').from('roster')
+        .select('id, child_name, first_name, last_name, birthday, classroom_id, is_active')
+        .eq('center_id', createIn.centerId).limit(1000)
+      // Отказ молчит НАРОЧНО: дедуп — подсказка, а не замок; сорванная подсказка
+      // не должна мешать заводить ребёнка. Но и «двойников нет» она не скажет.
+      if (cancelled || error || !data) return
+      const roomName = new Map(classrooms.map(c => [c.id, c.name]))
+      setDedupPool(data.map((r: any) => ({
+        rosterId: r.id, childName: r.child_name ?? `${r.last_name ?? ''} ${r.first_name ?? ''}`.trim(),
+        firstName: r.first_name, lastName: r.last_name, birthday: r.birthday,
+        room: roomName.get(r.classroom_id) ?? null, isActive: r.is_active !== false,
+      })))
+    })()
+    return () => { cancelled = true }
+  }, [isCreate, createIn?.centerId, classrooms])
+
+  const dedupHits = useMemo(
+    () => (!isCreate || dedupOff ? [] : similarChildren(dedupPool, {
+      first: child?.first_name ?? '', last: child?.last_name ?? '', birthday: child?.birthday ?? null,
+    })),
+    [isCreate, dedupOff, dedupPool, child?.first_name, child?.last_name, child?.birthday],
+  )
+
   // Scroll to + highlight a specific field when opened with focusField
   // (e.g. the Deactivate shortcut jumps to END DATE on the Profile tab).
   useEffect(() => {
@@ -230,6 +269,26 @@ export default function ChildSettingsPage({
   }, [focusField, child])
 
   async function loadAll() {
+    // РЕЖИМ СОЗДАНИЯ: грузить нечего. Черновик — та же форма Child, только пустая;
+    // все вкладки и поля рисуются как обычно, красные бейджи показывают, чего нет.
+    if (isCreate) {
+      setChild({
+        id: '', org_id: createIn!.orgId, center_id: createIn!.centerId, classroom_id: null,
+        child_id: null, first_name: null, last_name: null, child_name: null,
+        birthday: null, date_in: todayStr, date_out: null,
+        // Категория при заводе ВСЕГДА Paid: F/R ставится только через определение
+        // с документной датой (recordDetermination), как и в карточке.
+        frp: 'P', frp_expires: null, milk_kind: null,
+        allergies: null, is_active: true, child_address: null, has_health_condition: null,
+        development_notes: null, accommodations: null, specialized_services: null,
+        emergency_transport_auth: null, enrollment_reviewed_at: null, age_group_food: null,
+        photo_url: null,
+      } as Child)
+      setMedical({} as ChildMedical)
+      setGuardians([])
+      setBaseline({ roster: {}, medical: {} })
+      return
+    }
     // roster.id (childId) ≠ child.id. Guardians hang off child_guardian.child_id
     // which FKs to menumaker.child.id — reached via roster.child_id. Load the
     // roster row first, then fetch guardians by its child_id.
@@ -264,7 +323,7 @@ export default function ChildSettingsPage({
 
     // Снимок «как загружено» — от него считается, что именно правил человек.
     setBaseline({ roster: { ...(c ?? {}) }, medical: { ...((m as any) ?? {}) } })
-    try { setFieldProv(await loadFieldProvenance(childId)) } catch { setFieldProv({}) }
+    try { setFieldProv(await loadFieldProvenance(childId!)) } catch { setFieldProv({}) }
     try { setFieldLocks(await loadFieldLocks()) } catch { setFieldLocks({}) }
 
     // read-only age/milk profile for CACFP tab + registry export
@@ -356,6 +415,91 @@ export default function ChildSettingsPage({
   /** Ответ экрана обязан попасть в поле зрения — иначе он равен молчанию. */
   function showResults() {
     setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 0)
+  }
+
+  // ─── СОЗДАНИЕ РЕБЁНКА ИЗ ЭТОЙ ЖЕ КАРТОЧКИ ─────────────────────────────────
+  // Обязательный минимум — ровно пять полей: имя · фамилия · ДР · комната ·
+  // дата поступления · молоко. На них можно остановиться: остальное дозаполняется
+  // позже руками или онлайн-формами, и красные бейджи вкладок про это помнят.
+  const CREATE_MIN: { key: string; label: string; get: () => any }[] = [
+    { key: 'first_name',   label: 'First name',  get: () => child?.first_name },
+    { key: 'last_name',    label: 'Last name',   get: () => child?.last_name },
+    { key: 'birthday',     label: 'Birthday',    get: () => child?.birthday },
+    { key: 'classroom_id', label: 'Classroom',   get: () => child?.classroom_id },
+    { key: 'date_in',      label: 'Start date',  get: () => child?.date_in },
+    { key: 'milk_kind',    label: 'Milk type',   get: () => child?.milk_kind },
+  ]
+
+  async function createChild() {
+    if (!child || !createIn) return
+    const missing = CREATE_MIN.filter(f => isEmptyVal(f.get()))
+    if (missing.length) {
+      setWriteResults([{ fieldKey: '', applied: false, reason: null, oldValue: null, newValue: null, isVerbal: false,
+        error: `NOTHING WAS SAVED. A child cannot sit in the meal grid without these: ${missing.map(m => m.label).join(' · ')}. ` +
+               'Everything else on the other tabs can be filled in later.' }])
+      showResults()
+      // Недостающее живёт на вкладке Profile (и молоко — на CACFP): уводим туда,
+      // где оно вводится, а не оставляем человека искать самому.
+      setTab(missing[0].key === 'milk_kind' ? 4 : 0)
+      return
+    }
+    setSaving(true); setWriteResults(null)
+    try {
+      // Ключ ребёнка — той же функцией, что и на всех остальных путях: вернувшийся
+      // переиспользует свою личность, новый получает её. По одному имени не склеиваем.
+      const { data: kid, error: kidErr } = await (supabase.schema('menumaker').rpc as any)(
+        'resolve_or_create_child',
+        { p_org: createIn.orgId, p_first: child.first_name, p_last: child.last_name, p_birthdate: child.birthday || null },
+      )
+      if (kidErr) throw kidErr
+      const key = (kid as any)?.child_id ?? null
+      if (!key) {
+        throw new Error('This child could not be given an identity key, so nothing was written. ' +
+                        'A roster row without a key can hold neither guardians nor a medical record.')
+      }
+
+      // В строку идут ВСЕ заполненные поля ростера из реестра — человек мог
+      // заполнить хоть все вкладки сразу, и терять это было бы обманом.
+      const rosterCols: Record<string, any> = {}
+      for (const f of FIELDS.filter(f => f.table === 'roster' && !f.readOnly)) {
+        const v = (child as any)[f.column]
+        if (!isEmptyVal(v)) rosterCols[f.column] = v
+      }
+      const { data: row, error: insErr } = await supabase.schema('menumaker').from('roster').insert({
+        ...rosterCols,
+        org_id: createIn.orgId, center_id: createIn.centerId, child_id: key,
+        child_name: `${child.first_name} ${child.last_name}`,   // First Last (канон 23.07)
+        frp: 'P',                                              // F/R — только определением с датой
+        is_active: true,
+      }).select('id').single()
+      if (insErr) throw insErr
+      const newId = (row as any)?.id as string
+
+      // Медицинские поля, если их успели заполнить, ложатся своей строкой.
+      const medCols: Record<string, any> = {}
+      for (const f of FIELDS.filter(f => f.table === 'child_medical' && !f.readOnly)) {
+        const v = (medical as any)?.[f.column]
+        if (!isEmptyVal(v)) medCols[f.column] = v
+      }
+      if (Object.keys(medCols).length && key) {
+        const { error: medErr } = await supabase.schema('menumaker').from('child_medical')
+          .insert({ ...medCols, child_id: key })
+        // Ребёнок уже заведён — про медкарту говорим отдельно, но не притворяемся,
+        // что записи не было вовсе.
+        if (medErr) {
+          setWriteResults([{ fieldKey: '', applied: true, reason: null, oldValue: null, newValue: null, isVerbal: false,
+            error: `The child was added, but the health fields were not saved: ${medErr.message}. Open the Health tab and save them again.` }])
+          showResults()
+        }
+      }
+      setSaving(false)
+      onCreated?.(newId)
+    } catch (e: any) {
+      setSaving(false)
+      setWriteResults([{ fieldKey: '', applied: false, reason: null, oldValue: null, newValue: null, isVerbal: false,
+        error: `NOTHING WAS SAVED — ${e?.message ?? String(e)}` }])
+      showResults()
+    }
   }
 
   async function saveCurrent() {
@@ -475,7 +619,7 @@ export default function ChildSettingsPage({
       const noteForField = w.fieldKey === 'frp_expires' && expiryNote
         ? [prov.note, expiryNote].filter(Boolean).join(' · ')
         : prov.note
-      results.push(await writeChildField(childId, w, {
+      results.push(await writeChildField(childId!, w, {
         ...prov, note: noteForField,
         documentDate: prov.source === 'verbal' ? null : (prov.documentDate || null),
       }, who))
@@ -489,7 +633,7 @@ export default function ChildSettingsPage({
     if (frpApplied && frpNorm && fiscalYear && child) {
       try {
         await recordDetermination({
-          roster_id: childId, org_id: child.org_id, center_id: child.center_id,
+          roster_id: childId!, org_id: child.org_id, center_id: child.center_id,
           frp: frpNorm, frp_expires: expiresNorm ?? null, fiscal_year: fiscalYear,
           eligibility_source: 'manual', ieSource: 'profile_edit',
           determined_by: user?.id ?? '',
@@ -509,7 +653,7 @@ export default function ChildSettingsPage({
     if (roomChanged && child && prov.documentDate
         && results.some(r => r.fieldKey === 'classroom_id' && r.applied)) {
       const err = await recordRoomTransfer({
-        orgId: child.org_id, centerId: child.center_id, rosterId: childId,
+        orgId: child.org_id, centerId: child.center_id, rosterId: childId!,
         fromClassroomId: (baseline.roster?.classroom_id as string) ?? null,
         toClassroomId: child.classroom_id as string,
         effectiveFrom: prov.documentDate,
@@ -779,7 +923,7 @@ export default function ChildSettingsPage({
               A scan is welcome later — Documents tab. Nothing is waiting on it.
             </span>
           )}
-          <button type="button" onClick={async () => { setShowHistory(v => !v); if (!showHistory) { try { setHistory(await loadFieldHistory(childId)) } catch { setHistory([]) } } }}
+          <button type="button" onClick={async () => { setShowHistory(v => !v); if (!showHistory) { try { setHistory(await loadFieldHistory(childId!)) } catch { setHistory([]) } } }}
             style={{ marginLeft:'auto', padding:'6px 12px', borderRadius:8, border:'1.5px solid #c0d8c0', background:'#fff', fontSize:12.5, fontFamily:'inherit', cursor:'pointer', color:'#0f4c35', fontWeight:600 }}>
             {showHistory ? 'Hide history' : '🕘 Change history'}
           </button>
@@ -838,12 +982,17 @@ export default function ChildSettingsPage({
           <Avatar name={fullName} path={child.photo_url} size={44} fontSize={17} />
           <div style={{ flex:1 }}>
             <div style={{ color:'#fff', fontWeight:700, fontSize:17, display:'flex', alignItems:'center', gap:8 }}>
-              {fullName}
-              {!child.is_active && <span style={{ fontSize:10, fontWeight:800, letterSpacing:'0.06em', background:'#dc2626', color:'#fff', padding:'2px 8px', borderRadius:6 }}>INACTIVE</span>}
+              {isCreate ? (fullName?.trim() ? fullName : 'New child') : fullName}
+              {isCreate && <span style={{ fontSize:10, fontWeight:800, letterSpacing:'0.06em', background:'#fbbf24', color:'#3b2600', padding:'2px 8px', borderRadius:6 }}>NOT SAVED YET</span>}
+              {!isCreate && !child.is_active && <span style={{ fontSize:10, fontWeight:800, letterSpacing:'0.06em', background:'#dc2626', color:'#fff', padding:'2px 8px', borderRadius:6 }}>INACTIVE</span>}
             </div>
             <div style={{ color:'rgba(255,255,255,0.6)', fontSize:12, marginTop:2 }}>
-              {classrooms.find(c=>c.id===child.classroom_id)?.name ?? '—'}
-              {child.birthday ? ` · b. ${fmtDateOnly(child.birthday)}` : ''}
+              {isCreate
+                ? `${createIn?.centerName ?? 'this centre'} · fill what you have — name, birthday, classroom, start date and milk are enough to save`
+                : <>
+                    {classrooms.find(c=>c.id===child.classroom_id)?.name ?? '—'}
+                    {child.birthday ? ` · b. ${fmtDateOnly(child.birthday)}` : ''}
+                  </>}
             </div>
           </div>
           {/* Progress */}
@@ -854,8 +1003,8 @@ export default function ChildSettingsPage({
             </div>
             <div style={{ fontSize:12, color:'rgba(255,255,255,0.8)', marginTop:3 }}>{completePct}%</div>
           </div>
-          <button onClick={() => setShowExport(true)} title="Export / print this child"
-            style={{ background:'rgba(255,255,255,0.15)', border:'none', color:'#fff', height:32, padding:'0 12px', borderRadius:16, cursor:'pointer', fontSize:12, fontWeight:600, marginRight:8 }}>⤓ Export</button>
+          {!isCreate && <button onClick={() => setShowExport(true)} title="Export / print this child"
+            style={{ background:'rgba(255,255,255,0.15)', border:'none', color:'#fff', height:32, padding:'0 12px', borderRadius:16, cursor:'pointer', fontSize:12, fontWeight:600, marginRight:8 }}>⤓ Export</button>}
           <button onClick={onClose} style={{ background:'rgba(255,255,255,0.15)', border:'none', color:'#fff', width:32, height:32, borderRadius:'50%', cursor:'pointer', fontSize:18 }}>×</button>
         </div>
 
@@ -878,6 +1027,29 @@ export default function ChildSettingsPage({
 
         {/* Content */}
         <div style={{ flex:1, overflowY:'auto', padding:20 }}>
+          {/* ПЛАШКА ДВОЙНИКА — на вводе имени, без кнопки «проверить». Ничего не
+              решает за человека: «это он» уводит в существующую карточку, «новый»
+              гасит подсказку. */}
+          {isCreate && dedupHits.length > 0 && (
+            <div data-dedup="1" style={{ background:'#fffbeb', border:'1.5px solid #fcd34d', borderRadius:10, padding:'10px 12px', fontSize:13, color:'#78350f', marginBottom:14 }}>
+              <div style={{ fontWeight:700, marginBottom:6 }}>
+                Similar child{dedupHits.length > 1 ? 'ren' : ''} found — is this the same child?
+              </div>
+              {dedupHits.slice(0, 4).map(c => (
+                <div key={c.rosterId} style={{ display:'flex', alignItems:'center', gap:10, padding:'3px 0', flexWrap:'wrap' }}>
+                  <span>{candidateLine(c)}</span>
+                  <button onClick={() => onUseExisting?.(c.rosterId)} style={{
+                    padding:'4px 10px', borderRadius:7, border:'none', background:'#0f4c35', color:'#fff',
+                    fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>Use this child</button>
+                </div>
+              ))}
+              <button onClick={() => setDedupOff(true)} style={{
+                marginTop:6, padding:'4px 10px', borderRadius:7, border:'1px solid #d6bb7a', background:'#fff',
+                color:'#78350f', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}>
+                Keep creating new
+              </button>
+            </div>
+          )}
 
           {/* ── TAB 0: Profile (registry-driven) ── */}
           {tab === 0 && (
@@ -993,7 +1165,7 @@ export default function ChildSettingsPage({
           )}
 
           {/* ── TAB 7: Documents ── */}
-          {tab === 7 && <ChildDocumentsTab childDbId={child.child_id ?? childId} rosterId={childId}
+          {tab === 7 && !isCreate && <ChildDocumentsTab childDbId={child.child_id ?? childId!} rosterId={childId!}
             orgId={child.org_id} centerId={child.center_id} />}
         </div>
 
@@ -1003,7 +1175,8 @@ export default function ChildSettingsPage({
             <div style={{ fontSize:12, color:saved?'#16a34a':'#888' }}>
               {saved ? '✓ Saved' : `${totalEmpty} fields empty · ${totalOverdue} overdue`}
             </div>
-            {child.is_active ? (
+            {/* Ни отчислить, ни вернуть нечего, пока строки нет. */}
+            {isCreate ? null : child.is_active ? (
               <button onClick={() => setConfirmDeact(true)}
                 style={{ padding:'7px 14px', borderRadius:8, border:'1.5px solid #fecaca', background:'#fff', color:'#dc2626', cursor:'pointer', fontFamily:'inherit', fontSize:12, fontWeight:600 }}>
                 Deactivate
@@ -1040,10 +1213,10 @@ export default function ChildSettingsPage({
                 {saveOutcome.icon} {saveOutcome.text}
               </span>
             )}
-            {fieldsForTab(TAB_KEYS[tab]).length > 0 && (
-              <button onClick={saveCurrent} disabled={saving}
+            {(isCreate || fieldsForTab(TAB_KEYS[tab]).length > 0) && (
+              <button onClick={isCreate ? createChild : saveCurrent} disabled={saving}
                 style={{ padding:'9px 20px', borderRadius:8, background:'#0f4c35', color:'#fff', border:'none', cursor:'pointer', fontWeight:700, fontSize:13, fontFamily:'inherit', opacity:saving?0.6:1 }}>
-                {saving ? 'Saving…' : '✓ Save'}
+                {saving ? 'Saving…' : isCreate ? '✓ Add child' : '✓ Save'}
               </button>
             )}
           </div>

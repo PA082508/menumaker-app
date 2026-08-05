@@ -182,6 +182,10 @@ export async function revokeSample(id: string, by: string): Promise<void> {
 //                                 still open (form declares no director slot).
 //   transition_into_program     → no submissions yet, slot unknown.
 export const COUNTERSIGN_SLOT: Readonly<Record<string, string>> = {
+  // ПИТАНИЕ — СТОЛ ТАТЬЯНЫ (канон 05.08). Разбор CACFP-формы подписывает
+  // program administrator: это её слот, а не директорский. Директорская подпись
+  // остаётся на DCY и лицензионных формах.
+  cacfp_enrollment: 'program_sig',
   dcy_01234: 'program_sig',
   start_form: 'admin_sig',
 }

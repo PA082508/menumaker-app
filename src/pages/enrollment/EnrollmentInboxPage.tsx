@@ -78,6 +78,11 @@ function SourceTag({ source }: { source: string }) {
 
 export default function EnrollmentInboxPage() {
   const { org, currentCenter, centers, isOrgAdmin, loading: orgLoading } = useOrg()
+  // ПИТАНИЕ И ДОХОД — СТОЛ ТАТЬЯНЫ (канон 05.08). Директору эти типы не
+  // показываются и не считаются: он их не разбирает и не может закрыть, а число,
+  // которое нельзя обнулить, читается как «ты не доделал». У него остаются
+  // Release и DCY. Признак тот же, которым решает бейдж, — орг-роль.
+  const ORG_DESK_TYPES = ['cacfp_enrollment', 'iea', 'usda_waiver']
   const { roles, user } = useAuth()
 
   const [rows, setRows] = useState<Submission[]>([])
@@ -91,7 +96,7 @@ export default function EnrollmentInboxPage() {
   const [search, setSearch] = useState('')
   // The queue defaults to what needs a person. Auto-filed rows are a FACT to look up,
   // not a task — "видно ≠ actionable" (spec §1.1).
-  const [view, setView] = useState<'todo' | 'auto' | 'all' | 'countersign'>('todo')
+  const [view, setView] = useState<'todo' | 'auto' | 'all' | 'countersign' | 'orgdesk'>('todo')
   // Forms that ALWAYS need a director signature and NEVER auto-file (spec §2b).
   // Single source of truth = the DB function, which matches the registry flags
   // (renewal_countersign_types(): transition_into_program · dcy_01234 ·
@@ -216,10 +221,12 @@ export default function EnrollmentInboxPage() {
   // list will actually show — a countersign form is a child form, so it must not
   // count toward a badge in the Staff view where it can never appear.
   const scoped = useMemo(
-    () => rows.filter(r => from === 'staff' ? isStaffType(r.submission_type)
-                         : from === 'children' ? !isStaffType(r.submission_type)
-                         : true),
-    [rows, from],
+    () => rows
+      .filter(r => isOrgAdmin || !ORG_DESK_TYPES.includes(r.submission_type))
+      .filter(r => from === 'staff' ? isStaffType(r.submission_type)
+                 : from === 'children' ? !isStaffType(r.submission_type)
+                 : true),
+    [rows, from, isOrgAdmin],
   )
 
   // Live validation per row (Phase 1 computes client-side; no trigger yet).
@@ -231,6 +238,9 @@ export default function EnrollmentInboxPage() {
       // A subset of pending — countersign forms stay in "Needs a person" too
       // (they still need a human); this is a focused lens, not a separate bucket.
       countersign: scoped.filter(r => r.status === 'pending' && cs.has(r.submission_type)).length,
+      // Стол Татьяны: питание и доход. Считается по тем же `scoped`, поэтому
+      // у директора он всегда 0 — эти строки к нему не приходят вовсе.
+      orgdesk: scoped.filter(r => r.status === 'pending' && ORG_DESK_TYPES.includes(r.submission_type)).length,
     }
   }, [scoped, countersignTypes])
 
@@ -239,7 +249,10 @@ export default function EnrollmentInboxPage() {
       .filter(r => view === 'all' ? true
                  : view === 'auto' ? r.status === 'received'
                  : view === 'countersign' ? (r.status === 'pending' && countersignTypes.includes(r.submission_type))
-                 : r.status === 'pending')
+                 : view === 'orgdesk' ? (r.status === 'pending' && ORG_DESK_TYPES.includes(r.submission_type))
+                 // «Needs a person» больше НЕ показывает питание и доход: у них
+                 // своя вкладка, иначе одна и та же работа лежала бы в двух местах.
+                 : (r.status === 'pending' && !ORG_DESK_TYPES.includes(r.submission_type)))
       .map(r => ({
         row: r,
         v: validateSubmission(r.submission_type, r.form_data, { signatureDate: r.signature_date, source: r.source }),
@@ -265,10 +278,13 @@ export default function EnrollmentInboxPage() {
       ['todo', `Needs a person${counts.todo ? ` · ${counts.todo}` : ''}`],
     ]
     if (counts.countersign) t.push(['countersign', `Awaiting director signature · ${counts.countersign}`])
+    // ВКЛАДКА СТОЛА — только орг-уровню. Директор её не видит, потому что и строк
+    // за ней для него нет: одно правило, один ответ, никаких «видно, но нельзя».
+    if (isOrgAdmin) t.push(['orgdesk', `Meals & income${counts.orgdesk ? ` · ${counts.orgdesk}` : ''}`])
     t.push(['auto', `Filed automatically${counts.auto ? ` · ${counts.auto}` : ''}`])
     t.push(['all', 'All'])
     return t
-  }, [counts.todo, counts.auto, counts.countersign])
+  }, [counts.todo, counts.auto, counts.countersign, counts.orgdesk, isOrgAdmin])
 
   // search-v2: filter the pending list by child name (scoreMatch), ranked when set.
   const visible = useMemo(() => {
@@ -358,6 +374,18 @@ export default function EnrollmentInboxPage() {
         </div>
       )}
 
+      {/* ДВЕ ДВЕРИ В ОДНУ РАБОТУ. Стопка бумаг разбирается домохозяйствами на
+          Paper applications, отдельные формы — здесь. Ссылка стоит в обе стороны,
+          чтобы вторую дверь не искали наощупь. */}
+      {view === 'orgdesk' && (
+        <div style={{ fontSize: 12.5, color: '#6b7280', margin: '0 0 10px' }}>
+          Paper income applications are entered by household on{' '}
+          <a href="/iea-confirm" style={{ color: '#0f4c35', fontWeight: 600 }}>Paper applications</a>
+          {' · '}
+          <a href="/instructions?doc=income-categories" target="_blank" rel="noreferrer" style={{ color: '#0f4c35', fontWeight: 600 }}>How this works</a>
+        </div>
+      )}
+
       {(loading || orgLoading) && <div style={{ color: '#888', fontSize: 14 }}>Loading…</div>}
       {err && <div style={{ color: '#991b1b', fontSize: 14 }}>Error: {err}</div>}
 
@@ -366,7 +394,8 @@ export default function EnrollmentInboxPage() {
           padding: '40px 24px', textAlign: 'center', color: '#9ca3af', fontSize: 14,
           background: '#fafafa', borderRadius: 12, border: '1px dashed #e5e7eb',
         }}>
-          {view === 'auto' ? 'Nothing has been filed automatically yet.'
+          {view === 'orgdesk' ? 'Nothing waiting on the meals & income desk.'
+           : view === 'auto' ? 'Nothing has been filed automatically yet.'
            : view === 'countersign' ? 'No forms are waiting for a director signature.'
            : view === 'all' ? 'No submissions.'
            : 'Nothing needs a person right now.'}

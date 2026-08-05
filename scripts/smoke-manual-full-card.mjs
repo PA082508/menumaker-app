@@ -102,14 +102,33 @@ await page.waitForTimeout(2500)
   await page.locator('#field-last_name input').first().fill(KID.last)
   await page.waitForTimeout(700)
 
-  // Молоко живёт на вкладке CACFP: минимум разнесён по вкладкам, и это нормально —
-  // карточка одна, а не форма ввода рядом с ней.
+  // МОЛОКО БОЛЬШЕ НЕ СПРАШИВАЮТ (канон 05.08): оно считается из ДР. Проверяем,
+  // что строка расчёта стоит и живо меняется при смене даты рождения.
   await page.getByRole('button', { name: /CACFP/ }).first().click()
   await page.waitForTimeout(900)
-  const milk = page.locator('#field-milk_kind select').first()
-  const milkOpts = await milk.locator('option').allTextContents()
-  await milk.selectOption({ index: milkOpts.findIndex(t => t && !/select|—/i.test(t)) })
-  await page.waitForTimeout(500)
+  const milkRow = page.locator('#field-milk_kind')
+  const line1 = (await milkRow.innerText()).replace(/\s+/g, ' ').trim()
+  const byAge = /by age/.test(line1)
+  byAge ? ok(`молоко — строка-расчёт: «${line1.split('Medical')[0].trim()}»`)
+        : bad('молоко', `строки расчёта нет: ${line1.slice(0, 80)}`)
+  const noSelect = await page.locator('#field-milk_kind select').count()
+  noSelect === 0 ? ok('выбора молока в карточке нет — только расчёт') : bad('молоко', 'select всё ещё стоит')
+  // меняем ДР на младенческую и смотрим, что расчёт пересчитался
+  await page.getByRole('button', { name: /Profile/ }).first().click()
+  await page.waitForTimeout(700)
+  await page.locator('#field-birthday input').first().fill('2026-03-01')
+  await page.waitForTimeout(600)
+  await page.getByRole('button', { name: /CACFP/ }).first().click()
+  await page.waitForTimeout(700)
+  const line2 = (await milkRow.innerText()).replace(/\s+/g, ' ').trim()
+  const recalced = /Formula · 0 oz/.test(line2)
+  recalced ? ok('смена ДР пересчитала строку: Formula · 0 oz')
+           : bad('пересчёт', `строка не изменилась: ${line2.slice(0, 60)}`)
+  // возвращаем настоящую дату
+  await page.getByRole('button', { name: /Profile/ }).first().click()
+  await page.waitForTimeout(700)
+  await page.locator('#field-birthday input').first().fill(KID.bday)
+  await page.waitForTimeout(600)
   await page.screenshot({ path: path.join(SHOTS, 'manual-min-filled.png'), fullPage: false })
 
   await page.getByRole('button', { name: /Add child/i }).last().click()
@@ -122,7 +141,55 @@ await page.waitForTimeout(2500)
   await page.screenshot({ path: path.join(SHOTS, 'manual-saved-card.png'), fullPage: false })
 }
 
-// ─── 4. Ребёнок в ростере и в сетке питания ──────────────────────────────────
+// ─── 4. Медицинская замена: сохраняется и показывается вместо расчёта ────────
+// Карточка после записи остаётся открытой на созданной строке — этим и пользуемся,
+// чтобы не ходить по списку: навигация здесь не предмет пробы.
+{
+  await page.getByRole('button', { name: /CACFP/ }).first().click().catch(() => {})
+  await page.waitForTimeout(1200)
+  const toggle = page.locator('[data-milk-sub="1"]').first()
+  if (!(await toggle.count())) bad('медзамена', 'переключателя нет')
+  else {
+    // Переключатель ПРОИЗВОДНЫЙ от значения: клик только открывает ввод, а
+    // отмеченным он станет, когда будет сказано, чем заменено. Поэтому click,
+    // а не check — check ждал бы отметки, которой по замыслу ещё нет.
+    await toggle.click()
+    await page.waitForTimeout(700)
+    const subField = page.locator('#field-substitute_milk input').first()
+    const appeared = await subField.count()
+    appeared === 1 ? ok('включение замены открыло поле «чем заменено»') : bad('медзамена', 'поля замены нет')
+    if (appeared) {
+      await subField.fill('Soy (lactose intolerance)')
+      await page.waitForTimeout(400)
+      await page.getByRole('button', { name: /^✓ Save$|Save$/ }).last().click().catch(() => {})
+      await page.waitForTimeout(4500)
+      const row = (await page.locator('#field-milk_kind').innerText()).replace(/\s+/g, ' ').trim()
+      const shown = row.includes('Soy') && row.includes('medical substitution')
+      shown ? ok('замена показана вместо расчёта') : bad('медзамена', `в строке нет замены: ${row.slice(0, 90)}`)
+      const stillByAge = /by age/.test(row)
+      !stillByAge ? ok('расчёт по возрасту уступил место замене') : bad('медзамена', 'строка всё ещё показывает расчёт')
+      await page.screenshot({ path: path.join(SHOTS, 'milk-substitution.png'), fullPage: false })
+
+      // И то же самое в базе — через живую сессию, тем же источником, что читает сетка.
+      const env2 = Object.fromEntries(fs.readFileSync('.env', 'utf8').split('\n')
+        .filter(l => l.includes('=')).map(l => [l.slice(0, l.indexOf('=')).trim(), l.slice(l.indexOf('=') + 1).trim()]))
+      const tok = await page.evaluate(() => {
+        const raw = localStorage.getItem(Object.keys(localStorage).find(k => k.startsWith('sb-')) ?? '')
+        return raw ? JSON.parse(raw).access_token : null
+      })
+      const rr = await fetch(`${env2.VITE_SUPABASE_URL}/rest/v1/v_meal_grid?center_id=eq.${ZZ_ID}&select=child_name,milk_label,oz`, {
+        headers: { apikey: env2.VITE_SUPABASE_ANON_KEY, Authorization: `Bearer ${tok}`, 'Accept-Profile': 'menumaker' },
+      })
+      const grid2 = rr.ok ? await rr.json() : []
+      const mine = grid2.find(g => String(g.child_name).includes(KID.first))
+      mine && String(mine.milk_label).includes('Soy')
+        ? ok(`сетка питания показывает замену: ${mine.child_name} · ${mine.milk_label} · ${mine.oz} oz`)
+        : bad('сетка', `замена не дошла до сетки: ${mine ? mine.milk_label : 'строки нет'}`)
+    }
+  }
+}
+
+// ─── 5. Ребёнок в ростере и в сетке питания ──────────────────────────────────
 {
   await page.keyboard.press('Escape').catch(() => {})
   await page.goto(`${APP}/center/${ZZ_ID}`, { waitUntil: 'domcontentloaded' })

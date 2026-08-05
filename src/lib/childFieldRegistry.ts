@@ -108,7 +108,22 @@ export const FIELDS: FieldDef[] = [
   // ── CACFP (roster editable + v_child_age_profile read-only) ──
   { key: 'frp',       tab: 'cacfp', section: 'Eligibility', label: 'FRP status',  table: 'roster', column: 'frp',        type: 'select', required: true, options: FRP_OPTIONS },
   { key: 'frp_expires', tab: 'cacfp', section: 'Eligibility', label: 'FRP expires', table: 'roster', column: 'frp_expires', type: 'date', overdue: true }, // 12-mo IEA validity; overdue = claim risk
-  { key: 'milk_kind', tab: 'cacfp', section: 'Meal Pattern', label: 'Milk type',   table: 'roster', column: 'milk_kind',  type: 'select', required: true, options: MILK_OPTIONS },
+  // МОЛОКО НЕ СПРАШИВАЕТСЯ — ОНО СЛЕДУЕТ ИЗ ДАТЫ РОЖДЕНИЯ (канон 05.08:
+  // «Birthday = single source of truth»). Поле осталось в реестре, чтобы карточка
+  // умела его ПОКАЗАТЬ и чтобы медицинская замена имела куда лечь, но оно
+  // `readOnly` и НЕ `required`: спрашивать у человека то, что система знает из
+  // ДР, значит получить расхождение карточки с сеткой питания.
+  // Ввод остался ровно один — переключатель «Medical substitution».
+  { key: 'milk_kind', tab: 'cacfp', section: 'Meal Pattern', label: 'Milk type',   table: 'roster', column: 'milk_kind',  type: 'select', readOnly: true, options: MILK_OPTIONS },
+  // Чем именно заменено — спрашивается ТОЛЬКО когда включена медицинская замена.
+  // Пишется обычным путём карточки, поэтому несёт документную дату, замок и след
+  // в журнале наравне с прочими полями.
+  // ЕДИНСТВЕННЫЙ ВВОД в этом разделе. Заполнено — значит по справке налито это,
+  // и расчёт по возрасту уступает ему место (так же считает `v_meal_grid`).
+  // Пусто — молоко следует из даты рождения.
+  { key: 'substitute_milk', tab: 'cacfp', section: 'Meal Pattern',
+    label: 'Medical substitution — what is served (doctor’s note)',
+    table: 'roster', column: 'substitute_milk', type: 'text' },
   { key: 'age_group', tab: 'cacfp', section: 'Meal Pattern', label: 'Age group',   table: 'view', column: 'age_group_label', type: 'text', readOnly: true }, // from v_child_age_profile
   { key: 'milk_oz',   tab: 'cacfp', section: 'Meal Pattern', label: 'Milk (oz)',   table: 'view', column: 'milk_oz',      type: 'text', readOnly: true }, // from v_child_age_profile
 ]

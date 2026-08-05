@@ -54,9 +54,17 @@ const pageErrors = []
 page.on('pageerror', e => pageErrors.push(String(e).slice(0, 160)))
 
 // ─── A. реплика сама по себе ─────────────────────────────────────────────────
-const payload = encodeURIComponent(JSON.stringify({ formData: FD, signatures: { parent_sig: SIG }, signatureDate: '2026-08-04' }))
-await page.goto(`${APP}/forms/CACFP_Enrollment_v11_original.html?data=${payload}`, { waitUntil: 'load' })
-await page.waitForTimeout(1200)
+// Данные подаём postMessage'ом — тем же способом, каким их подаёт приложение.
+// Через `?data=` проба сначала и ходила, но на боевом хосте длинный запрос
+// (семь дней расписания плюс картинка подписи) до страницы не доезжает: адресная
+// строка не транспорт для документа. Локально это не проявлялось — ровно тот
+// случай, когда проба обязана ходить дорогой приложения, а не своей.
+await page.goto(`${APP}/forms/CACFP_Enrollment_v11_original.html`, { waitUntil: 'load' })
+await page.waitForTimeout(800)
+await page.evaluate(({ fd, sig, d }) => {
+  window.postMessage({ type: 'original-render', formData: fd, signatures: { parent_sig: sig }, signatureDate: d }, '*')
+}, { fd: FD, sig: SIG, d: '2026-08-04' })
+await page.waitForTimeout(1000)
 
 const bgOk = await page.evaluate(() => { const i = document.querySelector('img.bg'); return !!i && i.naturalWidth === 1275 && i.naturalHeight === 1650 })
 bgOk ? ok('A: официальный бланк подложкой, 1275×1650') : bad('A: подложка', 'картинка бланка не загрузилась или не того размера')

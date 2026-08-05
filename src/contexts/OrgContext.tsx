@@ -36,6 +36,30 @@ interface OrgContextType {
 
 const OrgContext = createContext<OrgContextType | undefined>(undefined)
 
+// ─── ПАМЯТЬ О ВЫБРАННОМ ЦЕНТРЕ ───────────────────────────────────────────────
+// Выбор центра ПЕРЕЖИВАЕТ перезагрузку и прямой заход по адресу: человек, открывший
+// закладку на отчёт, оказывался в Main Office и молча смотрел на пустой экран
+// «выберите центр» — а он центр уже выбирал, полчаса назад.
+//
+// Ключ ПРИВЯЗАН К ПОЛЬЗОВАТЕЛЮ: на одном планшете сменяются повар и директор, и
+// центр одного не должен становиться центром другого.
+//
+// 'org' хранится ЯВНО, а не как отсутствие ключа: у админа Main Office — это тоже
+// выбор, и он обязан пережить перезагрузку так же, как выбор центра.
+const CENTER_KEY = (userId: string) => `mm.currentCenter.${userId}`
+
+function readSavedCenter(userId: string | null): string | null {
+  if (!userId) return null
+  try { return localStorage.getItem(CENTER_KEY(userId)) } catch { return null }
+}
+function saveCenter(userId: string | null, value: string | null) {
+  if (!userId) return
+  try {
+    if (value) localStorage.setItem(CENTER_KEY(userId), value)
+    else localStorage.removeItem(CENTER_KEY(userId))
+  } catch { /* приватный режим — просто не помним */ }
+}
+
 export function OrgProvider({ children }: { children: ReactNode }) {
   const { session } = useAuth()
   const [org, setOrg]                       = useState<Org | null>(null)
@@ -44,8 +68,16 @@ export function OrgProvider({ children }: { children: ReactNode }) {
   const [isOrgAdmin, setIsOrgAdmin]         = useState(false)
   const [modules, setModules]               = useState<string[]>([])
   const [navModules, setNavModules]         = useState<NavModule[] | null>(null)
-  const [currentCenter, setCurrentCenter]   = useState<Center | null>(null)
+  const [currentCenter, setCurrentCenterState] = useState<Center | null>(null)
   const [loading, setLoading]               = useState(true)
+  const userId = session?.user?.id ?? null
+
+  // Смена центра — единственное место, где память обновляется. Пока человек не
+  // выбрал другое, он остаётся там, где был.
+  const setCurrentCenter = (c: Center | null) => {
+    setCurrentCenterState(c)
+    saveCenter(userId, c ? c.id : 'org')
+  }
 
   useEffect(() => {
     if (!session) {
@@ -55,7 +87,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       setIsOrgAdmin(false)
       setModules([])
       setNavModules(null)
-      setCurrentCenter(null)
+      setCurrentCenterState(null)
       setLoading(false)
       return
     }
@@ -104,7 +136,14 @@ export function OrgProvider({ children }: { children: ReactNode }) {
         // (currentCenter = null); they can pick a concrete center from the header.
         // Everyone else defaults to their (first) accessible center so center-scoped
         // pages (Meal Count, Reports, Menu…) filter correctly out of the box.
-        setCurrentCenter(orgAdmin ? null : (accessible[0] ?? null))
+        // Сохранённый выбор ВЫИГРЫВАЕТ у умолчания — но только если центр всё ещё
+        // доступен этому человеку. Центр, к которому доступ отобрали, тихо
+        // подставлять нельзя: страницы читали бы чужой центр.
+        const saved = readSavedCenter(userId)
+        const savedCenter = saved && saved !== 'org' ? accessible.find(c => c.id === saved) ?? null : null
+        if (savedCenter) setCurrentCenterState(savedCenter)
+        else if (saved === 'org' && orgAdmin) setCurrentCenterState(null)
+        else setCurrentCenterState(orgAdmin ? null : (accessible[0] ?? null))
       }
 
       // Variant B — permission-driven navigation. On failure leave navModules

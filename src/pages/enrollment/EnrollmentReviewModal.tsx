@@ -4,7 +4,7 @@
 // Save writes back to enrollment_submissions.form_data with an edit-log entry.
 // No roster writes here — Approve/Reject land in slice C.
 
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { supabase } from '@/lib/supabase'
 import { type RecordCtx } from '@/lib/childFieldRegistry'
 import { buildDiff, getPath, setPath, type DiffRow } from '@/lib/enrollmentFieldMap'
@@ -99,6 +99,7 @@ export default function EnrollmentReviewModal({
   const [chosenMatch, setChosenMatch] = useState<string | 'new' | null>(null)
   const [rejecting, setRejecting] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
+  const rejectBoxRef = useRef<HTMLTextAreaElement | null>(null)
   const [showWarnings, setShowWarnings] = useState(false)
   // Reactivate-from-Review: a chosen inactive match must go through the return
   // window (reactivate & admit → admission_log) BEFORE Approve attaches the scan.
@@ -634,7 +635,15 @@ export default function EnrollmentReviewModal({
   }
 
   async function doReject() {
-    if (!rejectReason.trim()) return
+    // ОТКАЗ ОБЯЗАН ГОВОРИТЬ. Раньше кнопка просто стояла серой: причина требуется,
+    // но человек об этом узнавал только из мелкой серой строки внизу — и уходил
+    // с мыслью «Reject не работает». Замер 05.08 на боевых Rylee/Levi Coleman.
+    if (!rejectReason.trim()) {
+      setErr('Reject needs a reason — it is what the family is told later, and what the audit reads. Type it in the box above.')
+      rejectBoxRef.current?.focus()
+      rejectBoxRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      return
+    }
     setBusy(true); setErr(null)
     try {
       onDone(await rejectSubmission(submission, rejectReason.trim(), reviewerId))
@@ -1101,7 +1110,7 @@ export default function EnrollmentReviewModal({
           </label>
 
           {rejecting && (
-            <textarea value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="Reason for rejection (sent context for follow-up)…"
+            <textarea ref={rejectBoxRef} value={rejectReason} onChange={e => { setRejectReason(e.target.value); if (e.target.value.trim()) setErr(null) }} placeholder="Reason for rejection (sent context for follow-up)…"
               style={{ padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', minHeight: 56, resize: 'vertical' }} />
           )}
         </div>
@@ -1130,15 +1139,17 @@ export default function EnrollmentReviewModal({
             style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#d1d5db', fontSize: 13, fontWeight: 600, cursor: 'not-allowed' }}>
             Request completion
           </button>
+          {/* НЕ disabled без причины: серая кнопка, которая молчит, — это тихий
+              отказ. Кнопка нажимается всегда и ОБЪЯСНЯЕТ, чего не хватает. */}
           {rejecting ? (
-            <button onClick={doReject} disabled={!rejectReason.trim() || busy} style={{
+            <button onClick={doReject} disabled={busy} style={{
               padding: '8px 16px', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 700,
-              background: rejectReason.trim() && !busy ? '#991b1b' : '#d1d5db', color: '#fff',
-              cursor: rejectReason.trim() && !busy ? 'pointer' : 'default',
+              background: busy ? '#d1d5db' : '#991b1b', color: '#fff',
+              cursor: busy ? 'default' : 'pointer',
             }}>Confirm reject</button>
           ) : (
             // Solid red — an equal-weight destructive action opposite green Approve.
-            <button onClick={() => setRejecting(true)} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#991b1b', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>✕ Reject</button>
+            <button onClick={() => { setRejecting(true); setTimeout(() => { rejectBoxRef.current?.focus(); rejectBoxRef.current?.scrollIntoView({ block: 'center' }) }, 50) }} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#991b1b', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>✕ Reject</button>
           )}
           {/* Deliberate gap so Approve is never mistaken for / adjacent to Reject. */}
           <div style={{ width: 22 }} />

@@ -26,6 +26,7 @@ import { DEFAULT_VARIANT, isChimeVariant, phraseFor, type ChimeVariantKey } from
 import type { BannerState, MealWindow, ScheduleRow, UnbuckledWindow } from "@/lib/mealWindows";
 import { useMealMarkQueue } from "@/hooks/useMealMarkQueue";
 import MuteToggle from "@/components/sound/MuteToggle";
+import ExpectedCountsTile from "@/components/meal-count/ExpectedCountsTile";
 import { mutedSinceHHMM, muteNoteLine } from "@/lib/soundMute";
 import { speakLine } from "@/lib/soundKit";
 import { directorAlertRow, spokenMarkRefusal } from "@/lib/spokenLines";
@@ -184,7 +185,22 @@ interface MilkBucket { label: string; oz: number; }
 
 export default function MealCountPage({ portalRoles, variant }: { portalRoles?: string[]; variant?: Variant } = {}) {
   const { role, roles, user } = useAuth();
-  const { currentCenter, orgRole, org } = useOrg();
+  const { currentCenter, orgRole, org, centers, isOrgAdmin } = useOrg();
+  // Какие центры вообще кормят. Читается один раз; отказ НЕ глотается — пустой
+  // набор здесь означал бы «вкладок нет» на ровном месте.
+  const [mealSiteIds, setMealSiteIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!org?.id) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.schema("menumaker").from("centers")
+        .select("id, is_meal_site").eq("org_id", org.id).eq("is_meal_site", true);
+      if (cancelled) return;
+      if (error) { console.warn("[MealCount] meal sites:", error.message); return; }
+      setMealSiteIds(new Set((data ?? []).map((c: { id: string }) => c.id)));
+    })();
+    return () => { cancelled = true; };
+  }, [org?.id]);
 
   // Union of user_roles + admin from org bootstrap.
   const effectiveRoles = useMemo(() => {
@@ -790,8 +806,20 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
   if (!currentCenter?.id) return <div className="mc-loading">Pick a center in the switcher at the top to view meal counts.</div>;
   if (!classrooms.length) return <div className="mc-loading">No active classrooms for {currentCenter.name}.</div>;
 
+  // ПЛИТКА ПРОГНОЗА над сеткой: сколько порций ждать. Повару — его центр (он у
+  // него один), админу — вкладками все центры-питания. Это подсказка, а не факт:
+  // сама сетка ниже остаётся единственным местом, где отмечают съеденное.
+  // Вкладки — только центры ПИТАНИЯ: кухня-склад и демо-центр детей не кормят,
+  // и вкладка с вечным «прогноза нет» читалась бы как поломка.
+  const tileCenters = (isOrgAdmin ? centers : (currentCenter ? [currentCenter] : []))
+    .filter((c: { slug?: string }) => !!c.slug && mealSiteIds.has((c as { id: string }).id))
+    .map((c: { id: string; slug: string; name: string }) => ({ id: c.id, slug: c.slug, name: c.name }));
+
   return (
     <div className="mc-page">
+      {tileCenters.length > 0 && (
+        <ExpectedCountsTile centers={tileCenters} initialCenterId={currentCenter?.id ?? null} />
+      )}
       <div className="mc-header">
         <div className="mc-header-left">
           <h1 className="mc-title">{variant ? VARIANT_TITLE[variant] : "Meal Count"}</h1>

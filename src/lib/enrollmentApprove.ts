@@ -742,10 +742,17 @@ export async function approveIea(
 export async function rejectSubmission(
   sub: { id: string; child_id: string | null }, reason: string, reviewerId: string,
 ): Promise<ApproveResult> {
-  const { error } = await S().from('enrollment_submissions')
+  // `.select('id')` ОБЯЗАТЕЛЕН. Без него PostgREST отвечает успехом и на ноль
+  // затронутых строк: отказ RLS выглядел бы как «Rejected», строка осталась бы
+  // pending, и человек второй раз пришёл бы к той же заявке.
+  const { data, error } = await S().from('enrollment_submissions')
     .update({ status: 'rejected', reject_reason: reason, reviewed_by: reviewerId, reviewed_at: nowIso() })
     .eq('id', sub.id)
+    .select('id')
   if (error) throw error
+  if (!data || data.length === 0) {
+    throw new Error('The submission was not rejected — the database refused the change (no row was updated). Nothing was written.')
+  }
   return {
     message: 'Rejected',
     undo: async () => {

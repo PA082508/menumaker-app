@@ -124,6 +124,30 @@ await page.waitForTimeout(1000)
   await page.screenshot({ path: path.join(SHOTS, 'iea-scrolltop.png'), fullPage: false })
 }
 
+// ─── 6. Закрытая семья: поиск отвечает ИМЕНЕМ и причиной ─────────────────────
+{
+  await box.fill('Teighan Graves')
+  await page.waitForTimeout(1200)
+  const body = await page.locator('body').innerText()
+  const named = await page.locator('[data-offlist="1"]').count()
+  const txt = named ? (await page.locator('[data-offlist="1"]').first().innerText()).replace(/\s+/g, ' ').trim() : ''
+  named > 0 ? ok(`закрытая семья: найден по имени — «${txt}»`)
+            : bad('поиск по закрытой семье', 'ответ без имени ребёнка')
+  const hasReason = /already on file|Paid|left \d{2}\/\d{2}|no longer enrolled/.test(txt)
+  hasReason ? ok('причина названа рядом с именем') : bad('причина', `в ответе нет причины: ${txt}`)
+  const generic = body.includes('No family waiting for an application matches')
+  !generic ? ok('общего «здесь такого нет» больше нет') : bad('общий ответ', 'экран всё ещё отвечает общей фразой')
+  await page.screenshot({ path: path.join(SHOTS, 'iea-offlist.png'), fullPage: false })
+}
+
+// ─── 7. Ссылка на инструкцию ─────────────────────────────────────────────────
+{
+  const link = page.getByRole('link', { name: 'How this works' }).first()
+  const href = await link.getAttribute('href').catch(() => null)
+  href === '/instructions?doc=income-categories' ? ok('с экрана есть ссылка «How this works» на инструкцию')
+                                                 : bad('ссылка на инструкцию', `href=${href}`)
+}
+
 await ctx.close()
 console.log(fails.length ? `\nПРОВАЛЕНО: ${fails.length}\n  ${fails.join('\n  ')}` : '\nВСЁ ЗЕЛЁНОЕ')
 process.exit(fails.length ? 1 : 0)

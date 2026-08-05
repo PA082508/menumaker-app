@@ -29,7 +29,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { parseIeaFiscalYear, frpExpiryDefault, recordDetermination } from '@/lib/enrollmentApprove'
 import { IEA_DOC_TYPE, loadIeaOnFile, needsIeaOnFile } from '@/lib/ieaOnFile'
 import {
-  confirmRefusal, mergeHouseholds, searchFamilies, sortFamiliesByWork, whyNotListed,
+  confirmRefusal, mergeHouseholds, nameMatches, searchFamilies, sortFamiliesByWork, whyNotListed,
   type ConfirmInput, type FamilyChild, type FamilyRow, type Frp,
 } from '@/lib/ieaConfirm'
 import ScrollToTop from '@/components/common/ScrollToTop'
@@ -54,6 +54,10 @@ export default function IeaConfirmPage() {
   const allowed = roles.includes('admin') || roles.includes('office_manager')
 
   const [rows, setRows] = useState<Row[]>([])
+  // Дети центра, которых список НЕ держит — включая целые дома, где ждать нечего.
+  // Нужны поиску: запрос, совпавший с таким ребёнком, обязан ответить ЕГО ИМЕНЕМ
+  // и причиной, а не общим «здесь такого нет».
+  const [offList, setOffList] = useState<FamilyChild[]>([])
   const [loading, setLoading] = useState(false)
   const [loadErr, setLoadErr] = useState<string | null>(null)
   const [fy, setFy] = useState<string | null>(null)
@@ -165,8 +169,15 @@ export default function IeaConfirmPage() {
       }
     })
 
-    // Семья без единого ожидающего ребёнка на этом экране делать нечего.
+    // Семья без единого ожидающего ребёнка на этом экране делать нечего — но её
+    // дети остаются в поисковом индексе: закрытый дом это не «нет такого ребёнка».
     const withWork = rowsBuilt.filter(f => f.children.length > 0)
+    const listed = new Set(withWork.flatMap(f => f.children.map(c => c.rosterId)))
+    setOffList(
+      rowsBuilt.flatMap(f => [...f.household, ...f.former])
+        .filter(c => !listed.has(c.rosterId))
+        .filter((c, i, arr) => arr.findIndex(x => x.rosterId === c.rosterId) === i),
+    )
     setRows(sortFamiliesByWork(withWork)
       .map(f => ({ ...(f as Row0), input: { frp: '', documentDate: '', paperInSafe: false } })))
     setLoading(false)
@@ -228,6 +239,10 @@ export default function IeaConfirmPage() {
   }
 
   const shown = searchFamilies(rows, q)
+  // Совпадения среди тех, кого список не держит вовсе (закрытые дома, Paid, ушедшие).
+  const offMatches = q.trim()
+    ? offList.filter(c => nameMatches(c.name, q))
+    : []
   // Счётчик считает РЕБЁНКА ОДИН РАЗ. Строка списка — опекун, и у ребёнка с тремя
   // доверенными лицами три строки; сложить длины строк значило бы показать число
   // втрое больше того, что знает жёлтая плашка.
@@ -240,6 +255,11 @@ export default function IeaConfirmPage() {
       </div>
       <div style={{ fontSize: 13, color: '#666', marginBottom: 18 }}>
         {currentCenter?.name ?? '—'} · {fy ?? 'fiscal year unresolved'} · one application covers the whole household
+        {' · '}
+        {/* Две двери в одну запись: стопка бумаг — здесь, один ребёнок и одно
+            событие — в карточке. Правила за обеими одинаковы, и инструкция об этом. */}
+        <a href="/instructions?doc=income-categories" target="_blank" rel="noreferrer"
+           style={{ color: GREEN, fontWeight: 600, textDecoration: 'underline' }}>How this works</a>
       </div>
 
       {!fy && (
@@ -279,9 +299,30 @@ export default function IeaConfirmPage() {
            ошибку в данных, которых никто не ломал. */
         : shown.length === 0 && q.trim() ? (
           <div style={{ color: '#6b7280', fontSize: 13, lineHeight: 1.6 }}>
-            No family waiting for an application matches <strong style={{ color: '#0a3320' }}>{q.trim()}</strong> at {currentCenter?.name ?? 'this centre'}.
-            <br />This list holds only children with <strong>Free or Reduced</strong> and no application on file.
-            A child who is Paid, or whose application is already filed, is not here — and neither is a spelling that does not match.
+            {offMatches.length > 0 ? (
+              <>
+                {/* НАЙДЕН, НО НЕ ЗДЕСЬ. Общее «такого здесь нет» про ребёнка, который
+                    в центре есть, отправляет человека искать поломку в данных. */}
+                Found at {currentCenter?.name ?? 'this centre'}, but not waiting for an application:
+                <div style={{ marginTop: 6 }}>
+                  {offMatches.slice(0, 6).map(c => (
+                    <div key={c.rosterId} data-offlist="1" style={{ padding: '2px 0' }}>
+                      <strong style={{ color: '#0a3320' }}>{c.name}</strong>
+                      <span style={{ color: '#92400e' }}> — {whyNotListed(c)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ marginTop: 6 }}>
+                  This list holds only children with <strong>Free or Reduced</strong> and no application on file.
+                </div>
+              </>
+            ) : (
+              <>
+                No family waiting for an application matches <strong style={{ color: '#0a3320' }}>{q.trim()}</strong> at {currentCenter?.name ?? 'this centre'}.
+                <br />This list holds only children with <strong>Free or Reduced</strong> and no application on file.
+                A child who is Paid, or whose application is already filed, is not here — and neither is a spelling that does not match.
+              </>
+            )}
           </div>
         )
         : shown.length === 0 ? <div style={{ color: '#6b7280', fontSize: 13 }}>Nothing waiting — every Free/Reduced child at this centre has an application on file.</div>

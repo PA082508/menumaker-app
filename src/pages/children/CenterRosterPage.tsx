@@ -8,6 +8,7 @@ import ChildSettingsPage from './ChildSettingsPage'
 import { fmtDateOnly } from '@/lib/dateOnly'
 import EmergencyPopup from './EmergencyPopup'
 import AddChildRouterModal from './AddChildRouter'
+import AddChildDoors from './AddChildDoors'
 import { useOrg } from '@/contexts/OrgContext'
 import {
   writeChildField, changedFields, provenanceProblem,
@@ -16,6 +17,7 @@ import {
 import { fetchEnrollmentActionCounts } from '@/lib/enrollmentActionCount'
 import { useAuth } from '@/hooks/useAuth'
 import { displayChildName } from '@/lib/childName'
+import { similarChildren, candidateLine, type DedupCandidate } from '@/lib/childDedup'
 import { stripStoredKey } from '@/lib/rosterKey'
 import Avatar from '@/components/Avatar'
 import Button, { ButtonRow } from '@/components/ui/Button'
@@ -252,7 +254,8 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
   const [toast, setToast] = useState<string|null>(null)
   // IA v2 — People block: page-level action strip. Pending count feeds the Enrollment badge.
   const [pendingCount, setPendingCount] = useState<number>(0)
-  const [showPacket, setShowPacket] = useState(false)   // Add Child → packet Link + QR panel
+  const [showPacket, setShowPacket] = useState(false)   // 🔗 Online → packet Link + QR panel
+  const [showDoors, setShowDoors] = useState(false)     // Add Child → выбор двери
 
   // One source for the badge — the actionable predicate lives in the DB function,
   // shared with the Staff badge (see enrollmentActionCount.ts). `.children` here.
@@ -384,8 +387,8 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
       {/* IA v2 — page-level action strip: the sidebar names WHO, actions live here.
           Buttons come from components/ui/Button — see platform-standards §Buttons. */}
       <ButtonRow style={{ marginBottom: 16 }}>
-        <Button variant="primary" onClick={() => setShowPacket(true)}
-          title="Open the enrollment packet link + QR for a family to fill on-site or on their phone">
+        <Button variant="primary" onClick={() => setShowDoors(true)}
+          title="Two doors: send the family the online packet, or enter the child by hand from the paper on your desk">
           ➕ Add Child
         </Button>
         <Button onClick={() => navigate('/enrollment-inbox?from=children')} badge={pendingCount}>
@@ -861,6 +864,16 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
           onRawInsert={() => { setShowAddRouter(false); setShowAddChild(true) }}
         />
       )}
+      {/* ДВЕ ДВЕРИ СРАЗУ. Раньше «Add Child» открывал только пакетное окно, и путь
+          «бумага уже на столе» приходилось знать наизусть. Обе двери равноправны:
+          онлайн — когда семья заполняет сама, ручной — когда заполнять нечего. */}
+      {showDoors && currentCenter && (
+        <AddChildDoors
+          onOnline={() => { setShowDoors(false); setShowPacket(true) }}
+          onManual={() => { setShowDoors(false); setShowAddChild(true) }}
+          onClose={() => setShowDoors(false)}
+        />
+      )}
       {showPacket && center && (
         <AddChildPacketPanel center={{ id: center.id, name: center.name, slug: center.slug }} onClose={() => setShowPacket(false)} />
       )}
@@ -896,6 +909,14 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
             }
           }}
           onClose={() => setShowAddChild(false)}
+          // «Use this child» — не завод, а ВОЗВРАТ к существующему: закрываем окно
+          // и открываем его карточку. Ни одной строки при этом не пишется.
+          onUseExisting={(rosterId) => {
+            setShowAddChild(false)
+            setChildSettingsId(rosterId)
+            setHighlightId(rosterId)
+            setTimeout(() => setHighlightId(id => id === rosterId ? null : id), 4000)
+          }}
         />
       )}
       {toast && (
@@ -1147,8 +1168,9 @@ function EditChildPanel({ child, classrooms, onDone }: {
 //    src/pages/children/quickAddPaidOnly.guard.test.ts
 const QUICK_ADD_FRP = 'P' as const
 
-function AddChildModal({ centerId, orgId, classrooms, onDone, onClose }: {
+function AddChildModal({ centerId, orgId, classrooms, onDone, onClose, onUseExisting }: {
   centerId: string; orgId: string; classrooms: Classroom[]; onDone: (child: Child) => void; onClose: () => void
+  onUseExisting: (rosterId: string) => void
 }) {
   // МИНИМУМ ДЛЯ ПОСАДКИ В СЕТКУ (владелец, 04.08): имя · ДР · комната · date_in ·
   // тип молока. Категория здесь НЕ спрашивается вовсе — она фиксирована на P и
@@ -1163,6 +1185,37 @@ function AddChildModal({ centerId, orgId, classrooms, onDone, onClose }: {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }))
+
+  // ─── ФОНОВЫЙ ДЕДУП ─────────────────────────────────────────────────────────
+  // Проверка идёт САМА, на вводе имени. Дедуп по кнопке делает тот, кто и так
+  // сомневается; двойников заводит тот, кто уверен. Ростер центра читается один
+  // раз при открытии окна — двести строк, дешевле любого запроса на каждую букву.
+  const [pool, setPool] = useState<DedupCandidate[]>([])
+  const [dismissed, setDismissed] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const { data, error } = await supabase.schema('menumaker').from('roster')
+        .select('id, child_name, first_name, last_name, birthday, classroom_id, is_active')
+        .eq('center_id', centerId).limit(1000)
+      // Отказ здесь молчит НАРОЧНО: дедуп — подсказка, а не замок. Сорванная
+      // подсказка не должна мешать заводить ребёнка, но и врать «двойников нет»
+      // она не будет: плашки просто не появится.
+      if (cancelled || error || !data) return
+      const roomName = new Map(classrooms.map(c => [c.id, c.name]))
+      setPool(data.map((r: any) => ({
+        rosterId: r.id, childName: r.child_name ?? `${r.last_name ?? ''} ${r.first_name ?? ''}`.trim(),
+        firstName: r.first_name, lastName: r.last_name, birthday: r.birthday,
+        room: roomName.get(r.classroom_id) ?? null, isActive: r.is_active !== false,
+      })))
+    })()
+    return () => { cancelled = true }
+  }, [centerId, classrooms])
+
+  const similar = useMemo(
+    () => (dismissed ? [] : similarChildren(pool, { first: form.first_name, last: form.last_name, birthday: form.birthday || null })),
+    [pool, form.first_name, form.last_name, form.birthday, dismissed],
+  )
 
   async function save() {
     if (!form.first_name || !form.last_name || !form.birthday || !form.classroom_id) {
@@ -1240,6 +1293,29 @@ function AddChildModal({ centerId, orgId, classrooms, onDone, onClose }: {
           <button onClick={onClose} style={{ background:'rgba(255,255,255,0.15)', border:'none', color:'#fff', width:30, height:30, borderRadius:'50%', cursor:'pointer', fontSize:18 }}>×</button>
         </div>
         <div style={{ padding:24, display:'flex', flexDirection:'column', gap:14 }}>
+          {/* ПЛАШКА ДВОЙНИКА. Ничего не решает за человека: показывает найденное
+              и оставляет обе двери. «Use this child» уводит в карточку существующего,
+              «Keep creating new» гасит подсказку и не спрашивает второй раз. */}
+          {similar.length > 0 && (
+            <div data-dedup="1" style={{ background:'#fffbeb', border:'1.5px solid #fcd34d', borderRadius:10, padding:'10px 12px', fontSize:13, color:'#78350f' }}>
+              <div style={{ fontWeight:700, marginBottom:6 }}>
+                Similar child{similar.length > 1 ? 'ren' : ''} found — is this the same child?
+              </div>
+              {similar.slice(0, 4).map(c => (
+                <div key={c.rosterId} style={{ display:'flex', alignItems:'center', gap:10, padding:'3px 0', flexWrap:'wrap' }}>
+                  <span>{candidateLine(c)}</span>
+                  <button onClick={() => onUseExisting(c.rosterId)} style={{
+                    padding:'4px 10px', borderRadius:7, border:'none', background:'#0f4c35', color:'#fff',
+                    fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>Use this child</button>
+                </div>
+              ))}
+              <button onClick={() => setDismissed(true)} style={{
+                marginTop:6, padding:'4px 10px', borderRadius:7, border:'1px solid #d6bb7a', background:'#fff',
+                color:'#78350f', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}>
+                Keep creating new
+              </button>
+            </div>
+          )}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
             <div>
               <label style={lbl}>First Name *</label>

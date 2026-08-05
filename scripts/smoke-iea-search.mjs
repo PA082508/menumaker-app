@@ -19,6 +19,7 @@
 import { chromium } from 'playwright'
 import path from 'node:path'
 import fs from 'node:fs'
+import { pickCentre } from './lib/switchCentre.mjs'
 
 const PROD = process.env.PROD_ORIGIN || 'https://menumaker-app.vercel.app'
 const APP = process.env.APP_ORIGIN || 'http://localhost:4173'
@@ -54,25 +55,6 @@ await page.waitForTimeout(6000)
 
 // Экран центро-зависим. Переключатель центров живёт в боковой панели; после
 // переименования 04.08 орг-вход называется Main Office (раньше Organization).
-async function pickCentre() {
-  for (const label of ['Main Office', 'Organization']) {
-    const el = page.getByText(label, { exact: true }).first()
-    if (await el.count().catch(() => 0)) {
-      await el.click().catch(() => {})
-      await page.waitForTimeout(900)
-      const c = page.getByText(CENTER, { exact: false }).first()
-      if (await c.count().catch(() => 0)) {
-        await c.click().catch(() => {})
-        await page.waitForTimeout(3500)
-        await page.keyboard.press('Escape').catch(() => {})
-        await page.mouse.move(1200, 700)
-        return true
-      }
-    }
-  }
-  return false
-}
-
 const denied = await page.getByText('not part of a centre director').count().catch(() => 0)
 if (denied) {
   console.error('Сессия в .demo-profile — директорская. Этот экран орг-уровневый, проба невозможна под ней.')
@@ -80,8 +62,8 @@ if (denied) {
   await ctx.close(); process.exit(3)
 }
 
-await pickCentre()
-await page.waitForTimeout(2500)
+console.log(`    активный центр: ${await pickCentre(page, CENTER)}`)
+await page.waitForTimeout(2000)
 
 const box = page.getByPlaceholder('Search by child or guardian name…')
 if (!(await box.count())) {

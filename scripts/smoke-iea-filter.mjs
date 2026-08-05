@@ -19,6 +19,7 @@
 import { chromium } from 'playwright'
 import path from 'node:path'
 import fs from 'node:fs'
+import { pickCentre } from './lib/switchCentre.mjs'
 
 const PROD = process.env.PROD_ORIGIN || 'https://menumaker-app.vercel.app'
 const APP = process.env.APP_ORIGIN || 'http://localhost:4173'
@@ -53,18 +54,8 @@ await page.evaluate(({ k, v }) => localStorage.setItem(k, v), sess)
 async function openCentre(name) {
   await page.goto(`${APP}/iea-confirm`, { waitUntil: 'domcontentloaded' })
   await page.waitForTimeout(5000)
-  for (const label of ['Main Office', 'Organization']) {
-    const el = page.getByText(label, { exact: true }).first()
-    if (await el.count().catch(() => 0)) {
-      await el.click().catch(() => {})
-      await page.waitForTimeout(900)
-      const c = page.getByText(name, { exact: false }).first()
-      if (await c.count().catch(() => 0)) { await c.click().catch(() => {}); await page.waitForTimeout(4000); break }
-    }
-  }
-  await page.keyboard.press('Escape').catch(() => {})
-  await page.mouse.move(1200, 700)
-  await page.waitForTimeout(1500)
+  await pickCentre(page, name)
+  await page.waitForTimeout(2500)
 }
 
 const header = async () => (await page.locator('body').innerText())

@@ -236,10 +236,30 @@ function DetailPopup({ data, onClose, classrooms, onChanged }: { data: PopupData
 export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?: string } = {}) {
   const { centerId: centerIdParam } = useParams<{ centerId: string }>()
   const centerId = centerIdProp ?? centerIdParam
-  const { centers, currentCenter, org, isOrgAdmin } = useOrg()
+  const { centers, org, isOrgAdmin } = useOrg()
   const { user } = useAuth()
   const navigate = useNavigate()
-  const center = centers.find(c => c.id === centerId)
+  // ЦЕНТР СТРАНИЦЫ — ТОТ, ЧТО В АДРЕСЕ, а не тот, что выбран в переключателе.
+  // Замер 05.08 (ZZ Demo): демо-центра нет в списке доступных, страница ростера
+  // при этом открывается по прямому адресу — и всё, что было завязано на
+  // `currentCenter`, молча не работало: «Add Child» нажимался, а окно не
+  // появлялось вовсе. Ни ошибки, ни модалки — самый дорогой вид отказа.
+  const ctxCenter = centers.find(c => c.id === centerId)
+  const [fetchedCenter, setFetchedCenter] = useState<{ id: string; name: string; slug: string } | null>(null)
+  useEffect(() => {
+    if (!centerId || ctxCenter) { setFetchedCenter(null); return }
+    let cancelled = false
+    ;(async () => {
+      const { data, error } = await supabase.schema('menumaker').from('centers')
+        .select('id, name, slug').eq('id', centerId).maybeSingle()
+      if (cancelled) return
+      // Отказ НЕ глотаем: без имени и slug пакетное окно не соберёт ни ссылку, ни QR.
+      if (error) { console.warn('[CenterRoster] center lookup:', error.message); return }
+      if (data) setFetchedCenter(data as { id: string; name: string; slug: string })
+    })()
+    return () => { cancelled = true }
+  }, [centerId, ctxCenter?.id])
+  const center = ctxCenter ?? fetchedCenter
 
   const [classrooms, setClassrooms] = useState<Classroom[]>([])
   const [allChildren, setAllChildren] = useState<Child[]>([])  // active + inactive (search spans both)
@@ -845,9 +865,9 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
           onDone={() => { setReactivateTarget(null); loadRoster(true) }}
         />
       )}
-      {showAddRouter && currentCenter && (
+      {showAddRouter && center && (
         <AddChildRouterModal
-          centerId={currentCenter.id}
+          centerId={center.id}
           orgId={org?.id ?? ''}
           classrooms={classrooms}
           reviewerId={user?.id ?? ''}
@@ -867,7 +887,7 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
       {/* ДВЕ ДВЕРИ СРАЗУ. Раньше «Add Child» открывал только пакетное окно, и путь
           «бумага уже на столе» приходилось знать наизусть. Обе двери равноправны:
           онлайн — когда семья заполняет сама, ручной — когда заполнять нечего. */}
-      {showDoors && currentCenter && (
+      {showDoors && center && (
         <AddChildDoors
           onOnline={() => { setShowDoors(false); setShowPacket(true) }}
           onManual={() => { setShowDoors(false); setShowAddChild(true) }}
@@ -881,9 +901,9 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
           заводить ребёнка с бумагой на столе — его работа. Категория здесь
           по-прежнему фиксирована на P (гард quickAddPaidOnly): F/R ставится
           в карточке вместе с носителем и документной датой. */}
-      {showAddChild && currentCenter && (
+      {showAddChild && center && (
         <AddChildModal
-          centerId={currentCenter.id}
+          centerId={center.id}
           orgId={org?.id ?? ''}
           classrooms={classrooms}
           onDone={(newChild) => {

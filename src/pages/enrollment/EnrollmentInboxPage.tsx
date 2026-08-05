@@ -64,14 +64,33 @@ function StatusBadge({ v }: { v: ValidationResult }) {
   )
 }
 
+// ЯРЛЫК ПРОИСХОЖДЕНИЯ ГОВОРИТ ПРАВДУ О ПУТИ, А НЕ ДЕЛИТ МИР НАДВОЕ.
+// Было: всё, что не скан, звалось «Online» — и ручные артефакты снятого окна
+// выглядели как подача семьи с витрины. Замер 05.08: Wilkes Harper приехал
+// `manual_entry`, а в списке значился Online; Isaac Rife — настоящая витринная
+// подача с телефона. Разница не косметическая: по ней решают, спрашивать ли
+// с семьи бумагу.
+//
+// Историю НЕ ПЕРЕПИСЫВАЕМ: старые строки остаются как есть, ярлык читает их
+// `source` и называет путь своим именем.
+const SOURCE_TAG: Record<string, { label: string; bg: string; fg: string; title: string }> = {
+  online:       { label: '🌐 Online',                     bg: '#eef7f1', fg: '#0f4c35',
+                  title: 'Submitted by the family from the storefront' },
+  manual_entry: { label: '✍️ Manual entry (retired path)', bg: '#fff7ed', fg: '#9a3412',
+                  title: 'Typed in by staff through the old quick window — that door is retired' },
+  paper_entry:  { label: '📷 Scan',                        bg: '#f4f4f5', fg: '#6b7280',
+                  title: 'A photographed paper form. This channel no longer creates rows — a scan is attached to a record.' },
+}
+
 function SourceTag({ source }: { source: string }) {
-  const online = source !== 'paper_entry'
+  const t = SOURCE_TAG[source] ?? { label: `· ${source}`, bg: '#f4f4f5', fg: '#6b7280',
+                                    title: 'Unknown path — the row carries a source this screen does not know' }
   return (
-    <span style={{
-      fontSize: 11, fontWeight: 600, color: '#6b7280', background: '#f4f4f5',
+    <span title={t.title} style={{
+      fontSize: 11, fontWeight: 600, color: t.fg, background: t.bg,
       padding: '2px 8px', borderRadius: 6,
     }}>
-      {online ? '🌐 Online' : '📷 Paper'}
+      {t.label}
     </span>
   )
 }

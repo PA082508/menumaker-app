@@ -1051,7 +1051,11 @@ export default function ChildSettingsPage({
         {/* Tabs */}
         <div style={{ display:'flex', overflowX:'auto', background:'#f8faf8', borderBottom:'1.5px solid #e8f0e8', flexShrink:0 }}>
           {TABS.map((t, i) => (
-            <button key={i} onClick={() => setTab(i)} style={{
+            // data-tab — опора для проб: подпись вкладки несёт эмодзи и повторяется
+            // в боковом меню («📁 Documents»), и проба, ищущая по тексту, уходила
+            // в навигацию вместо карточки.
+            <button key={i} data-tab={t.replace(/[^\p{L} ]/gu, '').trim().toLowerCase().replace(/\s+/g, '-')}
+              onClick={() => setTab(i)} style={{
               padding:'10px 14px', border:'none', cursor:'pointer', fontFamily:'inherit',
               fontSize:12, fontWeight:600, whiteSpace:'nowrap',
               background: tab===i ? '#fff' : 'transparent',

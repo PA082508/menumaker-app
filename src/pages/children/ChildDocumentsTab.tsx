@@ -11,6 +11,7 @@ import { supabase } from '@/lib/supabase'
 import { detectAndCrop } from '@/lib/detectAndCrop'
 import { hasOriginalReplica, originalReplica } from '@/lib/originalFormReplicas'
 import { captureAndUploadSnapshot, getLatestSnapshot } from '@/lib/enrollmentSnapshot'
+import { documentDateOf } from '@/lib/enrollmentApprove'
 import {
   CHILD_DOCS_BUCKET, hasFile, loadChildDocs, loadDocTypes, fileUploadedDoc, unfiledNames,
   type ChildDocRow, type DocTypeRow,
@@ -251,7 +252,7 @@ function ApprovedEnrollmentForms({ rosterId }: { rosterId: string }) {
 
   async function load() {
     const { data } = await supabase.schema('menumaker').from('enrollment_submissions')
-      .select('id,submission_type,form_data,signatures,reviewed_at,created_at')
+      .select('id,submission_type,form_data,signatures,signature_date,reviewed_at,created_at')
       .eq('child_id', rosterId).eq('status', 'approved')
       .order('reviewed_at', { ascending: false })
     const withReplica = (data ?? []).filter((s: any) => hasOriginalReplica(s.submission_type))
@@ -309,7 +310,8 @@ function ApprovedEnrollmentForms({ rosterId }: { rosterId: string }) {
       ))}
       {viewer && (
         <ApprovedFormViewer submissionId={viewer.id} submissionType={viewer.submission_type}
-          formData={viewer.form_data} signatures={viewer.signatures} onClose={() => setViewer(null)} />
+          formData={viewer.form_data} signatures={viewer.signatures}
+          signatureDate={documentDateOf(viewer as any)} onClose={() => setViewer(null)} />
       )}
     </div>
   )

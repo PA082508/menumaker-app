@@ -11,11 +11,15 @@ import { useEffect, useRef } from 'react'
 import { originalReplica } from '@/lib/originalFormReplicas'
 
 export default function OriginalFormViewer({
-  submissionType, formData, signatures, onClose, note,
+  submissionType, formData, signatures, signatureDate, onClose, note,
 }: {
   submissionType: string
   formData: any
   signatures: Record<string, any> | null | undefined
+  /** Дата подписи — она стоит НА бланке, но живёт не в form_data, а в самой подаче
+   *  (её печатает сервер при подаче). Реплика без неё нарисовала бы форму с пустой
+   *  датой подписи — то есть не тем, что подписали. */
+  signatureDate?: string | null
   onClose: () => void
   // On-screen provenance marker (canon: an artifact declares its source). e.g. a live render
   // that is NOT a frozen snapshot passes "Live render — no snapshot on file". Never printed.
@@ -27,11 +31,11 @@ export default function OriginalFormViewer({
   // Push the data once the replica has loaded, and again if the data changes.
   function inject() {
     iframeRef.current?.contentWindow?.postMessage(
-      { type: 'original-render', formData: formData ?? {}, signatures: signatures ?? {} },
+      { type: 'original-render', formData: formData ?? {}, signatures: signatures ?? {}, signatureDate: signatureDate ?? null },
       '*',
     )
   }
-  useEffect(() => { inject() }, [formData, signatures]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { inject() }, [formData, signatures, signatureDate]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Esc closes.
   useEffect(() => {

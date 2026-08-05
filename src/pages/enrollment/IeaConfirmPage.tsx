@@ -259,6 +259,15 @@ export default function IeaConfirmPage() {
 
       // 2) БУМАГА В ДЕЛЕ — она гасит жёлтую плашку. Только когда бумага названа.
       if (docDate && row.input.paperInSafe) {
+        // Второй Confirm по той же семье не должен родить второй документ. Так
+        // бывает не от небрежности: если с первого раза определение легло, а
+        // бумага не легла (сеть, права), человек нажмёт ещё раз — и обязан
+        // получить недостающее, а не двойника у тех, кому уже подшили.
+        const { data: already, error: readErr } = await supabase.schema('menumaker').from('documents')
+          .select('id').eq('roster_id', c.rosterId).eq('doc_type', IEA_DOC_TYPE).eq('valid_from', docDate).limit(1)
+        if (readErr) { problems.push(`${c.name}: paper record — ${readErr.message}`); continue }
+        if (already?.length) continue
+
         const { error } = await supabase.schema('menumaker').from('documents').insert({
           org_id: org.id, center_id: currentCenter.id, doc_type: IEA_DOC_TYPE,
           title: 'Income eligibility application — paper on file',

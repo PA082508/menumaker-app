@@ -27,6 +27,7 @@ import ChildExportPanel from './ChildExportPanel'
 import ChildDocumentsTab from './ChildDocumentsTab'
 import { fmtDateOnly } from '@/lib/dateOnly'
 import { similarChildren, candidateLine, type DedupCandidate } from '@/lib/childDedup'
+import { milkByAgeLine } from '@/lib/milkByAge'
 
 // registry helpers don't export isEmpty — mirror it locally for the filled-indicator.
 const isEmptyVal = (v: any) => v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0)
@@ -43,6 +44,7 @@ interface Child {
   first_name: string | null; last_name: string | null; child_name: string | null
   birthday: string | null; date_in: string | null; date_out: string | null
   frp: string | null; frp_expires: string | null; milk_kind: string | null
+  substitute_milk: string | null   // чем заменено по справке; пусто = расчёт по возрасту
   allergies: string | null; is_active: boolean
   child_address: string | null; has_health_condition: boolean | null
   development_notes: string | null; accommodations: string | null
@@ -418,16 +420,15 @@ export default function ChildSettingsPage({
   }
 
   // ─── СОЗДАНИЕ РЕБЁНКА ИЗ ЭТОЙ ЖЕ КАРТОЧКИ ─────────────────────────────────
-  // Обязательный минимум — ровно пять полей: имя · фамилия · ДР · комната ·
-  // дата поступления · молоко. На них можно остановиться: остальное дозаполняется
-  // позже руками или онлайн-формами, и красные бейджи вкладок про это помнят.
+  // Обязательный минимум — имя · фамилия · ДР · комната · дата поступления.
+  // МОЛОКА ЗДЕСЬ НЕТ (канон 05.08): оно выводится из даты рождения, и требовать
+  // его отдельно значило бы просить человека повторить то, что система знает.
   const CREATE_MIN: { key: string; label: string; get: () => any }[] = [
     { key: 'first_name',   label: 'First name',  get: () => child?.first_name },
     { key: 'last_name',    label: 'Last name',   get: () => child?.last_name },
     { key: 'birthday',     label: 'Birthday',    get: () => child?.birthday },
     { key: 'classroom_id', label: 'Classroom',   get: () => child?.classroom_id },
     { key: 'date_in',      label: 'Start date',  get: () => child?.date_in },
-    { key: 'milk_kind',    label: 'Milk type',   get: () => child?.milk_kind },
   ]
 
   async function createChild() {
@@ -440,7 +441,7 @@ export default function ChildSettingsPage({
       showResults()
       // Недостающее живёт на вкладке Profile (и молоко — на CACFP): уводим туда,
       // где оно вводится, а не оставляем человека искать самому.
-      setTab(missing[0].key === 'milk_kind' ? 4 : 0)
+      setTab(0)
       return
     }
     setSaving(true); setWriteResults(null)
@@ -754,6 +755,45 @@ export default function ChildSettingsPage({
 
   const renderEditor = (f: FieldDef) => {
     const v = fieldValue(f, ctx)
+    // ─── МОЛОКО: СТРОКА-РАСЧЁТ, А НЕ ВВОД ────────────────────────────────────
+    // Считается из ДР и пересчитывается живьём, пока её вводят (в том числе в
+    // режиме создания). Единственный ввод — медицинская замена: она бьёт расчёт
+    // и показывается вместо него, с пометкой, чем именно она обоснована.
+    if (f.key === 'milk_kind') {
+      // Признак замены — САМО ЗНАЧЕНИЕ `substitute_milk`, а не отдельный флаг:
+      // отдельный флаг однажды разойдётся с текстом, и карточка скажет «замена»,
+      // не сумев назвать, чем именно. Так же читает и сетка питания.
+      const subText = ((child as any)?.substitute_milk ?? '') as string
+      const sub = !!subText.trim()
+      return (
+        <div>
+          <div style={{ ...roVal }}>
+            {sub
+              ? <span><strong style={{ color: '#0a3320' }}>{subText}</strong><span style={{ color: '#92400e' }}> — medical substitution</span></span>
+              : <span>{milkByAgeLine(child?.birthday ?? null, todayStr)}</span>}
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, color: '#374151', marginTop: 6 }}>
+            <input type="checkbox" checked={sub} data-milk-sub="1"
+              onChange={e => {
+                if (e.target.checked) {
+                  // Включение только ОТКРЫВАЕТ ввод: пока не сказано, чем заменено,
+                  // замены нет — обещание «медзамена» без названия ничего не значит.
+                  setTimeout(() => document.getElementById('field-substitute_milk')
+                    ?.querySelector('input')?.focus(), 30)
+                } else {
+                  set('substitute_milk' as keyof Child, null)
+                }
+              }} />
+            Medical substitution — served by a doctor’s note
+          </label>
+          <div style={{ fontSize: 11.5, color: '#6b7280', marginTop: 4 }}>
+            {sub
+              ? 'The doctor’s note is the document behind this — its date goes in the panel above, the paper itself on Documents.'
+              : 'Milk and ounces follow from the birthday. Fill the substitution field below only when a doctor’s note says otherwise.'}
+          </div>
+        </div>
+      )
+    }
     if (f.readOnly) return <div style={roVal}>{v ?? '—'}</div>
     switch (f.type) {
       case 'textarea':

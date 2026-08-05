@@ -332,10 +332,19 @@ export default function EnrollmentReviewModal({
         birthday,
         classroom_id: newClassroom,
         date_in: today,
-        frp: 'F',
+        // КАТЕГОРИЯ ПРИ ЗАВОДЕ — ВСЕГДА P. Здесь стояло 'F', и каждый ребёнок,
+        // заведённый из формы, становился Free определением, за которым не стоит
+        // ни одной бумаги. Замер 05.08: 52 активных ребёнка с F и БЕЗ единого
+        // определения (ни income_eligibility, ни бумаги в деле) — эта дверь их и
+        // производила. F/R ставится только `recordDetermination` с документной
+        // датой, как в карточке и в IEA Review. Гард: createNewPaidOnly.guard.test.ts
+        frp: 'P',
         ...deriveMealFields(birthday),
       }
-      const newId = await insertRosterChild(submission, patch)
+      // Ребёнок, заведённый из документа, тоже получает биографию: поля идут
+      // журнальным путём с датой документа этой самой формы.
+      const newId = await insertRosterChild(submission, patch,
+        { documentDate: effectiveDocDate, formKey: submission.submission_type, who: reviewerName })
       // Add it to the candidate list so the dropdown has an option to select, then
       // select it — resolvedChildId is derived, so setting docChild clears docNeedsChild.
       setCandidates(prev => [
@@ -462,6 +471,11 @@ export default function EnrollmentReviewModal({
   const dupUnresolved = isCacfp && !resolvedChildId && cacfpMatches.length > 0 && !chosenMatch
   const docNeedsChild = isDocument && !resolvedChildId && !docChild
   const docNeedsSig = isDocument && !!slot && !alreadyCountersigned && !countersignImage
+  // ПОДПИСЬ ПРОГРАММНОГО АДМИНИСТРАТОРА ОБЯЗАТЕЛЬНА ДЛЯ CACFP-ФОРМЫ (канон 05.08).
+  // Слот без обязательности — это слот, который нечем держать: форма ушла бы
+  // одобренной и неподписанной, а подпись на CACFP-документе и есть то, чем
+  // организация отвечает за питание ребёнка.
+  const cacfpNeedsSig = isCacfp && !!slot && !alreadyCountersigned && !countersignImage
   // IEA (Variant 1 amended, Nikolay 2026-07-22): the determination's AUTHORITY is
   // this Approve under auth.uid (income_eligibility.determined_by), not a signature
   // image. So a signature is NEVER an Approve gate here — the only gate is the
@@ -477,7 +491,7 @@ export default function EnrollmentReviewModal({
   // errors gate until each is reviewed under the same canon.
   const approveBlocked = (v.status === 'errors' && !isIea) || dupUnresolved || chosenInactive || busy
     || (isIea && ieaApproveBlocked({ frpChosen: !!frpChoice, fiscalYearResolved: !!ieaFiscalYear, matchedCount: ieaMatchedIds.length }))
-    || docNeedsChild || docNeedsSig
+    || docNeedsChild || docNeedsSig || cacfpNeedsSig
 
   async function doApprove() {
     // IEA self-validated at submission → its findings never block (canon). Other types
@@ -508,7 +522,8 @@ export default function EnrollmentReviewModal({
         result = target
           ? await approveCacfpUpdate(submission, target, patch, reviewerId, paperSigned, reactivate,
               { documentDate: effectiveDocDate, formKey: submission.submission_type, who: reviewerName })
-          : await approveCacfpInsert(submission, patch, reviewerId, paperSigned)
+          : await approveCacfpInsert(submission, patch, reviewerId, paperSigned,
+              { documentDate: effectiveDocDate, formKey: submission.submission_type, who: reviewerName })
       } else if (isIea) {
         if (!frpChoice) throw new Error('Choose an F/R/P determination')
         if (!ieaFiscalYear) throw new Error('Could not resolve the IEA form edition / fiscal year')
@@ -957,15 +972,17 @@ export default function EnrollmentReviewModal({
             </div>
           )}
 
-          {isDocument && slot && !alreadyCountersigned && (
+          {(isDocument || isCacfp) && slot && !alreadyCountersigned && (
             <CountersignField
-              slotLabel={`this form has a director's slot (${slot})`}
+              slotLabel={isCacfp
+                ? 'Program administrator signature — Tatiana Kogan (required to approve a CACFP form)'
+                : `this form has a director's slot (${slot})`}
               mySample={mySample} useSample={useSample} setUseSample={setUseSample}
               reviewerName={reviewerName} disabled={busy} onResult={setCsResult}
             />
           )}
 
-          {isDocument && slot && alreadyCountersigned && (
+          {(isDocument || isCacfp) && slot && alreadyCountersigned && (
             <div style={{ fontSize: 12.5, color: '#0f4c35' }}>✓ Already countersigned — a signature is never written twice.</div>
           )}
 
@@ -1121,6 +1138,7 @@ export default function EnrollmentReviewModal({
           {!err && <span style={{ flex: 1, fontSize: 11.5, color: '#9ca3af' }}>
             {rejecting
               ? 'Rejecting doesn’t require valid fields — just add a reason and confirm.'
+              : cacfpNeedsSig ? 'Program administrator signature — Tatiana Kogan — is required before this CACFP form can be approved.'
               : v.status === 'errors' ? 'Resolve required fields before approving.' : dupUnresolved ? 'Choose a duplicate resolution above.' : chosenInactive ? 'Reactivate & admit the matched child first, then Approve attaches this scan.' : 'Nothing is written to the roster until you Approve.'}
           </span>}
           <button onClick={onClose} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Close</button>

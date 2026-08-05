@@ -383,8 +383,11 @@ async function restorePending(subId: string, childId: string | null) {
 // is_active identically. Returns the new roster id; the caller decides what to do
 // next (mark the submission approved, link the document, etc.).
 export async function insertRosterChild(
-  sub: { org_id: string; center_id: string },
+  sub: { org_id: string; center_id: string; id?: string },
   patch: RosterPatch,
+  /** Документ, которым пришли поля. Без него строка родится опорной и остальные
+   *  поля не лягут вовсе — это лучше, чем лечь без биографии. */
+  doc?: ApproveDoc,
 ): Promise<string> {
   // ТЕЧЬ КЛЮЧА РЕБЁНКА, закрытая здесь (2026-07-28). Измерено: с 1 июля создано
   // 300 строк ростера и у НУЛЯ был child_id — приложение вообще не создавало
@@ -417,6 +420,16 @@ export async function insertRosterChild(
     )
   }
 
+  // БИОГРАФИЯ НОВОРОЖДЁННОЙ СТРОКИ = БИОГРАФИЯ ПРАВЛЕНОЙ (канон 05.08).
+  // Раньше здесь ложилась разом вся форма прямым insert'ом: у правленого ребёнка
+  // каждое поле несло документную дату, источник и запись в журнале, а у только
+  // что заведённого — ничего. Теперь строка рождается ОПОРНОЙ (кто и где: орг,
+  // центр, ключ, имя-идентичность для клейм-моста), а всё остальное приходит
+  // тем же журнальным путём, что и правка.
+  const IDENTITY = new Set(['child_name', 'first_name', 'last_name'])
+  const seed: Record<string, unknown> = {}
+  for (const k of Object.keys(patch)) if (IDENTITY.has(k)) seed[k] = (patch as any)[k]
+
   const { data, error } = await S().from('roster')
     .insert({
       org_id: sub.org_id, center_id: sub.center_id, is_active: true,
@@ -428,19 +441,32 @@ export async function insertRosterChild(
       // child honest whether or not the DDL has landed yet. `patch` spreads
       // AFTER them, so a form that actually carries an answer still wins.
       emergency_transport_auth: null, has_health_condition: null,
-      ...patch,
+      ...seed,
     })
     .select('id').single()
   if (error) throw error
-  return (data as any).id as string
+  const rosterId = (data as any).id as string
+
+  // Остальные поля формы — журнальным путём, каждое со своим следом.
+  if (doc && sub.id) {
+    requireDocDate(doc)
+    for (const k of Object.keys(patch)) {
+      if (IDENTITY.has(k)) continue
+      await writeApprovedField(rosterId, k, (patch as any)[k], sub.id, doc)
+    }
+  }
+  return rosterId
 }
 
 // ─── CACFP: insert a new roster child ────────────────────────────────────────
 export async function approveCacfpInsert(
   sub: { id: string; org_id: string; center_id: string; child_id: string | null },
   patch: RosterPatch, reviewerId: string, paperSigned: boolean,
+  // Документ обязателен и здесь: без него у новорождённой строки не будет
+  // биографии, а это ровно то, ради чего путь переписан.
+  doc?: ApproveDoc,
 ): Promise<ApproveResult> {
-  const rosterId = await insertRosterChild(sub, patch)
+  const rosterId = await insertRosterChild(sub, patch, doc)
   await markApproved(sub.id, rosterId, reviewerId, paperSigned)
   return {
     message: `Approved — ${patch.child_name} added to roster`,

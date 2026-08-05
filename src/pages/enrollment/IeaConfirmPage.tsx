@@ -64,6 +64,12 @@ export default function IeaConfirmPage() {
   // Поиск идёт по имени РЕБЁНКА: строка подписана опекуном, а родители зачастую
   // носят другую фамилию, и по подписи строки ребёнка не найти.
   const [q, setQ] = useState('')
+  // «Attach scan» — ОПЦИОНАЛЬНО. Заявление подаётся на домохозяйство: один файл
+  // прикладывается КАЖДОМУ активному ребёнку семьи документом с той же датой.
+  // Скан не рождает запись (канон 01.08) — он прикладывается к ней; поэтому
+  // кнопка живёт в строке уже существующей семьи, а не отдельным входом.
+  const [attachBusy, setAttachBusy] = useState<string | null>(null)
+  const [attachMsg, setAttachMsg] = useState<{ id: string; text: string; ok: boolean } | null>(null)
 
   useEffect(() => {
     fetch('/enroll-registry.json?t=' + Date.now(), { cache: 'no-store' })
@@ -188,6 +194,46 @@ export default function IeaConfirmPage() {
   const patch = (gid: string, p: Partial<ConfirmInput>) =>
     setRows(rs => rs.map(r => r.guardianId === gid ? { ...r, input: { ...r.input, ...p }, err: null, done: null } : r))
 
+  async function attachScan(row: Row, file: File) {
+    if (!org?.id || !currentCenter?.id) return
+    const docDate = row.input.documentDate
+    if (!docDate) {
+      setAttachMsg({ id: row.guardianId, ok: false,
+        text: 'Enter the date printed on the application first — a filed paper without its date cannot be counted.' })
+      return
+    }
+    setAttachBusy(row.guardianId); setAttachMsg(null)
+    try {
+      const stamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14)
+      const safe = file.name.replace(/[^A-Za-z0-9._-]/g, '_')
+      const path = `${currentCenter.id}/iea/${stamp}_${safe}`
+      const up = await supabase.storage.from('center-docs').upload(path, file, { upsert: false })
+      if (up.error) throw up.error
+      // Одна бумага — строка КАЖДОМУ активному ребёнку дома: household-правило
+      // действует и для документа, иначе бумага числилась бы за одним из братьев.
+      const targets = row.household
+      let failed = 0
+      for (const c of targets) {
+        const { error } = await (supabase.schema('menumaker').rpc as any)('register_document', {
+          p_org_id: org.id, p_doc_type: IEA_DOC_TYPE, p_storage_path: path,
+          p_center_id: currentCenter.id, p_title: 'Income eligibility application — scan',
+          p_period_start: null, p_period_end: null,
+          p_valid_from: docDate, p_valid_until: null,
+          p_notes: 'Household scan attached from Paper applications', p_roster_id: c.rosterId,
+        })
+        if (error) failed++
+      }
+      setAttachMsg({ id: row.guardianId, ok: failed === 0,
+        text: failed === 0
+          ? `✓ Scan filed for ${targets.length} child${targets.length === 1 ? '' : 'ren'} with the date ${docDate}`
+          : `Scan uploaded, but ${failed} of ${targets.length} children were not linked — the file is in the centre documents, link them from the child's card.` })
+    } catch (e: any) {
+      setAttachMsg({ id: row.guardianId, ok: false, text: `Nothing was filed — ${e?.message ?? String(e)}` })
+    } finally {
+      setAttachBusy(null)
+    }
+  }
+
   async function confirmFamily(row: Row) {
     const refusal = confirmRefusal(row.input)
     if (refusal) { setRows(rs => rs.map(r => r.guardianId === row.guardianId ? { ...r, err: refusal } : r)); return }
@@ -260,6 +306,11 @@ export default function IeaConfirmPage() {
             событие — в карточке. Правила за обеими одинаковы, и инструкция об этом. */}
         <a href="/instructions?doc=income-categories" target="_blank" rel="noreferrer"
            style={{ color: GREEN, fontWeight: 600, textDecoration: 'underline' }}>How this works</a>
+        {' · '}
+        {/* Вторая дверь того же стола: отдельные формы разбираются в Inbox. */}
+        <a href="/enrollment-inbox" style={{ color: GREEN, fontWeight: 600, textDecoration: 'underline' }}>
+          Meals &amp; income inbox
+        </a>
       </div>
 
       {!fy && (
@@ -403,6 +454,14 @@ export default function IeaConfirmPage() {
                       onChange={e => patch(r.guardianId, { paperInSafe: e.target.checked })} style={{ accentColor: GREEN }} />
                     📄 in the safe
                   </label>
+                  <label title="Optional: attach the photographed application to every child of this household"
+                    style={{ fontSize: 12, color: GREEN, fontWeight: 600, cursor: attachBusy === r.guardianId ? 'default' : 'pointer',
+                      border: '1px solid #c0d8c0', borderRadius: 8, padding: '6px 10px', background: '#fff', whiteSpace: 'nowrap' }}>
+                    {attachBusy === r.guardianId ? 'Filing…' : '📎 Attach scan'}
+                    <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }}
+                      disabled={attachBusy === r.guardianId}
+                      onChange={e => { const f = e.target.files?.[0]; if (f) attachScan(r, f); e.currentTarget.value = '' }} />
+                  </label>
                   <button onClick={() => confirmFamily(r)} disabled={!!r.busy || !!refusal || !fy}
                     title={refusal ?? undefined}
                     style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: refusal || r.busy ? 'default' : 'pointer',
@@ -415,6 +474,12 @@ export default function IeaConfirmPage() {
               {refusal && !r.done && <div style={{ fontSize: 12, color: '#b45309', marginTop: 8 }}>{refusal}</div>}
               {r.err && <div role="alert" style={{ fontSize: 12, color: '#dc2626', marginTop: 8 }}>{r.err}</div>}
               {r.done && <div style={{ fontSize: 12, color: GREEN, fontWeight: 700, marginTop: 8 }}>{r.done}</div>}
+              {attachMsg?.id === r.guardianId && (
+                <div role={attachMsg.ok ? undefined : 'alert'}
+                  style={{ fontSize: 12, marginTop: 8, color: attachMsg.ok ? GREEN : '#dc2626', fontWeight: attachMsg.ok ? 700 : 400 }}>
+                  {attachMsg.text}
+                </div>
+              )}
             </div>
           )
         })}

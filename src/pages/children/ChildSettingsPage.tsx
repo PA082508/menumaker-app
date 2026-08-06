@@ -3,6 +3,7 @@
 // Profile | Family | Enrollment | Health | CACFP | SafePass | Billing
 
 import { useState, useEffect, useRef, useMemo } from 'react'
+import { AVATAR } from '@/lib/avatarSizes'
 import { supabase } from '@/lib/supabase'
 import {
   completeness as regCompleteness, tabCounts as regTabCounts,
@@ -1019,7 +1020,7 @@ export default function ChildSettingsPage({
 
         {/* Header */}
         <div style={{ background:'#0f4c35', padding:'16px 20px', display:'flex', alignItems:'center', gap:14, flexShrink:0 }}>
-          <Avatar name={fullName} path={child.photo_url} size={44} fontSize={17} />
+          <Avatar name={fullName} path={child.photo_url} size={AVATAR.header} fontSize={22} />
           <div style={{ flex:1 }}>
             <div style={{ color:'#fff', fontWeight:700, fontSize:17, display:'flex', alignItems:'center', gap:8 }}>
               {isCreate ? (fullName?.trim() ? fullName : 'New child') : fullName}

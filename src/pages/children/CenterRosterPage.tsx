@@ -2,6 +2,7 @@
 // Table view: classroom rows, click to expand children + teachers cards
 
 import { useEffect, useState, useMemo } from 'react'
+import { AVATAR } from '@/lib/avatarSizes'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import ChildSettingsPage from './ChildSettingsPage'
@@ -42,7 +43,7 @@ const SUMMARY_COLS = 'minmax(150px,210px) 84px 76px 72px 72px minmax(110px,1fr)'
 // No mobile step-down, deliberately: the card grid is auto-fill minmax(CARD_MIN), so a
 // narrow screen collapses to one full-width column and 72px reads SMALLER there relative
 // to the card, not larger. Shrinking it on mobile would fight the reason it was enlarged.
-const AVATAR_CHILD = 72
+const AVATAR_CHILD = AVATAR.tile
 const AVATAR_STAFF = 56
 const CARD_MIN = 240        // 160 → 210 → 240: a 72px avatar + a two-line double surname
 
@@ -133,7 +134,7 @@ function DetailPopup({ data, onClose, classrooms, onChanged }: { data: PopupData
         fontFamily: "'DM Sans', sans-serif",
       }}>
         <div style={{ background: '#0f4c35', padding: '24px 24px 20px', display: 'flex', gap: 16, alignItems: 'center' }}>
-          <Avatar name={name} size={60} path={photo} />
+          <Avatar name={name} size={AVATAR.header} path={photo} />
           <div style={{ flex: 1 }}>
             <div style={{ color: '#fff', fontWeight: 700, fontSize: 17 }}>{name}</div>
             {data.kind === 'child' && (
@@ -733,7 +734,7 @@ const noRoomChildren = allChildren.filter(c => !c.classroom_id && c.is_active !=
                               onMouseLeave={e => (e.currentTarget.style.background = '#fff')}
                             >
                               <div style={{ position: 'relative', flexShrink: 0 }}>
-                                <Avatar name={staffName(s)} size={36} path={s.photo_url} />
+                                <Avatar name={staffName(s)} size={AVATAR.tile} path={s.photo_url} />
                                 <div style={{
                                   position: 'absolute', bottom: 0, right: 0,
                                   width: 11, height: 11, borderRadius: '50%',

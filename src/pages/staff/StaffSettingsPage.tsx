@@ -4,6 +4,7 @@
 // ============================================================
 
 import { useEffect, useState } from 'react'
+import { AVATAR } from '@/lib/avatarSizes'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
@@ -270,7 +271,7 @@ export default function StaffSettingsPage() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
         <button onClick={() => navigate('/staff')} style={{ ...btnSec, padding: '7px 14px', fontSize: 13 }}>← Staff</button>
-        <Avatar name={name} path={data.photo_url} size={52} fontSize={20} />
+        <Avatar name={name} path={data.photo_url} size={AVATAR.header} fontSize={22} />
         <div>
           <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 24, color: '#0a3320' }}>{name}</div>
           <div style={{ fontSize: 12, color: '#888' }}>
@@ -336,7 +337,7 @@ export default function StaffSettingsPage() {
             <div style={{ marginBottom: 18 }}>
               <label style={lbl}>Photo</label>
               {/* facing="user" — a staff photo is usually a selfie on the iPad. */}
-              <AvatarUpload entity="staff" id={data.id} name={name} path={data.photo_url} facing="user"
+              <AvatarUpload entity="staff" id={data.id} name={name} path={data.photo_url} facing="user" size={AVATAR.tile}
                 onChange={p => set('photo_url', p)} />
             </div>
             <div style={{ ...grid2, marginBottom: 16 }}>

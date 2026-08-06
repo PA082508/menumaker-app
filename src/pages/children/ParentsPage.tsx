@@ -21,6 +21,7 @@
 // edited (writing to a fabricated id would target nothing). Honest empty states below.
 
 import { useEffect, useMemo, useState } from 'react'
+import { AVATAR } from '@/lib/avatarSizes'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
 import ScrollToTop from '@/components/common/ScrollToTop'
@@ -372,7 +373,7 @@ function ParentsSheet({ centerId, search }: { centerId: string; search: string }
                     <div key={k.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: '1px solid #f7faf8' }}>
                       {/* Стопка внахлёст: ровно два лица, заднее выводится тапом вперёд. */}
                       <div style={{ position: 'relative', width: shown.length > 1 ? 60 : 38, height: 38, flexShrink: 0 }}>
-                        {shown.length === 0 && <Avatar name="?" size={38} />}
+                        {shown.length === 0 && <Avatar name="?" size={AVATAR.row} />}
                         {shown.map((p, i) => (
                           <div key={p.person_name + i}
                             onClick={() => shown.length > 1 && setFront(s => ({ ...s, [k.id]: i }))}
@@ -384,7 +385,7 @@ function ParentsSheet({ centerId, search }: { centerId: string; search: string }
                               cursor: shown.length > 1 ? 'pointer' : 'default',
                               transition: 'left .12s',
                             }}>
-                            <Avatar name={p.person_name} path={p.photo_url} size={38} />
+                            <Avatar name={p.person_name} path={p.photo_url} size={AVATAR.row} />
                           </div>
                         ))}
                       </div>

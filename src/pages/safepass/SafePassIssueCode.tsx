@@ -22,6 +22,7 @@
 // сносит объекты. До 06.08 у бакета не было DELETE-политики вовсе — «убрано»
 // означало лишь «не показываем», а снимок оставался лежать.
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { AVATAR } from '@/lib/avatarSizes'
 import { supabase } from '@/lib/supabase'
 import { Link } from 'react-router-dom'
 import { useOrg } from '@/contexts/OrgContext'
@@ -277,7 +278,7 @@ export default function SafePassIssueCode() {
                   ) : k.adults.map(a => (
                     <div key={a.phone+a.person_name} style={{display:'flex',alignItems:'center',gap:10,padding:'5px 0'}}>
                       <div onClick={()=>openCamera(candidateFor(a))} style={{cursor:'pointer',flexShrink:0}} title={a.photo_url?'Retake photo':'Take photo'}>
-                        <Avatar name={a.person_name} path={a.photo_url} size={34} />
+                        <Avatar name={a.person_name} path={a.photo_url} size={AVATAR.row} />
                       </div>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontSize:13.5,fontWeight:600}}>{a.person_name}</div>
@@ -305,7 +306,7 @@ export default function SafePassIssueCode() {
               {/* Лицо — то, по чему взрослого узнают у двери. Тап по нему
                   переснимает: человек меняется, снимок должен догонять. */}
               <div onClick={()=>openCamera(c)} style={{cursor:'pointer',flexShrink:0}} title={c.photo_url ? 'Retake photo' : 'Take photo'}>
-                <Avatar name={c.person_name} path={c.photo_url} size={44} />
+                <Avatar name={c.person_name} path={c.photo_url} size={AVATAR.row} />
               </div>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontWeight:700,fontSize:15,display:'flex',alignItems:'center',gap:7,flexWrap:'wrap'}}>
@@ -333,6 +334,18 @@ export default function SafePassIssueCode() {
           ))}
         </div>
       )}
+      {/* Шаг съёмки: пока лицо грузится, у человека тоже должен быть выход.
+          Отступление ничего не пишет — регистрация не начиналась. */}
+      {busyPhone && (
+        <div style={{marginTop:14,display:'flex',alignItems:'center',gap:10,padding:'10px 14px',borderRadius:12,background:C.surface,border:`1px solid ${C.border}`}}>
+          <span style={{fontSize:13,color:C.muted,flex:1}}>Working on {prettyPhone(busyPhone)}…</span>
+          <button onClick={()=>{ setBusyPhone(''); setPhotoFor(null); setErr('') }}
+            style={{...btn('transparent',C.text),border:`1px solid ${C.border}`,padding:'8px 12px',fontSize:13}}>
+            ← Cancel
+          </button>
+        </div>
+      )}
+
       {err && <div role="alert" style={{marginTop:14,padding:'12px 14px',borderRadius:12,background:C.redDim,border:`1.5px solid ${C.red}`,color:C.red,fontSize:13,fontWeight:600}}>{err}</div>}
 
       {/* Камера. `capture="environment"` — задняя: сотрудник снимает стоящего
@@ -355,6 +368,12 @@ export default function SafePassIssueCode() {
             <div style={{height:10}}/>
             <button onClick={()=>register(sheetFor)} style={{background:'transparent',border:'none',color:C.muted,fontSize:12.5,cursor:'pointer',fontFamily:'inherit',width:'100%',padding:'8px 0'}}>
               Register without a photo
+            </button>
+            {/* ВИДИМЫЙ путь назад. Тап мимо листа дверью не считается: невидимую
+                дверь человек не находит, а уходить с чужого экрана надо уметь. */}
+            <button onClick={()=>setSheetFor(null)}
+              style={{...btn('transparent',C.text),border:`1px solid ${C.border}`,width:'100%',marginTop:4}}>
+              ← Cancel — nothing is registered
             </button>
           </div>
         </div>

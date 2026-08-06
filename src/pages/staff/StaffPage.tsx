@@ -16,14 +16,30 @@ type Staff = {
   phone: string | null; email: string | null
 }
 
-type FilterKey = 'all' | 'teachers' | 'directors' | 'cooks' | 'admin'
+// ГРУППЫ — ПЕРВОЕ СОВПАДЕНИЕ ВЫИГРЫВАЕТ (заказ владельца 06.08).
+//
+// Было четыре пересекающихся регулярки, и человек мог стоять в двух группах
+// сразу: «Administrator» ловили и Directors, и Admin — Соня числилась дважды.
+// А «Floater» и «Driver» не ловились ничем, и семеро сотрудников Ridge жили
+// только во вкладке All. Теперь порядок значим и разбор однозначен.
+//
+// «Administrator» — ПРАВИЛЬНАЯ должность центрового руководителя (Соня, Тереза,
+// Синтия), титулы не переименовываем: поэтому Directors стоит ПЕРВОЙ и забирает
+// их себе, а Office остаётся конторе (Manager).
+type FilterKey = 'all' | 'directors' | 'office' | 'finance' | 'kitchen' | 'teachers' | 'support'
 const FILTERS: { key: FilterKey; label: string; test?: RegExp }[] = [
   { key: 'all',       label: 'All' },
-  { key: 'teachers',  label: 'Teachers',  test: /teacher/i },
   { key: 'directors', label: 'Directors', test: /director|administrator/i },
-  { key: 'cooks',     label: 'Cooks',     test: /cook/i },
-  { key: 'admin',     label: 'Admin',     test: /admin|manager|bookkeeper/i },
+  { key: 'office',    label: 'Office',    test: /manager/i },
+  { key: 'finance',   label: 'Finance',   test: /bookkeep|accountant/i },
+  { key: 'kitchen',   label: 'Kitchen',   test: /cook|chef/i },
+  { key: 'teachers',  label: 'Teachers',  test: /teacher/i },
+  { key: 'support',   label: 'Support',   test: /floater|driver|assistant$/i },
 ]
+// Первое совпадение: человек принадлежит ОДНОЙ группе, и счётчики складываются
+// в целое без задвоений.
+const groupOf = (position: string | null): FilterKey | null =>
+  FILTERS.find(f => f.test?.test(position ?? ''))?.key ?? null
 
 // Ridge first, then Alpha, then Pearl
 const CENTER_ORDER = ['ridge', 'alpha', 'pearl']
@@ -85,13 +101,12 @@ export default function StaffPage() {
   }, [org?.id, currentCenter?.id])
 
   const centerName = (id: string | null) => short(centers.find(c => c.id === id)?.name) || '—'
-  const countFor = (f: FilterKey) => f === 'all' ? staff.length : staff.filter(s => FILTERS.find(x => x.key === f)?.test?.test(s.position ?? '')).length
+  const countFor = (f: FilterKey) => f === 'all' ? staff.length : staff.filter(s => groupOf(s.position) === f).length
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase()
-    const test = FILTERS.find(f => f.key === filter)?.test
     return staff
-      .filter(s => !test || test.test(s.position ?? ''))
+      .filter(s => filter === 'all' || groupOf(s.position) === filter)
       .filter(s => !q || fullName(s).toLowerCase().includes(q))
   }, [staff, filter, search])
 

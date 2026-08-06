@@ -38,7 +38,7 @@ const STAFF_CARD_COLS = [
   'brightwheel_profile_created_at','overtime_eligible','overtime_rate','max_weekly_hours',
   'ot_trigger_hours','bonus_eligible','bonus_type','bonus_amount','bonus_frequency',
   'bonus_notes','onboarding_completed','onboarding_completed_at','auth_user_id',
-  'pay_type','salary_amount',
+  'pay_type','salary_amount','is_org_level',
 ].join(',')
 
 const POSITIONS = ['Lead Teacher','Assistant Teacher','Teacher','Cook','Floater','Director','Assistant Director','Office Manager','Administrator','Other']
@@ -70,6 +70,8 @@ type StaffData = {
   // medical
   allergies: string | null; medications: string | null
   doctor_name: string | null; doctor_phone: string | null
+  // слой: орг-уровень скрыт из центровых списков (06.08)
+  is_org_level: boolean | null
   // bonus
   bonus_eligible: boolean | null; bonus_type: string | null
   bonus_amount: number | null; bonus_notes: string | null
@@ -115,7 +117,7 @@ const monthsWorked = (hire: string | null) => {
 
 export default function StaffSettingsPage() {
   const { staffId } = useParams<{ staffId: string }>()
-  const { centers, org } = useOrg()
+  const { centers, org, isOrgAdmin, orgRole } = useOrg()
   const navigate = useNavigate()
 
   const [data, setData]         = useState<StaffData | null>(null)
@@ -187,6 +189,9 @@ export default function StaffSettingsPage() {
       overtime_eligible: data.overtime_eligible, overtime_rate: data.overtime_rate,
       max_weekly_hours: data.max_weekly_hours,
       pay_type: data.pay_type ?? 'hourly', salary_amount: data.salary_amount,
+      // Слой пишется только той рукой, которой он показан: у директора этой
+      // галки нет, и RLS всё равно не даст ему тронуть орг-строку.
+      is_org_level: !!data.is_org_level,
       degree: data.degree, certification: data.certification,
       ece_credits: data.ece_credits, infant_toddler_credits: data.infant_toddler_credits,
       emergency_contact_name: data.emergency_contact_name,
@@ -347,6 +352,24 @@ export default function StaffSettingsPage() {
               <div><label style={lbl}>Birthday</label><input style={inp} type="date" value={fmtDate(data.birthday)} onChange={e => set('birthday', e.target.value)} /></div>
             </div>
             <div><label style={lbl}>Home Address</label><input style={inp} value={data.address ?? ''} onChange={e => set('address', e.target.value)} /></div>
+
+            {/* Слой сотрудника. Виден и правится ТОЛЬКО администрации организации:
+                директору центра этого блока нет вовсе — он и людей-то этих не
+                увидит после сужения RLS. */}
+            {(isOrgAdmin || ['admin', 'office_manager'].includes(orgRole ?? '')) && (
+              <div style={{ marginTop: 22, paddingTop: 16, borderTop: '1px solid #eef2ee' }}>
+                <label style={lbl}>Organization level</label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 13.5, color: '#1a2e1a', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={!!data.is_org_level}
+                    onChange={e => set('is_org_level', e.target.checked)} style={{ width: 16, height: 16 }} />
+                  Organization-level staff — hidden from center staff lists, cards and Time Log
+                </label>
+                <div style={{ fontSize: 11.5, color: '#6b7280', marginTop: 6, lineHeight: 1.5 }}>
+                  For administration and organization-wide roles. Their work in the driver and
+                  transport screens is not affected.
+                </div>
+              </div>
+            )}
 
             <DoorPin staffId={data.id} />
           </div>

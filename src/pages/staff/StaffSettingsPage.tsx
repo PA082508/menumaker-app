@@ -81,6 +81,8 @@ type StaffData = {
 type Schedule = {
   day_of_week: number
   shift_start: string; shift_end: string; break_minutes: number; is_active: boolean
+  // Обед интервалом (06.08). Пусто = время ещё не задано: legacy-строка считает по минутам.
+  break_start: string; break_end: string
 }
 
 type TrainingRecord = {
@@ -154,8 +156,8 @@ export default function StaffSettingsPage() {
       const days = DAYS.map((_, i) => {
         const existing = (sc ?? []).find((r: any) => r.day_of_week === i)
         return existing
-          ? { day_of_week: i, shift_start: existing.shift_start?.slice(0,5) ?? '', shift_end: existing.shift_end?.slice(0,5) ?? '', break_minutes: existing.break_minutes ?? 30, is_active: existing.is_active ?? false }
-          : { day_of_week: i, shift_start: '', shift_end: '', break_minutes: 30, is_active: false }
+          ? { day_of_week: i, shift_start: existing.shift_start?.slice(0,5) ?? '', shift_end: existing.shift_end?.slice(0,5) ?? '', break_minutes: existing.break_minutes ?? 30, is_active: existing.is_active ?? false, break_start: existing.break_start?.slice(0,5) ?? '', break_end: existing.break_end?.slice(0,5) ?? '' }
+          : { day_of_week: i, shift_start: '', shift_end: '', break_minutes: 30, is_active: false, break_start: '', break_end: '' }
       })
       setSched(days)
       setTraining((tr ?? []) as TrainingRecord[])
@@ -225,6 +227,10 @@ export default function StaffSettingsPage() {
       staff_id: staffId, org_id: org?.id, center_id: data.center_id,
       day_of_week: s.day_of_week,
       shift_start: s.shift_start, shift_end: s.shift_end,
+      // Обед пишется ПАРОЙ или не пишется вовсе — так требует CHECK и так честно:
+      // одно время без второго не интервал, а обрывок.
+      break_start: (s.break_start && s.break_end) ? s.break_start : null,
+      break_end:   (s.break_start && s.break_end) ? s.break_end   : null,
       break_minutes: s.break_minutes, is_active: true,
       effective_from: new Date().toISOString().slice(0, 10),
     }))
@@ -543,13 +549,45 @@ export default function StaffSettingsPage() {
       {tab === 'work' && (
         <div style={card}>
           <h3 style={h3}>Work Schedule</h3>
-          <div style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>
-            Toggle days on/off · Set shift times and break · Weekly hours auto-calculated
+          <div style={{ fontSize: 12, color: '#888', marginBottom: 12 }}>
+            Toggle days on/off · Set shift and lunch times · Weekly hours auto-calculated
           </div>
+          {/* КОПИРОВАНИЕ ПО ОБРАЗЦУ КИТА УСКОРЕНИЯ ФОРМ. Причина, названная владельцем:
+              заполнять неделю поимённо долго, поэтому расписаний 10 из 73. Кнопка
+              копирует смену И обед понедельника в АКТИВНЫЕ вт–пт; галочек сама не
+              ставит — иначе тихо расширила бы рабочую неделю. */}
+          {(() => {
+            const mon = sched[0]
+            const ready = !!(mon?.is_active && mon.shift_start && mon.shift_end)
+            const targets = sched.slice(1, 5).filter(d => d.is_active).length
+            return (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => setSched(prev => prev.map((d, i) =>
+                    (i >= 1 && i <= 4 && d.is_active)
+                      ? { ...d, shift_start: mon.shift_start, shift_end: mon.shift_end,
+                          break_start: mon.break_start, break_end: mon.break_end, break_minutes: mon.break_minutes }
+                      : d))}
+                  disabled={!ready || targets === 0}
+                  style={(!ready || targets === 0)
+                    ? { ...btnSec, padding: '7px 14px', fontSize: 13, opacity: 0.45, cursor: 'not-allowed' }
+                    : { ...btnSec, padding: '7px 14px', fontSize: 13 }}>
+                  ⧉ Same as Monday
+                </button>
+                <span style={{ fontSize: 12, color: '#888' }}>
+                  {!ready
+                    ? 'Fill in Monday first — there is nothing to copy yet.'
+                    : targets === 0
+                      ? 'No other day is switched on — turn a day on and it will take Monday’s times.'
+                      : `Copies shift and lunch to ${targets} switched-on day${targets === 1 ? '' : 's'} (Tue–Fri). Days that are off stay off.`}
+                </span>
+              </div>
+            )
+          })()}
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #f0f0f0' }}>
-                {['Day','Active','Shift Start','Shift End','Break (min)','Hours'].map(h => (
+                {['Day','Active','Shift Start','Lunch Start','Lunch End','Shift End','Hours'].map(h => (
                   <th key={h} style={{ textAlign: 'left', padding: '6px 10px', fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase' }}>{h}</th>
                 ))}
               </tr>
@@ -560,7 +598,13 @@ export default function StaffSettingsPage() {
                   ? (() => {
                       const [sh, sm] = d.shift_start.split(':').map(Number)
                       const [eh, em] = d.shift_end.split(':').map(Number)
-                      const total = (eh * 60 + em) - (sh * 60 + sm) - d.break_minutes
+                      // Обед интервалом, если задан; иначе — legacy-минуты (дорога A).
+                      const lunch = (d.break_start && d.break_end)
+                        ? (() => { const [bh, bm] = d.break_start.split(':').map(Number)
+                                   const [xh, xm] = d.break_end.split(':').map(Number)
+                                   return Math.max(0, (xh * 60 + xm) - (bh * 60 + bm)) })()
+                        : d.break_minutes
+                      const total = (eh * 60 + em) - (sh * 60 + sm) - lunch
                       return total > 0 ? (total / 60).toFixed(1) : '—'
                     })()
                   : '—'
@@ -581,14 +625,31 @@ export default function StaffSettingsPage() {
                         style={{ ...inp, width: 120, opacity: d.is_active ? 1 : 0.4 }} />
                     </td>
                     <td style={{ padding: '6px 10px' }}>
+                      <input type="time" value={d.break_start} disabled={!d.is_active}
+                        onChange={e => setSchedDay(i, 'break_start', e.target.value)}
+                        style={{ ...inp, width: 116, opacity: d.is_active ? 1 : 0.4 }} />
+                      {/* Честная подпись legacy-строки: минуты есть, времени нет. */}
+                      {d.is_active && !d.break_start && !d.break_end && d.break_minutes > 0 && (
+                        <div style={{ fontSize: 10.5, color: '#9ca3af', marginTop: 3 }}>{d.break_minutes} min — no time set yet</div>
+                      )}
+                    </td>
+                    <td style={{ padding: '6px 10px' }}>
+                      <input type="time" value={d.break_end} disabled={!d.is_active}
+                        onChange={e => setSchedDay(i, 'break_end', e.target.value)}
+                        style={{ ...inp, width: 116, opacity: d.is_active ? 1 : 0.4 }} />
+                      {/* Половина интервала — не интервал: говорим сразу, а не при сохранении. */}
+                      {d.is_active && ((d.break_start && !d.break_end) || (!d.break_start && d.break_end)) && (
+                        <div style={{ fontSize: 10.5, color: '#b45309', marginTop: 3 }}>set both ends</div>
+                      )}
+                      {d.is_active && d.break_start && d.break_end && d.shift_start && d.shift_end
+                        && (d.break_start < d.shift_start || d.break_end > d.shift_end || d.break_start >= d.break_end) && (
+                        <div style={{ fontSize: 10.5, color: '#b45309', marginTop: 3 }}>lunch must sit inside the shift</div>
+                      )}
+                    </td>
+                    <td style={{ padding: '6px 10px' }}>
                       <input type="time" value={d.shift_end} disabled={!d.is_active}
                         onChange={e => setSchedDay(i, 'shift_end', e.target.value)}
                         style={{ ...inp, width: 120, opacity: d.is_active ? 1 : 0.4 }} />
-                    </td>
-                    <td style={{ padding: '6px 10px' }}>
-                      <input type="number" min={0} max={120} step={5} value={d.break_minutes} disabled={!d.is_active}
-                        onChange={e => setSchedDay(i, 'break_minutes', parseInt(e.target.value) || 0)}
-                        style={{ ...inp, width: 70, opacity: d.is_active ? 1 : 0.4 }} />
                     </td>
                     <td style={{ padding: '6px 10px', fontWeight: 600, color: '#0f4c35' }}>{hrs}</td>
                   </tr>
@@ -597,7 +658,7 @@ export default function StaffSettingsPage() {
             </tbody>
             <tfoot>
               <tr style={{ borderTop: '2px solid #e0e8e0', background: '#f0f4f1' }}>
-                <td colSpan={5} style={{ padding: '8px 10px', fontWeight: 700, color: '#0a3320', fontSize: 13 }}>Total weekly hours</td>
+                <td colSpan={6} style={{ padding: '8px 10px', fontWeight: 700, color: '#0a3320', fontSize: 13 }}>Total weekly hours</td>
                 <td style={{ padding: '8px 10px', fontWeight: 700, color: '#0f4c35', fontSize: 14 }}>
                   {sched.filter(d => d.is_active && d.shift_start && d.shift_end).reduce((sum, d) => {
                     const [sh, sm] = d.shift_start.split(':').map(Number)

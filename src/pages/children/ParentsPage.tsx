@@ -281,7 +281,7 @@ function ParentsSheet({ centerId, search }: { centerId: string; search: string }
             .select('id, child_name, first_name, last_name, classroom_id')
             .eq('center_id', centerId).eq('is_active', true),
           supabase.schema('menumaker').from('classrooms')
-            .select('id, name, sort_order').eq('center_id', centerId).eq('is_active', true).order('sort_order'),
+            .select('id, name, sort_order, is_roster').eq('center_id', centerId).eq('is_active', true).order('sort_order'),
           // Носитель «право забирать» + лицо + состояние доступа. child_id здесь —
           // roster.id (не child.child_id): ловушка ключей, стоившая уже одного
           // спрятанного раздела.
@@ -312,7 +312,13 @@ function ParentsSheet({ centerId, search }: { centerId: string; search: string }
           room_id: (r.classroom_id as string) ?? null,
           people: byKid.get(r.id as string) ?? [],
         }))
-        if (!cancelled) { setRooms((rms ?? []) as any[]); setKids(list) }
+        // Псевдо-классы (Staff, is_roster=false) — не комнаты и не дети: в ростере
+        // они исключены тем же признаком, и лист обязан говорить то же самое.
+        // Замер на живом 06.08: строка «Staff · 0 children» стояла шумом.
+        if (!cancelled) {
+          setRooms(((rms ?? []) as any[]).filter(r => r.is_roster !== false))
+          setKids(list)
+        }
       } catch (e: any) {
         if (!cancelled) { setKids([]); setErr(e?.message ?? String(e)) }
       } finally {
@@ -349,7 +355,7 @@ function ParentsSheet({ centerId, search }: { centerId: string; search: string }
               style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 16px', cursor: 'pointer' }}>
               <span style={{ fontSize: 10, color: GREEN, display: 'inline-block', transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>▶</span>
               <span style={{ fontWeight: 600, fontSize: 14, color: '#1a2e1a' }}>{g.name}</span>
-              <span style={{ fontSize: 12, color: '#6b7280' }}>{g.kids.length} children</span>
+              <span style={{ fontSize: 12, color: '#6b7280' }}>{g.kids.length} {g.kids.length === 1 ? 'child' : 'children'}</span>
               {/* Сколько семей комнаты уже пустят через дверь — то, ради чего лист и открывают. */}
               <span style={{ marginLeft: 'auto', fontSize: 11.5, color: activated ? '#0f5132' : '#9ca3af', fontWeight: 600 }}>
                 {activated}/{g.kids.length} activated

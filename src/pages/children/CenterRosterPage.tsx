@@ -5,6 +5,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { AVATAR } from '@/lib/avatarSizes'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import { useSearchParams } from 'react-router-dom'
 import ChildSettingsPage from './ChildSettingsPage'
 import { fmtDateOnly } from '@/lib/dateOnly'
 import EmergencyPopup from './EmergencyPopup'
@@ -291,6 +292,16 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
     return () => { cancelled = true }
   }, [org?.id, centerId])
   const [childSettingsId, setChildSettingsId] = useState<string|null>(null)
+  // АДРЕС У КАРТОЧКИ РЕБЁНКА (06.08). Карточка живёт модалкой внутри ростера, и
+  // ссылки на неё не существовало: канон «одна запись — два входа» был выполним
+  // только в одну сторону — из ребёнка к родителю. Теперь `?child=<roster.id>`
+  // открывает ту же модалку, и переход из карточки родителя приходит СЮДА, а не
+  // на «похожий экран».
+  const [searchParams, setSearchParams] = useSearchParams()
+  useEffect(() => {
+    const wanted = searchParams.get('child')
+    if (wanted && wanted !== childSettingsId) setChildSettingsId(wanted)
+  }, [searchParams])
   const [settingsTab, setSettingsTab] = useState(0)
   const [focusField, setFocusField] = useState<string|null>(null)
   const [emergencyChild, setEmergencyChild] = useState<{ id: string; name: string }|null>(null)

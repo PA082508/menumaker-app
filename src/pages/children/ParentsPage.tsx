@@ -24,6 +24,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { AVATAR } from '@/lib/avatarSizes'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
+import { Link } from 'react-router-dom'
 import ScrollToTop from '@/components/common/ScrollToTop'
 import Avatar from '@/components/Avatar'
 
@@ -484,7 +485,12 @@ function FamilyCard({ f, onSaved, income }: { f: Family; onSaved: (g: Guardian) 
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 16px' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 17, color: '#0a3320' }}>{name}</div>
+          {/* ОДНА ЗАПИСЬ — ДВА ВХОДА: карточка родителя открывается отсюда и из
+              вкладки Family карточки ребёнка — по одному адресу. Псевдо-строки из
+              формы (sub:) своей записи ещё не имеют, поэтому не ссылаются. */}
+          {editable
+            ? <Link to={`/parents/${g.id}`} style={{ fontFamily: "'DM Serif Display', serif", fontSize: 17, color: '#0a3320', textDecoration: 'none' }}>{name}</Link>
+            : <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 17, color: '#0a3320' }}>{name}</div>}
           <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>{g.relationship ?? 'Guardian'}</div>
         </div>
         {editable && !editing && (

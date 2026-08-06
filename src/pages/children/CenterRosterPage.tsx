@@ -381,6 +381,24 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
   const overallFill = fillPct(listedTotal, totalCapacity)
   // Search matches across ALL classes of the center (class filter is ignored while searching).
   const searchMatches = (c: Child) => childMatchesSearch(c, debSearch)
+
+// ─── ГРУППА «БЕЗ КОМНАТЫ» (заказ владельца 05.08) ─────────────────────────────
+// ЗАМЕР, из-за которого она появилась: Isaac Rife, заведённый Approve'ом формы,
+// получил строку ростера БЕЗ комнаты — а карточный вид группирует по комнатам и
+// таких детей не показывал ВОВСЕ. Ребёнок числится, кормить его с 17 августа, а
+// на экране его нет: ровно та невидимая работа, которую канон запрещает.
+//
+// Сделана НЕ отдельным блоком, а псевдо-комнатой в том же списке: тогда у неё
+// сам собой тот же счётчик, тот же раскрыв и та же карточка ребёнка по клику, а
+// второй разошедшейся вёрстки не заводится. Ёмкости у неё нет — «—» в обеих
+// графах говорит правду: это не комната, это очередь на комнату.
+const NO_ROOM_ID = '__no_room__'
+// Очередь считается по ВСЕМ числящимся, а не по «активным сегодня»: Isaac Rife
+// зачислен с 17 августа, сегодня в активные не попадает — и именно поэтому его
+// нужно увидеть СЕЙЧАС, пока комнату есть время назначить. Ушедших (закрытая
+// дата) в очередь не берём: им комната уже не нужна.
+const noRoomChildren = allChildren.filter(c => !c.classroom_id && c.is_active !== false)
+
   const listedShown = searchActive ? displayChildren.filter(searchMatches).length : listedTotal
 
   const toggleRoom = (id: string) => setExpanded(p => ({ ...p, [id]: !p[id] }))
@@ -601,9 +619,16 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
               </div>
             )
           })()}
-          {classrooms.map((room, ri) => {
+          {[
+            ...classrooms,
+            // Пустую очередь не показываем: строка «Без комнаты — 0» была бы шумом.
+            ...(noRoomChildren.length > 0
+              ? [{ id: NO_ROOM_ID, name: 'No classroom yet', sort_order: 9999, capacity_internal: null } as Classroom]
+              : []),
+          ].map((room, ri) => {
             const roomChildren = displayChildren
-              .filter(c => c.classroom_id === room.id)
+              .filter(c => room.id === NO_ROOM_ID ? false : c.classroom_id === room.id)
+              .concat(room.id === NO_ROOM_ID ? noRoomChildren : [])
               .filter(searchMatches)               // while searching, keep only matches
             // while searching, hide rooms with no matches and auto-open the ones that have them
             if (searchActive && roomChildren.length === 0) return null
@@ -677,6 +702,18 @@ export default function CenterRosterPage({ centerId: centerIdProp }: { centerId?
                 {/* Expanded panel */}
                 {isOpen && (
                   <div style={{ background: '#f8fbf8', borderBottom: '1px solid #e8f0e8', padding: '16px 20px' }}>
+
+                    {/* Очередь на комнату ОБЪЯСНЯЕТ СЕБЯ. Просто показать этих детей
+                        мало: пока комнаты нет, их не увидит и сетка питания, а без
+                        сказанного вслух это выглядит как обычная группа. */}
+                    {room.id === NO_ROOM_ID && (
+                      <div style={{ fontSize: 12, color: '#92400e', background: '#fffbeb', border: '1.5px solid #fde68a',
+                        borderRadius: 8, padding: '9px 12px', marginBottom: 14, fontWeight: 600 }}>
+                        These children have no classroom yet — most often because they came in from an approved
+                        form, which never asks for a room. Until a room is set they do not appear in the meal
+                        grid. Open the card and set the classroom.
+                      </div>
+                    )}
 
                     {/* Teachers */}
                     {roomStaff.length > 0 && (

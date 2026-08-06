@@ -347,6 +347,8 @@ export default function StaffSettingsPage() {
               <div><label style={lbl}>Birthday</label><input style={inp} type="date" value={fmtDate(data.birthday)} onChange={e => set('birthday', e.target.value)} /></div>
             </div>
             <div><label style={lbl}>Home Address</label><input style={inp} value={data.address ?? ''} onChange={e => set('address', e.target.value)} /></div>
+
+            <DoorPin staffId={data.id} />
           </div>
       )}
 
@@ -894,6 +896,120 @@ export default function StaffSettingsPage() {
         </button>
       </div>
       </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DOOR PIN — дверь к PIN сотрудника (V.1, 06.08).
+//
+// ЗАЧЕМ. PIN — это то, чем человек предъявляет СЕБЯ на планшете комнаты: под ним
+// пишутся чек-ин смены и подтверждение передачи ребёнка. До сегодня PIN заводился
+// только SQL-ом, поэтому он был у трёх сотрудников из семидесяти двух, а у
+// директоров — ни у кого.
+//
+// ЧЕГО ЗДЕСЬ НЕТ И НЕ БУДЕТ. PIN не показывается после ввода, не копируется, не
+// уходит письмом. Колонка pin_hash закрыта привилегией (20260728aa) и в карточку
+// не запрашивается: четыре цифры при известном центре перебираются по хэшу за
+// секунды, поэтому «показать текущий PIN» — не функция, а утечка. Забыл —
+// заводится новый; старый не восстанавливается никем, включая владельца.
+//
+// Ввод повторяется вторым полем: опечатка в невидимом поле обнаружилась бы у
+// двери, когда человек уже стоит с ребёнком на руках.
+// ═══════════════════════════════════════════════════════════════════════════════
+function DoorPin({ staffId }: { staffId: string }) {
+  const [status, setStatus] = useState<{ has_pin: boolean; set_at: string | null; set_by: string | null } | null>(null)
+  const [denied, setDenied] = useState(false)
+  const [open, setOpen] = useState(false)
+  const [pin, setPin] = useState('')
+  const [again, setAgain] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [done, setDone] = useState(false)
+
+  const load = async () => {
+    const { data, error } = await supabase.schema('menumaker').rpc('safepass_staff_pin_status', { p_staff_id: staffId })
+    // Отказ и «нет PIN» — разные вещи; молчаливый ноль здесь означал бы «заводи
+    // ещё раз» тому, кому просто не положено видеть.
+    if (error || !data?.ok) { setDenied(true); setStatus(null); return }
+    setDenied(false)
+    setStatus({ has_pin: !!data.has_pin, set_at: data.set_at ?? null, set_by: data.set_by ?? null })
+  }
+  useEffect(() => { void load() }, [staffId])
+
+  const digits = (v: string) => v.replace(/\D/g, '').slice(0, 4)
+  const canSave = pin.length === 4 && again.length === 4 && !busy
+
+  const save = async () => {
+    setErr(null)
+    if (pin !== again) { setErr('The two entries do not match — type the same four digits twice.'); return }
+    setBusy(true)
+    const { error } = await supabase.schema('menumaker').rpc('safepass_set_staff_pin', { p_staff_id: staffId, p_pin: pin })
+    setBusy(false)
+    if (error) {
+      // Сервер отказывает СЛОВАМИ (занят / слишком простой / не ваш центр) —
+      // показываем его причину, а не свою выдумку.
+      setErr(error.message.replace(/^.*?:\s*/, ''))
+      return
+    }
+    setPin(''); setAgain(''); setOpen(false); setDone(true)
+    setTimeout(() => setDone(false), 3000)
+    void load()
+  }
+
+  if (denied) return null      // не ваш центр или не ваша роль — блока просто нет
+
+  return (
+    <div style={{ marginTop: 22, paddingTop: 16, borderTop: '1px solid #eef2ee' }}>
+      <label style={lbl}>Door PIN</label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13.5, color: status?.has_pin ? '#0f5132' : '#92400e', fontWeight: 600 }}>
+          {status === null ? '…' : status.has_pin ? '● PIN is set' : '○ No PIN yet'}
+        </span>
+        {status?.has_pin && status.set_at && (
+          <span style={{ fontSize: 12, color: '#6b7280' }}>
+            {new Date(status.set_at).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })}
+            {status.set_by ? ` · by ${status.set_by}` : ''}
+          </span>
+        )}
+        {status && !status.has_pin && (
+          <span style={{ fontSize: 12, color: '#6b7280' }}>this person cannot check in on a tablet yet</span>
+        )}
+        <button onClick={() => { setOpen(o => !o); setErr(null); setPin(''); setAgain('') }} style={{ ...btnSec, padding: '6px 14px', fontSize: 13 }}>
+          {done ? 'Saved ✓' : status?.has_pin ? 'Change PIN' : 'Set PIN'}
+        </button>
+      </div>
+
+      {open && (
+        <div style={{ marginTop: 12, padding: '14px 16px', background: '#f8fbf8', border: '1px solid #e0e8e0', borderRadius: 10, maxWidth: 420 }}>
+          <div style={{ fontSize: 12.5, color: '#374151', lineHeight: 1.55, marginBottom: 12 }}>
+            Four digits — this is what the person types on the room tablet. It is
+            <b> never shown again</b>: not here, not in a list, not by email. If it is
+            forgotten, set a new one; the old one cannot be recovered by anyone.
+          </div>
+          <div style={{ display: 'grid', gap: 10 }}>
+            <div>
+              <label style={lbl}>New PIN</label>
+              <input style={{ ...inp, letterSpacing: '0.5em', fontSize: 18 }} type="password" inputMode="numeric"
+                autoComplete="new-password" value={pin} onChange={e => setPin(digits(e.target.value))} placeholder="••••" />
+            </div>
+            <div>
+              <label style={lbl}>Repeat PIN</label>
+              <input style={{ ...inp, letterSpacing: '0.5em', fontSize: 18 }} type="password" inputMode="numeric"
+                autoComplete="new-password" value={again} onChange={e => setAgain(digits(e.target.value))} placeholder="••••" />
+            </div>
+          </div>
+          {err && (
+            <div role="alert" style={{ marginTop: 10, padding: '9px 12px', borderRadius: 8, background: '#fef2f2', border: '1px solid #fca5a5', color: '#991b1b', fontSize: 12.5, fontWeight: 500 }}>{err}</div>
+          )}
+          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            <button onClick={save} disabled={!canSave} style={canSave ? { ...btnPri, padding: '8px 16px', fontSize: 13 } : { ...btnPri, padding: '8px 16px', fontSize: 13, opacity: 0.5, cursor: 'not-allowed' }}>
+              {busy ? 'Saving…' : 'Save PIN'}
+            </button>
+            <button onClick={() => { setOpen(false); setErr(null); setPin(''); setAgain('') }} style={{ ...btnSec, padding: '8px 14px', fontSize: 13 }}>Cancel</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

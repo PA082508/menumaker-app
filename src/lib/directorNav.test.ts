@@ -72,3 +72,39 @@ describe('боковая панель директора', () => {
     expect(full.items!.map(i => i.path)).toContain('/claim-report')
   })
 })
+
+// ── ДВЕРЬ ВИДНА, А НЕ ПРОСТО ЧИСЛИТСЯ (замер 06.08) ──────────────────────────
+//
+// Пункт «Parent access» стоял в карте меню, тест это стерёг — и всё равно
+// владелец не нашёл его на экране: раздел раскрывался ТОЛЬКО наведением мыши,
+// а тап и клик не делали ничего. Тест карты ≠ тест меню.
+//
+// Здесь проверяется то, что ближе к человеку: пункт приходит в ОБОИХ наборах
+// (админском и директорском), и раздел, который его несёт, вообще раскрываем —
+// то есть у него есть items, а не noFlyout-заглушка. Полный рендер сайдбара
+// проверяется глазами: у проекта нет DOM-рендерера в тестах, и притворяться,
+// что есть, значило бы снова стеречь не то.
+describe('дверь Parent access', () => {
+  const peopleOf = (secs: ReturnType<typeof dir>) => secs.find(s => s.id === 'people')
+
+  it('пункт приходит в АДМИНСКОМ наборе и раздел раскрываем', () => {
+    const people = SECTIONS.find(s => s.id === 'people')!
+    expect(people.noFlyout, 'раздел-заглушка не раскрывается — пункт был бы недостижим').toBeFalsy()
+    expect(people.items!.map(i => i.path)).toContain('/safepass/issue')
+  })
+
+  it('пункт приходит в ДИРЕКТОРСКОМ наборе и раздел раскрываем', () => {
+    const people = peopleOf(dir())
+    expect(people, 'у директора нет раздела People').toBeDefined()
+    expect(people!.noFlyout).toBeFalsy()
+    expect(people!.items!.map(i => i.path)).toContain('/safepass/issue')
+  })
+
+  it('у пункта есть ярлык и иконка — пустая строка в меню невидима так же, как её отсутствие', () => {
+    for (const set of [SECTIONS, dir()]) {
+      const item = set.find(s => s.id === 'people')!.items!.find(i => i.path === '/safepass/issue')!
+      expect(item.label.trim().length).toBeGreaterThan(0)
+      expect(item.icon.trim().length).toBeGreaterThan(0)
+    }
+  })
+})

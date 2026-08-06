@@ -23,14 +23,22 @@
 // означало лишь «не показываем», а снимок оставался лежать.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { Link } from 'react-router-dom'
+import { useOrg } from '@/contexts/OrgContext'
 import Avatar from '@/components/Avatar'
 import { uploadAvatar, deleteAvatar } from '@/lib/avatars'
 
 const C = {
   bg:'#0a0c12', surface:'#13161f', surface2:'#1c2030', border:'#252a3d', text:'#f0f2ff',
   muted:'#6b7299', green:'#00e896', greenDim:'rgba(0,232,150,0.1)', red:'#ff4d6a', redDim:'rgba(255,77,106,0.1)', blue:'#5b8bff',
+  // Янтарь — «это работа, а не поломка»: ребёнок без доверенных взрослых.
+  amber:'#f0a500',
 }
 type Candidate = { phone:string; person_name:string; child_count:number; phone_verified:boolean; registered:boolean; photo_url:string|null }
+// Вид ПО ДЕТЯМ выбранного класса (заказ 06.08): раскатка идёт комнатами, и
+// директор работает список комнаты сверху вниз. Ребёнок без доверенных из списка
+// НЕ пропадает — иначе не видно, кого догонять оргработой.
+type RoomChild = { id:string; name:string; adults:{ phone:string; person_name:string; photo_url:string|null; registered:boolean; phone_verified:boolean }[] }
 
 export default function SafePassIssueCode() {
   const [cands, setCands] = useState<Candidate[]>([])
@@ -42,6 +50,13 @@ export default function SafePassIssueCode() {
   // Фото-захват: лист подтверждения → камера. Кандидат, ради которого открыта
   // камера, держится отдельно — файл прилетает асинхронно, и к моменту возврата
   // список мог перерисоваться.
+  // Класс-фильтр. 'all' — прежний плоский список родителей с поиском.
+  const { currentCenter } = useOrg()
+  const [rooms, setRooms] = useState<{id:string; name:string}[]>([])
+  const [roomId, setRoomId] = useState<'all'|string>('all')
+  const [roomKids, setRoomKids] = useState<RoomChild[]>([])
+  const [roomErr, setRoomErr] = useState('')
+
   const [sheetFor, setSheetFor] = useState<Candidate|null>(null)
   const [photoFor, setPhotoFor] = useState<Candidate|null>(null)
   const cameraRef = useRef<HTMLInputElement>(null)
@@ -65,6 +80,59 @@ export default function SafePassIssueCode() {
     })
   }
   useEffect(() => { loadCandidates() }, [])
+
+  // Список комнат центра — для фильтра. Центр берём из контекста организации.
+  useEffect(() => {
+    if (!currentCenter?.id) { setRooms([]); return }
+    supabase.schema('menumaker').from('classrooms')
+      .select('id,name,sort_order,is_roster').eq('center_id', currentCenter.id).eq('is_active', true)
+      .order('sort_order')
+      .then(({ data, error }) => {
+        // Отказ чтения комнат не смеет выглядеть как «в центре нет классов»:
+        // фильтр тогда просто не появится, и человек будет искать его глазами.
+        if (error) { setRooms([]); setErr('Could not load the class list — the filter is unavailable. The full list below still works.'); return }
+        setRooms(((data ?? []) as any[]).filter(r => r.is_roster !== false).map(r => ({ id: r.id, name: r.name })))
+      })
+  }, [currentCenter?.id])
+
+  // Вид по детям выбранной комнаты. Ничего не записывает — только показывает.
+  useEffect(() => {
+    if (roomId === 'all') { setRoomKids([]); setRoomErr(''); return }
+    let cancelled = false
+    ;(async () => {
+      const { data: roster, error: rErr } = await supabase.schema('menumaker').from('roster')
+        .select('id,first_name,last_name,child_name')
+        .eq('classroom_id', roomId).eq('is_active', true)
+      if (cancelled) return
+      if (rErr) { setRoomErr('Could not load this room.'); setRoomKids([]); return }
+      const ids = (roster ?? []).map((r:any) => r.id as string)
+      if (ids.length === 0) { setRoomErr(''); setRoomKids([]); return }
+      const { data: tps, error: tErr } = await supabase.schema('menumaker').from('safepass_trusted_persons')
+        .select('child_id,person_name,phone,photo_url,registered_at,phone_verified')
+        .in('child_id', ids).eq('is_active', true)
+      if (cancelled) return
+      if (tErr) { setRoomErr('Could not load pickup rights for this room.'); setRoomKids([]); return }
+      const byKid = new Map<string, RoomChild['adults']>()
+      for (const t of (tps ?? []) as any[]) {
+        const arr = byKid.get(t.child_id) ?? []
+        arr.push({ phone: t.phone, person_name: t.person_name, photo_url: t.photo_url ?? null,
+                   registered: t.registered_at != null, phone_verified: t.phone_verified === true })
+        byKid.set(t.child_id, arr)
+      }
+      setRoomErr('')
+      setRoomKids(((roster ?? []) as any[]).map(r => ({
+        id: r.id as string,
+        name: (r.first_name && r.last_name) ? `${r.first_name} ${r.last_name}` : (r.child_name ?? '—'),
+        adults: byKid.get(r.id as string) ?? [],
+      })).sort((a,b) => a.name.localeCompare(b.name)))
+    })()
+    return () => { cancelled = true }
+  }, [roomId])
+
+  const byPhone = useMemo(() => new Map(cands.map(c => [c.phone, c])), [cands])
+  const candidateFor = (a: RoomChild['adults'][number]): Candidate =>
+    byPhone.get(a.phone) ?? { phone: a.phone, person_name: a.person_name, child_count: 1,
+      phone_verified: a.phone_verified, registered: a.registered, photo_url: a.photo_url }
 
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -164,15 +232,69 @@ export default function SafePassIssueCode() {
     <div style={wrap}><div style={card}>
       <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:18}}>
         <div style={{width:36,height:36,borderRadius:10,background:C.green,display:'grid',placeItems:'center',fontSize:18}}>📲</div>
-        <div>
+        <div style={{flex:1}}>
           <div style={{fontWeight:800,fontSize:16}}>SafePass — Register a parent's phone</div>
           <div style={{fontSize:11,color:C.muted}}>Staff only · tap Register once — the parent signs in with their own number</div>
         </div>
+        {/* Страница смонтирована ВНЕ приложения (свой тёмный экран), поэтому дверь
+            обратно нужна явная — иначе выход только кнопкой браузера. */}
+        <Link to="/children" style={{fontSize:12,color:C.muted,textDecoration:'none',whiteSpace:'nowrap'}}>← Back to app</Link>
       </div>
 
-      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search parent name or phone…" style={inp} />
-      <div style={{height:12}}/>
-      {loadErr ? (
+      {/* Класс-фильтр — ПЕРВЫМ, над поиском: раскатка идёт комнатами (Red первым),
+          и директор работает список комнаты сверху вниз. */}
+      {rooms.length > 0 && (
+        <>
+          <select value={roomId} onChange={e=>setRoomId(e.target.value as any)}
+            style={{...inp, appearance:'none', cursor:'pointer'}}>
+            <option value="all">All classes</option>
+            {rooms.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </select>
+          <div style={{height:10}}/>
+        </>
+      )}
+
+      {roomId === 'all' && <><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search parent name or phone…" style={inp} />
+      <div style={{height:12}}/></>}
+      {roomId !== 'all' ? (
+        roomErr ? (
+          <div role="alert" style={{padding:'12px 14px',borderRadius:12,background:C.redDim,border:`1.5px solid ${C.red}`,color:C.red,fontSize:13,fontWeight:600}}>{roomErr}</div>
+        ) : roomKids.length === 0 ? (
+          <div style={{color:C.muted,fontSize:13,textAlign:'center',padding:'22px 8px'}}>No children in this room.</div>
+        ) : (
+          <>
+            {/* Счётчик честный: сколько детей и сколько взрослых уже зарегистрировано. */}
+            <div style={{fontSize:11.5,color:C.muted,marginBottom:10}}>
+              {roomKids.length} {roomKids.length===1?'child':'children'} · {roomKids.reduce((n,k)=>n+k.adults.filter(a=>a.registered).length,0)} adults registered
+            </div>
+            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+              {roomKids.map(k => (
+                <div key={k.id} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:'10px 14px'}}>
+                  <div style={{fontWeight:700,fontSize:14.5,marginBottom:k.adults.length?8:4}}>{k.name}</div>
+                  {k.adults.length === 0 ? (
+                    // Ребёнок из списка НЕ пропадает: это работа, а не пустота.
+                    <div style={{fontSize:12.5,color:C.amber,fontWeight:600}}>Nobody authorized to pick up yet</div>
+                  ) : k.adults.map(a => (
+                    <div key={a.phone+a.person_name} style={{display:'flex',alignItems:'center',gap:10,padding:'5px 0'}}>
+                      <div onClick={()=>openCamera(candidateFor(a))} style={{cursor:'pointer',flexShrink:0}} title={a.photo_url?'Retake photo':'Take photo'}>
+                        <Avatar name={a.person_name} path={a.photo_url} size={34} />
+                      </div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:13.5,fontWeight:600}}>{a.person_name}</div>
+                        <div style={{fontSize:11.5,color:C.muted}}>{prettyPhone(a.phone)}</div>
+                      </div>
+                      {a.registered
+                        ? <span style={chip(C.green,C.greenDim)}>✓ registered</span>
+                        : <button onClick={()=>setSheetFor(candidateFor(a))} disabled={busyPhone===a.phone}
+                            style={btn(busyPhone===a.phone?C.border:C.green)}>{busyPhone===a.phone?'…':'Register'}</button>}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </>
+        )
+      ) : loadErr ? (
         <div role="alert" style={{padding:'12px 14px',borderRadius:12,background:C.redDim,border:`1.5px solid ${C.red}`,color:C.red,fontSize:13,fontWeight:600,lineHeight:1.5}}>{loadErr}</div>
       ) : shown.length === 0 ? (
         <div style={{color:C.muted,fontSize:13,textAlign:'center',padding:'22px 8px'}}>{cands.length===0 ? 'No pickup-authorized parents for this center yet.' : 'No match.'}</div>

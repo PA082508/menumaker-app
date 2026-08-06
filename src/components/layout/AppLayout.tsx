@@ -373,6 +373,15 @@ export default function AppLayout() {
                     onMouseEnter={e => {
                       if (!sec.noFlyout) openFly(sec.id, e.currentTarget as HTMLElement)
                     }}
+                    // ЗАМЕР 06.08: пункт «Parent access» был в меню, но владелец не мог его
+                    // найти. Раздел раскрывался ТОЛЬКО наведением мыши: тап на планшете и
+                    // обычный клик не делали ничего, а другой двери к странице нет ни одной.
+                    // Теперь раздел открывается и нажатием — тем же жестом, каким его пробуют.
+                    onClick={e => {
+                      if (sec.noFlyout) return
+                      if (flyId === sec.id) setFlyId(null)
+                      else openFly(sec.id, e.currentTarget as HTMLElement)
+                    }}
                     onMouseLeave={() => {
                       if (!sec.noFlyout) schedulHide(sec.id)
                     }}

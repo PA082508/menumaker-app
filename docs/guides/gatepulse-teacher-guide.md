@@ -89,3 +89,20 @@ error** — you are allowed to be the only adult in the room under the condition
 | Parent standing there, no request | Have them tap Drop Off / Pick Up; or use the paper panel. |
 | Wrong teacher's name on a record | Whoever tapped is who is recorded — tell the director; corrections are made at the office. |
 | Your name has no tile | You're not checked in today. Check in, and the tile appears. |
+
+## Cover class — подмена в чужой комнате
+
+**Подменяете — отметьтесь своим PIN на планшете этой комнаты.** Ваше имя появится в полосе
+«In this room today», и всё, что вы отметите — приёмы пищи, передачи детей — запишется под вашим
+именем, а не под именем того, кого вы подменяете. Уходя, сделайте чек-аут.
+
+**Последний взрослый не выходит, пока в комнате дети.** Если вы единственный отмеченный взрослый,
+планшет не отпустит вас, пока подмена не отметится, и скажет, сколько детей в комнате. Это не
+придирка, а правило присмотра.
+
+**В чрезвычайной ситуации выход есть.** Кнопка «Leave anyway — the director will be told»:
+вас никто не задерживает, система просто честно записывает, что это было исключение.
+
+**Честно о сегодняшнем дне:** планшет считает детьми тех, кого привели и приняли **через
+SafePass**. Пока родительские передачи не пошли, он никого не удержит — но **правило действует
+всегда**, независимо от того, видит его планшет или ещё нет.

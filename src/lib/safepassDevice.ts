@@ -141,10 +141,11 @@ export async function fetchCheckedInToday(
 /** classroomId is passed explicitly so a floater checking in on a shared centre pad lands
  *  in the room they actually work, not in the room the tablet belongs to. */
 export async function staffCheckIn(
-  token: string, pinHashHex: string, classroomId?: string,
+  token: string, pinHashHex: string, classroomId?: string, force = false,
 ): Promise<HandoffResult> {
   const { data, error } = await mm().rpc('safepass_staff_check_in', {
     p_token: token, p_pin_hash: pinHashHex, ...(classroomId ? { p_classroom: classroomId } : {}),
+    ...(force ? { p_force: true } : {}),
   })
   if (error) {
     if (/invalid pin/i.test(error.message)) throw new InvalidPinError()
@@ -153,9 +154,11 @@ export async function staffCheckIn(
   return data as HandoffResult
 }
 
-export async function staffCheckOut(token: string, pinHashHex: string): Promise<HandoffResult> {
+// force = второй тап: человек уходит в чрезвычайной ситуации, система не задерживает
+// его, а честно записывает исключение (note + отметка директору).
+export async function staffCheckOut(token: string, pinHashHex: string, force = false): Promise<HandoffResult> {
   const { data, error } = await mm().rpc('safepass_staff_check_out', {
-    p_token: token, p_pin_hash: pinHashHex,
+    p_token: token, p_pin_hash: pinHashHex, ...(force ? { p_force: true } : {}),
   })
   if (error) {
     if (/invalid pin/i.test(error.message)) throw new InvalidPinError()

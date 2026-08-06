@@ -61,6 +61,7 @@ import PortalPage from '@/pages/portal/PortalPage'
 import EnrollmentInboxPage from '@/pages/enrollment/EnrollmentInboxPage'
 import ParentPacketPage from '@/pages/enrollment/ParentPacketPage'
 import PacketSetsPage from '@/pages/enrollment/PacketSetsPage'
+import ParentCardPage from '@/pages/children/ParentCardPage'
 import DirectorHome from '@/pages/dashboard/DirectorHome'
 
 // Lazy placeholders for other pages
@@ -190,6 +191,9 @@ export default function App() {
               <Route path="receipt-review"     element={<ReceiptReviewPage />} />
               <Route path="children"           element={<ChildrenPage />} />
               <Route path="parents"            element={<ParentsPage />} />
+              {/* ОДНА ЗАПИСЬ — ДВА ВХОДА: этот адрес открывают и список родителей,
+                  и вкладка Family карточки ребёнка. */}
+              <Route path="parents/:guardianId" element={<ParentCardPage />} />
               <Route path="enrollment-inbox"   element={<EnrollmentInboxPage />} />
               <Route path="issue-packet"       element={<ParentPacketPage />} />
               <Route path="packet-sets"        element={<PacketSetsPage />} />

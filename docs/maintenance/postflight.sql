@@ -206,6 +206,24 @@ begin
     r := r || '  ✅ S-2b. `select *` по staff отказан — экран обязан просить явный список' || E'\n'; end;
   execute 'reset role';
 
+  -- ── S-2c. ПРЕДСТАВЛЕНИЯ возрастной архитектуры читаются ЧЕЛОВЕКОМ ───────
+  -- Третий случай того же класса за один день (is_org_level 06.08 → грант на
+  -- staff; v_child_age_profile 06.08 → грант на представление): объект появился
+  -- или сузился, а право на него не выдали. Спрашивать справочник прав бесполезно
+  -- — пробуем ЧТЕНИЕ от имени authenticated, как это делает карточка ребёнка.
+  execute 'set local role authenticated';
+  begin
+    execute 'select 1 from (select id, age_group_label, milk_oz from menumaker.v_child_age_profile limit 1) z';
+    r := r || '  ✅ S-2c. v_child_age_profile читается под authenticated' || E'\n';
+  exception when others then
+    r := r || format('  ❌ S-2c. КАРТОЧКА РЕБЁНКА БЕЗ ВОЗРАСТА: «%s»', left(sqlerrm, 60)) || E'\n'; end;
+  begin
+    execute 'select 1 from (select roster_id from menumaker.v_meal_grid limit 1) z';
+    r := r || '  ✅ S-2c. v_meal_grid читается под authenticated' || E'\n';
+  exception when others then
+    r := r || format('  ❌ S-2c. СЕТКА ПИТАНИЯ НЕ ЧИТАЕТСЯ: «%s»', left(sqlerrm, 60)) || E'\n'; end;
+  execute 'reset role';
+
   -- ── S-3. демо-центр не остался meal site ───────────────────────────────
   select count(*) into v_n from menumaker.centers where is_demo and is_meal_site;
   r := r || case when v_n = 0 then '  ✅ S-3. демо-центр не является meal site'

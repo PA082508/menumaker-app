@@ -145,3 +145,7 @@ Short lines for decks, landing pages and sales conversation. The parent-facing v
 
 **Boundary:** the language in §B is commercial framing. It is **not** part of regulatory
 materials, and none of it may be quoted to an agency in place of §A.
+
+Смены персонала отмечаются на планшете комнаты личным PIN; система не отпускает последнего
+взрослого, пока в комнате есть дети и не пришла подмена, а вынужденные исключения записываются
+и показываются директору.

@@ -270,7 +270,7 @@ export default function SafePassTeacherPage() {
   const [shiftPad, setShiftPad] = useState<'in' | 'out' | null>(null)
   // A refusal must not be a toast that vanishes in 2.6s: the live run read "checkout accepted"
   // from a message that had already gone. It stays on the strip until the next shift action.
-  const [shiftNotice, setShiftNotice] = useState<{ text: string; kind: 'refused' | 'done' } | null>(null)
+  const [shiftNotice, setShiftNotice] = useState<{ text: string; kind: 'refused' | 'done'; force?: boolean } | null>(null)
 
   // Gathering room — MANUAL switch, off by default. The morning intake happens in
   // one room for the whole centre, so the queue must be scoped by centre rather
@@ -459,10 +459,15 @@ export default function SafePassTeacherPage() {
   }, [deviceToken, classId])
   useEffect(() => { loadCheckedIn() }, [loadCheckedIn])
 
+  // Второй тап при непрерывности взрослого: хэш PIN держим ровно до него, чтобы
+  // человеку в чрезвычайной ситуации не набирать PIN заново.
+  const [forceExit, setForceExit] = useState<{ hash: string; wasIn: boolean } | null>(null)
+
   async function verifyShift(hash: string): Promise<HandoffResult> {
+    const force = forceExit !== null      // «Leave anyway» нажата — этот ввод PIN идёт как исключение
     return shiftPad === 'in'
-      ? staffCheckIn(deviceToken!, hash, classId)
-      : staffCheckOut(deviceToken!, hash)
+      ? staffCheckIn(deviceToken!, hash, classId, force)
+      : staffCheckOut(deviceToken!, hash, force)
   }
 
   function onShiftDone(r: HandoffResult & { already?: boolean; error?: string }) {
@@ -472,6 +477,14 @@ export default function SafePassTeacherPage() {
     // refused the second checkout correctly on the live run — nothing was written — but the
     // screen said so with a toast that was gone before it was read, and silence reads as success.
     if (r?.ok === false) {
+      // Непрерывность взрослого: отказ несёт СВОЙ текст и следующий шаг с сервера,
+      // а не наш общий. Кнопка «Leave anyway» — второй тап: в чрезвычайной ситуации
+      // человека не держат, исключение просто записывается честно.
+      if ((r as any).error === 'last_adult_with_children') {
+        setShiftNotice({ kind: 'refused', text: (r as any).message ?? 'You are the only adult with children in the room.', force: true })
+        loadCheckedIn()
+        return
+      }
       setShiftNotice({
         kind: 'refused',
         text: wasIn
@@ -481,6 +494,7 @@ export default function SafePassTeacherPage() {
       loadCheckedIn()
       return
     }
+    setForceExit(null)
     setShiftNotice({
       kind: 'done',
       text: wasIn
@@ -681,6 +695,14 @@ export default function SafePassTeacherPage() {
               fontSize: KEY.banner, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 10,
             }}>
               <span style={{ flex: 1 }}>{shiftNotice.kind === 'refused' ? '⚠️ ' : '✓ '}{shiftNotice.text}</span>
+              {shiftNotice.force && (
+                <button onClick={() => { setForceExit({ hash: '', wasIn: false }); setShiftNotice(null); setShiftPad('out') }}
+                  style={{ background: 'transparent', border: '1px solid currentColor', borderRadius: 8,
+                           color: 'inherit', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                           fontFamily: 'inherit', padding: '5px 10px', whiteSpace: 'nowrap' }}>
+                  Leave anyway — the director will be told
+                </button>
+              )}
               <button onClick={() => setShiftNotice(null)} aria-label="Dismiss"
                 style={{ background: 'transparent', border: 'none', color: 'inherit', fontSize: 16, cursor: 'pointer', fontFamily: 'inherit', padding: '0 4px' }}>×</button>
             </div>

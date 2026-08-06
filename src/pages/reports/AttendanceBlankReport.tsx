@@ -132,7 +132,10 @@ export default function AttendanceBlankReport() {
 
     const dayHeads = DAYS.map((d, i) => {
       const dt = addDays(monday, i)
-      return `<th colspan="2" class="day">${d}<div class="dnum">${dt.getMonth() + 1}/${dt.getDate()}</div></th>`
+      // Решение владельца 06.08: число недели стоит В ОДНУ ЛИНИЮ с днём и ТЕМ ЖЕ
+      // кеглем. Мелкая вторая строка читалась как сноска, а это часть даты —
+      // заполняющий ищет «Mon 8/10» одним взглядом, а не собирает из двух ярусов.
+      return `<th colspan="2" class="day">${d} ${dt.getMonth() + 1}/${dt.getDate()}</th>`
     }).join('')
     const inOutHeads = DAYS.map(() => `<th class="io">in</th><th class="io">out</th>`).join('')
     // The blank stays a blank: in/out boxes are empty on every day, exactly as the
@@ -162,7 +165,6 @@ export default function AttendanceBlankReport() {
   th, td { border:1px solid #000; padding:0 3px; height:22px }
   th { background:#f2f2f2; font-size:10.5px; text-align:center }
   th.day { font-size:11px }
-  .dnum { font-weight:normal; font-size:9px; color:#333 }
   th.io, td.io { width:34px; text-align:center }
   .num { width:22px; text-align:center }
   .nm  { width:150px; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
@@ -244,7 +246,9 @@ export default function AttendanceBlankReport() {
             <thead>
               <tr>
                 <th style={th}>#</th><th style={{ ...th, textAlign: 'left' }}>Child's Name</th><th style={th}>DOB</th>
-                {DAYS.map((d, i) => <th key={d} style={th}>{d}<div style={{ fontWeight: 400, fontSize: 10, color: '#6b7280' }}>{addDays(monday, i).getMonth() + 1}/{addDays(monday, i).getDate()}</div></th>)}
+                {/* День и число — одной строкой, одним кеглем (решение владельца 06.08);
+                    экран обязан показывать ровно то, что уйдёт на бумагу. */}
+                {DAYS.map((d, i) => <th key={d} style={th}>{d} {addDays(monday, i).getMonth() + 1}/{addDays(monday, i).getDate()}</th>)}
                 <th style={th}>Hours</th>
               </tr>
             </thead>

@@ -142,7 +142,17 @@ export const SECTIONS: Section[] = [
     { path: '/cacfp-checklist', label: 'CACFP Checklist', icon: 'ti-checkbox' },
   ]},
   {
-    id: 'settings', label: 'Settings', icon: '⚙️', noFlyout: true,
+    // Раздел перестал быть одиночной ссылкой 06.08: у SafePass есть живой экран
+    // устройств (/settings/safepass-devices — регистрация и отзыв планшетов), а
+    // ссылки на него не было НИ В ОДНОМ меню. Дверь без ручки: маршрут работает,
+    // но попасть в него можно только набрав адрес наизусть — то же, чем в июле
+    // болел Parent access. Настройки остаются первым пунктом, чтобы прежний тап
+    // по разделу вёл туда же, куда вёл раньше.
+    id: 'settings', label: 'Settings', icon: '⚙️',
+    items: [
+      { path: '/settings',                  label: 'Settings', icon: 'ti-settings' },
+      { path: '/settings/safepass-devices', label: 'Devices',  icon: 'ti-device-tablet' },
+    ],
   },
 ]
 

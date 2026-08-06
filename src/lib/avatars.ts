@@ -8,7 +8,10 @@ import { supabase } from '@/lib/supabase'
 const BUCKET = 'avatars'
 const SIGNED_TTL = 60 * 60 // 1h — matches the other private buckets in the app
 
-export type AvatarEntity = 'staff' | 'child'
+// 'parent' появился 06.08 вместе с фото-захватом при Register: у SafePass лицо
+// взрослого — это то, по чему его узнают у двери, и живёт оно там же, где лица
+// детей и сотрудников, а не во втором хранилище.
+export type AvatarEntity = 'staff' | 'child' | 'parent'
 
 // ── signed-URL cache ─────────────────────────────────────────────────────────
 // One signed URL per path, reused until it is close to expiry. Keeps a roster of
@@ -62,6 +65,18 @@ export async function uploadAvatar(entity: AvatarEntity, id: string, file: File)
   if (error) throw error
   cache.delete(path) // force a fresh signed URL for the new image
   return path
+}
+
+// ── delete ───────────────────────────────────────────────────────────────────
+// До 06.08 удаления не было ВООБЩЕ: у бакета не было DELETE-политики, и «убрать
+// фото» только чистило колонку — лицо оставалось лежать в хранилище навсегда.
+// Отзыв доступа обязан уносить лицо, иначе «доступ отозван» — неправда.
+// Возвращает true, если объекта больше нет.
+export async function deleteAvatar(path: string | null | undefined): Promise<boolean> {
+  if (!path) return true
+  const { error } = await supabase.storage.from(BUCKET).remove([path])
+  cache.delete(path)
+  return !error
 }
 
 // Initials + a stable color for the fallback avatar (shared with the old inline

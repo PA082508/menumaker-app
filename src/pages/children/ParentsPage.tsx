@@ -24,6 +24,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
 import ScrollToTop from '@/components/common/ScrollToTop'
+import Avatar from '@/components/Avatar'
 
 type Guardian = {
   id: string
@@ -48,6 +49,11 @@ export default function ParentsPage() {
   const { currentCenter, isOrgAdmin, orgRole } = useOrg()
   const centerId = currentCenter?.id ?? null
   const allowed = isOrgAdmin || ['admin', 'director', 'office_manager', 'owner'].includes(orgRole ?? '')
+  // Два вида одной страницы: карточки семей (справочник, как было) и ЛИСТ —
+  // взгляд от двери: по классам, лицами, с состоянием доступа. Второй вид
+  // ДОСТРОЕН к первому, а не заведён отдельной страницей: разошлись бы на первой
+  // же правке, и «родители» стало бы двумя разными правдами.
+  const [view, setView] = useState<'families' | 'sheet'>('families')
 
   const [families, setFamilies] = useState<Family[]>([])
   const [loading, setLoading] = useState(false)
@@ -189,8 +195,19 @@ export default function ParentsPage() {
     <div style={wrap}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <Title center={currentCenter?.name} />
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔎 Search families…"
-          style={{ font: 'inherit', fontSize: 13, padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 9, minWidth: 200 }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', border: `1.5px solid ${GREEN}`, borderRadius: 8, overflow: 'hidden' }}>
+            {([['families', '🗂 Families'], ['sheet', '👪 Parents sheet']] as const).map(([k, label]) => (
+              <button key={k} onClick={() => setView(k)} style={{
+                font: 'inherit', fontSize: 12, padding: '6px 12px', border: 'none', cursor: 'pointer',
+                fontWeight: view === k ? 700 : 400,
+                background: view === k ? GREEN : '#fff', color: view === k ? '#fff' : GREEN,
+              }}>{label}</button>
+            ))}
+          </div>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔎 Search families…"
+            style={{ font: 'inherit', fontSize: 13, padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 9, minWidth: 200 }} />
+        </div>
       </div>
 
       {loadErr && (
@@ -204,7 +221,9 @@ export default function ParentsPage() {
         </div>
       )}
 
-      {loading ? (
+      {view === 'sheet' ? (
+        <ParentsSheet centerId={centerId} search={search} />
+      ) : loading ? (
         <div style={{ color: '#aaa', fontSize: 13, marginTop: 18 }}>Loading families…</div>
       ) : visible.length === 0 ? (
         <div style={empty}>
@@ -221,6 +240,174 @@ export default function ParentsPage() {
     </div>
   )
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ЛИСТ РОДИТЕЛИ — взгляд от двери, а не из картотеки.
+//
+// Вопрос, на который лист отвечает: «кто придёт за этим ребёнком и пустит ли их
+// система». Поэтому здесь ЛИЦА (те самые, что снимаются при Register), классы —
+// свёрнутые (директор открывает свою комнату, а не листает центр), и два чипа
+// состояния: ✓registered (сотрудник зарегистрировал телефон) и ✓signed-in
+// (родитель действительно вошёл со своего номера).
+//
+// СТОПКА РОВНО ДВА ЛИЦА — решение владельца. Тап по задней карточке выводит её
+// вперёд, поэтому обе достижимы одним движением. Счётчика «+N» НЕТ намеренно:
+// лист называет тех, кто перед тобой, а полный список доверенных живёт в семье.
+// ЧЕСТНО: у ребёнка бывает и шесть доверенных взрослых — на листе их шесть не
+// станет, и это осознанный размен, а не потеря данных.
+// ═══════════════════════════════════════════════════════════════════════════════
+type SheetPerson = {
+  person_name: string; photo_url: string | null; phone: string | null
+  registered: boolean; signed_in: boolean
+}
+type SheetKid = { id: string; name: string; room_id: string | null; people: SheetPerson[] }
+
+function ParentsSheet({ centerId, search }: { centerId: string; search: string }) {
+  const [rooms, setRooms] = useState<{ id: string; name: string }[]>([])
+  const [kids, setKids] = useState<SheetKid[]>([])
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [openRooms, setOpenRooms] = useState<Record<string, boolean>>({})
+  // Какое лицо стопки сейчас впереди — по ребёнку. 0 = первое, 1 = второе.
+  const [front, setFront] = useState<Record<string, number>>({})
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      setLoading(true); setErr(null)
+      try {
+        const [{ data: roster, error: rErr }, { data: rms, error: cErr }, { data: tps, error: tErr }] = await Promise.all([
+          supabase.schema('menumaker').from('roster')
+            .select('id, child_name, first_name, last_name, classroom_id')
+            .eq('center_id', centerId).eq('is_active', true),
+          supabase.schema('menumaker').from('classrooms')
+            .select('id, name, sort_order').eq('center_id', centerId).eq('is_active', true).order('sort_order'),
+          // Носитель «право забирать» + лицо + состояние доступа. child_id здесь —
+          // roster.id (не child.child_id): ловушка ключей, стоившая уже одного
+          // спрятанного раздела.
+          supabase.schema('menumaker').from('safepass_trusted_persons')
+            .select('child_id, person_name, photo_url, phone, registered_at, phone_verified')
+            .eq('center_id', centerId).eq('is_active', true),
+        ])
+        // Отказ чтения не смеет выглядеть как «родителей нет».
+        if (rErr) throw rErr
+        if (cErr) throw cErr
+        if (tErr) throw tErr
+
+        const byKid = new Map<string, SheetPerson[]>()
+        for (const t of (tps ?? []) as any[]) {
+          const arr = byKid.get(t.child_id as string) ?? []
+          arr.push({
+            person_name: t.person_name as string,
+            photo_url: (t.photo_url as string) ?? null,
+            phone: (t.phone as string) ?? null,
+            registered: t.registered_at != null,
+            signed_in: t.phone_verified === true,
+          })
+          byKid.set(t.child_id as string, arr)
+        }
+        const list: SheetKid[] = ((roster ?? []) as any[]).map(r => ({
+          id: r.id as string,
+          name: (r.first_name && r.last_name) ? `${r.first_name} ${r.last_name}` : ((r.child_name as string) ?? '—'),
+          room_id: (r.classroom_id as string) ?? null,
+          people: byKid.get(r.id as string) ?? [],
+        }))
+        if (!cancelled) { setRooms((rms ?? []) as any[]); setKids(list) }
+      } catch (e: any) {
+        if (!cancelled) { setKids([]); setErr(e?.message ?? String(e)) }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [centerId])
+
+  const q = search.trim().toLowerCase()
+  const match = (k: SheetKid) => !q || k.name.toLowerCase().includes(q) || k.people.some(p => p.person_name.toLowerCase().includes(q))
+
+  if (loading) return <div style={{ color: '#aaa', fontSize: 13, marginTop: 18 }}>Loading the sheet…</div>
+  if (err) return (
+    <div role="alert" style={{ marginTop: 16, padding: '12px 16px', borderRadius: 10, background: '#fef2f2', border: '1px solid #fca5a5', color: '#991b1b', fontSize: 13 }}>
+      The sheet could not be loaded — it is <b>not</b> empty, it failed: {err}
+    </div>
+  )
+
+  // Комната «Без комнаты» показывается только когда в ней кто-то есть — тот же
+  // канон, что в ростере: пустая строка «0» это шум.
+  const groups = rooms.map(r => ({ id: r.id, name: r.name, kids: kids.filter(k => k.room_id === r.id && match(k)) }))
+  const noRoom = kids.filter(k => !k.room_id && match(k))
+  if (noRoom.length) groups.push({ id: '__no_room__', name: 'No classroom yet', kids: noRoom })
+
+  return (
+    <div style={{ marginTop: 16, display: 'grid', gap: 8 }}>
+      {groups.filter(g => g.kids.length > 0 || !q).map(g => {
+        const isOpen = q ? true : !!openRooms[g.id]        // поиск раскрывает сам: искали — значит нашли
+        const activated = g.kids.filter(k => k.people.some(p => p.registered)).length
+        return (
+          <div key={g.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
+            <div onClick={() => setOpenRooms(p => ({ ...p, [g.id]: !p[g.id] }))}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 16px', cursor: 'pointer' }}>
+              <span style={{ fontSize: 10, color: GREEN, display: 'inline-block', transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>▶</span>
+              <span style={{ fontWeight: 600, fontSize: 14, color: '#1a2e1a' }}>{g.name}</span>
+              <span style={{ fontSize: 12, color: '#6b7280' }}>{g.kids.length} children</span>
+              {/* Сколько семей комнаты уже пустят через дверь — то, ради чего лист и открывают. */}
+              <span style={{ marginLeft: 'auto', fontSize: 11.5, color: activated ? '#0f5132' : '#9ca3af', fontWeight: 600 }}>
+                {activated}/{g.kids.length} activated
+              </span>
+            </div>
+            {isOpen && (
+              <div style={{ borderTop: '1px solid #f0f4f1', padding: '6px 16px 12px' }}>
+                {g.kids.length === 0 ? (
+                  <div style={{ fontSize: 12.5, color: '#9ca3af', padding: '8px 0' }}>No children in this room.</div>
+                ) : g.kids.map(k => {
+                  const shown = k.people.slice(0, 2)
+                  const f = front[k.id] ?? 0
+                  return (
+                    <div key={k.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: '1px solid #f7faf8' }}>
+                      {/* Стопка внахлёст: ровно два лица, заднее выводится тапом вперёд. */}
+                      <div style={{ position: 'relative', width: shown.length > 1 ? 60 : 38, height: 38, flexShrink: 0 }}>
+                        {shown.length === 0 && <Avatar name="?" size={38} />}
+                        {shown.map((p, i) => (
+                          <div key={p.person_name + i}
+                            onClick={() => shown.length > 1 && setFront(s => ({ ...s, [k.id]: i }))}
+                            title={shown.length > 1 ? `${p.person_name} — tap to bring forward` : p.person_name}
+                            style={{
+                              position: 'absolute', top: 0, left: i * 22,
+                              zIndex: f === i ? 2 : 1,
+                              borderRadius: '50%', boxShadow: '0 0 0 2px #fff',
+                              cursor: shown.length > 1 ? 'pointer' : 'default',
+                              transition: 'left .12s',
+                            }}>
+                            <Avatar name={p.person_name} path={p.photo_url} size={38} />
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 600, color: '#1a2e1a' }}>{k.name}</div>
+                        <div style={{ fontSize: 12, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {k.people.length === 0
+                            ? <span style={{ color: '#c2670a' }}>Nobody authorized to pick up yet</span>
+                            : shown.map(p => p.person_name).join(' · ')}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                        {shown.some(p => p.registered) && <span style={chipOk}>✓ registered</span>}
+                        {shown.some(p => p.signed_in) && <span style={chipIn}>✓ signed-in</span>}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+const chipOk: React.CSSProperties = { fontSize: 10.5, fontWeight: 700, color: '#0f5132', background: '#dcfce7', border: '1px solid #bbf7d0', borderRadius: 999, padding: '2px 8px', whiteSpace: 'nowrap' }
+const chipIn: React.CSSProperties = { fontSize: 10.5, fontWeight: 700, color: '#1e40af', background: '#dbeafe', border: '1px solid #bfdbfe', borderRadius: 999, padding: '2px 8px', whiteSpace: 'nowrap' }
 
 function Title({ center }: { center?: string }) {
   return (

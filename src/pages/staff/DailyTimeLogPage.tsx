@@ -156,6 +156,44 @@ export default function DailyTimeLogPage() {
       })
   }, [staffId, logType, year, month])
 
+  // ── ЧАСЫ С ДВЕРИ (06.08) ───────────────────────────────────────────────────
+  // Замер: staff_time_log ПУСТ (0 строк), а живых отметок прихода/ухода — 25.
+  // Витрина при этом показывала ноль и выглядела правдой. Ручной журнал CACFP
+  // остаётся тем, чем был (его заполняют и подписывают), но рядом теперь стоит
+  // то, что было на самом деле: отметки с планшета, только чтение.
+  // На печать этот блок НЕ идёт — официальный бланк должен остаться бланком.
+  const [clock, setClock] = useState<Record<string, { in: string|null; out: string|null; minutes: number }[]>>({})
+  const [clockErr, setClockErr] = useState('')
+  useEffect(() => {
+    if (!staffId) { setClock({}); setClockErr(''); return }
+    const from = `${year}-${pad2(month + 1)}-01`
+    const to   = `${month === 11 ? year + 1 : year}-${pad2(month === 11 ? 1 : month + 2)}-01`
+    supabase.schema('menumaker').from('staff_time_events')
+      .select('event_type,event_at')
+      .eq('staff_id', staffId).gte('event_at', from).lt('event_at', to)
+      .order('event_at')
+      .then(({ data, error }) => {
+        // Пустой ответ и отказ — разные вещи. Молчаливый ноль здесь и был болезнью.
+        if (error) { setClock({}); setClockErr('Could not read the door events.'); return }
+        setClockErr('')
+        const byDay: Record<string, { in: string|null; out: string|null; minutes: number }[]> = {}
+        for (const row of (data ?? []) as { event_type: string; event_at: string }[]) {
+          const d = new Date(row.event_at)
+          const key = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+          const hhmm = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+          const day = byDay[key] ??= []
+          const open = day[day.length - 1]
+          if (row.event_type === 'check_in') day.push({ in: hhmm, out: null, minutes: 0 })
+          else if (open && open.out === null) { open.out = hhmm; open.minutes = minutesDiff(open.in!, hhmm) }
+          // Уход без прихода — не выдумываем начало смены, показываем как есть.
+          else day.push({ in: null, out: hhmm, minutes: 0 })
+        }
+        setClock(byDay)
+      })
+  }, [staffId, year, month])
+  const clockDays = Object.keys(clock).sort()
+  const clockTotal = clockDays.reduce((s, d) => s + clock[d].reduce((a, p) => a + p.minutes, 0), 0)
+
   // Auto-fill program entries from meal_schedule
   useEffect(() => {
     if (logType !== 'program' || mealTimes.length === 0 || !staffId) return
@@ -301,6 +339,52 @@ export default function DailyTimeLogPage() {
           {[2024,2025,2026,2027].map(y => <option key={y} value={y}>{y}</option>)}
         </select>
       </div>
+
+      {/* Часы с двери — только чтение, только экран. Стоит ПЕРЕД журналом:
+          сначала то, что было, потом то, что заявляют к возмещению. */}
+      {staffId && (
+        <div className="no-print" style={{ background: '#fff', borderRadius: 14, border: '1px solid #e0e8e0', padding: '14px 18px', marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ fontWeight: 700, fontSize: 14, color: '#0a3320' }}>
+              Clock in / Clock out — from the door
+              <span style={{ fontWeight: 400, fontSize: 11.5, color: '#888', marginLeft: 8 }}>tablet check-ins, not editable</span>
+            </div>
+            {clockDays.length > 0 && (
+              <div style={{ fontSize: 13, color: '#0f4c35', fontWeight: 700 }}>{fmtHM(clockTotal)} this month</div>
+            )}
+          </div>
+          {clockErr ? (
+            <div role="alert" style={{ marginTop: 10, fontSize: 12.5, color: '#b91c1c', fontWeight: 600 }}>{clockErr}</div>
+          ) : clockDays.length === 0 ? (
+            <div style={{ marginTop: 8, fontSize: 12.5, color: '#888' }}>
+              No door check-ins for this person in {monthName(month)} {year}. That is not the same as “no hours” —
+              it means the tablet recorded nothing.
+            </div>
+          ) : (
+            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {clockDays.map(d => {
+                const [, m, day] = d.split('-').map(Number)
+                const dow = DOW[new Date(d + 'T12:00:00').getDay()]
+                return (
+                  <div key={d} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 70px', alignItems: 'center', fontSize: 12.5, padding: '3px 0', borderBottom: '1px solid #f2f5f2' }}>
+                    <div style={{ color: '#555' }}>{dow} {m}/{day}</div>
+                    <div style={{ color: '#1a2e1a' }}>
+                      {clock[d].map((p, i) => (
+                        <span key={i} style={{ marginRight: 12 }}>
+                          {p.in ? to12(p.in) : '—'} → {p.out ? to12(p.out) : <span style={{ color: '#c2670a' }}>still in</span>}
+                        </span>
+                      ))}
+                    </div>
+                    <div style={{ textAlign: 'right', fontWeight: 600, color: '#0f4c35' }}>
+                      {fmtHM(clock[d].reduce((a, p) => a + p.minutes, 0))}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Form header (printable) */}
       {staffId && (

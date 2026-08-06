@@ -11,14 +11,26 @@
 //
 // The typed one-time code stays as a QUIET fallback only (a NON-parent pickup, or a parent with
 // no way to open the link) — collapsed at the bottom, never the default path.
-import { useEffect, useMemo, useState } from 'react'
+//
+// ФОТО ПРИ REGISTER (06.08). Регистрация — единственная минута, когда взрослый
+// стоит перед сотрудником и его личность подтверждена присутствием. Снять лицо
+// нужно ИМЕННО тогда: у двери сравнивать будет уже некогда и не с чем. Лицо
+// живёт в приватном бакете `avatars` теми же рельсами, что лица детей и
+// сотрудников (512px webp, чтение по signed URL), путь пишется в
+// safepass_trusted_persons.photo_url.
+// Отзыв УНОСИТ лицо: сначала RPC гасит колонку и возвращает пути, потом клиент
+// сносит объекты. До 06.08 у бакета не было DELETE-политики вовсе — «убрано»
+// означало лишь «не показываем», а снимок оставался лежать.
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import Avatar from '@/components/Avatar'
+import { uploadAvatar, deleteAvatar } from '@/lib/avatars'
 
 const C = {
   bg:'#0a0c12', surface:'#13161f', surface2:'#1c2030', border:'#252a3d', text:'#f0f2ff',
   muted:'#6b7299', green:'#00e896', greenDim:'rgba(0,232,150,0.1)', red:'#ff4d6a', redDim:'rgba(255,77,106,0.1)', blue:'#5b8bff',
 }
-type Candidate = { phone:string; person_name:string; child_count:number; phone_verified:boolean; registered:boolean }
+type Candidate = { phone:string; person_name:string; child_count:number; phone_verified:boolean; registered:boolean; photo_url:string|null }
 
 export default function SafePassIssueCode() {
   const [cands, setCands] = useState<Candidate[]>([])
@@ -26,6 +38,13 @@ export default function SafePassIssueCode() {
   const [search, setSearch] = useState('')
   const [busyPhone, setBusyPhone] = useState('')
   const [err, setErr] = useState('')
+
+  // Фото-захват: лист подтверждения → камера. Кандидат, ради которого открыта
+  // камера, держится отдельно — файл прилетает асинхронно, и к моменту возврата
+  // список мог перерисоваться.
+  const [sheetFor, setSheetFor] = useState<Candidate|null>(null)
+  const [photoFor, setPhotoFor] = useState<Candidate|null>(null)
+  const cameraRef = useRef<HTMLInputElement>(null)
 
   // Fallback (typed one-time code) — collapsed, non-parent pickup only
   const [showFallback, setShowFallback] = useState(false)
@@ -54,7 +73,9 @@ export default function SafePassIssueCode() {
   }, [cands, search])
 
   // Mark this parent registered — the one staff action. They then sign in by their own number.
+  // Фото не блокирует регистрацию: камеры может не быть, а доступ нужен сейчас.
   async function register(c: Candidate) {
+    setSheetFor(null)
     setBusyPhone(c.phone); setErr('')
     const { data, error } = await supabase.schema('menumaker')
       .rpc('safepass_mark_person_registered', { p_phone: c.phone })
@@ -66,18 +87,59 @@ export default function SafePassIssueCode() {
     setCands(cs => cs.map(x => x.phone === c.phone ? { ...x, registered: true } : x))
   }
 
+  // Камера открывается ТОЛЬКО по явному тапу — снимок человека не делается вслепую.
+  function openCamera(c: Candidate) {
+    setSheetFor(null)
+    setPhotoFor(c)
+    cameraRef.current?.click()
+  }
+
+  // Снимок → 512px webp → приватный бакет → путь в photo_url. Регистрация идёт
+  // следом: если фото не легло, честнее сказать об этом и НЕ регистрировать молча.
+  async function onPhotoPicked(file: File|undefined) {
+    const c = photoFor
+    setPhotoFor(null)
+    if (!c || !file) return
+    const digits = c.phone.replace(/\D/g, '')
+    setBusyPhone(c.phone); setErr('')
+    let path: string
+    try {
+      path = await uploadAvatar('parent', digits, file)
+    } catch {
+      setBusyPhone('')
+      setErr('The photo did not upload. Check the connection and try again, or register without a photo.')
+      return
+    }
+    const { data, error } = await supabase.schema('menumaker')
+      .rpc('safepass_set_person_photo', { p_phone: c.phone, p_path: path })
+    setBusyPhone('')
+    if (error || !data?.ok) {
+      setErr(data?.error === 'not_authorized' ? 'That parent is not in your center.' : 'The photo uploaded but did not save. Try again.')
+      return
+    }
+    setCands(cs => cs.map(x => x.phone === c.phone ? { ...x, photo_url: path } : x))
+    if (!c.registered) await register({ ...c, photo_url: path })
+  }
+
   // Kick: kill app access (device-trust + phone verification + registration). Keeps ✓Pickup.
   async function revoke(c: Candidate) {
-    if (!window.confirm(`Revoke SafePass access for ${c.person_name}?\n\nTheir phone is signed out on every device and un-registered. They stay on the pickup list — tap Register again to restore access.`)) return
+    if (!window.confirm(`Revoke SafePass access for ${c.person_name}?\n\nTheir phone is signed out on every device and un-registered, and their photo is deleted. They stay on the pickup list — tap Register again to restore access.`)) return
     setBusyPhone(c.phone); setErr('')
     const { data, error } = await supabase.schema('menumaker')
       .rpc('safepass_revoke_parent_trust', { p_phone: c.phone })
-    setBusyPhone('')
     if (error || !data?.ok) {
+      setBusyPhone('')
       setErr(data?.error === 'not_authorized' ? 'That parent is not in your center.' : 'Could not revoke access. Try again.')
       return
     }
-    setCands(cs => cs.map(x => x.phone === c.phone ? { ...x, registered: false, phone_verified: false } : x))
+    // Колонка погашена сервером; объекты сносим тем же жестом. Если снос не
+    // прошёл — говорим об этом вслух: молчаливо оставленное лицо и есть та самая
+    // канон-дыра, ради которой заход и делался.
+    const left: string[] = []
+    for (const p of ((data.photos ?? []) as string[])) if (!(await deleteAvatar(p))) left.push(p)
+    setBusyPhone('')
+    if (left.length) setErr('Access is revoked, but the photo could not be deleted from storage. Tell Nikolay — it must not stay.')
+    setCands(cs => cs.map(x => x.phone === c.phone ? { ...x, registered: false, phone_verified: false, photo_url: null } : x))
   }
 
   async function issueFallback() {
@@ -118,13 +180,21 @@ export default function SafePassIssueCode() {
         <div style={{display:'flex',flexDirection:'column',gap:8}}>
           {shown.map(c => (
             <div key={c.phone} style={{display:'flex',alignItems:'center',gap:12,background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:'12px 14px'}}>
+              {/* Лицо — то, по чему взрослого узнают у двери. Тап по нему
+                  переснимает: человек меняется, снимок должен догонять. */}
+              <div onClick={()=>openCamera(c)} style={{cursor:'pointer',flexShrink:0}} title={c.photo_url ? 'Retake photo' : 'Take photo'}>
+                <Avatar name={c.person_name} path={c.photo_url} size={44} />
+              </div>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontWeight:700,fontSize:15,display:'flex',alignItems:'center',gap:7,flexWrap:'wrap'}}>
                   {c.person_name}
                   {c.registered && <span style={chip(C.green,C.greenDim)}>✓ registered</span>}
                   {c.phone_verified && <span style={chip(C.blue,'rgba(91,139,255,0.12)')}>✓ signed in</span>}
                 </div>
-                <div style={{fontSize:12,color:C.muted,marginTop:2}}>{prettyPhone(c.phone)} · {c.child_count} child{c.child_count===1?'':'ren'}</div>
+                <div style={{fontSize:12,color:C.muted,marginTop:2}}>
+                  {prettyPhone(c.phone)} · {c.child_count} child{c.child_count===1?'':'ren'}
+                  {c.registered && !c.photo_url && <> · <span style={{color:C.blue,cursor:'pointer'}} onClick={()=>openCamera(c)}>📷 add photo</span></>}
+                </div>
               </div>
               <div style={{display:'flex',gap:6,flexShrink:0}}>
                 {c.registered ? (
@@ -132,7 +202,7 @@ export default function SafePassIssueCode() {
                     {busyPhone===c.phone ? '…' : 'Revoke'}
                   </button>
                 ) : (
-                  <button onClick={()=>register(c)} disabled={busyPhone===c.phone} style={btn(busyPhone===c.phone?C.border:C.green)}>
+                  <button onClick={()=>setSheetFor(c)} disabled={busyPhone===c.phone} style={btn(busyPhone===c.phone?C.border:C.green)}>
                     {busyPhone===c.phone ? '…' : 'Register'}
                   </button>
                 )}
@@ -142,6 +212,31 @@ export default function SafePassIssueCode() {
         </div>
       )}
       {err && <div role="alert" style={{marginTop:14,padding:'12px 14px',borderRadius:12,background:C.redDim,border:`1.5px solid ${C.red}`,color:C.red,fontSize:13,fontWeight:600}}>{err}</div>}
+
+      {/* Камера. `capture="environment"` — задняя: сотрудник снимает стоящего
+          перед ним взрослого, а не себя. */}
+      <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{display:'none'}}
+        onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; onPhotoPicked(f) }} />
+
+      {/* Лист регистрации. Фото — предложенный путь, но не запертая дверь:
+          «Register without a photo» рядом, потому что доступ нужен сегодня, а
+          камера бывает не у всех. */}
+      {sheetFor && (
+        <div onClick={()=>setSheetFor(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',display:'grid',placeItems:'end center',zIndex:50}}>
+          <div onClick={e=>e.stopPropagation()} style={{width:'100%',maxWidth:480,background:C.surface,borderRadius:'18px 18px 0 0',border:`1px solid ${C.border}`,padding:'18px 20px 26px'}}>
+            <div style={{fontWeight:800,fontSize:16,marginBottom:4}}>Register {sheetFor.person_name}</div>
+            <div style={{fontSize:12.5,color:C.muted,lineHeight:1.5,marginBottom:16}}>
+              They are standing in front of you — this is the moment to take the photo. At the door
+              the photo is what tells staff this is the right adult.
+            </div>
+            <button onClick={()=>openCamera(sheetFor)} style={{...btn(C.green),width:'100%',padding:'14px 16px',fontSize:15}}>📷 Take photo & register</button>
+            <div style={{height:10}}/>
+            <button onClick={()=>register(sheetFor)} style={{background:'transparent',border:'none',color:C.muted,fontSize:12.5,cursor:'pointer',fontFamily:'inherit',width:'100%',padding:'8px 0'}}>
+              Register without a photo
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Quiet fallback: one-time typed code (NON-parent pickup / can't open the link) */}
       <div style={{marginTop:22,borderTop:`1px solid ${C.border}`,paddingTop:14}}>

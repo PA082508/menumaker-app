@@ -75,7 +75,7 @@ export default function AddStaffPacketPanel({ center, onClose }: { center: { id:
           ) : (
             <>
               <div style={{ fontSize: 12, color: '#6b7280', margin: '0 2px 12px' }}>
-                Send this to a new team member. They sign the Consent first — every later form then reuses that signature.
+                Send this to a new team member. They sign the Consent first — then each form is signed with its own fresh, dated signature.
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

@@ -340,7 +340,7 @@ export default function SafePassIssueCode() {
         <div style={{marginTop:14,display:'flex',alignItems:'center',gap:10,padding:'10px 14px',borderRadius:12,background:C.surface,border:`1px solid ${C.border}`}}>
           <span style={{fontSize:13,color:C.muted,flex:1}}>Working on {prettyPhone(busyPhone)}…</span>
           <button onClick={()=>{ setBusyPhone(''); setPhotoFor(null); setErr('') }}
-            style={{...btn('transparent',C.text),border:`1px solid ${C.border}`,padding:'8px 12px',fontSize:13}}>
+            style={{...btn('#ffffff',C.bg),padding:'8px 12px',fontSize:13}}>
             ← Cancel
           </button>
         </div>
@@ -371,8 +371,10 @@ export default function SafePassIssueCode() {
             </button>
             {/* ВИДИМЫЙ путь назад. Тап мимо листа дверью не считается: невидимую
                 дверь человек не находит, а уходить с чужого экрана надо уметь. */}
+            {/* БЕЛАЯ, а не рамочная (слово владельца 06.08): выход должен находиться
+                без поиска. Тёмный текст на белом — оба конца контраста меряны. */}
             <button onClick={()=>setSheetFor(null)}
-              style={{...btn('transparent',C.text),border:`1px solid ${C.border}`,width:'100%',marginTop:4}}>
+              style={{...btn('#ffffff',C.bg),width:'100%',marginTop:4}}>
               ← Cancel — nothing is registered
             </button>
           </div>

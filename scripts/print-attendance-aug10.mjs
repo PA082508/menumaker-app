@@ -34,9 +34,12 @@ const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
 const BLANK_ROWS = 3
 const OUT = process.env.OUT_DIR || path.join(os.homedir(), 'Downloads')
 const CENTERS = [
-  { slug: 'ridge', file: 'Attendance_Ridge_Aug3.pdf' },
-  { slug: 'alpha', file: 'Attendance_Alpha_Aug3.pdf' },
-  { slug: 'pearl', file: 'Attendance_Pearl_Aug3.pdf' },
+  // Имена файлов приехали копией с aug3-генератора и называли ЧУЖУЮ неделю:
+  // лист на 10–14 августа лёг бы в папку под именем Aug3. Бумага, назвавшая не
+  // свою неделю, опаснее отсутствующей — её подошьют.
+  { slug: 'ridge', file: 'Attendance_Ridge_Aug10.pdf' },
+  { slug: 'alpha', file: 'Attendance_Alpha_Aug10.pdf' },
+  { slug: 'pearl', file: 'Attendance_Pearl_Aug10.pdf' },
 ]
 
 const env = Object.fromEntries(fs.readFileSync('.env', 'utf8').split('\n')
@@ -155,6 +158,50 @@ function sheet(center, room, kids, no, of) {
   </section>`
 }
 
+// ─── Честная страница «не попали ни на один бланк» ───────────────────────────
+// Канон «дети без комнаты — ВИДИМАЯ ОЧЕРЕДЬ, а не пустое место» (DECISIONS) для
+// бумаги значит ровно это: ребёнок, которого не видно ни на одном классном листе,
+// обязан быть НАЗВАН, и рядом с ним обязана стоять причина. Пустое место в тираже
+// молча теряет человека — и заметится это, когда его будут искать.
+// На листе классов такому ребёнку места нет физически: лист — это комната.
+// Взрослые из псевдокласса Staff сюда НЕ попадают: они не дети, и их место —
+// в числах доклада, а не в списке детей.
+function offSheetPage(center, kids) {
+  const rows = kids.map((k, i) => `<tr>
+      <td class="num">${i + 1}</td>
+      <td class="nm">${esc(nameOf(k))}</td>
+      <td class="dob">${esc(usDate(k.birthday))}</td>
+      <td class="why">${esc(k.__why)}</td></tr>`).join('')
+  return `<section class="sheet">
+    <h1>Weekly Attendance Report — children not on a classroom sheet</h1>
+    <div class="sub">${esc(center.name)} · ${WEEK_LABEL}</div>
+    <div class="note">These children are on this center's roster but appear on no classroom sheet for
+      this week. The reason is printed beside each name. This page is for the office — it is not an
+      attendance sheet and has no in/out grid.</div>
+    <table>
+      <thead><tr><th class="num">#</th><th class="nm">Child's Name</th>
+        <th class="dob">DOB</th><th class="why">Why not on a sheet</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="foot">
+      <span>${esc(center.name)} · ${kids.length} ${kids.length === 1 ? 'child' : 'children'} off the sheets as of ${usDate(WEEK[0])}</span>
+      <span>Printed ${usDate(todayLocal())}</span>
+    </div>
+  </section>`
+}
+
+// Причина словами. Причин может быть НЕСКОЛЬКО сразу, и называются все: у ребёнка
+// без комнаты, чьё зачисление начинается позже недели, комнату искать сегодня
+// незачем — но узнать это можно, только если сказаны обе строки.
+const whyOffSheet = (k) => {
+  const why = []
+  if (!k.classroom_id) why.push('no classroom assigned')
+  if (k.date_in && k.date_in > WEEK[4]) why.push(`enrollment starts ${usDate(k.date_in)}`)
+  if (k.date_out && k.date_out < WEEK[0]) why.push(`left ${usDate(k.date_out)}`)
+  if (!why.length) why.push('classroom is not printed this week (inactive room)')
+  return why.join(' · ')
+}
+
 const CSS = `
 @page { size: letter landscape; margin: 9mm }
 body { font-family: Arial, Helvetica, sans-serif; color:#000; margin:0 }
@@ -178,6 +225,8 @@ tr.blank td { background:#fcfcfc }
 .sig .s { flex:1 }
 .sig .line { border-bottom:1px solid #000; height:20px; margin-bottom:2px }
 .foot { margin-top:6px; font-size:8.5px; color:#444; display:flex; justify-content:space-between; gap:20px }
+.why { width:auto; text-align:left; padding-left:6px }
+.note { font-size:10.5px; margin:0 0 8px; }
 `
 
 // ─── Сборка ──────────────────────────────────────────────────────────────────
@@ -191,9 +240,19 @@ for (const { slug, file } of CENTERS) {
     const kids = mine.filter(r => r.classroom_id === room.id && inWeek(r)).sort(byAgeOldestFirst)
     return { room, kids, html: sheet(center, room, kids, i + 1, rooms.length) }
   })
+  // Дети центра, которых нет ни на одном классном листе. Псевдокласс персонала
+  // исключён нарочно — это взрослые, они живут в числах доклада.
+  const onSheetIds = new Set(pages.flatMap(p => p.kids).map(k => k.id))
+  const offSheet = mine
+    .filter(r => !onSheetIds.has(r.id))
+    .filter(r => { const cl = classrooms.find(c => c.id === r.classroom_id); return !(cl && isStaffRoom(cl)) })
+    .map(r => ({ ...r, __why: whyOffSheet(r) }))
+    .sort(byAgeOldestFirst)
+  const offHtml = offSheet.length ? offSheetPage(center, offSheet) : ''
+
   const html = `<!doctype html><html><head><meta charset="utf-8">
     <title>Attendance ${esc(center.name)} ${WEEK_LABEL}</title><style>${CSS}</style></head>
-    <body>${pages.map(p => p.html).join('\n')}</body></html>`
+    <body>${pages.map(p => p.html).join('\n')}${offHtml}</body></html>`
 
   const tmp = path.join(os.tmpdir(), `att_${slug}.html`)
   fs.writeFileSync(tmp, html)
@@ -221,7 +280,12 @@ for (const { slug, file } of CENTERS) {
     lastKid: firstPage ? `${nameOf(firstPage.kids.at(-1))} · DOB ${usDate(firstPage.kids.at(-1).birthday)}` : '—',
     empty: pages.filter(p => !p.kids.length).map(p => p.room.name),
     noSplit: noSplit.length, noDob: noDob.length,
-    balance: centerActive - staffRows - noRoom - onSheets,
+    noSplitNames: noSplit.map(k => nameOf(k)),
+    // Дырки называются ПОИМЁННО: число «1 без комнаты» ищут глазами по всему
+    // ростеру, имя — не ищут.
+    offSheet: offSheet.map(k => `${nameOf(k)}${k.birthday ? ` · DOB ${usDate(k.birthday)}` : ' · DOB —'} → ${k.__why}`),
+    noDobNames: noDob.map(k => `${nameOf(k)} (${classrooms.find(c => c.id === k.classroom_id)?.name ?? '—'})`),
+    balance: centerActive - staffRows - offSheet.length - onSheets,
   })
 }
 await ctx.close()
@@ -232,8 +296,12 @@ for (const r of report) {
   console.log(`  страниц (классов без Staff): ${r.pages}${r.empty.length ? `, из них пустых: ${r.empty.length} (${r.empty.join(', ')})` : ''}`)
   console.log(`  детей на бланках: ${r.onSheets}`)
   console.log(`  первая страница «${r.firstRoom}»: сверху ${r.firstKid} → снизу ${r.lastKid}`)
-  console.log(`  активный ростер центра: ${r.centerActive} = ${r.onSheets} на бланках + ${r.staffRows} в классе персонала + ${r.noRoom} без класса` +
+  console.log(`  активный ростер центра: ${r.centerActive} = ${r.onSheets} на бланках + ${r.staffRows} в классе персонала + ${r.offSheet.length} не на бланках` +
               `${r.balance ? `  ⚠ НЕ СХОДИТСЯ на ${r.balance}` : '  ✓ сходится'}`)
-  if (r.noSplit) console.log(`  ⚠ без раздельных имени/фамилии: ${r.noSplit} — напечатано как хранится («Фамилия Имя»)`)
-  if (r.noDob) console.log(`  ⚠ без даты рождения: ${r.noDob} — в конце списка, DOB пуст`)
+  if (r.noSplit) console.log(`  ⚠ без раздельных имени/фамилии: ${r.noSplit} — напечатано как хранится («Фамилия Имя»): ${r.noSplitNames.join(' · ')}`)
+  if (r.noDob) console.log(`  ⚠ без даты рождения: ${r.noDob} — в конце списка, DOB пуст: ${r.noDobNames.join(' · ')}`)
+  if (r.offSheet.length) {
+    console.log(`  ⚠ НЕ НА БЛАНКАХ — ${r.offSheet.length}, названы отдельной страницей в конце PDF:`)
+    for (const line of r.offSheet) console.log(`      ${line}`)
+  }
 }

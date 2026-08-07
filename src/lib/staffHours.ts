@@ -52,3 +52,54 @@ export function dayHours(d: HoursDay): number | null {
 export function weekHours(days: HoursDay[]): number {
   return days.reduce((sum, d) => sum + (dayHours(d) ?? 0), 0)
 }
+
+// ─── ФАКТИЧЕСКИЕ часы: пары «пришёл → ушёл» ─────────────────────────────────
+// Вкладка «Моё время» показывает не расписание, а ФАКТ тапов. Считает это тот же
+// файл нарочно: два места, считающие часы, разошлись 07.08 в карточке, и второй
+// раз мы этой ошибки не повторяем — здесь один дом для любых часов.
+
+export type TimeEvent = {
+  event_type: string            // 'check_in' | 'check_out' | …
+  event_at: string              // ISO
+  classroom_name?: string | null
+  note?: string | null
+}
+
+export type Shift = {
+  in_at: string
+  out_at: string | null         // null = смена ещё открыта
+  classroom_name: string | null
+  hours: number | null          // null пока смена не закрыта — часы не угадываем
+  note?: string | null
+}
+
+/**
+ * Собирает события в смены. Открытая смена (вошёл и не вышел) возвращается с
+ * `out_at: null` и `hours: null` — НЕ достраивается «до сейчас»: незакрытая
+ * смена это факт незакрытой смены, а не оценка. Экран показывает её словами.
+ */
+export function pairShifts(events: TimeEvent[]): Shift[] {
+  const sorted = [...events].sort((a, b) => a.event_at.localeCompare(b.event_at))
+  const shifts: Shift[] = []
+  let open: Shift | null = null
+  for (const e of sorted) {
+    if (e.event_type === 'check_in') {
+      if (open) shifts.push(open)                       // два входа подряд — первый остаётся открытым
+      open = { in_at: e.event_at, out_at: null, classroom_name: e.classroom_name ?? null, hours: null, note: e.note ?? null }
+    } else if (e.event_type === 'check_out') {
+      if (!open) continue                               // выход без входа: показывать нечего, сочинять вход нельзя
+      const ms = new Date(e.event_at).getTime() - new Date(open.in_at).getTime()
+      open.out_at = e.event_at
+      open.hours = ms > 0 ? Math.round((ms / 3600000) * 10) / 10 : 0
+      shifts.push(open)
+      open = null
+    }
+  }
+  if (open) shifts.push(open)
+  return shifts
+}
+
+/** Итог = сумма ВИДИМЫХ часов закрытых смен. Тот же инвариант, что в карточке. */
+export function sumShiftHours(shifts: Shift[]): number {
+  return shifts.reduce((s, sh) => s + (sh.hours ?? 0), 0)
+}

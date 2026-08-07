@@ -49,6 +49,30 @@ export function storefrontPacketUrl(slug: string, setKey?: string, only?: string
   return u
 }
 
+// ── «Letter with signature» — the stable door ────────────────────────────────
+// Letters under signature live on the storefront as versioned files, exactly like
+// forms. A mailed link, though, is sent once and read for years: a link straight at
+// Letter_X_v1.html freezes that edition the day it goes out, and everyone who kept
+// the e-mail reads v1 forever after v2 lands. letter.html is the one address safe to
+// mail, print or QR — it asks enroll-registry.json which edition is `current` and
+// forwards there, carrying the centre and the channel kind (?k=) with it.
+//
+// Same rule as storefrontOnlyUrl above, for the same reason. Never hand out
+// versions[current] to a human.
+//   section — print one part of a multi-part package (letter | overview | guide | qa)
+//   print   — drop the toolbar / TOC / signature block for a clean paper copy
+export function letterUrl(
+  slug: string,
+  registryKey: string,
+  opts?: { section?: string; print?: boolean },
+): string {
+  if (!slug) throw new Error('letterUrl: center slug is required — the storefront resolves the centre from ?center=')
+  let u = `${SHOWCASE_ORIGIN}/letter.html?doc=${encodeURIComponent(registryKey)}&center=${encodeURIComponent(slug)}`
+  if (opts?.section) u += `&section=${encodeURIComponent(opts.section)}`
+  if (opts?.print) u += '&print=1'
+  return u
+}
+
 // ── Personal (tokenized) link — the prefill engine ───────────────────────────
 // A RENEWAL is not matched by name, it is RECOGNISED by this token: mint_prefill_token
 // put it in prefill_tokens (child + centre + batch + 30-day expiry), get_prefill(t)

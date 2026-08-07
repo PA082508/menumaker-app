@@ -238,8 +238,19 @@ export default function SafePassIssueCode() {
           <div style={{fontSize:11,color:C.muted}}>Staff only · tap Register once — the parent signs in with their own number</div>
         </div>
         {/* Страница смонтирована ВНЕ приложения (свой тёмный экран), поэтому дверь
-            обратно нужна явная — иначе выход только кнопкой браузера. */}
-        <Link to="/children" style={{fontSize:12,color:C.muted,textDecoration:'none',whiteSpace:'nowrap'}}>← Back to app</Link>
+            обратно нужна явная — иначе выход только кнопкой браузера.
+            07.08, глаз владельца: «есть на экране ≠ заметна». Ссылка была мелким
+            серо-фиолетовым текстом 12px (#6b7299 на карточке #13161f — измерено
+            3.87:1, ниже порога AA 4.5 для мелкого текста) и не находилась глазами.
+            Лечится тем же классом, что белая Cancel: НАСТОЯЩАЯ кнопка — белый фон,
+            тёмный текст, высота тапа 44px. Измерено ОБОИМИ концами:
+            текст #0a0c12 на белом — 19.55:1, сама кнопка на карточке — 18.07:1. */}
+        <Link to="/children" style={{
+          display:'inline-flex', alignItems:'center', justifyContent:'center',
+          minHeight:44, padding:'0 16px', borderRadius:10,
+          background:'#ffffff', color:C.bg, fontSize:14, fontWeight:700,
+          textDecoration:'none', whiteSpace:'nowrap',
+        }}>← Back to app</Link>
       </div>
 
       {/* Класс-фильтр — ПЕРВЫМ, над поиском: раскатка идёт комнатами (Red первым),

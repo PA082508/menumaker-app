@@ -5,6 +5,8 @@
 
 import { useEffect, useState } from 'react'
 import { AVATAR } from '@/lib/avatarSizes'
+// Часы дня считает одно место на весь проект — итог недели только складывает.
+import { dayHours, weekHours } from '@/lib/staffHours'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
@@ -594,20 +596,9 @@ export default function StaffSettingsPage() {
             </thead>
             <tbody>
               {sched.map((d, i) => {
-                const hrs = (d.is_active && d.shift_start && d.shift_end)
-                  ? (() => {
-                      const [sh, sm] = d.shift_start.split(':').map(Number)
-                      const [eh, em] = d.shift_end.split(':').map(Number)
-                      // Обед интервалом, если задан; иначе — legacy-минуты (дорога A).
-                      const lunch = (d.break_start && d.break_end)
-                        ? (() => { const [bh, bm] = d.break_start.split(':').map(Number)
-                                   const [xh, xm] = d.break_end.split(':').map(Number)
-                                   return Math.max(0, (xh * 60 + xm) - (bh * 60 + bm)) })()
-                        : d.break_minutes
-                      const total = (eh * 60 + em) - (sh * 60 + sm) - lunch
-                      return total > 0 ? (total / 60).toFixed(1) : '—'
-                    })()
-                  : '—'
+                // Считает ОДНО место — src/lib/staffHours.ts. Итог ниже складывает
+                // ровно эти числа и сам ничего не вычисляет.
+                const hrs = dayHours(d)
                 return (
                   <tr key={i} style={{ borderBottom: '1px solid #f8f8f8', background: d.is_active ? '#fff' : '#fafafa' }}>
                     <td style={{ padding: '10px 10px', fontWeight: 600, color: d.is_active ? '#0a3320' : '#bbb' }}>{DAYS[i]}</td>
@@ -651,7 +642,7 @@ export default function StaffSettingsPage() {
                         onChange={e => setSchedDay(i, 'shift_end', e.target.value)}
                         style={{ ...inp, width: 120, opacity: d.is_active ? 1 : 0.4 }} />
                     </td>
-                    <td style={{ padding: '6px 10px', fontWeight: 600, color: '#0f4c35' }}>{hrs}</td>
+                    <td style={{ padding: '6px 10px', fontWeight: 600, color: '#0f4c35' }}>{hrs === null ? '—' : hrs.toFixed(1)}</td>
                   </tr>
                 )
               })}
@@ -660,12 +651,9 @@ export default function StaffSettingsPage() {
               <tr style={{ borderTop: '2px solid #e0e8e0', background: '#f0f4f1' }}>
                 <td colSpan={6} style={{ padding: '8px 10px', fontWeight: 700, color: '#0a3320', fontSize: 13 }}>Total weekly hours</td>
                 <td style={{ padding: '8px 10px', fontWeight: 700, color: '#0f4c35', fontSize: 14 }}>
-                  {sched.filter(d => d.is_active && d.shift_start && d.shift_end).reduce((sum, d) => {
-                    const [sh, sm] = d.shift_start.split(':').map(Number)
-                    const [eh, em] = d.shift_end.split(':').map(Number)
-                    const total = (eh * 60 + em) - (sh * 60 + sm) - d.break_minutes
-                    return sum + (total > 0 ? total / 60 : 0)
-                  }, 0).toFixed(1)}h
+                  {/* Итог = СУММА ВИДИМЫХ Hours. Своего вычитания обеда здесь больше
+                      нет: раньше он вычитал legacy-минуты и расходился со строкой. */}
+                  {weekHours(sched).toFixed(1)}h
                 </td>
               </tr>
             </tfoot>

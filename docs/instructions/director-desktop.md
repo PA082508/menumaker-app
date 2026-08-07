@@ -121,7 +121,7 @@ What replaces it: the **pulsing banner** (silent, always on, unaffected by mute)
 
 ## Your check-in is a legal act
 
-The check-in you make on the tablet with your PIN is not a convenience for payroll.
+The check-in you make on the tablet with your PIN is not a convenience for timekeeping.
 It is the moment you **take responsibility for the center**, recorded to the minute.
 
 - **Check in** = from this minute, the children in this building are your

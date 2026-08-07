@@ -83,23 +83,24 @@ tablet with one tap and changes to `🔇 Muted since HH:MM`. It is recorded — 
 it started, and on which device — and that fact travels inside the director's alert.
 Mute silences sound only: the banner still pulses, and the director is still told.
 
-## Transparent pay runs on your own taps
+## Your worked hours are recorded and visible to you
 
 Your hours come from **your own check-in and check-out** — nobody types them in for
-you afterwards, and nobody can quietly round them.
+you afterwards, and nobody can quietly round them. The record holds **hours**: no
+rates, no amounts, no calculation of any kind.
 
 - **Check in with your PIN when you start.** One drop = recorded, with the minute.
 - **Check out with your PIN when you leave.** Two drops = recorded.
 - **Breaks go through check-out and check-in**, the same two taps. A break you did
-  not check out of is time you were on the clock — the record cannot tell the
-  difference, and neither can payroll.
+  not check out of is time you were on the clock — and the record cannot tell the
+  difference.
 - **Only your own taps count**, and only inside your approved schedule. A colleague
   cannot check you in; the PIN is what makes the record yours.
 - **Not checked out = still on duty.** The system keeps you responsible for the room
   until a check-out exists.
 
 This is why the drop sounds exist at all: two quiet taps a day are the whole basis
-of a paycheck nobody has to argue about.
+of an hours record nobody has to argue about.
 
 ## Rules
 

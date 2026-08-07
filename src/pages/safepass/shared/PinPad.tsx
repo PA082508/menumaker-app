@@ -8,19 +8,21 @@
 // slows PIN-guessing on that iPad without punishing a specific staff member.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { pinHash, InvalidPinError, type HandoffResult } from '@/lib/safepassDevice'
-import { safePassPalette, KEY } from './theme'
+import { safePassPalette, type SafePassPalette, KEY } from './theme'
 
 const MAX_ATTEMPTS = 4
 const COOLDOWN_MS = 45_000
 const LOCK_KEY = 'sp_pin_lock'
 
-// Palette comes from the shared module (light by default) — the pad is the surface a teacher
-// reads under pressure, with a parent waiting, so it is the last place to be clever with colour.
-const P = safePassPalette()
-const C = {
+// Palette comes from the shared module — the pad is the surface a teacher reads under pressure,
+// with a parent waiting, so it is the last place to be clever with colour.
+// Канон владельца 07.08 «чёрный фон на GatePulse отвергнут»: учительские двери
+// передают СВЕТЛУЮ палитру пропом. Умолчание оставлено авто ровно ради
+// водительской двери — её тему просили не трогать до отдельного слова.
+const colours = (P: SafePassPalette) => ({
   scrim: 'rgba(8,12,20,0.55)', surface: P.surface, surface2: P.surface2, border: P.border,
   text: P.text, muted: P.muted, green: P.green, red: P.red, key: P.surface2, onAccent: P.onAccent,
-}
+})
 
 const readLock = (): number => {
   try { return Number(localStorage.getItem(LOCK_KEY)) || 0 } catch { return 0 }
@@ -45,7 +47,7 @@ export function humanPinError(raw: string): string {
 }
 
 export default function PinPad({
-  centerId, title, subtitle, onVerify, onSuccess, onCancel,
+  centerId, title, subtitle, onVerify, onSuccess, onCancel, palette,
 }: {
   centerId: string
   title: string
@@ -53,7 +55,10 @@ export default function PinPad({
   onVerify: (pinHashHex: string) => Promise<HandoffResult>
   onSuccess: (r: HandoffResult) => void
   onCancel: () => void
+  palette?: SafePassPalette
 }) {
+  const C = colours(palette ?? safePassPalette())
+  const keyStyle = keyStyleOf(C)
   const [pin, setPin] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -172,8 +177,11 @@ export default function PinPad({
   )
 }
 
-const keyStyle: React.CSSProperties = {
-  height: 58, borderRadius: 14, border: '1px solid #2e3350', background: '#272c42',
+// Клавиша пада шла ЖЁСТКО тёмной (#272c42 на любом фоне) — на светлой двери это
+// был бы чёрный квадрат посреди белого листа. Цвет клавиши берётся из палитры,
+// как и всё остальное: одна тема на весь экран, а не две.
+const keyStyleOf = (C: ReturnType<typeof colours>): React.CSSProperties => ({
+  height: 58, borderRadius: 14, border: `1px solid ${C.border}`, background: C.key,
   color: C.text, fontSize: 24, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
   WebkitUserSelect: 'none', userSelect: 'none',
-}
+})

@@ -15,7 +15,7 @@ import { useOrg } from '@/contexts/OrgContext'
 import { useAuth } from '@/hooks/useAuth'
 import Avatar from '@/components/Avatar'
 import PinPad from './shared/PinPad'
-import { safePassPalette, KEY } from './shared/theme'
+import { safePassLight, KEY } from './shared/theme'
 import {
   adoptDeviceTokenFromUrl, fetchDeviceContext, confirmHandoff,
   fetchCheckedInToday, staffCheckIn, staffCheckOut,
@@ -46,7 +46,7 @@ function speakOnce(sessionId: string, line: string) {
 // One source for every SafePass surface (shared/theme.ts): LIGHT by default, dark only when the
 // device asks for it. The old near-black constant lived here and made the room say
 // "красиво, но не видно"; contrast is now measured by scripts/check-contrast.mjs, not judged.
-const C = safePassPalette()
+const C = safePassLight()
 
 // ─── types ─────────────────────────────────────────────────────────────────────
 type Classroom = { id: string; name: string; center_id: string }

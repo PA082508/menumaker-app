@@ -25,8 +25,31 @@ const C = {
   green: '#05603a', blue: '#1a45b0', red: '#a4123a', amber: '#7a4a00', amberDim: 'rgba(122,74,0,0.10)',
 }
 
+// Причины отказа словами. Каждая говорит, ЧТО не произошло и КТО это чинит;
+// незнакомая причина показывается дословно — молчание хуже непонятного текста.
+export function registerRefusal(raw: string): string {
+  const s = (raw || '').toLowerCase()
+  if (!s) return 'Could not register the device — nothing was created. Check the connection and try again.'
+  if (s.includes('not authorized')) return 'You do not have the right to register devices — ask the director or the office.'
+  if (s.includes('needs a classroom')) return 'A classroom pad needs a room — pick the room and try again. Nothing was created.'
+  if (s.includes('is not in center')) return 'That room is not in this center — pick a room of this center. Nothing was created.'
+  if (s.includes('does not belong to org')) return 'This center does not belong to your organization — tell the office. Nothing was created.'
+  if (s.includes('unknown device kind')) return 'Unknown device type — tell the office. Nothing was created.'
+  if (s.includes('could not find the function') || s.includes('pgrst202'))
+    return 'The app sent an incomplete request (the organization was missing) — reload the page and try again. Nothing was created.'
+  if (s.includes('failed to fetch') || s.includes('networkerror'))
+    return 'No connection — nothing was created. Try again.'
+  return `Could not register the device — nothing was created. The server said: ${raw}`
+}
+
 export default function SafePassDevicesPage() {
-  const { currentCenter, currentOrg } = useOrg() as any
+  // ⚠️ БЫЛО `currentOrg`, которого контекст НЕ ОТДАЁТ (там `org`), и `as any`
+  // это молча проглотил. Организация приходила `undefined`, ключ p_org выпадал
+  // из тела запроса — а без него PostgREST ищет функцию ДРУГОЙ сигнатуры и не
+  // находит её вовсе. Дверь не была закрыта правами: она слала запрос не туда,
+  // и делала это с рождения страницы (28120ed, 06.08) — те два устройства в
+  // списке заведены 19.07 и 24.07, ДО неё, другой дорогой.
+  const { currentCenter, org } = useOrg()
   const [devices, setDevices] = useState<Device[]>([])
   const [classrooms, setClassrooms] = useState<Classroom[]>([])
   const [err, setErr] = useState('')
@@ -57,16 +80,19 @@ export default function SafePassDevicesPage() {
     if (kind === 'classroom' && !classroomId) { setErr('A classroom pad needs a room.'); return }
     setBusy(true); setErr('')
     try {
+      const orgId = org?.id
+      if (!orgId) { setErr('Organization is still loading — try again in a moment.'); setBusy(false); return }
       const token = await registerDeviceKind(
-        currentOrg?.id ?? currentCenter.org_id, currentCenter.id,
+        orgId, currentCenter.id,
         kind === 'classroom' ? classroomId : null, label.trim() || null, kind)
       setMinted({ url: `${window.location.origin}/t/${token}`, label: label.trim() || (kind === 'driver' ? 'driver phone' : 'classroom pad') })
       setLabel(''); setClassroomId('')
       await load()
     } catch (e) {
-      setErr((e as Error)?.message?.includes('not authorized')
-        ? 'You do not have the right to register devices — ask the director.'
-        : 'Could not register the device — nothing was created.')
+      // Отказ обязан ЗВУЧАТЬ: голое «nothing was created» не говорит человеку,
+      // что делать дальше. Причина сервера переводится на человеческий, а если
+      // она незнакома — показывается как есть, а не прячется под общей фразой.
+      setErr(registerRefusal((e as Error)?.message ?? ''))
     } finally { setBusy(false) }
   }
 

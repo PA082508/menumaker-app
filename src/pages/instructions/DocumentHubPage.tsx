@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { QRCodeCanvas } from 'qrcode.react'
 import { supabase } from '@/lib/supabase'
 import { useOrg } from '@/contexts/OrgContext'
-import { PARENT_FORMS_URL, SHOWCASE_ORIGIN } from '@/config/showcaseLinks'
+import { PARENT_FORMS_URL, SHOWCASE_ORIGIN, letterUrl } from '@/config/showcaseLinks'
 import { FormQrModal } from '@/components/FormQrModal'
 import { SEC1, SUTQ_DOCS, SEC2, SEC4_FORMS, OUR_DOCS, LIBRARY_SECTIONS, NON_REGISTRY_DOCS, sectionOfKey, type SectionId, type NonRegDoc } from '@/lib/documentSections'
 import { isHiddenFromDirector, type FormAccessMap } from '@/lib/formsLibrary'
@@ -33,7 +33,20 @@ const DOCS = [
   { id:'byod-policy', title:'BYOD Policy HR-BYOD-001', description:'Voluntary participation, privacy protections.', audience:'Staff', category:'BYOD', driveUrl:'https://drive.google.com/file/d/1BsJks_GR4oGKtccX6jZX58oOnj2QCZQW/view?usp=sharing' },
 
   // ── SafePass ──────────────────────────────────────────────────────────────
-  { id:'safepass-parent-letter', title:'SafePass — Parent Letter (Wickliffe)', description:'Pilot announcement. Registration July 1–14, mandatory July 15.', audience:'Parent', category:'SafePass', driveUrl:'https://drive.google.com/file/d/1pDFFpKA462Cffs_-AS5rfCMRLk37QkGh/view?usp=sharing' },
+  // The Red Room (Wickliffe) package of 2026-08-07, effective Monday, August 10.
+  // Every link goes through the stable door letter.html?doc=<registry key> — never
+  // straight at a versioned file, which would freeze the edition the day it is
+  // shared. ?section= prints one part of the package; the package itself is one
+  // screen above the signature pad.
+  { id:'safepass-staff-package', title:'SafePass — Staff Package & Acknowledgment', description:'Red Room, Monday August 10. The whole package on one screen — letter, overview, one-page guide, Q&A — with the signature at the bottom. This is the link teachers receive.', audience:'Staff', category:'SafePass', driveUrl:letterUrl('ridge','safepass_staff_ack') },
+  { id:'safepass-pkg-letter', title:'SafePass Package — Letter to teachers', description:'Print version of the letter alone. Nothing in your duties changes; what is added is systematization.', audience:'Staff', category:'SafePass', driveUrl:letterUrl('ridge','safepass_staff_ack',{ section:'letter', print:true }) },
+  { id:'safepass-pkg-overview', title:'SafePass Package — What SafePass is', description:'The policy: chain of custody, the four rules, your PIN and hours, photos and privacy, the personal QR for adults without a smartphone, OAC 5180:2-12-09 / -18.', audience:'Staff', category:'SafePass', driveUrl:letterUrl('ridge','safepass_staff_ack',{ section:'overview', print:true }) },
+  { id:'safepass-pkg-guide', title:'SafePass Package — Teacher one-pager', description:'Check in · card then your own name tile · emergency PIN · paper panel · registering a parent · nap-time breaks. Print for the room.', audience:'Teacher', category:'SafePass', driveUrl:letterUrl('ridge','safepass_staff_ack',{ section:'guide', print:true }) },
+  { id:'safepass-pkg-qa', title:'SafePass Package — Questions & answers', description:'Seventeen questions teachers actually ask, answered from the guides — hours, breaks, covering a room, an adult you do not recognize, network down.', audience:'Staff', category:'SafePass', driveUrl:letterUrl('ridge','safepass_staff_ack',{ section:'qa', print:true }) },
+  // Repointed 2026-08-07: this card promised "Registration July 1–14, mandatory
+  // July 15" and pointed at a Drive file — both dead. It now carries the published
+  // Ridge letter, so the card and the document can no longer drift apart.
+  { id:'safepass-parent-letter', title:'SafePass — Letter to Red Room families (Ridge)', description:'Red Room starts Monday, August 10. Register at the door with Ms. Sonia, then activate your own phone number. No signature is asked of families.', audience:'Parent', category:'SafePass', driveUrl:letterUrl('ridge','safepass_parent_letter_ridge') },
   { id:'gatepulse-parent-guide', title:'GatePulse — Parent One-Pager', description:'One page for families: register once, sign in with your own number, two taps a day, wait for the green ✓. Print it or save as PDF.', audience:'Parent', category:'SafePass', driveUrl:'https://menumaker-app.vercel.app/instructions?doc=gatepulse-parent' },
   { id:'safepass-parent-app', title:'SafePass — Parent App (Wickliffe)', description:'Wickliffe parents: drop-off and pick-up. Open on your phone.', audience:'Parent', category:'SafePass', driveUrl:'https://menumaker-app.vercel.app/safepass/parent' },
   { id:'safepass-teacher-guide', title:'SafePass — Teacher Quick Guide', description:'iPad guide: drop-off, pick-up, unknown person protocol.', audience:'Teacher', category:'SafePass', driveUrl:'https://drive.google.com/file/d/1XkL64gCrgtLj4e-8nLdG4FSD9S580l1i/view?usp=sharing' },

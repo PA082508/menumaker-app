@@ -21,6 +21,11 @@ records who did it and when. *[built today]*
   That one lives on the enrollment form / Family. *[built today]*
 - **Non-parent pickup, or no smartphone:** the collapsed **one-time code** at the bottom. 6
   digits, 15 minutes, one use, read out loud — never sent by text. *[built today]*
+- **Bridge, until the permanent QR card is issued:** an authorized adult without a smartphone
+  comes through the director's one-time code. The policy — a *permanent personal QR card*,
+  scanned at the door, photo and name shown, teacher confirming face to face — is written in
+  the parent letter and the SafePass overview, but it is **not on the tablets yet**. Say the
+  bridge out loud to the family rather than promising the card as if it existed. *[bridge]*
 - The org-level General Director sees this list for every center; a center director sees their
   own. *[built today]*
 

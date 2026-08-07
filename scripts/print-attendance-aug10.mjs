@@ -114,7 +114,17 @@ const byAgeOldestFirst = (a, b) => {
 const esc = (s) => String(s ?? '').replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]))
 
 // ─── Лист одного класса ──────────────────────────────────────────────────────
-function sheet(center, room, kids, no, of) {
+// Сколько строк ребёнка помещается на ОДИН лист. Замер 07.08: Rainbow (Ridge) —
+// 28 детей + 3 пустые = 31 строка — не влез, и перенос унёс на вторую страницу
+// две строки и обе подписи, оставив её без шапки и без имени комнаты. Лист без
+// шапки — это лист, который нельзя подшить: непонятно, чей он.
+// 26 + 3 пустые = 29 строк — с запасом к измеренной границе.
+const ROWS_PER_SHEET = 26
+
+// `start` — сквозной номер первого ребёнка на этом листе: нумерация детей идёт
+// ПО КОМНАТЕ (1..N), а не заново на каждой странице. Учитель считает детей, а не
+// страницы.
+function sheet(center, room, kids, no, of, part = 1, parts = 1, start = 0, roomTotal = kids.length) {
   const head = DAYS.map((d, i) => {
     const [, m, dd] = WEEK[i].split('-')
     // ⭐ 06.08: день и число — одной строкой, одним кеглем.
@@ -123,17 +133,19 @@ function sheet(center, room, kids, no, of) {
   const io = DAYS.map(() => `<th class="io">in</th><th class="io">out</th>`).join('')
   const cells = DAYS.map(() => `<td class="io"></td><td class="io"></td>`).join('')
   const rows = kids.map((k, i) => `<tr>
-      <td class="num">${i + 1}</td>
+      <td class="num">${start + i + 1}</td>
       <td class="nm">${esc(nameOf(k))}</td>
       <td class="dob">${esc(usDate(k.birthday))}</td>${cells}</tr>`).join('')
   // Три пустые строки — для детей, пришедших среди недели: их вписывают от руки,
-  // как это делается на бумаге сейчас.
-  const blanks = Array.from({ length: BLANK_ROWS }, (_, i) => `<tr class="blank">
-      <td class="num">${kids.length + i + 1}</td><td class="nm"></td><td class="dob"></td>${cells}</tr>`).join('')
+  // как это делается на бумаге сейчас. У комнаты на два листа они стоят на
+  // ПОСЛЕДНЕМ: дописывают в конец списка, а не в середину.
+  const blanks = part === parts ? Array.from({ length: BLANK_ROWS }, (_, i) => `<tr class="blank">
+      <td class="num">${start + kids.length + i + 1}</td><td class="nm"></td><td class="dob"></td>${cells}</tr>`).join('') : ''
 
   return `<section class="sheet">
     <h1>Weekly Attendance Report</h1>
-    <div class="sub">${esc(center.name)} · ${esc(room.name)} · ${WEEK_LABEL} · Sheet ${no} of ${of}</div>
+    <div class="sub">${esc(center.name)} · ${esc(room.name)} · ${WEEK_LABEL} · Sheet ${no} of ${of}${
+      parts > 1 ? ` · ${esc(room.name)} page ${part} of ${parts}` : ''}</div>
     <div class="meta">
       <div class="f"><span class="lbl">Teacher(s):</span></div>
       <div class="f"><span class="lbl">Room:</span> ${esc(room.name)}</div>
@@ -151,8 +163,11 @@ function sheet(center, room, kids, no, of) {
       <div class="s"><div class="line"></div>Director signature / date</div>
     </div>
     <div class="foot">
-      <span>${esc(center.name)} · ${esc(room.name)} · ${kids.length} children on the roster as of ${usDate(WEEK[0])}
-        · ${BLANK_ROWS} blank lines for mid-week additions</span>
+      <!-- Число в подвале — ВСЯ комната, а не строки этого листа: у комнаты на два
+           листа «12 children» на второй странице читалось бы как другая группа. -->
+      <span>${esc(center.name)} · ${esc(room.name)} · ${roomTotal} children on the roster as of ${usDate(WEEK[0])}${
+        parts > 1 ? ` · sheet ${part} of ${parts} for this room` : ''}${
+        part === parts ? ` · ${BLANK_ROWS} blank lines for mid-week additions` : ''}</span>
       <span>Printed ${usDate(todayLocal())}</span>
     </div>
   </section>`
@@ -236,10 +251,18 @@ for (const { slug, file } of CENTERS) {
   const rooms = classrooms.filter(cl => cl.center_id === center.id && !isStaffRoom(cl))
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name))
   const mine = roster.filter(r => r.center_id === center.id)
-  const pages = rooms.map((room, i) => {
+  // Комната с длинным списком печатается НЕСКОЛЬКИМИ полноценными листами, а не
+  // одним с переносом: у каждого своя шапка, своё имя комнаты и свои подписи.
+  // Комната = ОДНА запись в докладе, но может дать несколько ЛИСТОВ.
+  const roomPages = rooms.map((room, i) => {
     const kids = mine.filter(r => r.classroom_id === room.id && inWeek(r)).sort(byAgeOldestFirst)
-    return { room, kids, html: sheet(center, room, kids, i + 1, rooms.length) }
+    const parts = Math.max(1, Math.ceil(kids.length / ROWS_PER_SHEET))
+    const html = Array.from({ length: parts }, (_, p) =>
+      sheet(center, room, kids.slice(p * ROWS_PER_SHEET, (p + 1) * ROWS_PER_SHEET),
+            i + 1, rooms.length, p + 1, parts, p * ROWS_PER_SHEET, kids.length)).join('\n')
+    return { room, kids, parts, html }
   })
+  const pages = roomPages
   // Дети центра, которых нет ни на одном классном листе. Псевдокласс персонала
   // исключён нарочно — это взрослые, они живут в числах доклада.
   const onSheetIds = new Set(pages.flatMap(p => p.kids).map(k => k.id))
@@ -264,6 +287,9 @@ for (const { slug, file } of CENTERS) {
   await p.close()
 
   const onSheets = pages.reduce((s, p) => s + p.kids.length, 0)
+  // Листов больше, чем комнат, ровно на длинные комнаты — это надо называть.
+  const sheetsTotal = pages.reduce((s, p) => s + p.parts, 0)
+  const split = pages.filter(p => p.parts > 1).map(p => `${p.room.name} → ${p.parts} листа (${p.kids.length} детей)`)
   const centerActive = mine.length
   const staffRows = mine.filter(r => {
     const cl = classrooms.find(c => c.id === r.classroom_id)
@@ -279,6 +305,7 @@ for (const { slug, file } of CENTERS) {
     firstKid: firstPage ? `${nameOf(firstPage.kids[0])} · DOB ${usDate(firstPage.kids[0].birthday)}` : '—',
     lastKid: firstPage ? `${nameOf(firstPage.kids.at(-1))} · DOB ${usDate(firstPage.kids.at(-1).birthday)}` : '—',
     empty: pages.filter(p => !p.kids.length).map(p => p.room.name),
+    sheetsTotal, split,
     noSplit: noSplit.length, noDob: noDob.length,
     noSplitNames: noSplit.map(k => nameOf(k)),
     // Дырки называются ПОИМЁННО: число «1 без комнаты» ищут глазами по всему
@@ -293,7 +320,8 @@ await ctx.close()
 console.log('\n──────── ЧИСЛА ────────')
 for (const r of report) {
   console.log(`\n${path.basename(r.file)}  → ${r.file}`)
-  console.log(`  страниц (классов без Staff): ${r.pages}${r.empty.length ? `, из них пустых: ${r.empty.length} (${r.empty.join(', ')})` : ''}`)
+  console.log(`  классов (без Staff): ${r.pages}${r.empty.length ? `, из них пустых: ${r.empty.length} (${r.empty.join(', ')})` : ''}`)
+  console.log(`  листов в PDF: ${r.sheetsTotal}${r.split.length ? ` — длинные комнаты печатаются несколькими: ${r.split.join(' · ')}` : ''}`)
   console.log(`  детей на бланках: ${r.onSheets}`)
   console.log(`  первая страница «${r.firstRoom}»: сверху ${r.firstKid} → снизу ${r.lastKid}`)
   console.log(`  активный ростер центра: ${r.centerActive} = ${r.onSheets} на бланках + ${r.staffRows} в классе персонала + ${r.offSheet.length} не на бланках` +

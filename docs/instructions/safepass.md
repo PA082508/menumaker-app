@@ -108,6 +108,10 @@ of an hours record nobody has to argue about.
 - **Never tap in advance** — your tap is your legal signature.
 - **Unrecognized persons** — request a government photo ID; not on the authorized list → don't release, call your director.
 - **Unknown phone alert** — an unregistered device attempting pick-up → keep the child with you, contact your director.
+- **Authorized adult without a smartphone** — policy is a *permanent personal QR card*: scan it,
+  see the photo and name, confirm face to face. **The card is not on the tablets yet** — until it
+  is issued, that adult comes through the director's **one-time code**. The check at the door is
+  the same either way, and a scan alone never releases a child.
 - **Ratio compliance** — watch your count; Early Care uses Ohio minimums for the youngest child present.
 - **Shift close** — you can't close your shift while any child is present.
 

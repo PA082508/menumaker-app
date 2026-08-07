@@ -83,7 +83,27 @@ export default function TeacherShell() {
   // apple-mobile-*, Chrome — манифест; поэтому ставится и то, и другое.
   // Проба людская: ставится на живой iPhone и живой Android и смотрится глазами —
   // в вёрстке этого не увидеть.
+  //
+  // ⚠️ ДОБАВИТЬ СВОЙ ТЕГ — НЕ ЗНАЧИТ ПОДМЕНИТЬ. Живая читка 07.08 после первой
+  // выкладки: `document.title` стал «Teacher», а манифест остался общий
+  // (`/manifest.webmanifest`) и имя на домашнем экране — «Play Academy». Причина
+  // в правилах браузера: из нескольких `link[rel=manifest]` берётся ПЕРВЫЙ в
+  // документе, а первый — из index.html. Поэтому чужие теги на время СНИМАЮТСЯ и
+  // возвращаются при уходе с экрана: ярлык этой двери настраивает только эта дверь.
   useEffect(() => {
+    const parked: { el: HTMLElement; next: Node | null; parent: Node }[] = []
+    const park = (sel: string) => {
+      document.head.querySelectorAll<HTMLElement>(sel).forEach(el => {
+        parked.push({ el, next: el.nextSibling, parent: el.parentNode! })
+        el.remove()
+      })
+    }
+    park('link[rel="manifest"]')
+    park('link[rel="apple-touch-icon"]')
+    park('meta[name="apple-mobile-web-app-title"]')
+    park('meta[name="apple-mobile-web-app-status-bar-style"]')
+    park('meta[name="theme-color"]')
+
     const added: HTMLElement[] = []
     const put = (tag: string, attrs: Record<string, string>) => {
       const el = document.createElement(tag)
@@ -98,7 +118,13 @@ export default function TeacherShell() {
     put('meta', { name: 'theme-color', content: '#0f4c35' })
     const prevTitle = document.title
     document.title = 'Teacher'
-    return () => { added.forEach(el => el.remove()); document.title = prevTitle }
+    return () => {
+      added.forEach(el => el.remove())
+      // Возвращаем на СВОИ места, а не в конец: порядок в head — это и есть то,
+      // что решает, чей манифест победит.
+      parked.forEach(({ el, next, parent }) => parent.insertBefore(el, next))
+      document.title = prevTitle
+    }
   }, [])
 
   // ── ГДЕ мы: токен ──────────────────────────────────────────────────────────

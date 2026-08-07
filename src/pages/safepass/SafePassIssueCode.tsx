@@ -24,17 +24,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AVATAR } from '@/lib/avatarSizes'
 import { supabase } from '@/lib/supabase'
+import { safePassLight } from './shared/theme'
 import { Link } from 'react-router-dom'
 import { useOrg } from '@/contexts/OrgContext'
 import Avatar from '@/components/Avatar'
 import { uploadAvatar, deleteAvatar } from '@/lib/avatars'
 
-const C = {
-  bg:'#0a0c12', surface:'#13161f', surface2:'#1c2030', border:'#252a3d', text:'#f0f2ff',
-  muted:'#6b7299', green:'#00e896', greenDim:'rgba(0,232,150,0.1)', red:'#ff4d6a', redDim:'rgba(255,77,106,0.1)', blue:'#5b8bff',
-  // Янтарь — «это работа, а не поломка»: ребёнок без доверенных взрослых.
-  amber:'#f0a500',
-}
+// ⭐ КАНОН ВЛАДЕЛЬЦА 07.08: ЧЁРНЫЙ ФОН НА GATEPULSE ОТВЕРГНУТ. Эта страница была
+// собственной тёмной темой (#0a0c12), и на ней дважды за день терялась дверь:
+// «← Back to app» мерялась 3.87:1 и не находилась глазами. Своя палитра ушла —
+// страница берёт ту же светлую, что и остальные поверхности учителя, и её пары
+// меряет scripts/check-contrast.mjs, а не глаз.
+const C = safePassLight()
 type Candidate = { phone:string; person_name:string; child_count:number; phone_verified:boolean; registered:boolean; photo_url:string|null }
 // Вид ПО ДЕТЯМ выбранного класса (заказ 06.08): раскатка идёт комнатами, и
 // директор работает список комнаты сверху вниз. Ребёнок без доверенных из списка
@@ -248,7 +249,12 @@ export default function SafePassIssueCode() {
         <Link to="/children" style={{
           display:'inline-flex', alignItems:'center', justifyContent:'center',
           minHeight:44, padding:'0 16px', borderRadius:10,
-          background:'#ffffff', color:C.bg, fontSize:14, fontWeight:700,
+          // Белая кнопка была придумана ПРОТИВ тёмного фона; на светлой странице
+          // белое на белом — это снова призрак. Класс тот же (дверь видна без
+          // поиска), исполнение зеркальное: тёмная заливка на светлом листе.
+          // Измерено обоими концами: текст #ffffff на #101521 — 18.3:1,
+          // сама кнопка на карточке #ffffff — те же 18.3:1.
+          background:C.text, color:C.surface, fontSize:14, fontWeight:700,
           textDecoration:'none', whiteSpace:'nowrap',
         }}>← Back to app</Link>
       </div>
@@ -351,7 +357,7 @@ export default function SafePassIssueCode() {
         <div style={{marginTop:14,display:'flex',alignItems:'center',gap:10,padding:'10px 14px',borderRadius:12,background:C.surface,border:`1px solid ${C.border}`}}>
           <span style={{fontSize:13,color:C.muted,flex:1}}>Working on {prettyPhone(busyPhone)}…</span>
           <button onClick={()=>{ setBusyPhone(''); setPhotoFor(null); setErr('') }}
-            style={{...btn('#ffffff',C.bg),padding:'8px 12px',fontSize:13}}>
+            style={{...btn(C.text,C.surface),padding:'8px 12px',fontSize:13}}>
             ← Cancel
           </button>
         </div>
@@ -382,10 +388,11 @@ export default function SafePassIssueCode() {
             </button>
             {/* ВИДИМЫЙ путь назад. Тап мимо листа дверью не считается: невидимую
                 дверь человек не находит, а уходить с чужого экрана надо уметь. */}
-            {/* БЕЛАЯ, а не рамочная (слово владельца 06.08): выход должен находиться
-                без поиска. Тёмный текст на белом — оба конца контраста меряны. */}
+            {/* Видимая, а не рамочная (слово владельца 06.08): выход должен
+                находиться без поиска. На светлой теме (канон 07.08) это тёмная
+                заливка — 18.3:1 обоими концами. */}
             <button onClick={()=>setSheetFor(null)}
-              style={{...btn('#ffffff',C.bg),width:'100%',marginTop:4}}>
+              style={{...btn(C.text,C.surface),width:'100%',marginTop:4}}>
               ← Cancel — nothing is registered
             </button>
           </div>

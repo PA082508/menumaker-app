@@ -57,7 +57,19 @@ export const DARK: SafePassPalette = {
   onAccent: '#0f1117',
 }
 
-/** The palette a SafePass screen should use. Light unless the device explicitly asks for dark. */
+/**
+ * ⭐ КАНОН ВЛАДЕЛЬЦА 07.08: ЧЁРНЫЙ ФОН НА GATEPULSE ОТВЕРГНУТ.
+ * Тёмная тема дважды за день спрятала дверь: белую Cancel пришлось делать белой
+ * НА ТЁМНОМ, а «← Back to app» на тёмной карточке не находилась вовсе (3.87:1).
+ * Экран у двери читают в спешке, боком, при любом свете — и он обязан быть светлым.
+ *
+ * `safePassLight()` — светлая палитра БЕЗ автоматического перехода в тёмную:
+ * поверхности учителя зовут её. `safePassPalette()` (авто) остаётся ровно ради
+ * водительской двери — её тему владелец просил не трогать до отдельного слова.
+ */
+export function safePassLight(): SafePassPalette { return LIGHT }
+
+/** Авто-палитра. Осталась ТОЛЬКО у водительской двери — см. канон выше. */
 export function safePassPalette(): SafePassPalette {
   try {
     if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches) return DARK

@@ -20,7 +20,7 @@
 // Именные отметки, сделанные под чужим именем, хуже безымянных — они врут фамилией.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import PinPad, { humanPinError } from '@/pages/safepass/shared/PinPad'
-import { safePassPalette } from '@/pages/safepass/shared/theme'
+import { safePassLight } from '@/pages/safepass/shared/theme'
 import {
   adoptDeviceTokenFromUrl, fetchDeviceContext, identifyByPin, fetchMyTime, fetchCenterClassrooms,
   type DeviceContext, type TeacherIdentity, type HandoffResult,
@@ -30,7 +30,7 @@ import { supabase } from '@/lib/supabase'
 import SafePassTeacherPage from '@/pages/safepass/SafePassTeacherPage'
 import MealCountPage from '@/pages/meal-count/MealCountPage'
 
-const P = safePassPalette()
+const P = safePassLight()
 
 // Пять минут без касаний — слово владельца 07.08. Смена человека за планшетом
 // не рвёт его ЧАСЫ: чек-аут остаётся отдельным осознанным жестом во вкладке
@@ -233,6 +233,7 @@ export default function TeacherShell() {
           centerId={ctx.center_id}
           title="Enter your PIN"
           subtitle={`${ctx.classroom_name} · your 4-digit PIN opens Children, Meals and My time`}
+          palette={P}
           onVerify={verify}
           onSuccess={onSuccess}
           onCancel={() => { /* уйти отсюда некуда: это и есть дверь */ }}
@@ -268,7 +269,7 @@ export default function TeacherShell() {
         <button onClick={() => { setWho(null); setPinRef(''); setShifts(null); setRoom(null) }}
           style={{
             padding: '9px 14px', borderRadius: 10, border: `1.5px solid ${P.border}`,
-            background: '#ffffff', color: P.text, fontSize: 13.5, fontWeight: 700,
+            background: P.surface, color: P.text, fontSize: 13.5, fontWeight: 700,
             cursor: 'pointer', fontFamily: 'inherit',
           }}>
           ⇄ Switch person
@@ -283,7 +284,7 @@ export default function TeacherShell() {
               padding: '9px 16px', borderRadius: 999, cursor: 'pointer', fontFamily: 'inherit',
               fontSize: 13.5, fontWeight: 700,
               border: `1.5px solid ${active ? P.green : P.border}`,
-              background: active ? P.green : '#ffffff',
+              background: active ? P.green : P.surface,
               color: active ? P.onAccent : P.text,
             }}>{t.label}</button>
           )
@@ -363,7 +364,7 @@ function RoomPicker({ rooms, error, onPick }: {
           {rooms.map(r => (
             <button key={r.id} onClick={() => onPick(r)} style={{
               minHeight: 44, padding: '0 18px', borderRadius: 10, cursor: 'pointer', fontFamily: 'inherit',
-              border: `1.5px solid ${P.border}`, background: '#ffffff', color: P.text,
+              border: `1.5px solid ${P.border}`, background: P.surface, color: P.text,
               fontSize: 14, fontWeight: 700,
             }}>{r.name}</button>
           ))}

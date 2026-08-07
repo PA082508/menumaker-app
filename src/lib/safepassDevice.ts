@@ -237,3 +237,46 @@ export async function registerDeviceKind(
   if (error) throw error
   return data as string
 }
+
+// ── App учителя v1: вход в ОБОЛОЧКУ ──────────────────────────────────────────
+// Опознание без действия. Открыть вкладку и отметить приход на работу — разные
+// события; путать их значит врать в часах, поэтому check_in сюда не годится.
+// Обе функции — миграция 20260807a.
+export type TeacherIdentity = {
+  staff_id: string
+  staff_name: string
+  position: string | null
+  class_primary: string | null
+  has_classroom: boolean
+  center_id: string
+  center_slug: string
+  center_name: string
+  classroom_id: string
+  classroom_name: string
+}
+
+export async function identifyByPin(token: string, pinHashHex: string): Promise<TeacherIdentity> {
+  const { data, error } = await mm().rpc('safepass_identify_by_pin', { p_token: token, p_pin_hash: pinHashHex })
+  if (error) {
+    if (/invalid pin/i.test(error.message)) throw new InvalidPinError()
+    throw error
+  }
+  return data as TeacherIdentity
+}
+
+export type MyTime = {
+  staff_id: string
+  staff_name: string
+  days: number
+  events: { event_type: string; event_at: string; classroom_name: string | null; note: string | null }[]
+}
+
+/** Свои смены и только свои: чужие часы не видны даже коллеге за тем же планшетом. */
+export async function fetchMyTime(token: string, pinHashHex: string, days = 7): Promise<MyTime> {
+  const { data, error } = await mm().rpc('safepass_my_time', { p_token: token, p_pin_hash: pinHashHex, p_days: days })
+  if (error) {
+    if (/invalid pin/i.test(error.message)) throw new InvalidPinError()
+    throw error
+  }
+  return data as MyTime
+}

@@ -58,6 +58,11 @@ import DailyTimeLogPage from '@/pages/staff/DailyTimeLogPage'
 import ChildrenImportPage from '@/pages/children/ChildrenImportPage'
 import ChildrenExportPage from '@/pages/children/ChildrenExportPage'
 import PortalPage from '@/pages/portal/PortalPage'
+// App учителя v1 — оболочка с тремя вкладками под одним PIN-входом (спека 022ee0b).
+// Старые адреса /safepass/teacher и /portal/teacher/* ОСТАЮТСЯ живыми: редиректы —
+// только после глаза Сони, иначе в понедельник у живого учителя не станет ни
+// старой двери, ни привычки к новой.
+import TeacherShell from '@/pages/teacher/TeacherShell'
 import EnrollmentInboxPage from '@/pages/enrollment/EnrollmentInboxPage'
 import ParentPacketPage from '@/pages/enrollment/ParentPacketPage'
 import PacketSetsPage from '@/pages/enrollment/PacketSetsPage'
@@ -144,6 +149,7 @@ export default function App() {
             <Route path="/safepass/driver" element={<SafePassDriverPage />} />
             {/* Tablet charging — token as a path segment, no '?' to be truncated. */}
             <Route path="/t/:token" element={<SafePassEnrollDevice />} />
+            <Route path="/teacher" element={<TeacherShell />} />
             <Route path="/portal/:role/:center" element={<PortalPage />} />
             <Route path="/portal/:role" element={<PortalPage />} />
             {/* Staff issues a parent login code — authenticated, full-screen, no office chrome. */}

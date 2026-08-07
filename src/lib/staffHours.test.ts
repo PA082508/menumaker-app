@@ -5,7 +5,7 @@
 // показала бы страница в столбце Hours, и требует, чтобы итог совпал. Пока проба
 // стоит, второй вычислитель нельзя завести обратно незаметно.
 import { describe, it, expect } from 'vitest'
-import { dayHours, weekHours, type HoursDay } from '@/lib/staffHours'
+import { dayHours, weekHours, pairShifts, sumShiftHours, type HoursDay } from '@/lib/staffHours'
 
 const day = (p: Partial<HoursDay> = {}): HoursDay => ({
   is_active: true, shift_start: '06:30', shift_end: '15:30',
@@ -72,5 +72,45 @@ describe('итог недели = сумма видимых Hours', () => {
   it('пустая неделя — ноль, а не NaN', () => {
     expect(weekHours([])).toBe(0)
     expect(weekHours([day({ is_active: false })])).toBe(0)
+  })
+})
+
+describe('фактические часы — пары смен', () => {
+  const ev = (t: string, at: string, room = 'Red') => ({ event_type: t, event_at: at, classroom_name: room })
+
+  it('пара вход→выход даёт часы, итог равен сумме видимых', () => {
+    const shifts = pairShifts([ev('check_in','2026-08-07T11:00:00Z'), ev('check_out','2026-08-07T19:30:00Z')])
+    expect(shifts).toHaveLength(1)
+    expect(shifts[0].hours).toBe(8.5)
+    expect(sumShiftHours(shifts)).toBe(8.5)
+  })
+
+  it('открытая смена не достраивается до «сейчас» — часов нет, и это видно', () => {
+    const shifts = pairShifts([ev('check_in','2026-08-07T11:00:00Z')])
+    expect(shifts[0].out_at).toBeNull()
+    expect(shifts[0].hours).toBeNull()
+    expect(sumShiftHours(shifts)).toBe(0)
+  })
+
+  it('выход без входа не выдумывает смену', () => {
+    expect(pairShifts([ev('check_out','2026-08-07T19:30:00Z')])).toHaveLength(0)
+  })
+
+  it('два входа подряд: первая смена остаётся открытой, вторая закрывается', () => {
+    const shifts = pairShifts([
+      ev('check_in','2026-08-07T11:00:00Z'),
+      ev('check_in','2026-08-07T13:00:00Z','Blue'),
+      ev('check_out','2026-08-07T18:00:00Z','Blue'),
+    ])
+    expect(shifts).toHaveLength(2)
+    expect(shifts[0].hours).toBeNull()
+    expect(shifts[1].hours).toBe(5)
+    expect(sumShiftHours(shifts)).toBe(5)
+  })
+
+  it('события приходят в любом порядке — смены собираются по времени', () => {
+    const shifts = pairShifts([ev('check_out','2026-08-07T19:00:00Z'), ev('check_in','2026-08-07T11:00:00Z')])
+    expect(shifts).toHaveLength(1)
+    expect(shifts[0].hours).toBe(8)
   })
 })

@@ -75,7 +75,13 @@
       "WebFetch(domain:www.ecfr.gov)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:4173/)",
       "Bash(SHOTS=/tmp/claude-501/-Users-nikolaykutsenko-Downloads-menumaker-app-src-pages/caf78f11-a498-4bef-bcf7-6ab07399d001/scratchpad/smoke-out node scripts/smoke-rosterkey.mjs)",
-      "Bash(node /private/tmp/claude-501/-Users-nikolaykutsenko-Downloads-menumaker-app-src-pages/dffb0248-7f6b-4ccb-9c39-47350618ac3d/scratchpad/measure-cancel.mjs)"
+      "Bash(node /private/tmp/claude-501/-Users-nikolaykutsenko-Downloads-menumaker-app-src-pages/dffb0248-7f6b-4ccb-9c39-47350618ac3d/scratchpad/measure-cancel.mjs)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" https://menumaker-app.vercel.app/)",
+      "Bash(curl -s https://menumaker-app.vercel.app/)",
+      "Bash(curl -s https://menumaker-app.vercel.app/ -D /tmp/h.txt -o /tmp/b.html)",
+      "Bash(grep -oE 'buildId[^,}]{0,60}' /tmp/b.html)",
+      "Bash(curl -s -L https://menumaker-app.vercel.app/login)",
+      "Bash(grep -oE '/_next/static/\\(chunks/\\)?[A-Za-z0-9_-]{8,}')"
     ],
     "additionalDirectories": [
       "/Users/nikolaykutsenko/Downloads",

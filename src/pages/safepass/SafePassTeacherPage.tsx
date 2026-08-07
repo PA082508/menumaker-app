@@ -235,7 +235,12 @@ function TransportPanelView({ runs, onConfirmRun, C }: {
   )
 }
 
-export default function SafePassTeacherPage() {
+// `seedClassroomId` — комната, ВЫБРАННАЯ человеком в оболочке /teacher (у 13 из 73
+// сотрудников комнаты нет в карточке, и они выбирают её сами, слово владельца 07.08).
+// Выбор старше комнаты планшета: планшет говорит, где стоит железо, человек — где
+// работает он. Дальше выбранная комната идёт в чек-ин, то есть в СЛЕД отметок, а не
+// только на экран. Без пропа страница ведёт себя ровно как раньше.
+export default function SafePassTeacherPage({ seedClassroomId }: { seedClassroomId?: string } = {}) {
   const { currentCenter } = useOrg()
   const { user, roles } = useAuth()
   const allowed = (roles as string[]).some(r => r === 'cook' || r === 'teacher' || r === 'director' || r === 'admin' || r === 'org_admin' || r === 'office_manager')
@@ -344,11 +349,12 @@ export default function SafePassTeacherPage() {
       // Device pad → its own room, always. Otherwise keep the remembered class
       // only when it belongs to THIS centre (the key is per-centre for the same
       // reason), else fall back to the first room of the centre.
-      if (deviceCtx?.classroom_id) {
-        // No fallback to cls[0] here: if the pad's own room is missing from the
+      const preferred = seedClassroomId || deviceCtx?.classroom_id
+      if (preferred) {
+        // No fallback to cls[0] here: if the preferred room is missing from the
         // list (deactivated, moved centre) the honest answer is "nothing", not a
         // silent lock onto whichever room sorts first.
-        setClassId(cls.some(c => c.id === deviceCtx.classroom_id) ? deviceCtx.classroom_id : '')
+        setClassId(cls.some(c => c.id === preferred) ? preferred : '')
         return
       }
       const remembered = localStorage.getItem(`safepass_class:${activeCenterId}`) || ''
@@ -357,7 +363,7 @@ export default function SafePassTeacherPage() {
     return () => { cancelled = true }
     // activeCenterId is READ here — watching currentCenter?.id alone left the list
     // pinned to whatever centre happened to resolve first.
-  }, [activeCenterId, deviceCtx?.classroom_id])
+  }, [activeCenterId, deviceCtx?.classroom_id, seedClassroomId])
 
   useEffect(() => {
     if (classId && activeCenterId) localStorage.setItem(`safepass_class:${activeCenterId}`, classId)

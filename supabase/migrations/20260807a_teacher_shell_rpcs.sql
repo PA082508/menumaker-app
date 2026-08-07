@@ -144,3 +144,40 @@ grant execute on function menumaker.safepass_my_time(text, text, integer) to ano
 --     -> events: массив (на 07.08 в базе 25 событий на всех, у Carolyn — сколько есть).
 --   Неверный PIN обязан дать 'invalid PIN', чужой токен — 'device not registered'.
 -- ============================================================================
+
+-- ---------------------------------------------------------------------------
+-- 3. Комнаты центра — для того, у кого комнаты нет в карточке
+-- ---------------------------------------------------------------------------
+-- Слово владельца 07.08: вошедший без комнаты НЕ упирается в заглушку — он
+-- ВЫБИРАЕТ комнату из комнат своего центра, и выбор идёт в след отметок (страница
+-- «Дети» уже пишет в событие ту комнату, что выбрана, а не комнату планшета).
+-- «Моё время» работает и БЕЗ выбора: свои часы человек видит всегда.
+--
+-- Охват — центр УСТРОЙСТВА, не сессии: список комнат чужого центра отсюда не
+-- получить. Псевдоклассы персонала исключены тем же признаком is_roster, что и
+-- везде: это не комнаты детей.
+create or replace function menumaker.safepass_center_classrooms(p_token text)
+returns jsonb
+language plpgsql
+security definer
+set search_path to 'menumaker', 'public', 'extensions'
+as $function$
+declare v_dev record; v_rooms jsonb;
+begin
+  select * into v_dev from menumaker.safepass_devices
+   where token_hash = encode(digest(p_token,'sha256'),'hex') and is_active and revoked_at is null;
+  if not found then raise exception 'device not registered'; end if;
+
+  select coalesce(jsonb_agg(jsonb_build_object('id', c.id, 'name', c.name)
+                            order by coalesce(c.sort_order, 0), c.name), '[]'::jsonb)
+    into v_rooms
+    from menumaker.classrooms c
+   where c.center_id = v_dev.center_id
+     and c.is_active
+     and coalesce(c.is_roster, true)
+     and c.name !~* 'staff';
+
+  return v_rooms;
+end $function$;
+
+grant execute on function menumaker.safepass_center_classrooms(text) to anon, authenticated;

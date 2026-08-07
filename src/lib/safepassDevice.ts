@@ -280,3 +280,11 @@ export async function fetchMyTime(token: string, pinHashHex: string, days = 7): 
   }
   return data as MyTime
 }
+
+/** Комнаты ЦЕНТРА УСТРОЙСТВА — для сотрудника без комнаты в карточке (13 из 73
+ *  на 07.08). Он выбирает комнату сам, и выбор уходит в след отметок. */
+export async function fetchCenterClassrooms(token: string): Promise<{ id: string; name: string }[]> {
+  const { data, error } = await mm().rpc('safepass_center_classrooms', { p_token: token })
+  if (error) throw error
+  return (data ?? []) as { id: string; name: string }[]
+}

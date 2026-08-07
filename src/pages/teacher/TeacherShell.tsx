@@ -22,7 +22,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import PinPad, { humanPinError } from '@/pages/safepass/shared/PinPad'
 import { safePassPalette } from '@/pages/safepass/shared/theme'
 import {
-  adoptDeviceTokenFromUrl, fetchDeviceContext, identifyByPin, fetchMyTime,
+  adoptDeviceTokenFromUrl, fetchDeviceContext, identifyByPin, fetchMyTime, fetchCenterClassrooms,
   type DeviceContext, type TeacherIdentity, type HandoffResult,
 } from '@/lib/safepassDevice'
 import { pairShifts, sumShiftHours, type Shift } from '@/lib/staffHours'
@@ -67,6 +67,13 @@ export default function TeacherShell() {
   const [who, setWho] = useState<TeacherIdentity | null>(null)
   const [pinRef, setPinRef] = useState<string>('')
   const [tab, setTab] = useState<Tab>('children')
+  // Комната, в которой человек работает СЕГОДНЯ. У кого она есть в карточке —
+  // берётся оттуда; у кого нет (13 из 73 на 07.08) — он ВЫБИРАЕТ её сам, и выбор
+  // уходит в след отметок: страница «Дети» пишет в событие выбранную комнату, а
+  // не комнату планшета. «Моё время» работает и БЕЗ выбора.
+  const [room, setRoom] = useState<{ id: string; name: string } | null>(null)
+  const [rooms, setRooms] = useState<{ id: string; name: string }[] | null>(null)
+  const [roomsError, setRoomsError] = useState('')
   const pending = useRef<TeacherIdentity | null>(null)
 
   // ── Add to Home Screen: своё имя, своя иконка, своё окно ───────────────────
@@ -112,7 +119,7 @@ export default function TeacherShell() {
     const events = ['pointerdown', 'keydown', 'touchstart', 'wheel'] as const
     for (const e of events) window.addEventListener(e, touch, { passive: true })
     const t = setInterval(() => {
-      if (Date.now() - lastTouch.current >= IDLE_MS) { setWho(null); setPinRef('') }
+      if (Date.now() - lastTouch.current >= IDLE_MS) { setWho(null); setPinRef(''); setRoom(null) }
     }, 10_000)
     return () => {
       for (const e of events) window.removeEventListener(e, touch)
@@ -171,9 +178,21 @@ export default function TeacherShell() {
     if (!id) return
     setWho(id)
     lastTouch.current = Date.now()
-    // Без комнаты «Дети» и «Питание» показать нечего — открываем то, что работает.
-    setTab(id.has_classroom ? 'children' : 'time')
-  }, [])
+    // Комната планшета — это комната, в которой человек стоит. Тому, у кого она
+    // есть в карточке, ничего выбирать не нужно.
+    if (id.has_classroom) { setRoom({ id: ctx!.classroom_id, name: ctx!.classroom_name }); setTab('children') }
+    else setTab('children')                       // покажем выбор комнаты — он и есть первый экран
+  }, [ctx])
+
+  // Список комнат тянем ТОЛЬКО когда он нужен — тому, кому надо выбрать.
+  useEffect(() => {
+    if (!who || who.has_classroom || room || rooms || !token) return
+    let cancelled = false
+    fetchCenterClassrooms(token)
+      .then(r => { if (!cancelled) setRooms(r) })
+      .catch(e => { if (!cancelled) setRoomsError(humanPinError(e?.message ?? '')) })
+    return () => { cancelled = true }
+  }, [who, room, rooms, token])
 
   // ── Экраны до входа ────────────────────────────────────────────────────────
   if (bootError === 'no-token') return <Boot title="This tablet is not set up yet"
@@ -207,11 +226,20 @@ export default function TeacherShell() {
         <div style={{ flex: 1, minWidth: 200 }}>
           <div style={{ fontSize: 15, fontWeight: 800, color: P.text }}>You: {who.staff_name}</div>
           <div style={{ fontSize: 12, color: P.muted }}>
-            {who.center_name} · {ctx.classroom_name}
+            {who.center_name} · {room ? room.name : 'no room chosen yet'}
             {who.position ? ` · ${who.position}` : ''}
+            {/* У кого комнаты нет в карточке — он её выбрал, и вправе передумать
+                вслух: комната видна и меняется одним тапом, а не прячется. */}
+            {!who.has_classroom && room && (
+              <button onClick={() => setRoom(null)} style={{
+                marginLeft: 8, background: 'transparent', border: 'none', padding: 0,
+                color: P.green, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                textDecoration: 'underline',
+              }}>change room</button>
+            )}
           </div>
         </div>
-        <button onClick={() => { setWho(null); setPinRef(''); setShifts(null) }}
+        <button onClick={() => { setWho(null); setPinRef(''); setShifts(null); setRoom(null) }}
           style={{
             padding: '9px 14px', borderRadius: 10, border: `1.5px solid ${P.border}`,
             background: '#ffffff', color: P.text, fontSize: 13.5, fontWeight: 700,
@@ -237,16 +265,16 @@ export default function TeacherShell() {
       </nav>
 
       <main>
-        {/* Без комнаты человек не заперт: «Моё время» работает полноценно, а две
-            другие вкладки говорят словами, чего не хватает и к кому идти. */}
-        {tab !== 'time' && !who.has_classroom && (
-          <Stub text="This section is tied to a classroom — you're not assigned. Ask your director.
-Your hours are recorded and visible in “My time”." />
+        {/* Без комнаты в карточке человек НЕ заперт и не отослан к директору: он
+            выбирает комнату сам (слово владельца 07.08), и выбор уходит в след
+            отметок. «Моё время» работает и до выбора. */}
+        {tab !== 'time' && !room && (
+          <RoomPicker rooms={rooms} error={roomsError} onPick={setRoom} />
         )}
 
-        {tab === 'children' && who.has_classroom && <SafePassTeacherPage />}
+        {tab === 'children' && room && <SafePassTeacherPage seedClassroomId={room.id} />}
 
-        {tab === 'meals' && who.has_classroom && (
+        {tab === 'meals' && room && (
           mealsError ? <Stub text={mealsError} />
           : !mealsReady ? <Stub text="Opening meals…" />
           : <MealCountPage portalRoles={['cook']} />
@@ -279,6 +307,41 @@ function Stub({ text }: { text: string }) {
       <div style={{ maxWidth: 560, background: P.surface, border: `1px solid ${P.border}`, borderRadius: 14,
                     padding: '18px 20px', fontSize: 13.5, lineHeight: 1.65, color: P.text, whiteSpace: 'pre-line' }}>
         {text}
+      </div>
+    </div>
+  )
+}
+
+// ─── Выбор комнаты ───────────────────────────────────────────────────────────
+// Спрашиваем ОДИН раз и словами: «в какой комнате вы сегодня». Ответ уходит в
+// страницу «Дети» и оттуда — в отметку чек-ина, то есть в след, а не только на
+// экран. Пока не выбрано, «Моё время» уже работает: свои часы человек видит
+// всегда, они не зависят от комнаты.
+function RoomPicker({ rooms, error, onPick }: {
+  rooms: { id: string; name: string }[] | null
+  error: string
+  onPick: (r: { id: string; name: string }) => void
+}) {
+  if (error) return <Stub text={error} />
+  if (!rooms) return <Stub text="Loading rooms…" />
+  if (!rooms.length) return <Stub text="This center has no rooms set up yet — tell your director. Your hours still work in “My time”." />
+  return (
+    <div style={{ padding: 20 }}>
+      <div style={{ maxWidth: 560, background: P.surface, border: `1px solid ${P.border}`, borderRadius: 14, padding: '18px 20px' }}>
+        <div style={{ fontSize: 15, fontWeight: 800, color: P.text, marginBottom: 4 }}>Which room are you in today?</div>
+        <div style={{ fontSize: 13, color: P.muted, marginBottom: 14, lineHeight: 1.55 }}>
+          Your card has no room set, so pick the one you are working in — your check-in is recorded
+          for that room. You can change it later from the header.
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {rooms.map(r => (
+            <button key={r.id} onClick={() => onPick(r)} style={{
+              minHeight: 44, padding: '0 18px', borderRadius: 10, cursor: 'pointer', fontFamily: 'inherit',
+              border: `1.5px solid ${P.border}`, background: '#ffffff', color: P.text,
+              fontSize: 14, fontWeight: 700,
+            }}>{r.name}</button>
+          ))}
+        </div>
       </div>
     </div>
   )

@@ -383,7 +383,19 @@ export default function SafePassIssueCode() {
             </div>
             <button onClick={()=>openCamera(sheetFor)} style={{...btn(C.green),width:'100%',padding:'14px 16px',fontSize:15}}>📷 Take photo & register</button>
             <div style={{height:10}}/>
-            <button onClick={()=>register(sheetFor)} style={{background:'transparent',border:'none',color:C.muted,fontSize:12.5,cursor:'pointer',fontFamily:'inherit',width:'100%',padding:'8px 0'}}>
+            {/* Это ВТОРОЙ РАВНОПРАВНЫЙ путь, а не сноска: камеры может не быть, а
+                доступ нужен сегодня. Мелким muted-текстом он читался как отговорка
+                и терялся между двумя настоящими кнопками. Теперь кнопка: рамка,
+                тап 44px, текст 7.53:1 на белом — тише зелёной по весу, но не тише
+                по заметности. */}
+            <button onClick={()=>register(sheetFor)} style={{
+              width:'100%', minHeight:44, borderRadius:12, cursor:'pointer', fontFamily:'inherit',
+              // Граница у кнопки, чей фон совпадает с карточкой, — единственное,
+              // что делает её кнопкой, поэтому она меряется как элемент интерфейса:
+              // C.border на белом это 1.44:1 (украшение), C.muted — 7.53:1 (граница).
+              border:`1.5px solid ${C.muted}`, background:C.surface, color:C.text,
+              fontSize:14, fontWeight:700,
+            }}>
               Register without a photo
             </button>
             {/* ВИДИМЫЙ путь назад. Тап мимо листа дверью не считается: невидимую
@@ -401,7 +413,14 @@ export default function SafePassIssueCode() {
 
       {/* Quiet fallback: one-time typed code (NON-parent pickup / can't open the link) */}
       <div style={{marginTop:22,borderTop:`1px solid ${C.border}`,paddingTop:14}}>
-        <button onClick={()=>setShowFallback(s=>!s)} style={{background:'transparent',border:'none',color:C.muted,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
+        {/* Запасной путь у двери ищут в спешке — значит, он обязан быть кнопкой,
+            а не строчкой петита. Раскрыт или свёрнут, видно по стрелке и по
+            заливке; тап 44px, текст 18.24:1 на светлом. */}
+        <button onClick={()=>setShowFallback(s=>!s)} style={{
+          width:'100%', minHeight:44, borderRadius:12, cursor:'pointer', fontFamily:'inherit',
+          border:`1.5px solid ${C.muted}`, background:showFallback?C.surface2:C.surface, color:C.text,
+          fontSize:13.5, fontWeight:700, textAlign:'left', padding:'0 14px',
+        }}>
           {showFallback?'▾':'▸'} Non-parent pickup / can't open the link — issue a one-time code instead
         </button>
         {showFallback && (

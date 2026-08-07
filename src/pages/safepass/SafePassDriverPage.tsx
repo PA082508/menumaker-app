@@ -53,7 +53,28 @@ export default function SafePassDriverPage() {
   // are attached only while this screen is mounted: the driver's phone gets "Trip", nobody else's
   // home screen changes. iOS reads apple-touch-icon and the apple-mobile-* metas; Chrome reads
   // the manifest — so both are set.
+  //
+  // ⚠️ ДОБАВИТЬ СВОЙ ТЕГ — НЕ ЗНАЧИТ ПОДМЕНИТЬ (живая читка 07.08 на двери учителя,
+  // приём тот же и дефект был тот же): из нескольких `link[rel=manifest]` браузер
+  // берёт ПЕРВЫЙ в документе, а первый приходит из index.html. Пока теги просто
+  // добавлялись, водитель ставил на телефон «Play Academy» с общей иконкой, а не
+  // «Trip» — код был, обещание не выполнялось. Поэтому чужие теги на время экрана
+  // СНИМАЮТСЯ и возвращаются НА СВОИ МЕСТА при уходе: порядок в head и решает,
+  // чей ярлык победит.
   useEffect(() => {
+    const parked: { el: HTMLElement; next: Node | null; parent: Node }[] = []
+    const park = (sel: string) => {
+      document.head.querySelectorAll<HTMLElement>(sel).forEach(el => {
+        parked.push({ el, next: el.nextSibling, parent: el.parentNode! })
+        el.remove()
+      })
+    }
+    park('link[rel="manifest"]')
+    park('link[rel="apple-touch-icon"]')
+    park('meta[name="apple-mobile-web-app-title"]')
+    park('meta[name="apple-mobile-web-app-status-bar-style"]')
+    park('meta[name="theme-color"]')
+
     const added: HTMLElement[] = []
     const put = (tag: string, attrs: Record<string, string>) => {
       const el = document.createElement(tag)
@@ -68,7 +89,11 @@ export default function SafePassDriverPage() {
     put('meta', { name: 'theme-color', content: '#05603a' })
     const prevTitle = document.title
     document.title = 'Trip'
-    return () => { added.forEach(el => el.remove()); document.title = prevTitle }
+    return () => {
+      added.forEach(el => el.remove())
+      parked.forEach(({ el, next, parent }) => parent.insertBefore(el, next))
+      document.title = prevTitle
+    }
   }, [])
 
   useEffect(() => {

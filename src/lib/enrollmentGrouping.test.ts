@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { COUNTERSIGN_SLOT } from './signatureSamples'
 import {
   signatureRequired, groupSubmissionsByChild,
-  type GroupableSubmission,
+  type GroupableSubmission, duplicateMarks,
 } from './enrollmentGrouping'
 
 let seq = 0
@@ -97,5 +97,83 @@ describe('groupSubmissionsByChild', () => {
       sub({ type: 'parent_consent', name: 'New Child', at: '2026-07-17T09:00:00Z' }),
     ])
     expect(groups.map(g => g.childName)).toEqual(['New Child', 'Old Child'])
+  })
+})
+
+// ── Семейные заявки (08.08) ─────────────────────────────────────────────────
+// Две болезни одной строкой: титул «(no name)» И слипание разных семей в одну
+// корзину. Вторая опаснее: она прячет чужую заявку внутри чужой семьи.
+describe('семейные заявки без child_name', () => {
+  const iea = (id: string, names: string[], at: string) => ({
+    id, submission_type: 'iea', child_id: null, status: 'pending', created_at: at,
+    form_data: { children: names.map(n => ({ name: n })) },
+  })
+
+  it('разные семьи — разные строки, и каждая названа своей фамилией', () => {
+    const gs = groupSubmissionsByChild([
+      iea('a', ['Isaac Rife', 'Amari Rife'], '2026-08-05T00:24:00Z'),
+      iea('b', ['Teighan Graves', 'Jaxon Graves', 'Nova Graves'], '2026-08-04T00:00:00Z'),
+    ])
+    expect(gs).toHaveLength(2)
+    expect(gs.map(g => g.childName).sort()).toEqual([
+      'Graves household · 3 children', 'Rife household · 2 children',
+    ])
+  })
+
+  it('две заявки ОДНОЙ семьи — одна строка', () => {
+    const gs = groupSubmissionsByChild([
+      iea('a', ['Isaac Rife', 'Amari Rife'], '2026-08-05T00:24:00Z'),
+      iea('b', ['Amari Rife', 'Isaac Rife'], '2026-08-05T00:29:00Z'),
+    ])
+    expect(gs).toHaveLength(1)
+    expect(gs[0].submissions).toHaveLength(2)
+  })
+
+  it('строка без имени И без списка детей остаётся честным «(no name)»', () => {
+    const gs = groupSubmissionsByChild([
+      { id: 'x', submission_type: 'other', child_id: null, status: 'rejected',
+        created_at: '2026-07-06T15:11:00Z', form_data: { _ocr: {}, scan_ref: 'p.jpg' } },
+    ])
+    expect(gs[0].childName).toBe('(no name)')
+  })
+})
+
+// ── Двойники одной формы (08.08, случай Rife) ───────────────────────────────
+describe('двойники: свежая побеждает, старая остаётся историей', () => {
+  const sub = (id: string, at: string, child = 'c1', type = 'cacfp_enrollment') => ({
+    id, submission_type: type, child_id: child, status: 'approved', created_at: at,
+    form_data: { child_name: 'Isaac Rife' },
+  })
+
+  it('пара Rife: свежая — действующая, старая помечена, но не спрятана', () => {
+    const m = duplicateMarks([sub('777aa03c', '2026-08-05T00:24:27Z'), sub('0d9e5db9', '2026-08-05T00:29:57Z')])
+    expect(m.get('0d9e5db9')).toEqual({ total: 2, rank: 1, current: true })
+    expect(m.get('777aa03c')).toEqual({ total: 2, rank: 2, current: false })
+    expect(m.size).toBe(2)                     // обе видимы, ни одна не выброшена
+  })
+
+  it('одиночная форма отметки НЕ получает — «1 of 1» это шум', () => {
+    expect(duplicateMarks([sub('a', '2026-08-05T00:24:27Z')]).size).toBe(0)
+  })
+
+  it('разные ТИПЫ форм одного ребёнка двойниками не считаются', () => {
+    const m = duplicateMarks([
+      sub('a', '2026-08-05T00:24:27Z', 'c1', 'cacfp_enrollment'),
+      sub('b', '2026-08-05T00:26:52Z', 'c1', 'child_release_authorization'),
+    ])
+    expect(m.size).toBe(0)
+  })
+
+  it('разные дети двойниками не считаются', () => {
+    const m = duplicateMarks([sub('a', '2026-08-05T00:24:27Z', 'c1'), sub('b', '2026-08-05T00:29:57Z', 'c2')])
+    expect(m.size).toBe(0)
+  })
+
+  it('без привязки ребёнок опознаётся по имени', () => {
+    const noLink = (id: string, at: string) => ({
+      id, submission_type: 'iea', child_id: null, status: 'pending', created_at: at,
+      form_data: { child_name: 'Isaac Rife' },
+    })
+    expect(duplicateMarks([noLink('a', '2026-08-01T00:00:00Z'), noLink('b', '2026-08-02T00:00:00Z')]).size).toBe(2)
   })
 })

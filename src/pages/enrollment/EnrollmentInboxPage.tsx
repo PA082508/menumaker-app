@@ -8,6 +8,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import { householdTitle } from '@/lib/enrollmentTitle'
+import { duplicateMarks } from '@/lib/enrollmentGrouping'
 import { useOrg } from '@/contexts/OrgContext'
 import { useAuth } from '@/hooks/useAuth'
 import {
@@ -315,6 +317,18 @@ export default function EnrollmentInboxPage() {
     return t
   }, [counts.todo, counts.auto, counts.countersign, counts.orgdesk, counts.rejected, isOrgAdmin])
 
+  // ДВОЙНИКИ: одна и та же форма, присланная семьёй дважды (Rife — 5,5 минут
+  // между отправками). Правило владельца: показать ДАТЫ и «свежая побеждает»;
+  // старая остаётся ВИДИМОЙ историей, а не исчезает. Считается по всему списку,
+  // а не по видимой странице: двойник, уехавший под фильтр, — всё равно двойник.
+  const dupMarks = useMemo(
+    () => duplicateMarks(graded.map(g => ({
+      id: g.row.id, submission_type: g.row.submission_type, form_data: g.row.form_data,
+      child_id: g.row.child_id, status: g.row.status, created_at: g.row.created_at,
+    }))),
+    [graded],
+  )
+
   // search-v2: filter the pending list by child name (scoreMatch), ranked when set.
   const visible = useMemo(() => {
     const q = search.trim()
@@ -446,7 +460,12 @@ export default function EnrollmentInboxPage() {
           // again would re-run the roster write on a row that is already done.
           const filed = row.status === 'received'
           const isNew = !row.child_id && !filed
-          const childName = row.form_data?.child_name || '(no name)'
+          // Титул строки. Семейная заявка несёт детей СПИСКОМ, а `child_name` в
+          // ней пуст — собираем «<Фамилия> household · N children» из самой
+          // заявки (lib/enrollmentTitle). Где собрать не из чего (13 строк типа
+          // `other` — сфотографированные НЕ заявки), остаётся честное «(no name)»:
+          // выдуманный титул обещал бы ребёнка там, где ребёнка нет.
+          const childName = row.form_data?.child_name || householdTitle(row.form_data) || '(no name)'
           const details = [...v.missing.map(m => ({ kind: 'missing', text: m })),
                            ...v.errors.map(m => ({ kind: 'error', text: m })),
                            ...v.warnings.map(m => ({ kind: 'warning', text: m }))]
@@ -484,6 +503,26 @@ export default function EnrollmentInboxPage() {
                     <span>·</span>
                     <span>{fmtDate(row.created_at)}</span>
                     {!currentCenter?.id && <><span>·</span><span>{centerName(row.center_id)}</span></>}
+                    {/* Двойник: семья прислала ту же форму ещё раз. Свежая —
+                        действующая; старая остаётся на экране историей, потому что
+                        спрятанная запись через месяц становится вопросом без ответа. */}
+                    {dupMarks.get(row.id) && (
+                      <>
+                        <span>·</span>
+                        <span title={dupMarks.get(row.id)!.current
+                          ? 'The family sent this form more than once — this is the newest one, and it is the one that counts'
+                          : 'The family sent this form again later — the newer one counts. This copy stays as history.'}
+                          style={{
+                            fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
+                            background: dupMarks.get(row.id)!.current ? '#f0fff4' : '#f3f4f6',
+                            color: dupMarks.get(row.id)!.current ? '#0f4c35' : '#6b7280',
+                          }}>
+                          {dupMarks.get(row.id)!.current
+                            ? `newest of ${dupMarks.get(row.id)!.total} · counts`
+                            : `superseded · ${dupMarks.get(row.id)!.rank} of ${dupMarks.get(row.id)!.total}`}
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
                 {row.form_data?.scan_ref && (

@@ -25,6 +25,8 @@ import SignaturePad from '@/components/signing/SignaturePad'
 import { SIGNATURE_METHODS } from '@/lib/signatureMethods'
 import { applyDcyPort, applyDcyPeople } from '@/lib/dcyPort'
 import OriginalFormViewer from './OriginalFormViewer'
+import SubmittedDataView from './SubmittedDataView'
+import { dobGate } from '@/lib/dobGate'
 import { hasOriginalReplica } from '@/lib/originalFormReplicas'
 import { captureAndUploadSnapshot } from '@/lib/enrollmentSnapshot'
 
@@ -472,6 +474,17 @@ export default function EnrollmentReviewModal({
 
   const chosenInactive = isCacfp && !!chosenMatchObj && chosenMatchObj.is_active === false
 
+  // ГЕЙТ «DOB differs» (заказ владельца 08.08, страховка от истории Baron).
+  // Сверяются ЗНАЧЕНИЯ: ДР формы против ДР строки, в которую Approve и запишет
+  // (`schedTarget` — та же цель, которую использует порт расписания). Гейт НЕ
+  // блокирует — он спрашивает; человек вправе подтвердить, но осознанно.
+  // Флаги `_ocr.lowConfidence` не спрашиваются намеренно: в той истории они
+  // молчали ровно про `birthdate`.
+  const dobCheck = useMemo(
+    () => dobGate(submission.form_data, schedTarget?.birthday ?? null),
+    [submission.form_data, schedTarget?.birthday],
+  )
+
   // Approve gating: 🔴 blocks; unresolved CACFP duplicate blocks; a chosen
   // inactive match blocks until it's reactivated & admitted via the return window.
   const dupUnresolved = isCacfp && !resolvedChildId && cacfpMatches.length > 0 && !chosenMatch
@@ -893,6 +906,25 @@ export default function EnrollmentReviewModal({
 
         {/* approve action panel */}
         <div style={{ padding: '12px 22px', borderTop: '1px solid #f3f4f6', background: '#fafafa', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {/* ГЕЙТ «DOB differs» — ЖЁЛТЫЙ ВОПРОС, не запрет. Автоподсказка ускоряет,
+              гейт страхует: на паре Baron (форма 01/13 против ребёнка 07/13) он и
+              загорится. Последний арбитр — бумага, поэтому текст зовёт открыть скан. */}
+          {dobCheck.kind === 'differs' && (
+            <div role="alert" style={{
+              display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 12px',
+              borderRadius: 8, background: '#fff8e6', border: '1.5px solid #f0a020', color: '#7a4b00',
+              fontSize: 12.5, lineHeight: 1.5,
+            }}>
+              <span style={{ fontSize: 15, lineHeight: 1.1 }}>⚠️</span>
+              <span>
+                <b>{dobCheck.line}</b>
+                <span style={{ display: 'block', fontWeight: 400, marginTop: 2 }}>
+                  Approve is not blocked — but check the scan before you confirm: a date read wrong
+                  once created a second roster row, and the signed form stayed on the dead one.
+                </span>
+              </span>
+            </div>
+          )}
           {isCacfp && (
             <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, color: '#374151' }}>
               <span style={{ width: 130, color: '#6b7280' }}>Date In (start date)</span>
@@ -1222,12 +1254,17 @@ export default function EnrollmentReviewModal({
               {rehangBusy ? 'Filing…' : '📎 File this scan'}
             </button>
           )}
-          {canViewOriginal && (
-            <button onClick={() => setShowOriginal(true)} title="See the filed form with the parent signature, exactly as submitted"
-              style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #c0d8c0', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: '#fff', color: '#0f4c35' }}>
-              📄 View original form
-            </button>
-          )}
+          {/* КНОПКА СТОИТ ВСЕГДА. Раньше она ИСЧЕЗАЛА у типов без локальной реплики
+              бланка (на 08.08 реплики есть только у dcy_01234 и cacfp_enrollment) —
+              и молчаливое отсутствие читалось как «первоисточника не существует».
+              Отказ обязан звучать: у таких типов кнопка называет, ЧТО откроется. */}
+          <button onClick={() => setShowOriginal(true)}
+            title={canViewOriginal
+              ? 'See the filed form with the parent signature, exactly as submitted'
+              : 'No original on file for this form type — opens the submitted values, marked as a render'}
+            style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #c0d8c0', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: '#fff', color: canViewOriginal ? '#0f4c35' : '#7a4b00' }}>
+            {canViewOriginal ? '📄 View original form' : '📄 Original not on file — view submitted values'}
+          </button>
           <button onClick={save} disabled={!dirty || saving} style={{
             padding: '8px 14px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, fontWeight: 600,
             background: '#fff', color: dirty && !saving ? '#0f4c35' : '#d1d5db',
@@ -1326,7 +1363,7 @@ export default function EnrollmentReviewModal({
         </div>
       )}
 
-      {showOriginal && canViewOriginal && (
+      {showOriginal && (canViewOriginal ? (
         // The ORIGINAL = what the parent signed → submission.form_data as filed, not the
         // director-edited `fd` (the field-diff already shows edits vs the record).
         <OriginalFormViewer
@@ -1336,7 +1373,19 @@ export default function EnrollmentReviewModal({
           signatureDate={resolvedDocDate}
           onClose={() => setShowOriginal(false)}
         />
-      )}
+      ) : (
+        // Реплики бланка у этого типа нет — показываем ЗНАЧЕНИЯ с несмываемой
+        // пометкой. Реконструкция никогда не выдаётся за скан.
+        <SubmittedDataView
+          submissionType={submission.submission_type}
+          formData={submission.form_data}
+          signatures={previewSignatures}
+          signatureDate={resolvedDocDate}
+          submittedAt={submission.created_at}
+          childName={submission.form_data?.child_name}
+          onClose={() => setShowOriginal(false)}
+        />
+      ))}
     </div>
   )
 }

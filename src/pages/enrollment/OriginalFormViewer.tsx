@@ -9,6 +9,7 @@
 // director slot (program_sig) shows "awaiting countersign" until Step 2 wires it.
 import { useEffect, useRef } from 'react'
 import { originalReplica } from '@/lib/originalFormReplicas'
+import { normalizeForReplica } from '@/lib/replicaData'
 
 export default function OriginalFormViewer({
   submissionType, formData, signatures, signatureDate, onClose, note,
@@ -31,7 +32,9 @@ export default function OriginalFormViewer({
   // Push the data once the replica has loaded, and again if the data changes.
   function inject() {
     iframeRef.current?.contentWindow?.postMessage(
-      { type: 'original-render', formData: formData ?? {}, signatures: signatures ?? {}, signatureDate: signatureDate ?? null },
+      // Перевод на язык бланка: витрина кладёт дни расписания «Mon», реплика
+      // ищет «mon» — без этого в форме пусто ВСЁ расписание (сверка 08.08).
+      { type: 'original-render', formData: normalizeForReplica(formData ?? {}), signatures: signatures ?? {}, signatureDate: signatureDate ?? null },
       '*',
     )
   }

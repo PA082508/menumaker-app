@@ -11,6 +11,7 @@
 
 import { supabase } from '@/lib/supabase'
 import { originalReplica } from '@/lib/originalFormReplicas'
+import { normalizeForReplica } from '@/lib/replicaData'
 import html2canvas from 'html2canvas'
 
 export type SnapshotRow = {
@@ -55,8 +56,12 @@ export async function captureAndUploadSnapshot(opts: {
     if (!win || !doc) throw new Error('replica window unavailable')
 
     // inject the final data + signatures (replica exposes renderOriginal, also listens for postMessage)
-    if (typeof win.renderOriginal === 'function') win.renderOriginal(opts.formData ?? {}, opts.signatures ?? {})
-    else win.postMessage({ type: 'original-render', formData: opts.formData ?? {}, signatures: opts.signatures ?? {} }, '*')
+    // ⚠️ ТОТ ЖЕ перевод, что и у просмотра: реплика ищет дни строчными («mon»),
+    // витрина кладёт «Mon». Без него замораживался бы бланк с ПУСТЫМ расписанием —
+    // копия, которая выглядит официальной и молчит о сердцевине формы (сверка 08.08).
+    const fdForReplica = normalizeForReplica(opts.formData ?? {})
+    if (typeof win.renderOriginal === 'function') win.renderOriginal(fdForReplica, opts.signatures ?? {})
+    else win.postMessage({ type: 'original-render', formData: fdForReplica, signatures: opts.signatures ?? {} }, '*')
 
     // capture at actual size (the replica scales to fit the viewport on screen; we want zoom 1)
     const docEl = doc.getElementById('doc')

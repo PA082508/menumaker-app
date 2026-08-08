@@ -32,7 +32,7 @@ import MuteToggle from "@/components/sound/MuteToggle";
 import ExpectedCountsTile from "@/components/meal-count/ExpectedCountsTile";
 import { mutedSinceHHMM, muteNoteLine } from "@/lib/soundMute";
 import { speakLine } from "@/lib/soundKit";
-import { directorAlertRow, spokenMarkRefusal } from "@/lib/spokenLines";
+import { directorAlertRow, spokenMarkRefusal, changeRequestRow } from "@/lib/spokenLines";
 import { DIRECTOR_ALERT_AFTER_MIN } from "@/lib/mealWindows";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -65,6 +65,8 @@ interface Classroom {
   center_id?: string;
   is_roster?: boolean;
   org_id?: string;
+  /** Комната перешла на именные отметки через App учителя → у неё работает замок. */
+  app_marks?: boolean;
 }
 
 interface MealCountSettings {
@@ -201,7 +203,7 @@ interface MilkBucket { label: string; oz: number; }
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function MealCountPage({ portalRoles, variant, roomId, roomName, centerId: pointCenterId, centerName: pointCenterName }: {
+export default function MealCountPage({ portalRoles, variant, roomId, roomName, centerId: pointCenterId, centerName: pointCenterName, personName }: {
   portalRoles?: string[];
   variant?: Variant;
   /** Учительский вид: комната PIN-сессии. Экран НЕ выбирает комнату сам. */
@@ -210,6 +212,8 @@ export default function MealCountPage({ portalRoles, variant, roomId, roomName, 
   /** Учительский вид: ЦЕНТР ТОЧКИ — из токена устройства, а не из логина. */
   centerId?: string;
   centerName?: string;
+  /** Учительский вид: имя вошедшего по PIN — заявку директору подаёт ЧЕЛОВЕК. */
+  personName?: string;
 } = {}) {
   const teacherView = TEACHER_VIEW(variant);
   const { role, roles, user } = useAuth();
@@ -335,7 +339,7 @@ export default function MealCountPage({ portalRoles, variant, roomId, roomName, 
     (async () => {
       const { data: cls } = await supabase
         .schema("menumaker").from("classrooms")
-        .select("id,class_key,name,sort_order,center_id,org_id,is_roster")
+        .select("id,class_key,name,sort_order,center_id,org_id,is_roster,app_marks")
         .eq("is_active", true)
         .eq("center_id", centerId)
         .order("sort_order");
@@ -566,9 +570,68 @@ export default function MealCountPage({ portalRoles, variant, roomId, roomName, 
 
   // Часы — те же, что у ритуала (ritualMinutes + тик), чтобы «окно закрылось» на
   // плашке и «замок встал» на галочках не расходились на минуту.
+  // СКОУП ЗАМКА — ТОЛЬКО КОМНАТЫ, ПЕРЕШЕДШИЕ НА APP (уточнение владельца 08.08).
+  // Остальные комнаты отмечает ПОВАР: пакетно, по доставке, задним числом внутри
+  // дня. Замок там отнял бы работающий инструмент раньше, чем дал новый, — и
+  // отнял бы молча, у людей, которые про App ещё не слышали.
+  //
+  // Носитель — `classrooms.app_marks`, признак НА КОМНАТЕ (миграция 20260808b):
+  // раскатка идёт по комнатам, и признак обязан иметь ту же зернистость. По
+  // умолчанию false — по умолчанию не замкнуто НИЧЕГО, каждая комната входит в
+  // замок отдельным словом: `update … set app_marks = true where name = 'Blue'`,
+  // без выкладки. Канон: замок следует за App.
+  const roomOnApp = classrooms.find((c) => c.id === selectedClassId)?.app_marks === true;
+
   const lockOf = useCallback((slot: SlotKey): SlotLock => (
-    teacherView ? slotLock(windowBySlot.get(slot), nowMinTick, dayOffset) : { locked: false }
-  ), [teacherView, windowBySlot, nowMinTick, dayOffset]);
+    teacherView && roomOnApp ? slotLock(windowBySlot.get(slot), nowMinTick, dayOffset) : { locked: false }
+  ), [teacherView, roomOnApp, windowBySlot, nowMinTick, dayOffset]);
+
+  // ─── ЗАЯВКА НА ПРАВКУ ЗАМКНУТОГО ПРИЁМА (уточнение владельца 08.08) ────────
+  // Замок закрывает приём — но у человека остаётся дело: «я отметил не всех»,
+  // «ребёнок доел после звонка». ТУПИК ЗДЕСЬ ХУЖЕ ОТКРЫТОЙ ГАЛОЧКИ: он учит
+  // обходить систему. Поэтому у полосы замка стоит дверь — заявка директору тем
+  // же рельсом (`internal_messages`), которым уже ходит тревога пустого окна.
+  //
+  // ОТБОЙ БЕЗ СПАМА: ключ живёт в localStorage и несёт день · комнату · приём,
+  // поэтому переживает перезагрузку планшета (её на планшете группы делают по
+  // десять раз на дню). Повторный тап не плодит дубли, а ГОВОРИТ, что заявка уже
+  // ушла: молчание человек прочитал бы как «не отправилось», и он нажал бы ещё.
+  const changeReqKey = useCallback((slot: SlotKey) =>
+    `mm_change_req_${format(addDays(weekStart, DAYS.indexOf(selectedDay)), "yyyy-MM-dd")}_${selectedClassId}_${slot}`,
+    [weekStart, selectedDay, selectedClassId]);
+
+  const [changeReq, setChangeReq] = useState<{ kind: "sent" | "already" | "failed"; text: string } | null>(null);
+
+  const requestChange = useCallback(async (slot: SlotKey, note: string) => {
+    const key = changeReqKey(slot);
+    let already = false;
+    try { already = localStorage.getItem(key) === "1"; } catch { /* приватный режим — спросим сервер */ }
+    if (already) {
+      setChangeReq({ kind: "already", text: "Your director already has this request — no need to send it again." });
+      return;
+    }
+    const dayLabel = format(addDays(weekStart, DAYS.indexOf(selectedDay)), "EEEE, MMM d");
+    const row = changeRequestRow({
+      personName: personName || "A teacher",
+      className: selectedClassName,
+      slotLabel: SLOT_LABELS[slot],
+      dayLabel,
+      note,
+      orgId: org?.id,
+      centerId: centerId ?? null,
+      centerName,
+      senderId: user?.id,
+    });
+    const { error } = await supabase.schema("menumaker").from("internal_messages").insert(row);
+    // Тихо потерянный отказ здесь = человек уверен, что директора позвали, а его
+    // не позвали, и приём так и останется неправленым.
+    if (error) {
+      setChangeReq({ kind: "failed", text: `The request did NOT reach your director: ${error.message}. Tell the office.` });
+      return;
+    }
+    try { localStorage.setItem(key, "1"); } catch { /* не запомнили — переспросит сервер отказом дубля */ }
+    setChangeReq({ kind: "sent", text: "Sent — your director has it, with the room, the meal and the day." });
+  }, [changeReqKey, weekStart, selectedDay, selectedClassName, personName, org?.id, centerId, centerName, user?.id]);
 
   // ─── Toggle checkbox ──────────────────────────────────────────────────────
   // Every tap is optimistic + durably queued (IndexedDB). The queue drains to
@@ -1076,6 +1139,8 @@ export default function MealCountPage({ portalRoles, variant, roomId, roomName, 
             milkForSlot={milkForSlot} isQueued={isQueued}
             isStaff={isStaff} dayTotals={dayTotals}
             lockDay={teacherView} lockFor={lockOf}
+            onRequestChange={teacherView ? requestChange : undefined}
+            changeReq={changeReq}
           />
         ) : mode === "director" ? (
           <DirectorMode
@@ -1189,7 +1254,7 @@ function UnbuckledList({ items }: { items: UnbuckledWindow[] }) {
 
 function CurrentMode({ roster, records, activeSlots, selectedSlot, setSelectedSlot,
   selectedDay, setSelectedDay, todayDayKey, dayBlocked, slotBlocked, blockLabel, toggle, checkedCount,
-  milkForSlot, isQueued, isStaff, dayTotals, lockDay, lockFor }: {
+  milkForSlot, isQueued, isStaff, dayTotals, lockDay, lockFor, onRequestChange, changeReq }: {
     roster: Child[]; records: Record<string, WeekRecord>; activeSlots: SlotKey[];
     selectedSlot: SlotKey; setSelectedSlot: (s: SlotKey) => void;
     selectedDay: DayKey; setSelectedDay: (d: DayKey) => void; todayDayKey: DayKey;
@@ -1204,6 +1269,9 @@ function CurrentMode({ roster, records, activeSlots, selectedSlot, setSelectedSl
     lockDay?: boolean;
     /** Замок приёма: закрытое окно и прошлый день отмечать не дают. */
     lockFor?: (s: SlotKey) => SlotLock;
+    /** Дверь из замка: заявка директору на правку. */
+    onRequestChange?: (s: SlotKey, note: string) => Promise<void>;
+    changeReq?: { kind: "sent" | "already" | "failed"; text: string } | null;
   }) {
   const day = selectedDay;
   const blocked = slotBlocked(day, selectedSlot);
@@ -1215,7 +1283,9 @@ function CurrentMode({ roster, records, activeSlots, selectedSlot, setSelectedSl
   // такому экрану перестают верить.
   const lock: SlotLock = lockFor ? lockFor(selectedSlot) : { locked: false };
   const [lockSaid, setLockSaid] = useState(false);
-  useEffect(() => { setLockSaid(false); }, [selectedSlot, selectedDay]);
+  const [askNote, setAskNote] = useState("");
+  const [asking, setAsking] = useState(false);
+  useEffect(() => { setLockSaid(false); setAskNote(""); }, [selectedSlot, selectedDay]);
 
   return (
     <div className="mc-current">
@@ -1251,12 +1321,44 @@ function CurrentMode({ roster, records, activeSlots, selectedSlot, setSelectedSl
           {lock.locked && (
             <div className="mc-locked-strip" role="status">
               <span className="mc-locked-icon">🔒</span>
-              <span>
+              <div className="mc-locked-body">
                 <b>{lockLine(lock, SLOT_LABELS[selectedSlot])}</b>
                 <span className="mc-locked-note">
                   Marks already made are kept — this meal is simply no longer open for changes here.
                 </span>
-              </span>
+
+                {/* ДВЕРЬ ИЗ ЗАМКА. Тупик учит обходить систему: человеку, у
+                    которого осталось дело, нужен путь, а не стена. Заявка уходит
+                    директору тем же рельсом, что и тревога пустого окна. */}
+                {onRequestChange && (
+                  <div className="mc-locked-ask">
+                    <input
+                      className="mc-locked-note-input"
+                      placeholder="What needs changing? (optional)"
+                      value={askNote}
+                      maxLength={200}
+                      onChange={(e) => setAskNote(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="mc-locked-ask-btn"
+                      disabled={asking}
+                      onClick={async () => {
+                        setAsking(true);
+                        try { await onRequestChange(selectedSlot, askNote); }
+                        finally { setAsking(false); }
+                      }}>
+                      {asking ? "Sending…" : "Request change from director"}
+                    </button>
+                  </div>
+                )}
+                {changeReq && (
+                  <div className={`mc-locked-ask-said ${changeReq.kind}`} role="alert">
+                    {changeReq.kind === "failed" ? "⚠️ " : changeReq.kind === "already" ? "ⓘ " : "✓ "}
+                    {changeReq.text}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -1631,6 +1733,14 @@ const styles = `
 .mc-locked-strip { display:flex; gap:.6rem; align-items:flex-start; margin:0 0 .75rem; padding:.7rem 1rem; border-radius:12px; background:#f4f6fa; border:1.5px solid #c2cbd9; color:#33415c; font-size:.9rem; line-height:1.45; }
 .mc-locked-icon { font-size:1.05rem; line-height:1.2; }
 .mc-locked-note { display:block; font-weight:400; color:#5b6780; margin-top:2px; }
+.mc-locked-body { display:flex; flex-direction:column; }
+.mc-locked-ask { display:flex; gap:.5rem; flex-wrap:wrap; margin-top:.6rem; }
+.mc-locked-note-input { flex:1 1 220px; min-height:40px; padding:.45rem .7rem; border-radius:9px; border:1.5px solid #c2cbd9; font-family:inherit; font-size:.88rem; color:#25324a; background:#fff; }
+.mc-locked-ask-btn { min-height:40px; padding:0 1rem; border-radius:9px; border:1.5px solid #0f4c35; background:#0f4c35; color:#fff; font-family:inherit; font-size:.88rem; font-weight:700; cursor:pointer; }
+.mc-locked-ask-btn:disabled { opacity:.6; cursor:default; }
+.mc-locked-ask-said { margin-top:.5rem; font-size:.85rem; font-weight:600; color:#1a5c3f; }
+.mc-locked-ask-said.failed { color:#991b1b; }
+.mc-locked-ask-said.already { color:#5b6780; }
 .mc-locked-said { margin:.6rem 0 0; padding:.65rem .9rem; border-radius:10px; background:#fff8e6; border:1.5px solid #f0a020; color:#7a4b00; font-size:.88rem; font-weight:600; }
 .mc-slot-btn.locked { opacity:.75; }
 .mc-check-row.locked { cursor:default; background:#f7f8fb; border-color:#c2cbd9; }

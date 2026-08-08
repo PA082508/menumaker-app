@@ -373,7 +373,9 @@ export default function TeacherShell() {
               /* Место целиком — из ТОЧКИ: и комната, и центр. Логин остаётся
                  транспортом данных и на вопрос «где мы» не отвечает. */
               centerId={who.center_id}
-              centerName={centerOfficialName({ slug: who.center_slug, name: who.center_name })} />
+              centerName={centerOfficialName({ slug: who.center_slug, name: who.center_name })}
+              /* Заявку директору подаёт ЧЕЛОВЕК: имя — из PIN-сессии. */
+              personName={who.staff_name} />
         )}
 
         {tab === 'time' && (

@@ -240,13 +240,22 @@ function TransportPanelView({ runs, onConfirmRun, C }: {
 // Выбор старше комнаты планшета: планшет говорит, где стоит железо, человек — где
 // работает он. Дальше выбранная комната идёт в чек-ин, то есть в СЛЕД отметок, а не
 // только на экран. Без пропа страница ведёт себя ровно как раньше.
-export default function SafePassTeacherPage({ seedClassroomId }: { seedClassroomId?: string } = {}) {
+// `personName` — ЧЕЛОВЕК, вошедший по PIN в оболочке /teacher. Внутри App имя в
+// шапке обязано быть его именем и ничьим больше: страница живёт под СЛУЖЕБНОЙ
+// учёткой центра (иначе не открылись бы данные), и её `full_name` — «Carmen
+// Santiago» — это подпись учётки, а не того, кто стоит у планшета. Живая читка
+// владельца 08.08 нашла этот чип в панели «Дети»: шапка оболочки честно говорила
+// «You: Nikolay Kutsenko», а панель под ней — чужое имя. Имя, залипшее на чужих
+// отметках, хуже безымянных: оно врёт фамилией.
+export default function SafePassTeacherPage({ seedClassroomId, personName }: {
+  seedClassroomId?: string; personName?: string
+} = {}) {
   const { currentCenter } = useOrg()
   const { user, roles } = useAuth()
   const allowed = (roles as string[]).some(r => r === 'cook' || r === 'teacher' || r === 'director' || r === 'admin' || r === 'org_admin' || r === 'office_manager')
   const teacherId = user?.id ?? 'unknown'
-  const teacherName =
-    (user?.user_metadata?.full_name as string) || (user?.email?.split('@')[0]) || 'Teacher'
+  const teacherName = personName
+    || (user?.user_metadata?.full_name as string) || (user?.email?.split('@')[0]) || 'Teacher'
 
   const [classrooms, setClassrooms] = useState<Classroom[]>([])
   // no cross-centre seed: the remembered class is resolved per-centre once the

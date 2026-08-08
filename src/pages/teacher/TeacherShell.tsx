@@ -199,26 +199,46 @@ export default function TeacherShell() {
     return { ok: true, staff_id: id.staff_id, staff_name: id.staff_name }
   }, [token])
 
+  // ── Комната устройства ─────────────────────────────────────────────────────
+  // ПРИВЯЗАННЫЙ ПЛАНШЕТ НЕ МЕНЯЕТ КОМНАТУ (слово владельца 08.08). Планшет
+  // прикручен к стене одной группы: комната = планшета, и выбор здесь может
+  // означать только одно — отметки уедут в комнату, в которой этого человека
+  // нет. Поэтому у привязанного устройства ни выбора, ни «change room»: строка
+  // «locked to this room» становится честной.
+  //
+  // Выбор остаётся ровно там, где комнаты у точки НЕТ (общий планшет, токен без
+  // комнаты): тогда «Which room are you in today?» — единственный способ узнать,
+  // где человек работает, и ответ уходит в след отметок.
+  //
+  // ⚠️ useMemo — не украшение: объект, пересобираемый каждый рендер, попадает в
+  // зависимости эффекта ниже и заставлял бы его тянуть список комнат снова и
+  // снова. Тождество здесь — это число запросов с планшета.
+  const deviceRoom = useMemo(
+    () => (ctx?.classroom_id ? { id: ctx.classroom_id, name: ctx.classroom_name } : null),
+    [ctx?.classroom_id, ctx?.classroom_name],
+  )
+
   const onSuccess = useCallback(() => {
     const id = pending.current
     if (!id) return
     setWho(id)
     lastTouch.current = Date.now()
-    // Комната планшета — это комната, в которой человек стоит. Тому, у кого она
-    // есть в карточке, ничего выбирать не нужно.
-    if (id.has_classroom) { setRoom({ id: ctx!.classroom_id, name: ctx!.classroom_name }); setTab('children') }
-    else setTab('children')                       // покажем выбор комнаты — он и есть первый экран
-  }, [ctx])
+    // Комната планшета старше карточки: человек стоит там, где стоит железо.
+    // Раньше здесь решала `has_classroom` — карточка сотрудника, — и человек
+    // БЕЗ комнаты в карточке получал выбор даже на привязанном планшете.
+    if (deviceRoom) setRoom(deviceRoom)
+    setTab('children')                            // без комнаты первым экраном будет её выбор
+  }, [deviceRoom])
 
-  // Список комнат тянем ТОЛЬКО когда он нужен — тому, кому надо выбрать.
+  // Список комнат тянем ТОЛЬКО когда он нужен — точке без комнаты.
   useEffect(() => {
-    if (!who || who.has_classroom || room || rooms || !token) return
+    if (!who || deviceRoom || room || rooms || !token) return
     let cancelled = false
     fetchCenterClassrooms(token)
       .then(r => { if (!cancelled) setRooms(r) })
       .catch(e => { if (!cancelled) setRoomsError(humanPinError(e?.message ?? '')) })
     return () => { cancelled = true }
-  }, [who, room, rooms, token])
+  }, [who, room, rooms, token, deviceRoom])
 
   // ── Экраны до входа ────────────────────────────────────────────────────────
   if (bootError === 'no-token') return <Boot title="This tablet is not set up yet"
@@ -254,10 +274,12 @@ export default function TeacherShell() {
           <div style={{ fontSize: 15, fontWeight: 800, color: P.text }}>You: {who.staff_name}</div>
           <div style={{ fontSize: 12, color: P.muted }}>
             {who.center_name} · {room ? room.name : 'no room chosen yet'}
+            {deviceRoom ? ' · locked to this room' : ''}
             {who.position ? ` · ${who.position}` : ''}
-            {/* У кого комнаты нет в карточке — он её выбрал, и вправе передумать
-                вслух: комната видна и меняется одним тапом, а не прячется. */}
-            {!who.has_classroom && room && (
+            {/* Смена комнаты — ТОЛЬКО у точки без комнаты: там человек её выбрал
+                сам и вправе передумать вслух. На привязанном планшете этой двери
+                нет вовсе — не спрятана и не выключена, её просто нет. */}
+            {!deviceRoom && room && (
               <button onClick={() => setRoom(null)} style={{
                 marginLeft: 8, background: 'transparent', border: 'none', padding: 0,
                 color: P.green, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
@@ -266,7 +288,7 @@ export default function TeacherShell() {
             )}
           </div>
         </div>
-        <button onClick={() => { setWho(null); setPinRef(''); setShifts(null); setRoom(null) }}
+        <button onClick={() => { setWho(null); setPinRef(''); setShifts(null); setRoom(deviceRoom) }}
           style={{
             padding: '9px 14px', borderRadius: 10, border: `1.5px solid ${P.border}`,
             background: P.surface, color: P.text, fontSize: 13.5, fontWeight: 700,
@@ -299,12 +321,20 @@ export default function TeacherShell() {
           <RoomPicker rooms={rooms} error={roomsError} onPick={setRoom} />
         )}
 
-        {tab === 'children' && room && <SafePassTeacherPage seedClassroomId={room.id} />}
+        {/* Человек во ВСЕХ панелях — вошедший по PIN, а не служебная учётка, под
+            которой открыты данные. Имя идёт вниз пропом, потому что имя —
+            свойство сессии PIN, а не страницы. */}
+        {tab === 'children' && room && (
+          <SafePassTeacherPage seedClassroomId={room.id} personName={who.staff_name} />
+        )}
 
+        {/* Учительский вид питания: ТОЛЬКО комната сессии, ТОЛЬКО текущий день,
+            без прогнозной сводки и без чужих комнат. Те же данные и тот же
+            вычислитель, что у кухни, — параметр, а не второй экран. */}
         {tab === 'meals' && room && (
           mealsError ? <Stub text={mealsError} />
           : !mealsReady ? <Stub text="Opening meals…" />
-          : <MealCountPage portalRoles={['cook']} />
+          : <MealCountPage portalRoles={['cook']} variant="teacher" roomId={room.id} roomName={room.name} />
         )}
 
         {tab === 'time' && (

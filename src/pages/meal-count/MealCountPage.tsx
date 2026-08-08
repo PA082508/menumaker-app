@@ -25,6 +25,7 @@ import { hhmm, isRitualClockOverridden, ritualDay } from "@/lib/ritualClock";
 import { DEFAULT_VARIANT, isChimeVariant, phraseFor, type ChimeVariantKey } from "@/lib/mealChime";
 import type { BannerState, MealWindow, ScheduleRow, UnbuckledWindow } from "@/lib/mealWindows";
 import { useMealMarkQueue } from "@/hooks/useMealMarkQueue";
+import { weekFocus } from "@/lib/weekFocus";
 import MuteToggle from "@/components/sound/MuteToggle";
 import ExpectedCountsTile from "@/components/meal-count/ExpectedCountsTile";
 import { mutedSinceHHMM, muteNoteLine } from "@/lib/soundMute";
@@ -130,15 +131,30 @@ function modesForRoles(roleSet: Set<string>): Mode[] {
 // The role gate (modesForRoles) still applies; the variant simply intersects it so
 // each door exposes only its own tabs — even admin (who holds every role) sees a
 // clean single-purpose screen per door.
-export type Variant = "kitchen" | "director";
+//   variant="teacher"  (вкладка «Питание» в App учителя /teacher) → ОДНА комната,
+//                      ОДИН день, без справочных панелей — см. ниже.
+export type Variant = "kitchen" | "director" | "teacher";
 const VARIANT_MODES: Record<Variant, Mode[]> = {
   kitchen:  ["current", "week"],
   director: ["director"],
+  teacher:  ["current"],
 };
 const VARIANT_TITLE: Record<Variant, string> = {
   kitchen:  "Meal Count — Kitchen",
   director: "Meal Count — Director",
+  teacher:  "Meals",
 };
+
+// ─── Учительский вид (слово владельца 08.08) ──────────────────────────────────
+// Кухонно-директорский экран показывает ЦЕНТР: табы всех комнат, всю неделю,
+// прогноз порций и красный список чужих окон. Учителю за планшетом группы всё
+// это — чужая работа: он отвечает за СВОЮ комнату СЕГОДНЯ, и каждая лишняя
+// панель отодвигает вниз единственное, ради чего он открыл вкладку.
+//
+// Это НЕ второй экран и НЕ второй вычислитель: те же данные, тот же `toggle`,
+// та же очередь отметок, тот же ритуал. Разница — только в том, что показано.
+// Кухонная и директорская двери не тронуты.
+const TEACHER_VIEW = (v?: Variant) => v === "teacher";
 
 // Default landing tab uses the single most-privileged role.
 function defaultMode(topRole: string | null, available: Mode[]): Mode {
@@ -183,7 +199,14 @@ interface MilkBucket { label: string; oz: number; }
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function MealCountPage({ portalRoles, variant }: { portalRoles?: string[]; variant?: Variant } = {}) {
+export default function MealCountPage({ portalRoles, variant, roomId, roomName }: {
+  portalRoles?: string[];
+  variant?: Variant;
+  /** Учительский вид: комната PIN-сессии. Экран НЕ выбирает комнату сам. */
+  roomId?: string;
+  roomName?: string;
+} = {}) {
+  const teacherView = TEACHER_VIEW(variant);
   const { role, roles, user } = useAuth();
   const { currentCenter, orgRole, org, centers, isOrgAdmin } = useOrg();
   // Какие центры вообще кормят. Читается один раз; отказ НЕ глотается — пустой
@@ -241,19 +264,12 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
   const [centerSchedule, setCenterSchedule] = useState<(ScheduleRow & { classroomName: string })[]>([]);
   const [centerMarks, setCenterMarks] = useState<Record<string, boolean>>({});
   const [chimeVariant, setChimeVariant] = useState<ChimeVariantKey>(DEFAULT_VARIANT);
-  const [weekStart, setWeekStart] = useState<Date>(() => {
-    const today = new Date();
-    const dow = today.getDay();
-    const mon = mondayOf(today);
-    // Выходные показывают СЛЕДУЮЩУЮ неделю. `mondayOf` (weekStartsOn:1) для воскресенья
-    // отдаёт понедельник ПРОШЕДШЕЙ недели, поэтому и субботе, и воскресенью нужен +7.
-    // Было `+1` для воскресенья: 02.08 экран открывал вторник 28.07 как «начало недели»,
-    // и отметка ушла бы с monday_date=2026-07-28 — неделей, которой не существует.
-    // В базе таких строк нет (проверено 02.08: 0 записей с monday_date не в понедельник),
-    // то есть в воскресенье экран пока не открывали. Чинится до того, как открыли.
-    if (dow === 6 || dow === 0) return addDays(mon, 7);
-    return mon;
-  });
+  // Какая неделя перед человеком — решает ОДИН вычислитель на всю платформу
+  // (lib/weekFocus.ts, слово владельца 08.08): Пн–Пт текущая, Сб ещё прошедшая
+  // (её закрывают и подписывают), Вс уже следующая. Здесь этого правила больше
+  // НЕТ — раньше своя копия жила на каждой двери, и субботние копии разошлись.
+  const focus = weekFocus();
+  const [weekStart, setWeekStart] = useState<Date>(() => focus.weekStart);
   const [loading, setLoading] = useState(true);
   // Standard (platform-standards): a failed load must SHOUT, never render as empty.
   // This grid is the claim record — a silent empty kitchen reads as "no children today".
@@ -266,12 +282,15 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
   // повар видит, что отметка «сама снялась», и считает, что промахнулся сам.
   const [writeErr, setWriteErr] = useState<string | null>(null);
 
-  const isStaff = selectedClassName.toLowerCase().includes("staff");
+  // Служебность комнаты — по ПРИЗНАКУ `classrooms.is_roster`, а не по имени
+  // (слово владельца 08.08). Признак замерен в базе 08.08: он есть, NOT NULL,
+  // и у всех четырёх служебных комнат стоит false. Имя же — это надпись: комнату
+  // переименуют, и подсчёт молча начнёт считать взрослых детьми.
+  const isStaff = classrooms.find((c) => c.id === selectedClassId)?.is_roster === false;
 
-  const todayDayKey = ((): DayKey => {
-    const map: Record<number, DayKey> = { 1: "mon", 2: "tue", 3: "wed", 4: "thu", 5: "fri" };
-    return map[new Date().getDay()] ?? "mon";
-  })();
+  // Тот же вычислитель, что и неделя: в субботу день фокуса — пятница закрываемой
+  // недели, в воскресенье — понедельник следующей.
+  const todayDayKey = focus.day;
   const [selectedDay, setSelectedDay] = useState<DayKey>(todayDayKey);
 
   // День ритуала: в выходной — null, ритуала нет. На localhost его можно подменить
@@ -305,8 +324,13 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
       const rosterCls = ((cls ?? []) as Classroom[]).filter((c) => c.is_roster !== false);
       if (rosterCls.length) {
         setClassrooms(rosterCls);
-        setSelectedClassId(rosterCls[0].id);
-        setSelectedClassName(rosterCls[0].name);
+        // Учительский вид: комната приходит от PIN-сессии, экран её НЕ выбирает.
+        // Если названной комнаты в центре нет (деактивирована, служебная, чужой
+        // центр) — не подставляем первую попавшуюся: молчаливая подмена комнаты
+        // означала бы отметки не тому классу. Пусто и сказано словами ниже.
+        const seat = roomId ? rosterCls.find((c) => c.id === roomId) : rosterCls[0];
+        setSelectedClassId(seat?.id ?? "");
+        setSelectedClassName(seat?.name ?? "");
       } else {
         setClassrooms([]);
         setSelectedClassId("");
@@ -333,7 +357,9 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
       }
       setHolidays(hmap);
     })();
-  }, [currentCenter?.id]);
+    // roomId читается внутри: смена комнаты PIN-сессии обязана пересадить экран,
+    // иначе учитель после «change room» отмечал бы прежнюю комнату.
+  }, [currentCenter?.id, roomId]);
 
   // Per-classroom slot start times (for short-day slot blocking) + the full window
   // rows the ritual needs (end_time, intake_mode). ОДИН запрос на оба дела: время
@@ -541,7 +567,7 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
   // ─── «Пристегни ремни» ─────────────────────────────────────────────────────
   // Ритуал живёт только на СЕГОДНЯШНЕЙ неделе: листая архив, никто не должен
   // слышать звонок обеда и видеть отсчёт по неделе, которая давно прошла.
-  const showsThisWeek = format(weekStart, "yyyy-MM-dd") === format(mondayOf(new Date()), "yyyy-MM-dd");
+  const showsThisWeek = format(weekStart, "yyyy-MM-dd") === format(focus.weekStart, "yyyy-MM-dd");
   const ritualEnabled = ritualDayKey !== null && (showsThisWeek || isRitualClockOverridden());
   const ritualDateISO = ritualDayKey
     ? format(addDays(weekStart, DAYS.indexOf(ritualDayKey)), "yyyy-MM-dd")
@@ -805,6 +831,15 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
   );
   if (!currentCenter?.id) return <div className="mc-loading">Pick a center in the switcher at the top to view meal counts.</div>;
   if (!classrooms.length) return <div className="mc-loading">No active classrooms for {currentCenter.name}.</div>;
+  // Учительский вид без посадки: комната сессии не найдена среди детских комнат
+  // центра. Пустая сетка здесь читалась бы как «в группе нет детей», а это
+  // другой факт — поэтому вслух и с именем комнаты.
+  if (teacherView && !selectedClassId) return (
+    <div className="mc-loading">
+      “{roomName ?? "This room"}” is not an active children’s room in {currentCenter.name},
+      so meals cannot be marked here. Nothing is lost — tell your director.
+    </div>
+  );
 
   // ПЛИТКА ПРОГНОЗА над сеткой: сколько порций ждать. Повару — его центр (он у
   // него один), админу — вкладками все центры-питания. Это подсказка, а не факт:
@@ -817,18 +852,28 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
 
   return (
     <div className="mc-page">
-      {tileCenters.length > 0 && (
+      {/* Прогноз порций — работа кухни: она печёт на центр. Учителю в группе он
+          не помогает отметить своих детей, а отодвигает сетку вниз. */}
+      {!teacherView && tileCenters.length > 0 && (
         <ExpectedCountsTile centers={tileCenters} initialCenterId={currentCenter?.id ?? null} />
       )}
       <div className="mc-header">
         <div className="mc-header-left">
-          <h1 className="mc-title">{variant ? VARIANT_TITLE[variant] : "Meal Count"}</h1>
+          <h1 className="mc-title">
+            {teacherView ? `Meals · ${selectedClassName}` : variant ? VARIANT_TITLE[variant] : "Meal Count"}
+          </h1>
           <a href="/meal-count/help" target="_blank"
             style={{ fontSize: 12, color: '#1a5c3f', textDecoration: 'none', fontWeight: 600, padding: '6px 12px', borderRadius: 8, background: '#f0f7f4', border: '1px solid #d1fae5', display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 12 }}>
             ❓ Help
           </a>
           <div className="mc-week-nav">
-            {mode === "director" ? (
+            {/* Учителю — ДЕНЬ, а не неделя: он отмечает сегодняшний приём, и
+                диапазон недели над сеткой обещал бы выбор, которого здесь нет. */}
+            {teacherView ? (
+              <span className="mc-week-label">
+                {format(addDays(weekStart, DAYS.indexOf(selectedDay)), "EEEE, MMM d")}
+              </span>
+            ) : mode === "director" ? (
               <select className="mc-week-select" value={format(weekStart, "yyyy-MM-dd")}
                 onChange={(e) => setWeekStart(new Date(e.target.value + "T12:00:00"))}>
                 {Array.from({ length: 12 }, (_, i) => {
@@ -908,7 +953,9 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
         )}
       </div>
 
-      <div style={{ display: "flex", justifyContent: "flex-end", width: "100%",
+      {/* Выгрузка недели в лист — работа кухни и офиса, а не учителя за планшетом
+          группы: она отдаёт ВСЮ неделю всех дней одним файлом. */}
+      {!teacherView && <div style={{ display: "flex", justifyContent: "flex-end", width: "100%",
         background: "#0f4c35", padding: "0 1.25rem .75rem" }}>
         <button onClick={exportWeekCSV} title="Download CSV for Google Sheets"
           style={{ position: "static", padding: "7px 14px", borderRadius: 8,
@@ -916,20 +963,28 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
             fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
           ⬇ Export for Google Sheets
         </button>
-      </div>
+      </div>}
 
       <BuckleBanner banner={ritual.banner} variant={chimeVariant} onUnlock={ritual.unlock} />
-      <UnbuckledList items={ritual.unbuckled} />
+      {/* Красный список «окна закрылись без отметок» — сводка по ЦЕНТРУ, и на
+          кухне это правильно: повар видит весь дом. Учителю чужие комнаты не
+          показываем — не его ответственность и не его право знать; своя строка
+          остаётся, потому что она про него. */}
+      <UnbuckledList items={teacherView
+        ? ritual.unbuckled.filter((w) => w.classroom_id === selectedClassId)
+        : ritual.unbuckled} />
 
-      <div className="mc-class-bar">
+      {/* Табы комнат — только там, где комнату ВЫБИРАЮТ. У учителя комната одна:
+          та, в которой он стоит и под которой вошёл по PIN. */}
+      {!teacherView && <div className="mc-class-bar">
         {classrooms.map((cls) => (
           <button key={cls.id}
-            className={`mc-class-btn ${selectedClassId === cls.id ? "active" : ""} ${cls.name.toLowerCase().includes("staff") ? "staff" : ""}`}
+            className={`mc-class-btn ${selectedClassId === cls.id ? "active" : ""} ${cls.is_roster === false ? "staff" : ""}`}
             onClick={() => { setSelectedClassId(cls.id); setSelectedClassName(cls.name); }}>
             {cls.name}
           </button>
         ))}
-      </div>
+      </div>}
 
       {loadErr && (
         <div role="alert" style={{
@@ -956,6 +1011,7 @@ export default function MealCountPage({ portalRoles, variant }: { portalRoles?: 
             toggle={toggle} checkedCount={checkedCount}
             milkForSlot={milkForSlot} isQueued={isQueued}
             isStaff={isStaff} dayTotals={dayTotals}
+            lockDay={teacherView}
           />
         ) : mode === "director" ? (
           <DirectorMode
@@ -1069,7 +1125,7 @@ function UnbuckledList({ items }: { items: UnbuckledWindow[] }) {
 
 function CurrentMode({ roster, records, activeSlots, selectedSlot, setSelectedSlot,
   selectedDay, setSelectedDay, todayDayKey, dayBlocked, slotBlocked, blockLabel, toggle, checkedCount,
-  milkForSlot, isQueued, isStaff, dayTotals }: {
+  milkForSlot, isQueued, isStaff, dayTotals, lockDay }: {
     roster: Child[]; records: Record<string, WeekRecord>; activeSlots: SlotKey[];
     selectedSlot: SlotKey; setSelectedSlot: (s: SlotKey) => void;
     selectedDay: DayKey; setSelectedDay: (d: DayKey) => void; todayDayKey: DayKey;
@@ -1080,6 +1136,8 @@ function CurrentMode({ roster, records, activeSlots, selectedSlot, setSelectedSl
     milkForSlot: (s: SlotKey, d: DayKey) => { buckets: MilkBucket[]; totalCups: number } | null;
     isQueued: (child: { roster_id?: string | null; child_name: string }, col: string) => boolean; isStaff: boolean;
     dayTotals: (d: DayKey) => { total: number; reimbursable: number };
+    /** Учительский вид: день один — тот, что уже выбран, и линейки дней нет. */
+    lockDay?: boolean;
   }) {
   const day = selectedDay;
   const blocked = slotBlocked(day, selectedSlot);
@@ -1089,7 +1147,10 @@ function CurrentMode({ roster, records, activeSlots, selectedSlot, setSelectedSl
 
   return (
     <div className="mc-current">
-      <div className="mc-day-bar">
+      {/* Линейка дней — для кухни, которая правит вчерашнее и смотрит неделю.
+          У учителя день один: правки задним числом идут через директора
+          (документированное исключение, канон 07.08), а не тапом в группе. */}
+      {!lockDay && <div className="mc-day-bar">
         {DAYS.map((d) => (
           <button key={d}
             className={`mc-day-btn ${selectedDay === d ? "active" : ""} ${dayBlocked(d) ? "blocked" : ""} ${d === todayDayKey ? "today" : ""}`}
@@ -1097,7 +1158,7 @@ function CurrentMode({ roster, records, activeSlots, selectedSlot, setSelectedSl
             {DAY_LABELS[d]}{d === todayDayKey && <span className="mc-today-dot" />}
           </button>
         ))}
-      </div>
+      </div>}
 
       <div className="mc-slot-bar">
         {activeSlots.map((slot) => (

@@ -18,6 +18,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { centerLabel, sortCentersForSwitcher } from '@/lib/centerLabels'
+import { focusDowIso } from '@/lib/weekFocus'
 
 const GREEN = '#0f4c35'
 const DAYS: [number, string][] = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri']]
@@ -35,10 +36,12 @@ export interface TileCenter { id: string; slug: string; name: string }
 type Row = { meal_type: string; age_group: string; expected: number }
 type RunInfo = { run_at: string; window_start: string | null; window_end: string | null; skipped: boolean; skip_reason: string | null }
 
-/** ISO-день недели 1..5; суббота и воскресенье показывают понедельник — кухня в выходные не считает. */
+/** ISO-день недели 1..5 — из ОБЩЕГО вычислителя недели (lib/weekFocus.ts): в
+ *  субботу это пятница закрываемой недели, в воскресенье — понедельник следующей.
+ *  Раньше здесь оба выходных отдавали понедельник, и в субботу плитка смотрела на
+ *  неделю, которую в этот день как раз закрывают. */
 function todayDow(): number {
-  const d = new Date().getDay()          // 0=Sun … 6=Sat
-  return d >= 1 && d <= 5 ? d : 1
+  return focusDowIso()
 }
 function fmtRunDate(iso: string): string {
   // Срез строки, без new Date: дата-день в нью-йоркском поясе съезжает на вчера.

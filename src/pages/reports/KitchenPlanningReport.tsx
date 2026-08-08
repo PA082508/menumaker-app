@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { notDepartedBefore } from "@/lib/childActive";
 import { useOrg } from "@/contexts/OrgContext";
 import { format, addDays, startOfWeek } from "date-fns";
+import { focusWeekStart } from "@/lib/weekFocus";
 const SK          = ["b","as","l","ps","su","es"];
 const DK          = ["mon","tue","wed","thu","fri"];
 const SL: Record<string,string> = {b:"Breakfast",as:"AM Snack",l:"Lunch",ps:"PM Snack",su:"Supper",es:"Eve Snack"};
@@ -53,7 +54,10 @@ export default function KitchenPlanningReport() {
   const centerId = currentCenter?.id ?? "";
   const now = new Date();
   const [tab,       setTab]       = useState<Tab>("claimed");
-  const [weekStart, setWeekStart] = useState<Date>(()=>monOf(now));
+  // Умолчание печати/выгрузки — тот же вычислитель недели, что у кухни, учителя
+  // и директора (lib/weekFocus.ts, слово владельца 08.08): в субботу отчёт
+  // открывается на закрываемой неделе, в воскресенье — уже на следующей.
+  const [weekStart, setWeekStart] = useState<Date>(()=>focusWeekStart(now));
   const [year,      setYear]      = useState(now.getFullYear());
   const [month,     setMonth]     = useState(now.getMonth()+1);
   const [viewMode,  setViewMode]  = useState<"week"|"month">("week");

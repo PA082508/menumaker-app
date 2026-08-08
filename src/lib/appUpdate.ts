@@ -76,6 +76,18 @@ export function getRunningBuild(): string {
   return typeof __BUILD_ID__ === 'string' ? __BUILD_ID__ : 'unknown'
 }
 
+/** Забрать уже существующую регистрацию у самого браузера — без обёртки.
+ *  Нужна там, где обёртка отказала: worker с прошлого запуска обычно жив, и
+ *  тогда дорога 1 (`update()`) остаётся рабочей. Молчит при любой неудаче:
+ *  отсутствие service worker — не ошибка, а обычная жизнь iOS-вкладки. */
+async function adoptExistingRegistration(): Promise<void> {
+  try {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return
+    const r = await navigator.serviceWorker.getRegistration()
+    if (r) registration = r
+  } catch { /* нет доступа — дорога 2 работает и без этого */ }
+}
+
 // ─── Проверка ────────────────────────────────────────────────────────────────
 
 /**
@@ -88,6 +100,7 @@ export async function checkForUpdate(): Promise<void> {
 
   // Дорога 1 — штатный путь. Ошибку глотаем намеренно: SW может быть не зарегистрирован
   // (iOS WebView, приватный режим), и это не повод молчать про версию.
+  if (!registration) await adoptExistingRegistration()
   try { await registration?.update() } catch { /* дорога 2 ниже не зависит от неё */ }
 
   // Дорога 2 — сверка версий, ни от чего не зависит, кроме сети.
@@ -124,6 +137,20 @@ export async function checkForUpdate(): Promise<void> {
  */
 export async function applyUpdate(): Promise<void> {
   try { await registration?.update() } catch { /* дальше всё равно чистим и перезагружаемся */ }
+
+  // Новая версия часто уже скачана и СТОИТ В ОЧЕРЕДИ (`registration.waiting`) —
+  // она ждёт, пока закроются все вкладки со старой. Планшет группы не закрывают
+  // неделями, значит не дождётся никогда. Одно слово ей — и она заступает.
+  //
+  // ⚠️ КАЖДОЕ ЗВЕНО ЗДЕСЬ ПРОВЕРЯЕТСЯ. Именно незащищённое обращение к `.waiting`
+  // в пути обновления дало на проде 07.08 строку «SW register failed … reading
+  // 'waiting'»: у планшета, где service worker не поднялся, читать `.waiting`
+  // не у чего. Провал этого шага НЕ отменяет обновления — ниже чистится кэш и
+  // страница перезагружается, а это работает и вовсе без service worker.
+  try {
+    const waiting = registration?.waiting
+    if (waiting) waiting.postMessage({ type: 'SKIP_WAITING' })
+  } catch { /* нет SW / нет очереди — обновление идёт дорогой кэша */ }
 
   // ⚠️ Только онлайн. Снести кэш офлайн — оставить человека без приложения вообще:
   // shell брать будет неоткуда. Отметки при этом не пострадают (они в IndexedDB), но
@@ -163,6 +190,13 @@ export function startAppUpdateWatch(): void {
       // SW не зарегистрировался — дорога 1 мертва. Дорога 2 продолжает работать, и это
       // ровно тот сценарий, ради которого она написана.
       console.error('[appUpdate] SW register failed', e)
+      // …но прежде чем считать дорогу 1 мёртвой — спросим браузер напрямую.
+      // Отказ регистрации в обёртке (её внутренний путь и споткнулся о `.waiting`
+      // 07.08) НЕ означает, что зарегистрированного worker'а нет: он мог остаться
+      // с прошлого раза. Тогда `registration` снова в руках, и `update()` есть
+      // кому звать. Проверяется каждое звено — сама эта поправка не должна стать
+      // вторым необработанным обращением в пути обновления.
+      void adoptExistingRegistration()
       void checkForUpdate()
     },
   })

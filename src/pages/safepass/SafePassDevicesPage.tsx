@@ -70,9 +70,21 @@ export default function SafePassDevicesPage() {
   useEffect(() => { load() }, [load])
   useEffect(() => {
     if (!currentCenter?.id) return
+    // ТОЛЬКО ДЕТСКИЕ КОМНАТЫ — по признаку `is_roster`, а не по имени (слово
+    // владельца 08.08). Служебные псевдокомнаты («Staff», «Staff Room») — это
+    // способ хранить взрослых, а не место, где стоит планшет группы; планшет,
+    // привязанный к такой строке, показывал бы сотрудников как детей. Признак
+    // замерен в базе 08.08: NOT NULL, у всех четырёх служебных строк false —
+    // заводить новый не нужно. Имя же меняется, а признак остаётся.
     supabase.schema('menumaker').from('classrooms').select('id,name')
-      .eq('center_id', currentCenter.id).eq('is_active', true).order('sort_order')
-      .then(({ data }) => setClassrooms((data ?? []) as Classroom[]))
+      .eq('center_id', currentCenter.id).eq('is_active', true).eq('is_roster', true)
+      .order('sort_order')
+      .then(({ data, error }) => {
+        // Молчаливый отказ здесь = пустой список комнат = «регистрировать некуда»,
+        // и это читалось бы как поломка прав, а не как сбой чтения.
+        if (error) { setErr(`Rooms could not be loaded: ${error.message}`); return }
+        setClassrooms((data ?? []) as Classroom[])
+      })
   }, [currentCenter?.id])
 
   async function register() {

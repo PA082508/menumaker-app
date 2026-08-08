@@ -1,6 +1,6 @@
 {
   "frozen": "2026-07-29",
-  "total": 180,
+  "total": 179,
   "byFile": {
     "components/dashboard/ActionItemsWidget.tsx": 3,
     "components/meal-count/FiveDayReconciliation.tsx": 3,
@@ -55,7 +55,6 @@
     "pages/reports/KitchenPlanningReport.tsx": 1,
     "pages/reports/SiteClaimReport.tsx": 6,
     "pages/reports/SkeletonReconciliationReport.tsx": 1,
-    "pages/safepass/SafePassDevicesPage.tsx": 1,
     "pages/safepass/SafePassDriverPage.tsx": 1,
     "pages/safepass/SafePassParentPage.tsx": 4,
     "pages/safepass/SafePassTeacherPage.tsx": 4,

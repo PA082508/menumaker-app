@@ -14,6 +14,7 @@ import { format, startOfWeek, addDays, isWeekend } from "date-fns";
 import { weekRowKey, indexWeekRecords } from "@/lib/weekRowKey";
 import { enqueueMark, cellKey } from "@/lib/mealMarkQueue";
 import { useMealMarkQueue } from "@/hooks/useMealMarkQueue";
+import { weekFocus } from "@/lib/weekFocus";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -149,25 +150,16 @@ export default function MealCountPage() {
   // Отказ записи, ПОКАЗАННЫЙ ЧЕЛОВЕКУ. Молча откатить галочку — худший исход:
   // человек решит, что промахнулся сам, и отметит заново.
   const [writeErr, setWriteErr] = useState<string | null>(null);
-  const [weekStart, setWeekStart] = useState<Date>(() => {
-    const today = new Date();
-    const dow = today.getDay();
-    const mon = mondayOf(today);
-    // Выходные показывают СЛЕДУЮЩУЮ неделю. `mondayOf` (weekStartsOn:1) для воскресенья
-    // отдаёт понедельник ПРОШЕДШЕЙ недели, поэтому и субботе, и воскресенью нужен +7.
-    // Было `+1` для воскресенья — это вторник прошлой недели, а не понедельник следующей.
-    if (dow === 6 || dow === 0) return addDays(mon, 7);
-    return mon;
-  });
+  // Та же неделя, что у кухни и у учителя — ОДИН вычислитель (lib/weekFocus.ts):
+  // в субботу директор закрывает ПРОШЕДШУЮ неделю, и экран открывается на ней.
+  const focus = weekFocus();
+  const [weekStart, setWeekStart] = useState<Date>(() => focus.weekStart);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving]   = useState(false);
 
   const isStaff = selectedClassName.toLowerCase().includes("staff");
 
-  const todayDayKey = ((): DayKey => {
-    const map: Record<number, DayKey> = {1:"mon",2:"tue",3:"wed",4:"thu",5:"fri"};
-    return map[new Date().getDay()] ?? "mon"; // weekend → monday
-  })();
+  const todayDayKey = focus.day;
 
   const [selectedDay, setSelectedDay] = useState<DayKey>(todayDayKey);
 

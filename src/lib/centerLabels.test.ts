@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { ORG_LABEL, centerLabel, sortCentersForSwitcher, CENTER_DISPLAY_BY_SLUG } from './centerLabels'
+import { ORG_LABEL, centerLabel, centerOfficialName, sortCentersForSwitcher, CENTER_DISPLAY_BY_SLUG } from './centerLabels'
 
 // ============================================================================
 // ПОДПИСИ — ТОЛЬКО ПОДПИСИ. Официальное имя центра живёт на бланке и в снимке
@@ -45,5 +45,32 @@ describe('порядок в переключателе', () => {
   it('новый центр идёт СЛЕДОМ, а не встаёт первым молча', () => {
     const NEW = { slug: 'newtown', name: 'Play Academy Newtown' }
     expect(sortCentersForSwitcher([NEW, RIDGE]).map(centerLabel)).toEqual(['Wickliffe', 'Newtown'])
+  })
+})
+
+// ── Официальное имя (канон владельца 08.08) ─────────────────────────────────
+// Клички Ridge · Alpha · Pearl наружу не выходят НИГДЕ — ни в шапке App, ни в
+// письме, ни на печатном листе. Наружу центр зовётся по городу.
+describe('официальное имя', () => {
+  it('кличка в имени базы заменяется городом', () => {
+    expect(centerOfficialName(RIDGE)).toBe('Play Academy Wickliffe')
+    expect(centerOfficialName(PEARL)).toBe('Play Academy Parma Heights')
+    expect(centerOfficialName(ALPHA)).toBe('Play Academy Highland Heights')
+  })
+
+  it('ключ — slug: имя в базе поправят, официальное не отвяжется', () => {
+    expect(centerOfficialName({ slug: 'ridge', name: 'Play Academy Ridge' }))
+      .toBe('Play Academy Wickliffe')
+  })
+
+  it('незнакомый центр отдаётся как есть — город ему не выдумывается', () => {
+    expect(centerOfficialName({ slug: 'zzdemo', name: 'ZZ Demo' })).toBe('ZZ Demo')
+    expect(centerOfficialName({ name: 'Play Academy Somewhere' })).toBe('Play Academy Somewhere')
+  })
+
+  it('ни одна кличка не остаётся в выдаче ни одной из подписей', () => {
+    for (const c of [RIDGE, PEARL, ALPHA]) {
+      expect(`${centerLabel(c)} ${centerOfficialName(c)}`).not.toMatch(/\b(Ridge|Pearl|Alpha)\b/)
+    }
   })
 })

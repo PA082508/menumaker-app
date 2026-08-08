@@ -26,6 +26,7 @@ import {
   type DeviceContext, type TeacherIdentity, type HandoffResult,
 } from '@/lib/safepassDevice'
 import { pairShifts, sumShiftHours, type Shift } from '@/lib/staffHours'
+import { centerOfficialName } from '@/lib/centerLabels'
 import { supabase } from '@/lib/supabase'
 import SafePassTeacherPage from '@/pages/safepass/SafePassTeacherPage'
 import MealCountPage from '@/pages/meal-count/MealCountPage'
@@ -302,7 +303,11 @@ export default function TeacherShell() {
         <div style={{ flex: 1, minWidth: 200 }}>
           <div style={{ fontSize: 15, fontWeight: 800, color: P.text }}>You: {who.staff_name}</div>
           <div style={{ fontSize: 12, color: P.muted }}>
-            {who.center_name} · {room ? room.name : 'no room chosen yet'}
+            {/* Центр зовётся ГОРОДОМ, а не рабочей кличкой: «Play Academy Ridge»
+                в шапке у двери читают учителя и родители, и это чужое имя в
+                документе. Перевод один на всё приложение (lib/centerLabels). */}
+            {centerOfficialName({ slug: who.center_slug, name: who.center_name })}
+            {' · '}{room ? room.name : 'no room chosen yet'}
             {deviceRoom ? ' · locked to this room' : ''}
             {who.position ? ` · ${who.position}` : ''}
             {/* Смена комнаты — ТОЛЬКО у точки без комнаты: там человек её выбрал
@@ -367,7 +372,10 @@ export default function TeacherShell() {
               roomId={room.id} roomName={room.name}
               /* Место целиком — из ТОЧКИ: и комната, и центр. Логин остаётся
                  транспортом данных и на вопрос «где мы» не отвечает. */
-              centerId={who.center_id} centerName={who.center_name} />
+              centerId={who.center_id}
+              centerName={centerOfficialName({ slug: who.center_slug, name: who.center_name })}
+              /* Заявку директору подаёт ЧЕЛОВЕК: имя — из PIN-сессии. */
+              personName={who.staff_name} />
         )}
 
         {tab === 'time' && (

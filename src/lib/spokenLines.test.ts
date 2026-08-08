@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   directorAlertBody, spokenArrival, spokenClock, spokenHandoff, spokenMarkRefusal,
+  changeRequestBody, changeRequestRow,
 } from './spokenLines'
 import { muteNoteLine } from './soundMute'
 
@@ -120,5 +121,37 @@ describe('строка internal_messages', () => {
     expect(row.recipient_type).toBe('role')
     expect(row.recipient_value).toBe('director')
     expect(row.recipient_label).toBe('Director · Play Academy Pearl')
+  })
+})
+
+// ── Заявка на правку замкнутого приёма (08.08) ──────────────────────────────
+describe('заявка учителя директору', () => {
+  const base = {
+    personName: 'Carolyn Hercik', className: 'Red', slotLabel: 'Lunch',
+    dayLabel: 'Friday, Aug 7',
+  }
+
+  it('тело несёт четыре опоры будущей правки: кто · комната · приём · день', () => {
+    const b = changeRequestBody(base)
+    expect(b).toContain('Carolyn Hercik')
+    expect(b).toContain('Red')
+    expect(b).toContain('Lunch')
+    expect(b).toContain('Friday, Aug 7')
+  })
+
+  it('пустая заметка не выдумывается', () => {
+    expect(changeRequestBody({ ...base, note: '   ' })).not.toMatch(/note/i)
+    expect(changeRequestBody({ ...base, note: 'Mia finished after the bell' }))
+      .toMatch(/Mia finished after the bell/)
+  })
+
+  it('строка несёт только колонки, которые у таблицы ЕСТЬ, и все обязательные', () => {
+    const row = changeRequestRow({ ...base, orgId: 'org-1', centerId: 'c-1',
+      centerName: 'Play Academy Wickliffe', senderId: 'user-1' })
+    for (const k of Object.keys(row)) expect(INTERNAL_MESSAGE_COLUMNS).toContain(k as any)
+    for (const k of INTERNAL_MESSAGE_REQUIRED) expect(row[k]).toBeTruthy()
+    expect(row.recipient_label).toBe('Director · Play Academy Wickliffe')
+    // Директор видит имя просящего, не открывая тело.
+    expect(String(row.sender_name)).toContain('Carolyn Hercik')
   })
 })

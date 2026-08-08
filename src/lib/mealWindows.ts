@@ -148,6 +148,55 @@ export function countdownLeft(w: MealWindow, nowMin: number): number {
   return Math.max(0, w.countdownTo - nowMin)
 }
 
+// ─── ЗАМОК ОТМЕТОК (заказ владельца 08.08) ───────────────────────────────────
+// Отметка питания — запись точки обслуживания, а не черновик: пока прошлые
+// галочки остаются живыми, вчерашний завтрак можно переставить одним случайным
+// касанием, и в заявке это будет неотличимо от настоящей отметки. Закрылось окно
+// приёма — приём замыкается у учителя; правит после этого только директор под
+// своим PIN, со штампом «amended» и причиной (спека meal-marks-amendment).
+//
+// ЛЬГОТА ПОСЛЕ КОНЦА ОКНА. Замок падает НЕ в минуту конца: у окна есть хвост —
+// доели, убрали, дошли до планшета. Тридцать минут выбраны не на глаз: это тот же
+// порог, которым уже меряется своевременность (RITUAL_COUNTDOWN_MIN и стык с
+// meal-timing), и второе число рядом означало бы две разные «своевременности».
+// Число живёт ОДНОЙ константой — слово владельца меняет его в одном месте.
+export const LOCK_GRACE_MIN = 30
+
+export type LockReason = 'past-day' | 'window-closed'
+export type SlotLock = { locked: false } | { locked: true; reason: LockReason; sinceMin?: number }
+
+const OPEN: SlotLock = { locked: false }
+
+/**
+ * Замкнут ли этот приём для отметки ПРЯМО СЕЙЧАС.
+ *
+ * `dayOffset` — показанный день относительно сегодняшнего: 0 сегодня, <0 прошлое.
+ * Будущее НЕ замыкается: отметить наперёд нельзя по смыслу, но экран, который
+ * показывает будущий день, до этой функции не доходит (у учителя день один).
+ *
+ * ⚠️ ОКНА НЕТ — ЗАМКА НЕТ. Комната без строки расписания на этот приём не должна
+ * терять возможность отметить съеденное: замок на незнании — это отказ кормить
+ * запись о реальной еде. Дыра названа вслух: её закрывает расписание, а не замок.
+ */
+export function slotLock(
+  w: MealWindow | null | undefined, nowMin: number, dayOffset: number,
+): SlotLock {
+  if (dayOffset < 0) return { locked: true, reason: 'past-day' }
+  if (dayOffset > 0) return OPEN
+  if (!w) return OPEN
+  const closedFor = nowMin - (w.end + LOCK_GRACE_MIN)
+  return closedFor >= 0 ? { locked: true, reason: 'window-closed', sinceMin: closedFor } : OPEN
+}
+
+/** Слова замка — те же и на плашке, и на тапе по замкнутой галочке. Отказ обязан
+ *  ЗВУЧАТЬ: «не реагирует» человек читает как поломку планшета, а не как правило. */
+export function lockLine(lock: SlotLock, slotLabel: string): string {
+  if (!lock.locked) return ''
+  return lock.reason === 'past-day'
+    ? `${slotLabel} on an earlier day is closed — ask your director to change it.`
+    : `${slotLabel} is closed — ask your director to change it.`
+}
+
 export interface UnbuckledWindow extends MealWindow {
   classroomName: string
 }

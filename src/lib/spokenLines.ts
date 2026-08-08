@@ -149,3 +149,64 @@ export function directorAlertRow(i: DirectorAlertRowInput): Record<string, unkno
     body: directorAlertBody(i),
   }
 }
+
+// ─── Заявка учителя на правку замкнутого приёма (заказ владельца 08.08) ──────
+// Замок закрывает приём — но у человека остаётся дело: «я отметил не всех», «Мия
+// доела после звонка». Тупик здесь хуже открытой галочки: он учит обходить
+// систему. Поэтому у полосы замка стоит дверь — заявка ДИРЕКТОРУ, тем же рельсом
+// (`internal_messages`), которым уже ходит тревога пустого окна: рельс живой,
+// доставка проверена, второго канала заводить незачем.
+//
+// БУДУЩИЙ СТЫК НАЗВАН СРАЗУ: эта же заявка станет ВХОДОМ директорской PIN-правки
+// `amended` (спека 2026-08-07-meal-marks-amendment) — директор открывает
+// сообщение и правит адресно, не разыскивая, о каком ребёнке и дне речь. Поэтому
+// в теле стоят ровно те четыре опоры, которые нужны правке: кто · комната ·
+// приём · день.
+
+export interface ChangeRequestInput {
+  /** Имя вошедшего по PIN — заявку подаёт ЧЕЛОВЕК, а не планшет. */
+  personName: string
+  className: string
+  slotLabel: string
+  /** День отметки словами, как его видит человек: «Friday, Aug 7». */
+  dayLabel: string
+  /** Необязательная приписка учителя. Пусто — значит пусто, выдумывать нечего. */
+  note?: string | null
+}
+
+export const CHANGE_REQUEST_SENDER = 'Meal mark — change request'
+
+export function changeRequestBody(i: ChangeRequestInput): string {
+  const lines = [
+    `${i.personName} asks to change ${i.slotLabel} for ${i.className} — ${i.dayLabel}.`,
+    'The meal is closed on the classroom tablet, so the change has to come from you.',
+  ]
+  const note = (i.note ?? '').trim()
+  if (note) lines.push(`Their note: “${note}”`)
+  return lines.join('\n')
+}
+
+export interface ChangeRequestRowInput extends ChangeRequestInput {
+  orgId: string | undefined
+  centerId: string | null
+  centerName: string
+  senderId: string | undefined
+}
+
+/** Строка для internal_messages. Форма — та же, что у тревоги окна (та проверена
+ *  живьём 04.08): политика `send_as_self` пропускает вставку, только когда
+ *  sender_id = auth.uid(), а `can_see_message` доставляет её роли director
+ *  этого центра. */
+export function changeRequestRow(i: ChangeRequestRowInput): Record<string, unknown> {
+  return {
+    org_id: i.orgId,
+    center_id: i.centerId,
+    sender_id: i.senderId,
+    // Подписывается ЧЕЛОВЕК: директор должен видеть, кто просит, не открывая тело.
+    sender_name: `${CHANGE_REQUEST_SENDER} · ${i.personName}`,
+    recipient_type: 'role',
+    recipient_value: 'director',
+    recipient_label: `Director · ${i.centerName}`.trim(),
+    body: changeRequestBody(i),
+  }
+}

@@ -17,9 +17,11 @@ import ScrollToTop from '@/components/common/ScrollToTop'
 
 // Center IDs
 const CENTER_ORDER = [
-  { id: '4aed7d5a-00d0-4a4c-ac99-311046ad2027', name: 'Ridge' },
-  { id: '099c404b-e6d3-4543-9d9a-1fb11a2ee62d', name: 'Alpha' },
-  { id: '881ef4ce-1a27-4d3b-aa60-59d2a307bf2b', name: 'Pearl' },
+  // Наружу — ГОРОД, а не рабочая кличка (канон владельца 08.08). Клички остаются
+  // ключами: slug'и, ветки, папки — там они и должны жить.
+  { id: '4aed7d5a-00d0-4a4c-ac99-311046ad2027', name: 'Wickliffe' },
+  { id: '099c404b-e6d3-4543-9d9a-1fb11a2ee62d', name: 'Highland Heights' },
+  { id: '881ef4ce-1a27-4d3b-aa60-59d2a307bf2b', name: 'Parma Heights' },
 ]
 
 type Classroom = { id: string; name: string; sort_order: number; center_id: string }

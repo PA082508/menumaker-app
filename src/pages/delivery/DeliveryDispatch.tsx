@@ -56,8 +56,8 @@ export default function DeliveryDispatch() {
   const openEntry = (routeId: string, slot: string) => {
     setActive({ id: routeId, meal_slot: slot })
     setStops([
-      { center_id: PEARL_ID, center_name: 'Pearl', arrival_window: arrivalFor(slot, PEARL_ID), containers: [blankContainer()] },
-      { center_id: ALPHA_ID, center_name: 'Alpha', arrival_window: arrivalFor(slot, ALPHA_ID), containers: [blankContainer()] },
+      { center_id: PEARL_ID, center_name: 'Parma Heights', arrival_window: arrivalFor(slot, PEARL_ID), containers: [blankContainer()] },
+      { center_id: ALPHA_ID, center_name: 'Highland Heights', arrival_window: arrivalFor(slot, ALPHA_ID), containers: [blankContainer()] },
     ])
     setView('entry')
   }

@@ -16,6 +16,7 @@ import { useAuth } from '@/hooks/useAuth'
 import Avatar from '@/components/Avatar'
 import PinPad from './shared/PinPad'
 import { safePassLight, KEY } from './shared/theme'
+import { centerLabel, centerOfficialName } from '@/lib/centerLabels'
 import {
   adoptDeviceTokenFromUrl, fetchDeviceContext, confirmHandoff,
   fetchCheckedInToday, staffCheckIn, staffCheckOut,
@@ -318,7 +319,9 @@ export default function SafePassTeacherPage({ seedClassroomId, personName }: {
   }, [])
 
   const [selectedCenterId, setSelectedCenterId] = useState<string>(currentCenter?.id ?? '')
-  const [allCenters, setAllCenters] = useState<{id:string;name:string}[]>([])
+  // slug читается вместе с именем: официальное имя центра ключуется slug'ом, а не
+  // именем из базы (канон подписей 08.08 — наружу центр зовётся городом).
+  const [allCenters, setAllCenters] = useState<{id:string;name:string;slug?:string|null}[]>([])
 
   // load all centers for selector.
   // NO auto-pick of the first row: "first by name" is Highland Heights, and a pad
@@ -327,7 +330,7 @@ export default function SafePassTeacherPage({ seedClassroomId, personName }: {
   // the panel says so instead of guessing.
   useEffect(() => {
     supabase.schema('menumaker').from('centers')
-      .select('id,name').eq('org_id', '3a9a290e-7e49-491e-946b-ad86f2399910').eq('is_active', true).order('name')
+      .select('id,name,slug').eq('org_id', '3a9a290e-7e49-491e-946b-ad86f2399910').eq('is_active', true).order('name')
       .then(({data}) => setAllCenters(data ?? []))
   }, [])
 
@@ -343,7 +346,12 @@ export default function SafePassTeacherPage({ seedClassroomId, personName }: {
   // live on a locked pad after the centre row was already hidden.
   const deviceLocked = !!deviceCtx?.center_id
   const activeCenterId = deviceCtx?.center_id || selectedCenterId || currentCenter?.id
-  const centerName = allCenters.find(c => c.id === activeCenterId)?.name ?? currentCenter?.name ?? '—'
+  // Имя центра НАРУЖУ — официальное, по городу: «Play Academy Ridge» в шапке у
+  // двери и в строке устройства читают учителя и родители (канон владельца 08.08).
+  const activeCenter = allCenters.find(c => c.id === activeCenterId)
+  const centerName = activeCenter
+    ? centerOfficialName(activeCenter)
+    : (currentCenter ? centerOfficialName(currentCenter) : '—')
 
   // load classrooms for the active center
   useEffect(() => {
@@ -642,7 +650,7 @@ export default function SafePassTeacherPage({ seedClassroomId, personName }: {
             {allCenters.map(ct => (
               <button key={ct.id} onClick={() => setSelectedCenterId(ct.id)}
                 style={{ padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: 'none', background: selectedCenterId===ct.id ? C.green : C.surface2, color: selectedCenterId===ct.id ? C.bg : C.muted }}>
-                {ct.name.replace('Play Academy ','')}
+                {centerLabel(ct)}
               </button>
             ))}
           </div>

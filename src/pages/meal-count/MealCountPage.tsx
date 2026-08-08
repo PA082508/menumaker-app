@@ -21,11 +21,13 @@ import { displayChildName } from "@/lib/childName";
 import { enqueueMark, cellKey } from "@/lib/mealMarkQueue";
 import { weekRowKey, indexWeekRecords } from "@/lib/weekRowKey";
 import { useMealRitual } from "@/hooks/useMealRitual";
-import { hhmm, isRitualClockOverridden, ritualDay } from "@/lib/ritualClock";
+import { hhmm, isRitualClockOverridden, ritualDay, ritualMinutes } from "@/lib/ritualClock";
 import { DEFAULT_VARIANT, isChimeVariant, phraseFor, type ChimeVariantKey } from "@/lib/mealChime";
-import type { BannerState, MealWindow, ScheduleRow, UnbuckledWindow } from "@/lib/mealWindows";
+import type { BannerState, MealWindow, ScheduleRow, UnbuckledWindow, SlotLock } from "@/lib/mealWindows";
+import { buildWindows, slotLock, lockLine } from "@/lib/mealWindows";
 import { useMealMarkQueue } from "@/hooks/useMealMarkQueue";
 import { weekFocus } from "@/lib/weekFocus";
+import { centerOfficialName } from "@/lib/centerLabels";
 import MuteToggle from "@/components/sound/MuteToggle";
 import ExpectedCountsTile from "@/components/meal-count/ExpectedCountsTile";
 import { mutedSinceHHMM, muteNoteLine } from "@/lib/soundMute";
@@ -225,7 +227,12 @@ export default function MealCountPage({ portalRoles, variant, roomId, roomName, 
   // Кухонная и директорская двери не тронуты: там центр приходит переключателем,
   // и это правильно — офисный браузер СМОТРИТ центры, планшет СТОИТ в одном.
   const centerId = (teacherView ? pointCenterId : currentCenter?.id) ?? undefined;
-  const centerName = (teacherView ? pointCenterName : currentCenter?.name) ?? "";
+  // Имя центра НАРУЖУ — официальное, по городу: оно уходит в шапку, в выгрузку
+  // для листа и в отказы, а рабочая кличка «Ridge» в документе — чужое имя
+  // (канон владельца 08.08). У учительского вида имя уже переведено оболочкой.
+  const centerName = (teacherView
+    ? pointCenterName
+    : (currentCenter ? centerOfficialName(currentCenter) : "")) ?? "";
   // Какие центры вообще кормят. Читается один раз; отказ НЕ глотается — пустой
   // набор здесь означал бы «вкладок нет» на ровном месте.
   const [mealSiteIds, setMealSiteIds] = useState<Set<string>>(new Set());
@@ -526,6 +533,43 @@ export default function MealCountPage({ portalRoles, variant, roomId, roomName, 
     })();
   }, [selectedClassId, weekStart, classrooms]);
 
+  // Тик часов для замка: 15 секунд, как у ритуала. Минута опоздания замка — это
+  // минута, в которую можно переставить чужую отметку.
+  const [nowMinTick, setNowMinTick] = useState(() => ritualMinutes());
+  useEffect(() => {
+    const t = setInterval(() => setNowMinTick(ritualMinutes()), 15000);
+    return () => clearInterval(t);
+  }, []);
+
+  // ─── ЗАМОК ОТМЕТОК (заказ владельца 08.08) ─────────────────────────────────
+  // Учительский вид: закрылось окно приёма (плюс льгота) — приём замыкается, и
+  // повторный тап невозможен. Правит после этого директор под своим PIN со
+  // штампом «amended» — до постройки той точки дорога правки остаётся
+  // директорским видом, и он этим замком НЕ трогается.
+  //
+  // Арифметика — в lib/mealWindows (`slotLock`), рядом с окнами: второй счётчик
+  // «закрылось ли окно» разошёлся бы с красным списком в первый же особый день.
+  const windowBySlot = useMemo(() => {
+    const m = new Map<string, MealWindow>();
+    for (const w of buildWindows(scheduleRows)) m.set(w.slot, w);
+    return m;
+  }, [scheduleRows]);
+
+  // Показанный день против сегодняшнего — в днях. Замыкает прошлое безусловно.
+  const dayOffset = useMemo(() => {
+    const shown = addDays(weekStart, DAYS.indexOf(selectedDay));
+    const today = new Date();
+    const d0 = new Date(shown.getFullYear(), shown.getMonth(), shown.getDate()).getTime();
+    const d1 = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+    return Math.round((d0 - d1) / 86400000);
+  }, [weekStart, selectedDay]);
+
+  // Часы — те же, что у ритуала (ritualMinutes + тик), чтобы «окно закрылось» на
+  // плашке и «замок встал» на галочках не расходились на минуту.
+  const lockOf = useCallback((slot: SlotKey): SlotLock => (
+    teacherView ? slotLock(windowBySlot.get(slot), nowMinTick, dayOffset) : { locked: false }
+  ), [teacherView, windowBySlot, nowMinTick, dayOffset]);
+
   // ─── Toggle checkbox ──────────────────────────────────────────────────────
   // Every tap is optimistic + durably queued (IndexedDB). The queue drains to
   // menumaker.sync_meal_marks when online — so this one path works identically
@@ -533,6 +577,11 @@ export default function MealCountPage({ portalRoles, variant, roomId, roomName, 
   // (it stays queued with the badge, unlike the old revert-on-error). The mark
   // carries marked_at = now = the CACFP point-of-service time.
   const toggle = useCallback(async (child: Child, day: DayKey, slot: SlotKey) => {
+    // Замок стоит У ПИСАТЕЛЯ, а не только в вёрстке: правило, которое живёт
+    // одной серой кнопкой, — не правило. Отказ ГОВОРИТ словами: молчаливое
+    // «не реагирует» человек читает как поломку планшета.
+    const lk = lockOf(slot);
+    if (lk.locked) { setWriteErr(lockLine(lk, SLOT_LABELS[slot])); return; }
     const col = colName(day, slot);
     const rk = rowKeyOf(child);
     const existing = records[rk];
@@ -569,7 +618,7 @@ export default function MealCountPage({ portalRoles, variant, roomId, roomName, 
       // же языком, что полоса (интерфейс английский); подробности остаются написанными.
       speakLine(spokenMarkRefusal(displayName(child)));
     }
-  }, [records, selectedClassId, selectedClassName, weekStart]);
+  }, [records, selectedClassId, selectedClassName, weekStart, lockOf]);
 
   // Is this grid cell still awaiting sync? (drives the "queued" styling.)
   const mondayStr = format(weekStart, "yyyy-MM-dd");
@@ -1026,7 +1075,7 @@ export default function MealCountPage({ portalRoles, variant, roomId, roomName, 
             toggle={toggle} checkedCount={checkedCount}
             milkForSlot={milkForSlot} isQueued={isQueued}
             isStaff={isStaff} dayTotals={dayTotals}
-            lockDay={teacherView}
+            lockDay={teacherView} lockFor={lockOf}
           />
         ) : mode === "director" ? (
           <DirectorMode
@@ -1140,7 +1189,7 @@ function UnbuckledList({ items }: { items: UnbuckledWindow[] }) {
 
 function CurrentMode({ roster, records, activeSlots, selectedSlot, setSelectedSlot,
   selectedDay, setSelectedDay, todayDayKey, dayBlocked, slotBlocked, blockLabel, toggle, checkedCount,
-  milkForSlot, isQueued, isStaff, dayTotals, lockDay }: {
+  milkForSlot, isQueued, isStaff, dayTotals, lockDay, lockFor }: {
     roster: Child[]; records: Record<string, WeekRecord>; activeSlots: SlotKey[];
     selectedSlot: SlotKey; setSelectedSlot: (s: SlotKey) => void;
     selectedDay: DayKey; setSelectedDay: (d: DayKey) => void; todayDayKey: DayKey;
@@ -1153,12 +1202,20 @@ function CurrentMode({ roster, records, activeSlots, selectedSlot, setSelectedSl
     dayTotals: (d: DayKey) => { total: number; reimbursable: number };
     /** Учительский вид: день один — тот, что уже выбран, и линейки дней нет. */
     lockDay?: boolean;
+    /** Замок приёма: закрытое окно и прошлый день отмечать не дают. */
+    lockFor?: (s: SlotKey) => SlotLock;
   }) {
   const day = selectedDay;
   const blocked = slotBlocked(day, selectedSlot);
   const milk = milkForSlot(selectedSlot, day);
   const count = checkedCount(day, selectedSlot);
   const totals = dayTotals(day);
+  // Замок приёма. Замкнутый приём ВИДЕН и ГОВОРИТ: тап по нему отвечает словами,
+  // а не тишиной — «не реагирует» читается как сломанный планшет, и через день
+  // такому экрану перестают верить.
+  const lock: SlotLock = lockFor ? lockFor(selectedSlot) : { locked: false };
+  const [lockSaid, setLockSaid] = useState(false);
+  useEffect(() => { setLockSaid(false); }, [selectedSlot, selectedDay]);
 
   return (
     <div className="mc-current">
@@ -1176,16 +1233,33 @@ function CurrentMode({ roster, records, activeSlots, selectedSlot, setSelectedSl
       </div>}
 
       <div className="mc-slot-bar">
-        {activeSlots.map((slot) => (
-          <button key={slot} className={`mc-slot-btn ${selectedSlot === slot ? "active" : ""}`}
-            onClick={() => setSelectedSlot(slot)}>{SLOT_LABELS[slot]}</button>
-        ))}
+        {activeSlots.map((slot) => {
+          const lk = lockFor ? lockFor(slot) : { locked: false as const };
+          return (
+            <button key={slot} className={`mc-slot-btn ${selectedSlot === slot ? "active" : ""} ${lk.locked ? "locked" : ""}`}
+              onClick={() => setSelectedSlot(slot)}>
+              {lk.locked ? "🔒 " : ""}{SLOT_LABELS[slot]}
+            </button>
+          );
+        })}
       </div>
 
       {blocked ? (
         <div className="mc-blocked"><span>🚫</span><p>{blockLabel(day, selectedSlot) ?? "Closed"} — no meal count for this slot.</p></div>
       ) : (
         <>
+          {lock.locked && (
+            <div className="mc-locked-strip" role="status">
+              <span className="mc-locked-icon">🔒</span>
+              <span>
+                <b>{lockLine(lock, SLOT_LABELS[selectedSlot])}</b>
+                <span className="mc-locked-note">
+                  Marks already made are kept — this meal is simply no longer open for changes here.
+                </span>
+              </span>
+            </div>
+          )}
+
           <div className="mc-counter-bar">
             <span className="mc-counter-num">{count}</span>
             <span className="mc-counter-label">checked · {roster.length} in roster</span>
@@ -1206,9 +1280,10 @@ function CurrentMode({ roster, records, activeSlots, selectedSlot, setSelectedSl
               const queued = isQueued(child, col);
               return (
                 <button key={child.roster_id}
-                  className={`mc-check-row ${checked ? "checked" : ""} ${queued ? "queued" : ""}`}
-                  onClick={() => toggle(child, day, selectedSlot)}>
-                  <span className="mc-checkbox">{checked ? "✓" : ""}</span>
+                  className={`mc-check-row ${checked ? "checked" : ""} ${queued ? "queued" : ""} ${lock.locked ? "locked" : ""}`}
+                  aria-disabled={lock.locked || undefined}
+                  onClick={() => { if (lock.locked) { setLockSaid(true); return; } toggle(child, day, selectedSlot); }}>
+                  <span className="mc-checkbox">{checked ? (lock.locked ? "🔒" : "✓") : ""}</span>
                   {queued && <span className="mc-queue-flag" title="Waiting to send">◷</span>}
                   <Avatar name={displayName(child)} path={child.photo_url} size={24} />
                   <span className="mc-child-name">{displayName(child)}</span>
@@ -1218,6 +1293,12 @@ function CurrentMode({ roster, records, activeSlots, selectedSlot, setSelectedSl
               );
             })}
           </div>
+
+          {lockSaid && (
+            <div className="mc-locked-said" role="alert">
+              {lockLine(lock, SLOT_LABELS[selectedSlot])} Your director can change it with their PIN.
+            </div>
+          )}
 
           {milk && (
             <div className="mc-milk-panel">
@@ -1545,6 +1626,16 @@ const styles = `
   border:1px solid #f3c3bc; border-radius:8px; padding:.15rem .5rem; }
 
 /* Per-cell "queued" state — distinct from the solid-green SYNCED check. */
+/* Замок отметок: замкнутое ВЫГЛЯДИТ замкнутым — не «серым и неотзывчивым», а
+   явно закрытым, с замком на месте галочки и полосой словами над списком. */
+.mc-locked-strip { display:flex; gap:.6rem; align-items:flex-start; margin:0 0 .75rem; padding:.7rem 1rem; border-radius:12px; background:#f4f6fa; border:1.5px solid #c2cbd9; color:#33415c; font-size:.9rem; line-height:1.45; }
+.mc-locked-icon { font-size:1.05rem; line-height:1.2; }
+.mc-locked-note { display:block; font-weight:400; color:#5b6780; margin-top:2px; }
+.mc-locked-said { margin:.6rem 0 0; padding:.65rem .9rem; border-radius:10px; background:#fff8e6; border:1.5px solid #f0a020; color:#7a4b00; font-size:.88rem; font-weight:600; }
+.mc-slot-btn.locked { opacity:.75; }
+.mc-check-row.locked { cursor:default; background:#f7f8fb; border-color:#c2cbd9; }
+.mc-check-row.locked.checked { background:#eef1f6; border-color:#8b98ad; }
+.mc-check-row.locked .mc-checkbox { background:#e6eaf1; border-color:#c2cbd9; color:#5b6780; }
 .mc-check-row.queued { border-color:#f0a020; background:#fff8ec; }
 .mc-check-row.queued.checked { background:#eef7ee; }
 .mc-queue-flag { color:#c07800; font-size:1rem; font-weight:700; margin-left:-.4rem; }

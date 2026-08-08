@@ -10,6 +10,7 @@
 
 import { normName } from './enrollmentApprove'
 import { countersignSlot } from './signatureSamples'
+import { householdKey, householdTitle } from './enrollmentTitle'
 
 // Subset of the Inbox's Submission that grouping needs.
 export type GroupableSubmission = {
@@ -55,11 +56,17 @@ export function groupSubmissionsByChild(subs: GroupableSubmission[]): ChildGroup
   const byKey = new Map<string, ChildGroup>()
   for (const s of subs) {
     const key = groupKey(s.form_data?.child_name)
-    const bucket = key || '__noname__'
+    // СЕМЕЙНАЯ ЗАЯВКА несёт детей списком, а `child_name` в ней пуст. До 08.08
+    // такие строки падали в ОДНУ корзину `__noname__` — и заявки РАЗНЫХ семей
+    // сливались в одну строку инбокса. Теперь у семьи свой ключ (по именам
+    // детей) и свой титул; у кого списка нет — всё как прежде.
+    const hKey = key ? null : householdKey(s.form_data)
+    const bucket = key || hKey || '__noname__'
     let g = byKey.get(bucket)
     if (!g) {
       const raw = s.form_data?.child_name
-      const display = typeof raw === 'string' && raw.trim() ? raw.trim() : '(no name)'
+      const display = typeof raw === 'string' && raw.trim() ? raw.trim()
+        : householdTitle(s.form_data) ?? '(no name)'
       g = { key, childName: display, submissions: [], signatureCount: 0 }
       byKey.set(bucket, g)
     }
@@ -73,4 +80,49 @@ export function groupSubmissionsByChild(subs: GroupableSubmission[]): ChildGroup
   for (const g of groups) g.submissions.sort((a, b) => desc(a.created_at, b.created_at))
   groups.sort((a, b) => desc(a.submissions[0]?.created_at ?? '', b.submissions[0]?.created_at ?? ''))
   return groups
+}
+
+// ─── ДВОЙНИКИ ОДНОЙ ФОРМЫ (заказ владельца 08.08) ────────────────────────────
+// Замер по Rife: семья отправила ОДНУ И ТУ ЖЕ форму дважды с разницей 5,5 минут
+// (05.08 00:24:27 и 00:29:57), обе одобрены, обе на живой строке. Мис-привязки
+// нет — это повторная отправка родителем.
+//
+// Правило владельца: показывать ДАТЫ и «СВЕЖАЯ ПОБЕЖДАЕТ». Старая НЕ прячется и
+// НЕ удаляется — она остаётся видимой историей: спрятанная запись через месяц
+// превращается в вопрос «а была ли вторая форма», на который никто не ответит.
+//
+// Чистая функция: «который по счёту и кто из них свежий» — это арифметика, и
+// проверяться она должна машиной.
+
+export type DuplicateMark = {
+  /** Сколько всего форм ЭТОГО ЖЕ типа у этого ребёнка. 1 — двойников нет. */
+  total: number
+  /** Номер этой формы среди них, 1 = самая свежая. */
+  rank: number
+  /** true — свежая: именно она считается действующей. */
+  current: boolean
+}
+
+/** Ключ «тот же ребёнок + тот же тип формы». Ребёнок опознаётся по привязке,
+ *  а если её нет — по имени (тем же нормализованным ключом, что и группировка). */
+function dupKey(s: GroupableSubmission): string {
+  const who = s.child_id ?? groupKey(s.form_data?.child_name) ?? ''
+  return `${who}|${s.submission_type}`
+}
+
+/** id формы → отметка двойника. Формы без двойников в карту НЕ попадают:
+ *  отметка «1 of 1» — шум, а шум учит не читать отметки. */
+export function duplicateMarks(subs: readonly GroupableSubmission[]): Map<string, DuplicateMark> {
+  const byKey = new Map<string, GroupableSubmission[]>()
+  for (const s of subs) {
+    const k = dupKey(s)
+    if (!k.startsWith('|')) (byKey.get(k) ?? byKey.set(k, []).get(k)!).push(s)
+  }
+  const marks = new Map<string, DuplicateMark>()
+  for (const list of byKey.values()) {
+    if (list.length < 2) continue
+    const sorted = [...list].sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0))
+    sorted.forEach((s, i) => marks.set(s.id, { total: sorted.length, rank: i + 1, current: i === 0 }))
+  }
+  return marks
 }

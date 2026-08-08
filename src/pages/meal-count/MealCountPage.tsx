@@ -199,16 +199,33 @@ interface MilkBucket { label: string; oz: number; }
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function MealCountPage({ portalRoles, variant, roomId, roomName }: {
+export default function MealCountPage({ portalRoles, variant, roomId, roomName, centerId: pointCenterId, centerName: pointCenterName }: {
   portalRoles?: string[];
   variant?: Variant;
   /** Учительский вид: комната PIN-сессии. Экран НЕ выбирает комнату сам. */
   roomId?: string;
   roomName?: string;
+  /** Учительский вид: ЦЕНТР ТОЧКИ — из токена устройства, а не из логина. */
+  centerId?: string;
+  centerName?: string;
 } = {}) {
   const teacherView = TEACHER_VIEW(variant);
   const { role, roles, user } = useAuth();
   const { currentCenter, orgRole, org, centers, isOrgAdmin } = useOrg();
+
+  // ─── ГДЕ МЫ: источник места ОДИН — токен устройства ──────────────────────────
+  // Живая сверка владельца 08.08 нашла шов: учительский вид брал КОМНАТУ из
+  // токена, а ЦЕНТР — из логина служебной учётки, и на iPad с pearl-логином и
+  // Ridge-токеном экран честно отказал: «"Red" is not an active children's room
+  // in Play Academy Pearl». Отказ был правдив, но вопрос был неверный: место
+  // человека решает ТОЧКА, у которой он стоит, а логин — только транспорт данных.
+  // На школьном планшете (свой логин, свой центр) дефект молчал бы до первого
+  // чужого входа — то есть до самого неудобного дня.
+  //
+  // Кухонная и директорская двери не тронуты: там центр приходит переключателем,
+  // и это правильно — офисный браузер СМОТРИТ центры, планшет СТОИТ в одном.
+  const centerId = (teacherView ? pointCenterId : currentCenter?.id) ?? undefined;
+  const centerName = (teacherView ? pointCenterName : currentCenter?.name) ?? "";
   // Какие центры вообще кормят. Читается один раз; отказ НЕ глотается — пустой
   // набор здесь означал бы «вкладок нет» на ровном месте.
   const [mealSiteIds, setMealSiteIds] = useState<Set<string>>(new Set());
@@ -302,13 +319,12 @@ export default function MealCountPage({ portalRoles, variant, roomId, roomName }
     // Meal Count is center-scoped. Never load without a concrete center, or the
     // query returns every center's classrooms mixed together (RLS lets admins
     // read the whole org). In Organization view we simply show nothing here.
-    if (!currentCenter?.id) {
+    if (!centerId) {
       setClassrooms([]);
       setSelectedClassId("");
       setSelectedClassName("");
       return;
     }
-    const centerId = currentCenter.id;
     (async () => {
       const { data: cls } = await supabase
         .schema("menumaker").from("classrooms")
@@ -359,7 +375,7 @@ export default function MealCountPage({ portalRoles, variant, roomId, roomName }
     })();
     // roomId читается внутри: смена комнаты PIN-сессии обязана пересадить экран,
     // иначе учитель после «change room» отмечал бы прежнюю комнату.
-  }, [currentCenter?.id, roomId]);
+  }, [centerId, roomId]);
 
   // Per-classroom slot start times (for short-day slot blocking) + the full window
   // rows the ritual needs (end_time, intake_mode). ОДИН запрос на оба дела: время
@@ -438,7 +454,6 @@ export default function MealCountPage({ portalRoles, variant, roomId, roomName }
   // её вместе с active_slots, и до миграции экран остался бы без настроек вообще
   // (см. docs/platform-standards.md и правило «а view is NOT its table»).
   useEffect(() => {
-    const centerId = currentCenter?.id;
     if (!centerId) return;
     let cancelled = false;
     (async () => {
@@ -456,7 +471,7 @@ export default function MealCountPage({ portalRoles, variant, roomId, roomName }
       setChimeVariant(isChimeVariant(v) ? v : DEFAULT_VARIANT);
     })();
     return () => { cancelled = true; };
-  }, [currentCenter?.id]);
+  }, [centerId]);
 
   // ─── Load roster (v_meal_grid) + records ──────────────────────────────────
   useEffect(() => {
@@ -618,8 +633,8 @@ export default function MealCountPage({ portalRoles, variant, roomId, roomName }
       minutesIn: DIRECTOR_ALERT_AFTER_MIN,
       muteLine: muteNoteLine(mutedSinceHHMM()),
       orgId: org?.id,
-      centerId: currentCenter?.id ?? null,
-      centerName: currentCenter?.name ?? "",
+      centerId: centerId ?? null,
+      centerName,
       senderId: user?.id,
     });
     const { error } = await supabase.schema("menumaker").from("internal_messages").insert(row);
@@ -628,7 +643,7 @@ export default function MealCountPage({ portalRoles, variant, roomId, roomName }
     // надо сразу и на экране.
     if (error) setAlertNote(`The director was NOT told about ${className}: ${error.message}`);
     else setAlertNote(`Director notified: ${className} · ${SLOT_LABELS[w.slot as SlotKey] ?? w.slot} — no marks.`);
-  }, [classrooms, selectedClassId, selectedClassName, org?.id, currentCenter?.id, currentCenter?.name, user?.id]);
+  }, [classrooms, selectedClassId, selectedClassName, org?.id, centerId, centerName, user?.id]);
 
   const ritual = useMealRitual({
     enabled: ritualEnabled,
@@ -667,7 +682,7 @@ export default function MealCountPage({ portalRoles, variant, roomId, roomName }
     // director approved the week on its Monday; the refusal below is what stops
     // a signature from certifying a week that is still running.
     const { error: approveErr } = await (supabase.schema("menumaker").rpc as any)("approve_meal_week", {
-      p_center: currentCenter?.id, p_classroom_id: selectedClassId, p_monday: mon,
+      p_center: centerId, p_classroom_id: selectedClassId, p_monday: mon,
       p_initials: initials, p_actor_name: initials,
     });
     if (approveErr) throw new Error(approveErr.message);
@@ -784,7 +799,7 @@ export default function MealCountPage({ portalRoles, variant, roomId, roomName }
     };
 
     const rows: (string | number)[][] = [];
-    rows.push([currentCenter?.name ?? "", format(weekStart, "MMMM yyyy")]);              // Row 1
+    rows.push([centerName, format(weekStart, "MMMM yyyy")]);              // Row 1
     rows.push([selectedClassName, "Teachers: "]);                                        // Row 2
 
     const r3: (string | number)[] = ["Child's Name"];                                    // Row 3
@@ -812,7 +827,7 @@ export default function MealCountPage({ portalRoles, variant, roomId, roomName }
     const csv = rows.map((r) => r.map(esc).join(",")).join("\r\n");
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
-    const cc = (currentCenter?.name ?? "center").replace(/^Play Academy\s*/i, "").replace(/\s+/g, "");
+    const cc = (centerName || "center").replace(/^Play Academy\s*/i, "").replace(/\s+/g, "");
     const rm = (selectedClassName || "class").replace(/\s+/g, "");
     const a = document.createElement("a");
     a.href = url;
@@ -829,14 +844,14 @@ export default function MealCountPage({ portalRoles, variant, roomId, roomName }
         : " Directors review and approve under Meal Count — Director."}
     </div>
   );
-  if (!currentCenter?.id) return <div className="mc-loading">Pick a center in the switcher at the top to view meal counts.</div>;
-  if (!classrooms.length) return <div className="mc-loading">No active classrooms for {currentCenter.name}.</div>;
+  if (!centerId) return <div className="mc-loading">Pick a center in the switcher at the top to view meal counts.</div>;
+  if (!classrooms.length) return <div className="mc-loading">No active classrooms for {centerName || "this center"}.</div>;
   // Учительский вид без посадки: комната сессии не найдена среди детских комнат
   // центра. Пустая сетка здесь читалась бы как «в группе нет детей», а это
   // другой факт — поэтому вслух и с именем комнаты.
   if (teacherView && !selectedClassId) return (
     <div className="mc-loading">
-      “{roomName ?? "This room"}” is not an active children’s room in {currentCenter.name},
+      “{roomName ?? "This room"}” is not an active children’s room in {centerName || "this center"},
       so meals cannot be marked here. Nothing is lost — tell your director.
     </div>
   );
@@ -903,7 +918,7 @@ export default function MealCountPage({ portalRoles, variant, roomId, roomName }
           {isApproved && <span className="mc-approved-badge">✓ Approved</span>}
           {/* Тихий час. Глушит ВСЕ ярусы звука этого планшета — и только звук:
               пульсация плашки и ступень директора остаются (решение 04.08). */}
-          <MuteToggle device={selectedClassName || currentCenter?.name || "Meal Count"} />
+          <MuteToggle device={selectedClassName || centerName || "Meal Count"} />
         </div>
 
         {/* ВИДИМЫЙ ОТКАЗ. Значок очереди в углу — не сообщение об ошибке: на планшете

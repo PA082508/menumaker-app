@@ -156,6 +156,29 @@ export default function TeacherShell() {
   // ── Сессия служебной учётки — только ради вкладки «Питание» ────────────────
   const [mealsReady, setMealsReady] = useState(false)
   const [mealsError, setMealsError] = useState('')
+  // ⚠️ СЕССИЯ — ТРАНСПОРТ, И ТРАНСПОРТ ОБЯЗАН ДОВЕЗТИ ДО ЦЕНТРА ТОЧКИ. Живая
+  // сверка владельца 08.08: на iPad уже была ЧУЖАЯ сессия (Pearl), токен же —
+  // Red·Ridge; прежний код видел «сессия есть» и объявлял питание готовым.
+  //
+  // ЧТО ЗАМЕРЕНО (08.08, боевые права — а не догадка о них):
+  //   · `classrooms` и `meal_week_records` закрыты ТОЛЬКО организацией
+  //     (`auth_manage` = true + `org_isolation`) — центрового замка на них нет;
+  //   · `v_meal_grid` создан БЕЗ `security_invoker` — читается правами владельца
+  //     представления, то есть мимо RLS ростера;
+  //   · `sync_meal_marks` НЕ security definer — запись идёт под правами сессии,
+  //     и по тем же орг-правилам проходит.
+  //   Значит сессия ДРУГОГО центра той же организации (директор Pearl) читает и
+  //   пишет центр точки нормально — менять её незачем, а выкинуть человека из его
+  //   собственного логина на личном планшете было бы платой ни за что.
+  //   · ЕДИНСТВЕННОЕ исключение — СЛУЖЕБНЫЕ учётки (`is_door_account()`): у них
+  //     `roster` заперт своим центром (`door_read_scope`), и чужая кухонная учётка
+  //     показала бы группу без детей. Поэтому проба спрашивает про РОСТЕР центра
+  //     точки — то, что действительно центро-зависимо, — и только на её отказе
+  //     входит служебной учёткой центра ТОЧКИ (слог берётся из опознания по PIN,
+  //     то есть из токена).
+  //
+  // Проба намеренно узкая: гард, который всегда проходит, — мёртвый гард, а
+  // мёртвое исключение прикрывает живое нарушение.
   useEffect(() => {
     if (tab !== 'meals' || !who) return
     let cancelled = false
@@ -168,7 +191,13 @@ export default function TeacherShell() {
         if (!cancelled) setMealsError('Meals could not open on this tablet — tell the office. Nothing was lost.')
         return
       }
-      if (data.session) { if (!cancelled) setMealsReady(true); return }
+      if (data.session) {
+        const { data: kids, error: seeErr } = await supabase.schema('menumaker')
+          .from('roster').select('id').eq('center_id', who.center_id).eq('is_active', true).limit(1)
+        if (cancelled) return
+        if (seeErr) { setMealsError('Meals could not open on this tablet — tell the office. Nothing was lost.'); return }
+        if ((kids?.length ?? 0) > 0) { setMealsReady(true); return }   // транспорт довозит до центра точки
+      }
       const creds = CENTER_CREDENTIALS[who.center_slug]
       if (!creds) { if (!cancelled) setMealsError(`No service account for “${who.center_slug}” — tell the office.`); return }
       const { error } = await supabase.auth.signInWithPassword(creds)
@@ -334,7 +363,11 @@ export default function TeacherShell() {
         {tab === 'meals' && room && (
           mealsError ? <Stub text={mealsError} />
           : !mealsReady ? <Stub text="Opening meals…" />
-          : <MealCountPage portalRoles={['cook']} variant="teacher" roomId={room.id} roomName={room.name} />
+          : <MealCountPage portalRoles={['cook']} variant="teacher"
+              roomId={room.id} roomName={room.name}
+              /* Место целиком — из ТОЧКИ: и комната, и центр. Логин остаётся
+                 транспортом данных и на вопрос «где мы» не отвечает. */
+              centerId={who.center_id} centerName={who.center_name} />
         )}
 
         {tab === 'time' && (

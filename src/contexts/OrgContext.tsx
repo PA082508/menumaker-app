@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
+import { centerOfficialName } from '@/lib/centerLabels'
 import { useAuth } from '@/hooks/useAuth'
 import type { NavModule } from '@/lib/modules'
 import { warnIf } from '../lib/queryError'
@@ -127,11 +128,25 @@ export function OrgProvider({ children }: { children: ReactNode }) {
         }
         if (cancelled) return
 
+        // ИМЯ ЦЕНТРА ПЕРЕВОДИТСЯ ОДИН РАЗ — ЗДЕСЬ, НА ВХОДЕ. Канон владельца
+        // 08.08: наружу центр зовётся городом, а `centers.name` в базе пока
+        // несёт рабочую кличку («Play Academy Ridge»). Десятки экранов читают
+        // `currentCenter.name` — заголовки, письма, документы, выгрузки; чинить
+        // их поштучно значит завести десятки мест, где завтра снова вылезет
+        // кличка. Поэтому имя правится в ОДНОЙ точке входа, и все читатели
+        // получают уже официальное.
+        //
+        // Когда имя в базе станет городом (переименование двух строк ждёт
+        // слова), этот перевод схлопнется сам: `centerOfficialName` отдаёт
+        // `name` как есть, если кличка ему незнакома.
+        // ⚠️ slug НЕ трогается — он ключ, по нему всё и опознаётся.
+        const named = accessible.map(c => ({ ...c, name: centerOfficialName(c) }))
+
         setOrg(data.org ?? null)
         setOrgRole(oRole)
         setIsOrgAdmin(orgAdmin)
         setModules(data.modules ?? [])
-        setCenters(accessible)
+        setCenters(named)
         // Org admins / office managers land in the Organization view by default
         // (currentCenter = null); they can pick a concrete center from the header.
         // Everyone else defaults to their (first) accessible center so center-scoped
@@ -140,10 +155,10 @@ export function OrgProvider({ children }: { children: ReactNode }) {
         // доступен этому человеку. Центр, к которому доступ отобрали, тихо
         // подставлять нельзя: страницы читали бы чужой центр.
         const saved = readSavedCenter(userId)
-        const savedCenter = saved && saved !== 'org' ? accessible.find(c => c.id === saved) ?? null : null
+        const savedCenter = saved && saved !== 'org' ? named.find(c => c.id === saved) ?? null : null
         if (savedCenter) setCurrentCenterState(savedCenter)
         else if (saved === 'org' && orgAdmin) setCurrentCenterState(null)
-        else setCurrentCenterState(orgAdmin ? null : (accessible[0] ?? null))
+        else setCurrentCenterState(orgAdmin ? null : (named[0] ?? null))
       }
 
       // Variant B — permission-driven navigation. On failure leave navModules
